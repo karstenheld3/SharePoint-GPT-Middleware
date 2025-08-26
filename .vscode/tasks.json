@@ -1,0 +1,27 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Open Browser",
+      "type": "shell",
+      "command": "cmd",
+      "args": ["/c", "start http://127.0.0.1:8000/"],
+      "presentation": { "reveal": "never" }
+    },
+    {
+      "label": "Run API (Uvicorn)",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "-m", "uvicorn",
+        "app:app",
+        "--app-dir", "src",
+        "--host", "127.0.0.1",
+        "--port", "8000",
+        "--reload"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    }
+  ]
+}

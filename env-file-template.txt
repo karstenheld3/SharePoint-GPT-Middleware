@@ -1,0 +1,39 @@
+# Copy this file to .env in the PROJECT ROOT and fill in values as needed
+
+# Azure Deployment
+AZURE_SUBSCRIPTION_ID=
+AZURE_TENANT_ID=
+AZURE_RESOURCE_GROUP=
+AZURE_LOCATION=
+AZURE_APP_NAME=
+AZURE_PYTHON_VERSION=
+AZURE_APP_SERVICE_PLAN=
+
+# OpenAI Service Type: openai or azure_openai
+OPENAI_SERVICE_TYPE=openai
+
+# Open AI Configuration
+OPENAI_API_KEY=sk-proj-xxxxxxxxxxxx
+OPEN_AI_ORGANIZATION=org-xxxxxxxxxx
+
+# Azure OpenAI Configuration
+AZURE_OPENAI_USE_KEY_AUTHENTICATION=true
+AZURE_OPENAI_ENDPOINT=https://<your-azure-openai-endpoint>.openai.azure.com/
+AZURE_OPENAI_API_KEY=xxxxxxxxxxxxxxxxxx
+AZURE_OPENAI_MODEL_DEPLOYMENT_NAME=gpt-4o-mini-dzstd
+AZURE_OPENAI_EVAL_MODEL_DEPLOYMENT_NAME=gpt-4o-std
+AZURE_OPENAI_API_VERSION=2025-04-01-preview
+
+# Project Managed Identity (optional)
+PROJECT_MI_CLIENT_ID=
+MACHINE_MANAGED_IDENTITY_CLIENT_ID=
+
+# Azure Key Vault (optional)
+KEYVAULT_URL=
+KEYVAULT_TENANT_ID=
+KEYVAULT_CLIENT_ID=
+KEYVAULT_CLIENT_SECRET=
+
+# Vector store defaults (optional)
+DEFAULT_GLOBAL_VECTOR_STORE_ID=
+DEFAULT_VSROUTER_VECTOR_STORE_ID=

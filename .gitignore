@@ -1,0 +1,21 @@
+*.env
+.env.local
+.env.*
+Set-*-Env.bat
+__pycache__
+__pycache__/*
+*.bak
+
+# Local virtual environment
+.venv/
+
+# Python build/cache artifacts
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# OS cruft
+.DS_Store
+
+# Deployment artifact
+deploy.zip
