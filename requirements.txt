@@ -104,6 +104,8 @@ python-dotenv==1.1.1
     # via
     #   sharepoint-gpt-middleware (src/pyproject.toml)
     #   uvicorn
+python-multipart==0.0.20
+    # via sharepoint-gpt-middleware (src/pyproject.toml)
 pyyaml==6.0.2
     # via uvicorn
 requests==2.32.5

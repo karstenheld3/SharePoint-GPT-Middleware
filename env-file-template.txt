@@ -1,39 +1,49 @@
-# Copy this file to .env in the PROJECT ROOT and fill in values as needed
-
-# Azure Deployment
-AZURE_SUBSCRIPTION_ID=
-AZURE_TENANT_ID=
-AZURE_RESOURCE_GROUP=
-AZURE_LOCATION=
-AZURE_APP_NAME=
-AZURE_PYTHON_VERSION=
-AZURE_APP_SERVICE_PLAN=
-
-# OpenAI Service Type: openai or azure_openai
+# OpenAI Service Type: 'openai' or 'azure_openai'
 OPENAI_SERVICE_TYPE=openai
 
-# Open AI Configuration
-OPENAI_API_KEY=sk-proj-xxxxxxxxxxxx
-OPEN_AI_ORGANIZATION=org-xxxxxxxxxx
+# ------------------------- START: Open AI API (if OPENAI_SERVICE_TYPE=openai) ----------------------------------------
 
-# Azure OpenAI Configuration
+# Open AI Configuration 
+OPENAI_API_KEY=<your_openai_api_key>
+OPENAI_ORGANIZATION=<your_openai_organization_id>
+OPENAI_MODEL_NAME=gpt-4o-mini
+OPENAI_EVAL_MODEL_NAME=gpt-5
+
+# ------------------------- END: Open AI API (if OPENAI_SERVICE_TYPE=openai) ------------------------------------------
+
+# ------------------------- START: Azure Open AI Service (if OPENAI_SERVICE_TYPE=azure_openai) ------------------------
+
+# 'true': uses AZURE_OPENAI_API_KEY; 'false': uses DefaultAzureCredential(), defined using AZURE_TENANT_ID, AZURE_CLIENT_ID, and (optionally) AZURE_CLIENT_SECRET
 AZURE_OPENAI_USE_KEY_AUTHENTICATION=true
-AZURE_OPENAI_ENDPOINT=https://<your-azure-openai-endpoint>.openai.azure.com/
-AZURE_OPENAI_API_KEY=xxxxxxxxxxxxxxxxxx
-AZURE_OPENAI_MODEL_DEPLOYMENT_NAME=gpt-4o-mini-dzstd
-AZURE_OPENAI_EVAL_MODEL_DEPLOYMENT_NAME=gpt-4o-std
+
+# Azure Open AI Service Access
+# 1) Service Principal (AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET)
+# 2) Workload Identity Credential (AZURE_TENANT_ID, WORKLOAD_IDENTITY_VARS, AZURE_FEDERATED_TOKEN_FILE)
+# 3) Managed Identity (AZURE_TENANT_ID, AZURE_CLIENT_ID)
+# 4) Azure Open AI Service Key: AZURE_OPENAI_API_KEY
+AZURE_OPENAI_API_KEY=<your_azure_openai_api_key>
+AZURE_TENANT_ID=<your_azure_tenant_id>
+AZURE_CLIENT_ID=<your_azure_client_id>
+AZURE_CLIENT_SECRET=<your_azure_client_secret>
+# not needed but useful to find the app registration in the Azure portal
+AZURE_CLIENT_NAME=<your_azure_client_name>
+
+# Azure Open AI Service Configuration
+AZURE_OPENAI_ENDPOINT=https://<your_azure_openai_endpoint>.openai.azure.com/
+AZURE_OPENAI_MODEL_DEPLOYMENT_NAME=gpt-4o-mini
+AZURE_OPENAI_EVAL_MODEL_DEPLOYMENT_NAME=gpt-4o
 AZURE_OPENAI_API_VERSION=2025-04-01-preview
 
-# Project Managed Identity (optional)
-PROJECT_MI_CLIENT_ID=
-MACHINE_MANAGED_IDENTITY_CLIENT_ID=
+# ------------------------- END: Azure Open AI Service (if OPENAI_SERVICE_TYPE=azure_openai) --------------------------
 
-# Azure Key Vault (optional)
-KEYVAULT_URL=
-KEYVAULT_TENANT_ID=
-KEYVAULT_CLIENT_ID=
-KEYVAULT_CLIENT_SECRET=
+# ------------------------- START: Azure Web App Deployment Settings --------------------------------------------------
 
-# Vector store defaults (optional)
-DEFAULT_GLOBAL_VECTOR_STORE_ID=
-DEFAULT_VSROUTER_VECTOR_STORE_ID=
+AZURE_SUBSCRIPTION_ID=<your_azure_subscription_id>
+AZURE_TENANT_ID=<your_azure_tenant_id>
+AZURE_RESOURCE_GROUP=<your_azure_resource_group>
+AZURE_LOCATION=swedencentral
+AZURE_APP_NAME=<your_azure_app_name>
+AZURE_PYTHON_VERSION=3.12
+AZURE_APP_SERVICE_PLAN=appservice-webapp-01
+
+# ------------------------- END: Azure Web App Deployment Settings ----------------------------------------------------

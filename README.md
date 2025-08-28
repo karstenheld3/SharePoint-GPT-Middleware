@@ -1,7 +1,35 @@
 # SharePoint-GPT-Middleware
 An Azure Web App in Python to crawl the content of SharePoint sites into OpenAI Vector Stores
 
-## Run locally
+### OpenAI proxy base path
+
+All proxy endpoints are now served under the `/openai` base path. Examples:
+
+| API | Method | Path | Description |
+| --- | --- | --- | --- |
+| Responses | POST | `/openai/responses` | Create response |
+| Responses | GET | `/openai/responses` | List responses |
+| Responses | GET | `/openai/responses/{response_id}` | Get response |
+| Responses | DELETE | `/openai/responses/{response_id}` | Delete response |
+| Files | POST | `/openai/files` | Upload file |
+| Files | GET | `/openai/files` | List files |
+| Files | GET | `/openai/files/{file_id}` | Get file |
+| Files | DELETE | `/openai/files/{file_id}` | Delete file |
+| Files | GET | `/openai/files/{file_id}/content` | Get file content |
+| Vector Stores | POST | `/openai/vector_stores` | Create vector store |
+| Vector Stores | GET | `/openai/vector_stores` | List vector stores |
+| Vector Stores | GET | `/openai/vector_stores/{vector_store_id}` | Get vector store |
+| Vector Stores | POST | `/openai/vector_stores/{vector_store_id}` | Update vector store |
+| Vector Stores | DELETE | `/openai/vector_stores/{vector_store_id}` | Delete vector store |
+| Vector Store Files | POST | `/openai/vector_stores/{vector_store_id}/files` | Create vector store file |
+| Vector Store Files | GET | `/openai/vector_stores/{vector_store_id}/files` | List vector store files |
+| Vector Store Files | GET | `/openai/vector_stores/{vector_store_id}/files/{file_id}` | Get vector store file |
+| Vector Store Files | DELETE | `/openai/vector_stores/{vector_store_id}/files/{file_id}` | Delete vector store file |
+
+
+### How to run and deploy this app
+
+#### Run locally
 
 Prerequisites:
 - Python 3.12
@@ -40,7 +68,7 @@ Steps:
      - Terminal → Run Task → `Run API (Uvicorn)`.
      - Optionally run the `Open Browser` task to open the site.
 
-## Deploy to Azure Web App (build on server)
+#### Deploy to Azure Web App (build on server)
 
 Prerequisites:
 - Azure subscription, resource group, and Linux Web App created (or let scripts create them).

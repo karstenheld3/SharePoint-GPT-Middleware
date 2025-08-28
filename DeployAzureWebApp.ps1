@@ -21,14 +21,14 @@ $envPath = Join-Path $PSScriptRoot  ".env"
 if (!(Test-Path $envPath)) { throw "File '$($envPath)' not found."  }
 $config = Read-EnvFile -Path ($envPath)
 
-$ignoreFilesAndFoldersForDeployment = @('.git','*.bat', '*.ps1', $deployZipFilename, '.vscode', '__pycache__', '*.md', '.env', 'LICENSE', '.gitignore')
+$ignoreFilesAndFoldersForDeployment = @('.git','*.bat', '*.ps1', $deployZipFilename, '.vscode', '__pycache__','.venv', '.env', 'LICENSE', '.gitignore')
 
-  # https://learn.microsoft.com/en-us/azure/app-service/configure-language-python
-  # "BUILD_FLAGS=UseExpressBuild" -> will use fast deployment
-  $webAppSettings = @("SCM_DO_BUILD_DURING_DEPLOYMENT=1", "BUILD_FLAGS=UseExpressBuild")
-  # Exclude deployment variables from .env file to NOT being set in Azure Web App
-  $excludeVarsFromEnvFile = @( "AZURE_RESOURCE_GROUP", "AZURE_LOCATION", "AZURE_APP_NAME", "AZURE_PYTHON_VERSION", "AZURE_APP_SERVICE_PLAN")
-  $webAppStartupCommand = 'python -m uvicorn app:app --host 0.0.0.0 --port 8000 --workers 2 --log-level info --access-log --proxy-headers --forwarded-allow-ips=*'
+# https://learn.microsoft.com/en-us/azure/app-service/configure-language-python
+# "BUILD_FLAGS=UseExpressBuild" -> will use fast deployment
+$webAppSettings = @("SCM_DO_BUILD_DURING_DEPLOYMENT=1", "BUILD_FLAGS=UseExpressBuild")
+# Exclude deployment variables from .env file to NOT being set in Azure Web App
+$excludeVarsFromEnvFile = @( "AZURE_SUBSCRIPTION_ID","AZURE_TENANT_ID","AZURE_RESOURCE_GROUP", "AZURE_LOCATION", "AZURE_APP_NAME", "AZURE_PYTHON_VERSION", "AZURE_APP_SERVICE_PLAN")
+$webAppStartupCommand = 'python -m uvicorn app:app --host 0.0.0.0 --port 8000 --workers 2 --log-level info --access-log --proxy-headers --forwarded-allow-ips=*'
 
 ### Overwrite .env variables if needed
 # $config.AZURE_OPENAI_ENDPOINT = ""
