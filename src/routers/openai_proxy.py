@@ -416,6 +416,166 @@ async def delete_assistant(assistant_id: str, request: Request, api_version: str
     await log_function_footer(log_data)
 
 # ============================================================================
+# THREADS API
+# ============================================================================
+
+@router.post("/threads")
+async def create_thread(request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Threads API - Create Thread. Mirrors: POST /threads"""
+  log_data = log_function_header("create_thread")
+  try:
+    target_path = f"threads?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "POST")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+@router.get("/threads")
+async def list_threads(request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Threads API - List Threads. Mirrors: GET /threads"""
+  log_data = log_function_header("list_threads")
+  try:
+    target_path = f"threads?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "GET")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+@router.get("/threads/{thread_id}")
+async def get_thread(thread_id: str, request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Threads API - Get Thread. Mirrors: GET /threads/{thread_id}"""
+  log_data = log_function_header("get_thread")
+  try:
+    target_path = f"threads/{thread_id}?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "GET")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+@router.post("/threads/{thread_id}")
+async def update_thread(thread_id: str, request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Threads API - Update Thread. Mirrors: POST /threads/{thread_id}"""
+  log_data = log_function_header("update_thread")
+  try:
+    target_path = f"threads/{thread_id}?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "POST")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+@router.delete("/threads/{thread_id}")
+async def delete_thread(thread_id: str, request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Threads API - Delete Thread. Mirrors: DELETE /threads/{thread_id}"""
+  log_data = log_function_header("delete_thread")
+  try:
+    target_path = f"threads/{thread_id}?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "DELETE")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+# Thread Messages endpoints
+@router.post("/threads/{thread_id}/messages")
+async def create_thread_message(thread_id: str, request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Threads API - Create Thread Message. Mirrors: POST /threads/{thread_id}/messages"""
+  log_data = log_function_header("create_thread_message")
+  try:
+    target_path = f"threads/{thread_id}/messages?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "POST")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+@router.get("/threads/{thread_id}/messages")
+async def list_thread_messages(thread_id: str, request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Threads API - List Thread Messages. Mirrors: GET /threads/{thread_id}/messages"""
+  log_data = log_function_header("list_thread_messages")
+  try:
+    target_path = f"threads/{thread_id}/messages?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "GET")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+@router.get("/threads/{thread_id}/messages/{message_id}")
+async def get_thread_message(thread_id: str, message_id: str, request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Threads API - Get Thread Message. Mirrors: GET /threads/{thread_id}/messages/{message_id}"""
+  log_data = log_function_header("get_thread_message")
+  try:
+    target_path = f"threads/{thread_id}/messages/{message_id}?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "GET")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+@router.post("/threads/{thread_id}/messages/{message_id}")
+async def update_thread_message(thread_id: str, message_id: str, request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Threads API - Update Thread Message. Mirrors: POST /threads/{thread_id}/messages/{message_id}"""
+  log_data = log_function_header("update_thread_message")
+  try:
+    target_path = f"threads/{thread_id}/messages/{message_id}?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "POST")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+# Thread Runs endpoints
+@router.post("/threads/{thread_id}/runs")
+async def create_thread_run(thread_id: str, request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Threads API - Create Thread Run. Mirrors: POST /threads/{thread_id}/runs"""
+  log_data = log_function_header("create_thread_run")
+  try:
+    target_path = f"threads/{thread_id}/runs?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "POST")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+@router.get("/threads/{thread_id}/runs")
+async def list_thread_runs(thread_id: str, request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Threads API - List Thread Runs. Mirrors: GET /threads/{thread_id}/runs"""
+  log_data = log_function_header("list_thread_runs")
+  try:
+    target_path = f"threads/{thread_id}/runs?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "GET")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+@router.get("/threads/{thread_id}/runs/{run_id}")
+async def get_thread_run(thread_id: str, run_id: str, request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Threads API - Get Thread Run. Mirrors: GET /threads/{thread_id}/runs/{run_id}"""
+  log_data = log_function_header("get_thread_run")
+  try:
+    target_path = f"threads/{thread_id}/runs/{run_id}?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "GET")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+@router.post("/threads/{thread_id}/runs/{run_id}")
+async def update_thread_run(thread_id: str, run_id: str, request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Threads API - Update Thread Run. Mirrors: POST /threads/{thread_id}/runs/{run_id}"""
+  log_data = log_function_header("update_thread_run")
+  try:
+    target_path = f"threads/{thread_id}/runs/{run_id}?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "POST")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+@router.post("/threads/{thread_id}/runs/{run_id}/cancel")
+async def cancel_thread_run(thread_id: str, run_id: str, request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Threads API - Cancel Thread Run. Mirrors: POST /threads/{thread_id}/runs/{run_id}/cancel"""
+  log_data = log_function_header("cancel_thread_run")
+  try:
+    target_path = f"threads/{thread_id}/runs/{run_id}/cancel?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "POST")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+# ============================================================================
 # SELF TEST (callable utility; exposed at app-level, not under /openai)
 # ============================================================================
 
@@ -771,6 +931,144 @@ async def self_test(request: Request):
       results["/assistants/{id} (DELETE)"] = {"Result": "Skipped (missing id)", "Details": ""}
   except Exception as e:
     results["/assistants/{id} (DELETE)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
+  thread_id = None
+  message_id = None
+  
+  # Create thread
+  try:
+    create_thread_req = DummyRequestJson({})
+    create_thread_resp, _milliseconds = await proxy_request(create_thread_req, build_azure_openai_endpoint_path("threads"), "POST", timeout_seconds=timeout_seconds)
+    create_thread_data = json.loads(create_thread_resp.body.decode("utf-8")) if create_thread_resp.body else {}
+    thread_id = create_thread_data.get("id")
+    ok = bool(thread_id)
+    emoji = "✅" if ok else "❌"
+    main = ("OK" if ok else "No thread id returned") + f" ({format_milliseconds(_milliseconds)})"
+    if ok:
+      details = f"id: '{format_for_display(thread_id)}'"
+    else:
+      details = get_error_details(create_thread_resp, create_thread_data)
+    results["/threads (POST create)"] = {"Result": f"{emoji} {main}", "Details": details}
+  except Exception as e:
+    results["/threads (POST create)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
+  # List threads
+  try:
+    list_threads_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path("threads"), "GET", timeout_seconds=timeout_seconds)
+    try:
+      list_threads_data = json.loads(list_threads_resp.body.decode("utf-8")) if list_threads_resp.body else {}
+      threads_count = len(list_threads_data.get("data", [])) if isinstance(list_threads_data, dict) else 0
+    except (UnicodeDecodeError, json.JSONDecodeError):
+      list_threads_data = {}
+      threads_count = 0
+    ok = list_threads_resp.status_code < 400
+    emoji = "✅" if ok else "❌"
+    main = ("OK" if ok else f"HTTP {list_threads_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+    if ok:
+      details = f"threads: {threads_count}"
+    else:
+      details = get_error_details(list_threads_resp, list_threads_data)
+    results["/threads (GET)"] = {"Result": f"{emoji} {main}", "Details": details}
+  except Exception as e:
+    results["/threads (GET)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
+  # Get thread
+  try:
+    if thread_id:
+      get_thread_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}"), "GET", timeout_seconds=timeout_seconds)
+      get_thread_data = json.loads(get_thread_resp.body.decode("utf-8")) if get_thread_resp.body else {}
+      ok = get_thread_resp.status_code < 400
+      emoji = "✅" if ok else "❌"
+      main = ("OK" if ok else f"HTTP {get_thread_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        details = f"id: '{format_for_display(thread_id)}'"
+      else:
+        details = get_error_details(get_thread_resp, get_thread_data)
+      results["/threads/{id} (GET)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/threads/{id} (GET)"] = {"Result": "Skipped (missing thread id)", "Details": ""}
+  except Exception as e:
+    results["/threads/{id} (GET)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
+  # Create thread message
+  try:
+    if thread_id:
+      message_content = "Hello, this is a test message from the self test."
+      create_message_req = DummyRequestJson({"role": "user", "content": message_content})
+      create_message_resp, _milliseconds = await proxy_request(create_message_req, build_azure_openai_endpoint_path(f"threads/{thread_id}/messages"), "POST", timeout_seconds=timeout_seconds)
+      create_message_data = json.loads(create_message_resp.body.decode("utf-8")) if create_message_resp.body else {}
+      message_id = create_message_data.get("id")
+      ok = bool(message_id)
+      emoji = "✅" if ok else "❌"
+      main = ("OK" if ok else "No message id returned") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        details = f"content: '{format_for_display(message_content, 30)}' id: '{format_for_display(message_id)}'"
+      else:
+        details = get_error_details(create_message_resp, create_message_data)
+      results["/threads/{id}/messages (POST create)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/threads/{id}/messages (POST create)"] = {"Result": "Skipped (missing thread id)", "Details": ""}
+  except Exception as e:
+    results["/threads/{id}/messages (POST create)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
+  # List thread messages
+  try:
+    if thread_id:
+      list_messages_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/messages"), "GET", timeout_seconds=timeout_seconds)
+      try:
+        list_messages_data = json.loads(list_messages_resp.body.decode("utf-8")) if list_messages_resp.body else {}
+        messages_count = len(list_messages_data.get("data", [])) if isinstance(list_messages_data, dict) else 0
+      except (UnicodeDecodeError, json.JSONDecodeError):
+        list_messages_data = {}
+        messages_count = 0
+      ok = list_messages_resp.status_code < 400
+      emoji = "✅" if ok else "❌"
+      main = ("OK" if ok else f"HTTP {list_messages_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        details = f"messages: {messages_count}"
+      else:
+        details = get_error_details(list_messages_resp, list_messages_data)
+      results["/threads/{id}/messages (GET)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/threads/{id}/messages (GET)"] = {"Result": "Skipped (missing thread id)", "Details": ""}
+  except Exception as e:
+    results["/threads/{id}/messages (GET)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
+  # Get thread message
+  try:
+    if thread_id and message_id:
+      get_message_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/messages/{message_id}"), "GET", timeout_seconds=timeout_seconds)
+      get_message_data = json.loads(get_message_resp.body.decode("utf-8")) if get_message_resp.body else {}
+      ok = get_message_resp.status_code < 400
+      emoji = "✅" if ok else "❌"
+      main = ("OK" if ok else f"HTTP {get_message_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        details = f"thread_id: '{format_for_display(thread_id)}' message_id: '{format_for_display(message_id)}'"
+      else:
+        details = get_error_details(get_message_resp, get_message_data)
+      results["/threads/{id}/messages/{message_id} (GET)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/threads/{id}/messages/{message_id} (GET)"] = {"Result": "Skipped (missing ids)", "Details": ""}
+  except Exception as e:
+    results["/threads/{id}/messages/{message_id} (GET)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
+  # Delete thread
+  try:
+    if thread_id:
+      delete_thread_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"threads/{thread_id}"), "DELETE", timeout_seconds=timeout_seconds)
+      ok = delete_thread_resp.status_code < 400
+      emoji = "✅" if ok else "❌"
+      main = ("OK" if ok else f"HTTP {delete_thread_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        details = f"id: '{format_for_display(thread_id)}'"
+      else:
+        delete_thread_data = json.loads(delete_thread_resp.body.decode("utf-8")) if delete_thread_resp.body else {}
+        details = get_error_details(delete_thread_resp, delete_thread_data)
+      results["/threads/{id} (DELETE)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/threads/{id} (DELETE)"] = {"Result": "Skipped (missing id)", "Details": ""}
+  except Exception as e:
+    results["/threads/{id} (DELETE)"] = {"Result": f"Error: {str(e)}", "Details": ""}
   
   # Generate HTML
   html = "<html><body style='font-family: Arial, sans-serif;'>"
