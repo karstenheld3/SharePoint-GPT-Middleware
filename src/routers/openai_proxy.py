@@ -575,6 +575,40 @@ async def cancel_thread_run(thread_id: str, run_id: str, request: Request, api_v
   finally:
     await log_function_footer(log_data)
 
+@router.post("/threads/{thread_id}/runs/{run_id}/submit_tool_outputs")
+async def submit_tool_outputs(thread_id: str, run_id: str, request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Threads API - Submit Tool Outputs. Mirrors: POST /threads/{thread_id}/runs/{run_id}/submit_tool_outputs"""
+  log_data = log_function_header("submit_tool_outputs")
+  try:
+    target_path = f"threads/{thread_id}/runs/{run_id}/submit_tool_outputs?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "POST")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+# Thread Run Steps endpoints
+@router.get("/threads/{thread_id}/runs/{run_id}/steps")
+async def list_run_steps(thread_id: str, run_id: str, request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Threads API - List Run Steps. Mirrors: GET /threads/{thread_id}/runs/{run_id}/steps"""
+  log_data = log_function_header("list_run_steps")
+  try:
+    target_path = f"threads/{thread_id}/runs/{run_id}/steps?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "GET")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+@router.get("/threads/{thread_id}/runs/{run_id}/steps/{step_id}")
+async def get_run_step(thread_id: str, run_id: str, step_id: str, request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Threads API - Get Run Step. Mirrors: GET /threads/{thread_id}/runs/{run_id}/steps/{step_id}"""
+  log_data = log_function_header("get_run_step")
+  try:
+    target_path = f"threads/{thread_id}/runs/{run_id}/steps/{step_id}?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "GET")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
 # ============================================================================
 # SELF TEST (callable utility; exposed at app-level, not under /openai)
 # ============================================================================
@@ -1051,6 +1085,111 @@ async def self_test(request: Request):
       results["/threads/{id}/messages/{message_id} (GET)"] = {"Result": "Skipped (missing ids)", "Details": ""}
   except Exception as e:
     results["/threads/{id}/messages/{message_id} (GET)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
+  run_id = None
+  
+  # Create thread run (requires assistant)
+  try:
+    if thread_id and assistant_id:
+      create_run_req = DummyRequestJson({"assistant_id": assistant_id})
+      create_run_resp, _milliseconds = await proxy_request(create_run_req, build_azure_openai_endpoint_path(f"threads/{thread_id}/runs"), "POST", timeout_seconds=timeout_seconds)
+      create_run_data = json.loads(create_run_resp.body.decode("utf-8")) if create_run_resp.body else {}
+      run_id = create_run_data.get("id")
+      ok = bool(run_id)
+      emoji = "✅" if ok else "❌"
+      main = ("OK" if ok else "No run id returned") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        details = f"thread_id: '{format_for_display(thread_id)}' assistant_id: '{format_for_display(assistant_id)}' run_id: '{format_for_display(run_id)}'"
+      else:
+        details = get_error_details(create_run_resp, create_run_data)
+      results["/threads/{id}/runs (POST create)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/threads/{id}/runs (POST create)"] = {"Result": "Skipped (missing thread or assistant id)", "Details": ""}
+  except Exception as e:
+    results["/threads/{id}/runs (POST create)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
+  # List thread runs
+  try:
+    if thread_id:
+      list_runs_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/runs"), "GET", timeout_seconds=timeout_seconds)
+      try:
+        list_runs_data = json.loads(list_runs_resp.body.decode("utf-8")) if list_runs_resp.body else {}
+        runs_count = len(list_runs_data.get("data", [])) if isinstance(list_runs_data, dict) else 0
+      except (UnicodeDecodeError, json.JSONDecodeError):
+        list_runs_data = {}
+        runs_count = 0
+      ok = list_runs_resp.status_code < 400
+      emoji = "✅" if ok else "❌"
+      main = ("OK" if ok else f"HTTP {list_runs_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        details = f"runs: {runs_count}"
+      else:
+        details = get_error_details(list_runs_resp, list_runs_data)
+      results["/threads/{id}/runs (GET)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/threads/{id}/runs (GET)"] = {"Result": "Skipped (missing thread id)", "Details": ""}
+  except Exception as e:
+    results["/threads/{id}/runs (GET)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
+  # Get thread run
+  try:
+    if thread_id and run_id:
+      get_run_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/runs/{run_id}"), "GET", timeout_seconds=timeout_seconds)
+      get_run_data = json.loads(get_run_resp.body.decode("utf-8")) if get_run_resp.body else {}
+      ok = get_run_resp.status_code < 400
+      emoji = "✅" if ok else "❌"
+      main = ("OK" if ok else f"HTTP {get_run_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        run_status = get_run_data.get("status", "unknown")
+        details = f"thread_id: '{format_for_display(thread_id)}' run_id: '{format_for_display(run_id)}' status: '{run_status}'"
+      else:
+        details = get_error_details(get_run_resp, get_run_data)
+      results["/threads/{id}/runs/{run_id} (GET)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/threads/{id}/runs/{run_id} (GET)"] = {"Result": "Skipped (missing ids)", "Details": ""}
+  except Exception as e:
+    results["/threads/{id}/runs/{run_id} (GET)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
+  # List run steps
+  try:
+    if thread_id and run_id:
+      list_steps_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/runs/{run_id}/steps"), "GET", timeout_seconds=timeout_seconds)
+      try:
+        list_steps_data = json.loads(list_steps_resp.body.decode("utf-8")) if list_steps_resp.body else {}
+        steps_count = len(list_steps_data.get("data", [])) if isinstance(list_steps_data, dict) else 0
+      except (UnicodeDecodeError, json.JSONDecodeError):
+        list_steps_data = {}
+        steps_count = 0
+      ok = list_steps_resp.status_code < 400
+      emoji = "✅" if ok else "❌"
+      main = ("OK" if ok else f"HTTP {list_steps_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        details = f"steps: {steps_count}"
+      else:
+        details = get_error_details(list_steps_resp, list_steps_data)
+      results["/threads/{id}/runs/{run_id}/steps (GET)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/threads/{id}/runs/{run_id}/steps (GET)"] = {"Result": "Skipped (missing ids)", "Details": ""}
+  except Exception as e:
+    results["/threads/{id}/runs/{run_id}/steps (GET)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
+  # Cancel run (if still running)
+  try:
+    if thread_id and run_id:
+      cancel_run_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"threads/{thread_id}/runs/{run_id}/cancel"), "POST", timeout_seconds=timeout_seconds)
+      ok = cancel_run_resp.status_code < 400
+      emoji = "✅" if ok else "❌"
+      main = ("OK" if ok else f"HTTP {cancel_run_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        details = f"thread_id: '{format_for_display(thread_id)}' run_id: '{format_for_display(run_id)}'"
+      else:
+        cancel_run_data = json.loads(cancel_run_resp.body.decode("utf-8")) if cancel_run_resp.body else {}
+        details = get_error_details(cancel_run_resp, cancel_run_data)
+      results["/threads/{id}/runs/{run_id}/cancel (POST)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/threads/{id}/runs/{run_id}/cancel (POST)"] = {"Result": "Skipped (missing ids)", "Details": ""}
+  except Exception as e:
+    results["/threads/{id}/runs/{run_id}/cancel (POST)"] = {"Result": f"Error: {str(e)}", "Details": ""}
   
   # Delete thread
   try:
