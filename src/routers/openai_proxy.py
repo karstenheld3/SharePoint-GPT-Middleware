@@ -75,6 +75,10 @@ async def proxy_request(request: Request, target_path: str, method: str = "POST"
     if config.OPENAI_ORGANIZATION:
       headers["OpenAI-Organization"] = config.OPENAI_ORGANIZATION
   
+  # Add OpenAI-Beta header for assistants API endpoints
+  if "assistants" in target_path:
+    headers["OpenAI-Beta"] = "assistants=v2"
+  
   # Copy incoming headers except hop-by-hop and auth; let our auth override
   hop_by_hop = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers", "transfer-encoding", "upgrade", "host", "content-length", "authorization"}
   for header_name, header_value in request.headers.items():
@@ -353,6 +357,65 @@ async def search_vector_store(vector_store_id: str, request: Request, api_versio
     await log_function_footer(log_data)
 
 # ============================================================================
+# ASSISTANTS API
+# ============================================================================
+
+@router.post("/assistants")
+async def create_assistant(request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Assistants API - Create Assistant. Mirrors: POST /assistants"""
+  log_data = log_function_header("create_assistant")
+  try:
+    target_path = f"assistants?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "POST")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+@router.get("/assistants")
+async def list_assistants(request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Assistants API - List Assistants. Mirrors: GET /assistants"""
+  log_data = log_function_header("list_assistants")
+  try:
+    target_path = f"assistants?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "GET")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+@router.get("/assistants/{assistant_id}")
+async def get_assistant(assistant_id: str, request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Assistants API - Get Assistant. Mirrors: GET /assistants/{assistant_id}"""
+  log_data = log_function_header("get_assistant")
+  try:
+    target_path = f"assistants/{assistant_id}?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "GET")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+@router.post("/assistants/{assistant_id}")
+async def update_assistant(assistant_id: str, request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Assistants API - Update Assistant. Mirrors: POST /assistants/{assistant_id}"""
+  log_data = log_function_header("update_assistant")
+  try:
+    target_path = f"assistants/{assistant_id}?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "POST")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+@router.delete("/assistants/{assistant_id}")
+async def delete_assistant(assistant_id: str, request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Assistants API - Delete Assistant. Mirrors: DELETE /assistants/{assistant_id}"""
+  log_data = log_function_header("delete_assistant")
+  try:
+    target_path = f"assistants/{assistant_id}?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "DELETE")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+# ============================================================================
 # SELF TEST (callable utility; exposed at app-level, not under /openai)
 # ============================================================================
 
@@ -360,10 +423,8 @@ async def self_test(request: Request):
   """Test all endpoints and return results as simple HTML."""
   log_data = log_function_header("self_test")
   results = {}
-  try:
-    timeout_seconds = float(request.query_params.get("timeoutSecs")) if "timeoutSecs" in request.query_params else None
-  except Exception:
-    timeout_seconds = None
+  try: timeout_seconds = float(request.query_params.get("timeoutSecs")) if "timeoutSecs" in request.query_params else None
+  except Exception: timeout_seconds = None
   if timeout_seconds is None: timeout_seconds = 120
   
   # Build path helper: append api-version only for Azure
@@ -389,19 +450,12 @@ async def self_test(request: Request):
   
   def get_error_details(response, data: Dict[str, Any] = None) -> str:
     """Extract error message from API response for display in Details column."""
-    if response.status_code < 400:
-      return ""
-    
+    if response.status_code < 400: return ""
     error_msg = ""
-    if data:
-      error_msg = data.get("error", {}).get("message", "") if isinstance(data.get("error"), dict) else str(data.get("error", ""))
-    
+    if data: error_msg = data.get("error", {}).get("message", "") if isinstance(data.get("error"), dict) else str(data.get("error", ""))
     if not error_msg and response.body:
-      try:
-        error_msg = format_for_display(response.body.decode("utf-8"), 100)
-      except:
-        error_msg = f"HTTP {response.status_code}"
-    
+      try: error_msg = format_for_display(response.body.decode("utf-8"), 100)
+      except: error_msg = f"HTTP {response.status_code}"
     return f"Error: {error_msg}" if error_msg else f"HTTP {response.status_code}"
   
   def _extract_answer(obj: Dict[str, Any]) -> Optional[str]:
@@ -464,25 +518,6 @@ async def self_test(request: Request):
   except Exception as e:
     results["/responses (POST create)"] = {"Result": f"Error: {str(e)}", "Details": ""}
   
-  try:
-    resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path("vector_stores"), "GET", timeout_seconds=timeout_seconds)
-    try:
-      _data = json.loads(resp.body.decode("utf-8")) if resp.body else {}
-      _count = len(_data.get("data", [])) if isinstance(_data, dict) else 0
-    except (UnicodeDecodeError, json.JSONDecodeError):
-      _data = {}
-      _count = 0
-    ok = resp.status_code < 400
-    emoji = "✅" if ok else "❌"
-    main = ("OK" if ok else f"HTTP {resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
-    if ok:
-      details = f"items: {_count}"
-    else:
-      details = get_error_details(resp, _data)
-    results["/vector_stores (GET)"] = {"Result": f"{emoji} {main}", "Details": details}
-  except Exception as e:
-    results["/vector_stores (GET)"] = {"Result": f"Error: {str(e)}", "Details": ""}
-    
   uploaded_file_id = None
   vector_store_id = None
   
@@ -503,6 +538,26 @@ async def self_test(request: Request):
   except Exception as e:
     results["/files (POST upload)"] = {"Result": f"Error: {str(e)}", "Details": ""}
   
+  # Get file
+  try:
+    if uploaded_file_id:
+      get_file_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"files/{uploaded_file_id}"), "GET", timeout_seconds=timeout_seconds)
+      get_file_data = json.loads(get_file_resp.body.decode("utf-8")) if get_file_resp.body else {}
+      ok = get_file_resp.status_code < 400
+      emoji = "✅" if ok else "❌"
+      main = ("OK" if ok else f"HTTP {get_file_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        filename = get_file_data.get("filename", "unknown")
+        purpose = get_file_data.get("purpose", "unknown")
+        details = f"filename: '{format_for_display(filename)}' purpose: '{format_for_display(purpose)}'"
+      else:
+        details = get_error_details(get_file_resp, get_file_data)
+      results["/files/{id} (GET)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/files/{id} (GET)"] = {"Result": "Skipped (missing file id)", "Details": ""}
+  except Exception as e:
+    results["/files/{id} (GET)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
   # Create vector store
   try:
     vs_name = f"selftest-vs-{uuid.uuid4().hex[:8]}"
@@ -520,6 +575,26 @@ async def self_test(request: Request):
     results["/vector_stores (POST create)"] = {"Result": f"{emoji} {main}", "Details": details}
   except Exception as e:
     results["/vector_stores (POST create)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
+  # List vector stores
+  try:
+    list_vs_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path("vector_stores"), "GET", timeout_seconds=timeout_seconds)
+    try:
+      list_vs_data = json.loads(list_vs_resp.body.decode("utf-8")) if list_vs_resp.body else {}
+      vs_count = len(list_vs_data.get("data", [])) if isinstance(list_vs_data, dict) else 0
+    except (UnicodeDecodeError, json.JSONDecodeError):
+      list_vs_data = {}
+      vs_count = 0
+    ok = list_vs_resp.status_code < 400
+    emoji = "✅" if ok else "❌"
+    main = ("OK" if ok else f"HTTP {list_vs_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+    if ok:
+      details = f"items: {vs_count}"
+    else:
+      details = get_error_details(list_vs_resp, list_vs_data)
+    results["/vector_stores (GET)"] = {"Result": f"{emoji} {main}", "Details": details}
+  except Exception as e:
+    results["/vector_stores (GET)"] = {"Result": f"Error: {str(e)}", "Details": ""}
   
   # Add file to vector store
   try:
@@ -634,6 +709,68 @@ async def self_test(request: Request):
       results["/files/{id} (DELETE)"] = {"Result": "Skipped (missing id)", "Details": ""}
   except Exception as e:
     results["/files/{id} (DELETE)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
+  assistant_id = None
+  
+  # Create assistant
+  try:
+    model_name = config.AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME if config.OPENAI_SERVICE_TYPE == "azure_openai" else config.OPENAI_DEFAULT_MODEL_NAME
+    if not model_name:
+      results["/assistants (POST create)"] = {"Result": "Skipped (missing model name)", "Details": ""}
+    else:
+      assistant_name = f"selftest-assistant-{uuid.uuid4().hex[:8]}"
+      create_assistant_req = DummyRequestJson({"model": model_name, "name": assistant_name, "instructions": "You are a helpful assistant for testing purposes."})
+      create_assistant_resp, _milliseconds = await proxy_request(create_assistant_req, build_azure_openai_endpoint_path("assistants"), "POST", timeout_seconds=timeout_seconds)
+      create_assistant_data = json.loads(create_assistant_resp.body.decode("utf-8")) if create_assistant_resp.body else {}
+      assistant_id = create_assistant_data.get("id")
+      ok = bool(assistant_id)
+      emoji = "✅" if ok else "❌"
+      main = ("OK" if ok else "No assistant id returned") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        details = f"name: '{format_for_display(assistant_name)}' id: '{format_for_display(assistant_id)}'"
+      else:
+        details = get_error_details(create_assistant_resp, create_assistant_data)
+      results["/assistants (POST create)"] = {"Result": f"{emoji} {main}", "Details": details}
+  except Exception as e:
+    results["/assistants (POST create)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+
+  # List assistants
+  try:
+    list_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path("assistants"), "GET", timeout_seconds=timeout_seconds)
+    try:
+      list_data = json.loads(list_resp.body.decode("utf-8")) if list_resp.body else {}
+      assistants_count = len(list_data.get("data", [])) if isinstance(list_data, dict) else 0
+    except (UnicodeDecodeError, json.JSONDecodeError):
+      list_data = {}
+      assistants_count = 0
+    ok = list_resp.status_code < 400
+    emoji = "✅" if ok else "❌"
+    main = ("OK" if ok else f"HTTP {list_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+    if ok:
+      details = f"assistants: {assistants_count}"
+    else:
+      details = get_error_details(list_resp, list_data)
+    results["/assistants (GET)"] = {"Result": f"{emoji} {main}", "Details": details}
+  except Exception as e:
+    results["/assistants (GET)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
+  # Delete assistant
+  try:
+    if assistant_id:
+      delete_assistant_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"assistants/{assistant_id}"), "DELETE", timeout_seconds=timeout_seconds)
+      ok = delete_assistant_resp.status_code < 400
+      emoji = "✅" if ok else "❌"
+      main = ("OK" if ok else f"HTTP {delete_assistant_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        details = f"id: '{format_for_display(assistant_id)}'"
+      else:
+        delete_assistant_data = json.loads(delete_assistant_resp.body.decode("utf-8")) if delete_assistant_resp.body else {}
+        details = get_error_details(delete_assistant_resp, delete_assistant_data)
+      results["/assistants/{id} (DELETE)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/assistants/{id} (DELETE)"] = {"Result": "Skipped (missing id)", "Details": ""}
+  except Exception as e:
+    results["/assistants/{id} (DELETE)"] = {"Result": f"Error: {str(e)}", "Details": ""}
   
   # Generate HTML
   html = "<html><body style='font-family: Arial, sans-serif;'>"
