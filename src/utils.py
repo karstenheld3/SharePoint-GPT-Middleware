@@ -4,6 +4,8 @@ import os
 import html
 import logging
 import sys
+import dataclasses
+
 
 # Configure logging for multi-worker environment
 logging.basicConfig(
@@ -32,6 +34,16 @@ def format_filesize(num_bytes):
 # Format timestamp into a human-readable string (RFC3339 with ' ' instead of 'T')
 def format_timestamp(ts):
   return ('' if not ts else datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S'))
+
+# Format configuration dataclass for display (mask secrets, handle None values)
+def format_config_for_displaying(config_obj) -> Dict[str, Any]:
+  result = {}
+  for field in dataclasses.fields(config_obj):
+    value = getattr(config_obj, field.name)    
+    if field.name.endswith("_KEY") or field.name.endswith("_SECRET"): result[field.name] = "[CONFIGURED]" if value else "[NOT CONFIGURED]"
+    elif value is None: result[field.name] = "[NOT CONFIGURED]"
+    else: result[field.name] = value
+  return result
 
 # Format milliseconds into a human-readable string
 def format_milliseconds(millisecs: int) -> str:
@@ -92,11 +104,19 @@ def sanitize_queries_and_responses(string):
 
 # Returns a nested html table from the given data (Dict or List or Array)
 def convert_to_nested_html_table(data: Any, max_depth: int = 10) -> str:
+  
   def handle_value(v: Any, depth: int) -> str:
     if depth >= max_depth: return html.escape(str(v))
     if isinstance(v, dict): return handle_dict(v, depth + 1)
     elif isinstance(v, list): return handle_list(v, depth + 1)
+    elif dataclasses.is_dataclass(v): return handle_dataclass(v, depth + 1)
     else: return html.escape(str(v))
+  
+  def handle_dataclass(dc: Any, depth: int) -> str:
+    if depth >= max_depth: return html.escape(str(dc))
+    # Convert dataclass to dict for consistent handling
+    dc_dict = {field.name: getattr(dc, field.name) for field in dataclasses.fields(dc)}
+    return handle_dict(dc_dict, depth)
 
   def handle_list(items: List[Any], depth: int) -> str:
     if not items or depth >= max_depth: return html.escape(str(items))

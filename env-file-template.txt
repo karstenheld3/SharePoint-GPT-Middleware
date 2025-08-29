@@ -6,8 +6,7 @@ OPENAI_SERVICE_TYPE=openai
 # Open AI Configuration 
 OPENAI_API_KEY=<your_openai_api_key>
 OPENAI_ORGANIZATION=<your_openai_organization_id>
-OPENAI_MODEL_NAME=gpt-4o-mini
-OPENAI_EVAL_MODEL_NAME=gpt-5
+OPENAI_DEFAULT_MODEL_NAME=gpt-4o-mini
 
 # ------------------------- END: Open AI API (if OPENAI_SERVICE_TYPE=openai) ------------------------------------------
 
@@ -30,8 +29,7 @@ AZURE_CLIENT_NAME=<your_azure_client_name>
 
 # Azure Open AI Service Configuration
 AZURE_OPENAI_ENDPOINT=https://<your_azure_openai_endpoint>.openai.azure.com/
-AZURE_OPENAI_MODEL_DEPLOYMENT_NAME=gpt-4o-mini
-AZURE_OPENAI_EVAL_MODEL_DEPLOYMENT_NAME=gpt-4o
+AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME=gpt-4o-mini
 AZURE_OPENAI_API_VERSION=2025-04-01-preview
 
 # ------------------------- END: Azure Open AI Service (if OPENAI_SERVICE_TYPE=azure_openai) --------------------------

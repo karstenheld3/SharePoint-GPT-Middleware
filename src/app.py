@@ -1,18 +1,54 @@
 import os
 import inspect
-import logging
-from typing import Any, Optional
+from typing import Optional
+from dataclasses import dataclass
 from fastapi import FastAPI, Request
-from fastapi.responses import PlainTextResponse, Response, HTMLResponse
+from fastapi.responses import PlainTextResponse, HTMLResponse, Response
 from dotenv import load_dotenv
-from utils import *
 from routers import openai_proxy
+from utils import *
 
 # Load environment variables from a local .env file if present
 load_dotenv()
+
+@dataclass
+class Config:
+  OPENAI_SERVICE_TYPE: str
+  AZURE_OPENAI_USE_KEY_AUTHENTICATION: Optional[bool]
+  AZURE_OPENAI_ENDPOINT: Optional[str]
+  AZURE_OPENAI_API_KEY: Optional[str]
+  AZURE_OPENAI_API_VERSION: str
+  AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME: Optional[str]
+  OPENAI_API_KEY: Optional[str]
+  OPENAI_ORGANIZATION: Optional[str]
+  OPENAI_DEFAULT_MODEL_NAME: str
+
+def load_config() -> Config:
+  """Load configuration from environment variables."""
+  # Debug: Print the actual environment variable value
+  openai_model_name = os.getenv("OPENAI_DEFAULT_MODEL_NAME")
+  print(f"DEBUG: OPENAI_DEFAULT_MODEL_NAME from env = '{openai_model_name}'")
+  
+  return Config(
+    OPENAI_SERVICE_TYPE=os.getenv("OPENAI_SERVICE_TYPE", "openai"),
+    AZURE_OPENAI_USE_KEY_AUTHENTICATION=os.getenv("AZURE_OPENAI_USE_KEY_AUTHENTICATION").lower() == "true" if os.getenv("AZURE_OPENAI_USE_KEY_AUTHENTICATION") else None,
+    AZURE_OPENAI_ENDPOINT=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    AZURE_OPENAI_API_KEY=os.getenv("AZURE_OPENAI_API_KEY"),
+    AZURE_OPENAI_API_VERSION=os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview"),
+    AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME=os.getenv("AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME"),
+    OPENAI_API_KEY=os.getenv("OPENAI_API_KEY"),
+    OPENAI_ORGANIZATION=os.getenv("OPENAI_ORGANIZATION"),
+    OPENAI_DEFAULT_MODEL_NAME=openai_model_name
+  )
+
+# Load configuration once at startup
+config = load_config()
+
 app = FastAPI(title="SharePoint-GPT-Middleware")
+
 # Include OpenAI proxy router under /openai
 app.include_router(openai_proxy.router, tags=["OpenAI Proxy"], prefix="/openai")
+openai_proxy.set_config(config)
 
 # Configure logging to suppress verbose Azure SDK and HTTP logs
 # ------------------------------------------------------------------------------
@@ -49,46 +85,23 @@ async def ignore_default_doc():
 
 
 @app.get("/", response_class=HTMLResponse)
-def root() -> str:
-  return """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>SharePoint-GPT-Middleware</title></head><body>
+def root() -> str:  
+  return f"""
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>SharePoint-GPT-Middleware</title></head><body>
 <font face="Open Sans, Arial, Helvetica, sans-serif">
 <h3>SharePoint-GPT-Middleware is running</h3>
 <p>This middleware provides 1:1 proxy endpoints for OpenAI and Azure OpenAI Service.</p>
+
+<h4>Available Links</h4>
 <ul>
-  <li><a href="/docs">/docs</a> API Documentation</li>
-  <li><a href="/openapi.json">/openapi.json</a> OpenAPI JSON</li>
+  <li><a href="/docs">/docs</a> - API Documentation</li>
+  <li><a href="/openapi.json">/openapi.json</a> - OpenAPI JSON</li>
+  <li><a href="/openaiproxyselftest">/openaiproxyselftest</a> - Self Test (will take a while)</li>
 </ul>
-<h4>Available OpenAI Endpoints (under /openai):</h4>
-<ul>
-  <li><strong>Responses API:</strong></li>
-  <ul>
-    <li>POST /openai/responses - Create response</li>
-    <li>GET /openai/responses - List responses</li>
-    <li>GET /openai/responses/{response_id} - Get response</li>
-    <li>DELETE /openai/responses/{response_id} - Delete response</li>
-  </ul>
-  <li><strong>Files API:</strong></li>
-  <ul>
-    <li>POST /openai/files - Upload file</li>
-    <li>GET /openai/files - List files</li>
-    <li>GET /openai/files/{file_id} - Get file</li>
-    <li>DELETE /openai/files/{file_id} - Delete file</li>
-    <li>GET /openai/files/{file_id}/content - Get file content</li>
-  </ul>
-  <li><strong>Vector Stores API:</strong></li>
-  <ul>
-    <li>POST /openai/vector_stores - Create vector store</li>
-    <li>GET /openai/vector_stores - List vector stores</li>
-    <li>GET /openai/vector_stores/{vector_store_id} - Get vector store</li>
-    <li>POST /openai/vector_stores/{vector_store_id} - Update vector store</li>
-    <li>DELETE /openai/vector_stores/{vector_store_id} - Delete vector store</li>
-    <li>POST /openai/vector_stores/{vector_store_id}/files - Create vector store file</li>
-    <li>GET /openai/vector_stores/{vector_store_id}/files - List vector store files</li>
-    <li>GET /openai/vector_stores/{vector_store_id}/files/{file_id} - Get vector store file</li>
-    <li>DELETE /openai/vector_stores/{vector_store_id}/files/{file_id} - Delete vector store file</li>
-  </ul>
-</ul>
-    </font></body></html>
+
+<h4>Configuration</h4>
+{convert_to_nested_html_table(format_config_for_displaying(config))}
+</font></body></html>
 """
 
 
@@ -97,7 +110,6 @@ def root() -> str:
 async def openai_proxy_self_test(request: Request, timeoutSecs: Optional[float] = None):
   log_data = log_function_header("openai_proxy_self_test")
   try:
-    _ = timeoutSecs  # documented query param; parsing happens inside self_test via request.query_params
     retVal = await openai_proxy.self_test(request)
     return retVal
   finally:

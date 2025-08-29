@@ -4,6 +4,7 @@ import uuid
 import httpx
 import logging
 import datetime
+import asyncio
 from typing import Any, Dict, Optional
 from fastapi import APIRouter, Request, HTTPException, Header, File, UploadFile, Form
 from fastapi.responses import StreamingResponse, Response, HTMLResponse
@@ -12,25 +13,25 @@ from utils import *
 
 router = APIRouter()
 
-# OpenAI / Azure OpenAI configuration
-OPENAI_SERVICE_TYPE = os.getenv("OPENAI_SERVICE_TYPE", "openai")
-AZURE_OPENAI_USE_KEY_AUTHENTICATION = os.getenv("AZURE_OPENAI_USE_KEY_AUTHENTICATION", "true").lower() == "true"
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_ORGANIZATION = os.getenv("OPENAI_ORGANIZATION")
+# Configuration will be injected from app.py
+config = None
+token_provider = None
 
 logger = logging.getLogger(__name__)
 
-# Initialize Azure AD credentials if needed
-if OPENAI_SERVICE_TYPE == "azure_openai" and not AZURE_OPENAI_USE_KEY_AUTHENTICATION:
-  try:
-    cred = DefaultAzureCredential()
-    token_provider = get_bearer_token_provider(cred, "https://cognitiveservices.azure.com/.default")
-  except Exception as e:
-    logger.error(f"Failed to initialize Azure AD credentials: {e}")
-    token_provider = None
+def set_config(app_config):
+  """Set the configuration and initialize Azure AD credentials if needed."""
+  global config, token_provider
+  config = app_config
+  
+  # Initialize Azure AD credentials if needed
+  if config.OPENAI_SERVICE_TYPE == "azure_openai" and not config.AZURE_OPENAI_USE_KEY_AUTHENTICATION:
+    try:
+      cred = DefaultAzureCredential()
+      token_provider = get_bearer_token_provider(cred, "https://cognitiveservices.azure.com/.default")
+    except Exception as e:
+      logger.error(f"Failed to initialize Azure AD credentials: {e}")
+      token_provider = None
 
 async def proxy_request(request: Request, target_path: str, method: str = "POST", files: Optional[Dict[str, Any]] = None, timeout_seconds: Optional[float] = None) -> Any:
   """Proxy requests to OpenAI/Azure OpenAI Service while maintaining 1:1 API compatibility."""
@@ -38,41 +39,41 @@ async def proxy_request(request: Request, target_path: str, method: str = "POST"
   # Per-call HTTP timeout (defaults to httpx's default if None)
   http_timeout = httpx.Timeout(timeout_seconds) if timeout_seconds else httpx.Timeout(300.0)
   # Validate configuration
-  if OPENAI_SERVICE_TYPE == "azure_openai":
-    if not AZURE_OPENAI_ENDPOINT:
+  if config.OPENAI_SERVICE_TYPE == "azure_openai":
+    if not config.AZURE_OPENAI_ENDPOINT:
       raise HTTPException(status_code=500, detail="Azure OpenAI endpoint not configured")
-    if AZURE_OPENAI_USE_KEY_AUTHENTICATION and not AZURE_OPENAI_API_KEY:
+    if config.AZURE_OPENAI_USE_KEY_AUTHENTICATION and not config.AZURE_OPENAI_API_KEY:
       raise HTTPException(status_code=500, detail="Azure OpenAI API key not configured")
-    if not AZURE_OPENAI_USE_KEY_AUTHENTICATION and not token_provider:
+    if not config.AZURE_OPENAI_USE_KEY_AUTHENTICATION and not token_provider:
       raise HTTPException(status_code=500, detail="Azure AD authentication failed")
   else:
-    if not OPENAI_API_KEY:
+    if not config.OPENAI_API_KEY:
       raise HTTPException(status_code=500, detail="OpenAI API key not configured")
   
   # Construct target URL
-  if OPENAI_SERVICE_TYPE == "azure_openai":
-    base = AZURE_OPENAI_ENDPOINT.rstrip('/')
+  if config.OPENAI_SERVICE_TYPE == "azure_openai":
+    base = config.AZURE_OPENAI_ENDPOINT.rstrip('/')
     if "/openai" not in base:
       base = f"{base}/openai"
     target_url = f"{base}/{target_path.lstrip('/')}"
     if "api-version" not in target_url:
       separator = "&" if "?" in target_url else "?"
-      target_url += f"{separator}api-version={AZURE_OPENAI_API_VERSION}"
+      target_url += f"{separator}api-version={config.AZURE_OPENAI_API_VERSION}"
   else:
     target_url = f"https://api.openai.com/v1/{target_path.lstrip('/')}"
   
   # Prepare headers
   headers: Dict[str, str] = {}
-  if OPENAI_SERVICE_TYPE == "azure_openai":
-    if AZURE_OPENAI_USE_KEY_AUTHENTICATION:
-      headers["api-key"] = AZURE_OPENAI_API_KEY
+  if config.OPENAI_SERVICE_TYPE == "azure_openai":
+    if config.AZURE_OPENAI_USE_KEY_AUTHENTICATION:
+      headers["api-key"] = config.AZURE_OPENAI_API_KEY
     else:
       token = token_provider()
       headers["Authorization"] = f"Bearer {token}"
   else:
-    headers["Authorization"] = f"Bearer {OPENAI_API_KEY}"
-    if OPENAI_ORGANIZATION:
-      headers["OpenAI-Organization"] = OPENAI_ORGANIZATION
+    headers["Authorization"] = f"Bearer {config.OPENAI_API_KEY}"
+    if config.OPENAI_ORGANIZATION:
+      headers["OpenAI-Organization"] = config.OPENAI_ORGANIZATION
   
   # Copy incoming headers except hop-by-hop and auth; let our auth override
   hop_by_hop = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers", "transfer-encoding", "upgrade", "host", "content-length", "authorization"}
@@ -96,8 +97,8 @@ async def proxy_request(request: Request, target_path: str, method: str = "POST"
         body = await request.body()
         response = await client.request(method=method, url=target_url, content=body, headers=headers)
       _elapsed_milliseconds = int((datetime.datetime.now() - _start).total_seconds() * 1000)
-      service_type = "Azure OpenAI" if OPENAI_SERVICE_TYPE == "azure_openai" else "OpenAI"
-      auth_type = "Key" if AZURE_OPENAI_USE_KEY_AUTHENTICATION else "Token"
+      service_type = "Azure OpenAI" if config.OPENAI_SERVICE_TYPE == "azure_openai" else "OpenAI"
+      auth_type = "Key" if config.AZURE_OPENAI_USE_KEY_AUTHENTICATION else "Token"
       msg = f"Proxied {method} {target_path} -> {response.status_code} [{service_type} {auth_type}]"
       log_function_output(log_data, msg)
       
@@ -113,7 +114,7 @@ async def proxy_request(request: Request, target_path: str, method: str = "POST"
       
   except httpx.RequestError as e:
     logger.error(f"Request error when proxying to OpenAI: {e}")
-    raise HTTPException(status_code=502, detail=f"Error connecting to {OPENAI_SERVICE_TYPE}")
+    raise HTTPException(status_code=502, detail=f"Error connecting to {config.OPENAI_SERVICE_TYPE}")
   except Exception as e:
     logger.error(f"Unexpected error when proxying to OpenAI: {e}")
     raise HTTPException(status_code=500, detail="Internal server error")
@@ -173,7 +174,7 @@ async def delete_response(response_id: str, request: Request, api_version: str =
 # ============================================================================
 
 @router.post("/files")
-async def upload_file(file: UploadFile = File(...), purpose: str = Form(...), api_version: str = AZURE_OPENAI_API_VERSION):
+async def upload_file(file: UploadFile = File(...), purpose: str = Form(...), api_version: str = "2025-04-01-preview"):
   """Proxy for OpenAI Files API - Upload File. Mirrors: POST /files"""
   log_data = log_function_header("upload_file")
   try:
@@ -186,7 +187,7 @@ async def upload_file(file: UploadFile = File(...), purpose: str = Form(...), ap
       def headers(self): return {}
     
     dummy_request = DummyRequest()
-    target_path = f"files?api-version={api_version}" if OPENAI_SERVICE_TYPE == "azure_openai" else "files"
+    target_path = f"files?api-version={api_version}" if config.OPENAI_SERVICE_TYPE == "azure_openai" else "files"
     retVal, _milliseconds = await proxy_request(dummy_request, target_path, "POST", files=files)
     return retVal
   finally:
@@ -340,6 +341,17 @@ async def delete_vector_store_file(vector_store_id: str, file_id: str, request: 
   finally:
     await log_function_footer(log_data)
 
+@router.post("/vector_stores/{vector_store_id}/search")
+async def search_vector_store(vector_store_id: str, request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Vector Stores API - Search Vector Store. Mirrors: POST /vector_stores/{vector_store_id}/search"""
+  log_data = log_function_header("search_vector_store")
+  try:
+    target_path = f"vector_stores/{vector_store_id}/search?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "POST")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
 # ============================================================================
 # SELF TEST (callable utility; exposed at app-level, not under /openai)
 # ============================================================================
@@ -354,35 +366,9 @@ async def self_test(request: Request):
     timeout_seconds = None
   if timeout_seconds is None: timeout_seconds = 120
   
-  # Generic, runtime capability probe (no hard-coding). Uses short timeouts to avoid long hangs.
-  async def probe_supported(method: str, target_path: str, probe_timeout: float = 5.0) -> str:
-    """Return 'supported', 'unsupported', or 'indeterminate' for the given method/path."""
-    # Try the actual method directly with a short timeout and minimal request body
-    try:
-      if method == "POST":
-        # For POST, send minimal valid request to avoid 400 errors
-        model_name = os.getenv("AZURE_OPENAI_MODEL_DEPLOYMENT_NAME") if OPENAI_SERVICE_TYPE == "azure_openai" else os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini")
-        if model_name and "responses" in target_path:
-          probe_req = DummyRequestJson({"model": model_name, "input": "test"})
-          resp, _milliseconds = await proxy_request(probe_req, target_path, method, timeout_seconds=probe_timeout)
-        else:
-          resp, _milliseconds = await proxy_request(DummyRequest(), target_path, method, timeout_seconds=probe_timeout)
-      else:
-        resp, _milliseconds = await proxy_request(request, target_path, method, timeout_seconds=probe_timeout)
-      
-      sc = resp.status_code
-      # If we get anything other than 404/405/408, assume endpoint is reachable/supported
-      if sc not in (404, 405, 408): return "supported"
-      # 404/405 likely indicate unsupported, 408 is timeout
-      if sc in (404, 405): return "unsupported"
-    except Exception:
-      # Network or other error
-      pass
-    return "indeterminate"
-
   # Build path helper: append api-version only for Azure
   def build_azure_openai_endpoint_path(base_path: str) -> str:
-    return f"{base_path}?api-version={AZURE_OPENAI_API_VERSION}" if OPENAI_SERVICE_TYPE == "azure_openai" else base_path
+    return f"{base_path}?api-version={config.AZURE_OPENAI_API_VERSION}" if config.OPENAI_SERVICE_TYPE == "azure_openai" else base_path
   
   # Helpers for dummy requests (defined before first use)
   class DummyRequest:
@@ -400,6 +386,23 @@ async def self_test(request: Request):
   def format_for_display(input_string: Any, max_length: int = 120) -> str:
     try: return truncate_string(clean_response(str(input_string)), max_length)
     except Exception: return input_string
+  
+  def get_error_details(response, data: Dict[str, Any] = None) -> str:
+    """Extract error message from API response for display in Details column."""
+    if response.status_code < 400:
+      return ""
+    
+    error_msg = ""
+    if data:
+      error_msg = data.get("error", {}).get("message", "") if isinstance(data.get("error"), dict) else str(data.get("error", ""))
+    
+    if not error_msg and response.body:
+      try:
+        error_msg = format_for_display(response.body.decode("utf-8"), 100)
+      except:
+        error_msg = f"HTTP {response.status_code}"
+    
+    return f"Error: {error_msg}" if error_msg else f"HTTP {response.status_code}"
   
   def _extract_answer(obj: Dict[str, Any]) -> Optional[str]:
     if not isinstance(obj, dict): return None
@@ -420,14 +423,11 @@ async def self_test(request: Request):
     if "message" in obj and isinstance(obj["message"], str): return obj["message"]
     return None
   
-  # Responses API test: probe POST, then create a response
+  # Responses API test: create a response
   try:
     resp_post_path = build_azure_openai_endpoint_path("responses")
-    post_support = await probe_supported("POST", resp_post_path)
-    emoji = "✅" if post_support == "supported" else "❌"
-    results["/responses (POST) probe"] = {"Result": f"{emoji} {post_support}", "Details": "method: POST path: responses"}
     # Build minimal request body
-    model_name = os.getenv("AZURE_OPENAI_MODEL_DEPLOYMENT_NAME") if OPENAI_SERVICE_TYPE == "azure_openai" else os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini")
+    model_name = config.AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME if config.OPENAI_SERVICE_TYPE == "azure_openai" else config.OPENAI_DEFAULT_MODEL_NAME
     if not model_name:
       results["/responses (POST create)"] = {"Result": "Skipped (missing model name)", "Details": ""}
     else:
@@ -440,7 +440,13 @@ async def self_test(request: Request):
       status_ok = create_resp.status_code < 400 and resp_id
       emoji = "✅" if status_ok else "❌"
       main = ("OK" if status_ok else f"HTTP {create_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
-      details = f"Q: '{format_for_display(question)}' A: '{format_for_display(answer, 40)}'"
+      if status_ok:
+        details = f"Q: '{format_for_display(question)}' A: '{format_for_display(answer, 40)}'"
+      else:
+        error_msg = create_data.get("error", {}).get("message", "") if create_data else ""
+        if not error_msg and create_resp.body:
+          error_msg = format_for_display(create_resp.body.decode("utf-8"), 100)
+        details = f"Error: {error_msg}" if error_msg else f"HTTP {create_resp.status_code}"
       results["/responses (POST create)"] = {"Result": f"{emoji} {main}", "Details": details}
       # If created, immediately try GET by id
       try:
@@ -469,12 +475,14 @@ async def self_test(request: Request):
     ok = resp.status_code < 400
     emoji = "✅" if ok else "❌"
     main = ("OK" if ok else f"HTTP {resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
-    results["/vector_stores (GET)"] = {"Result": f"{emoji} {main}", "Details": f"items: {_count}"}
+    if ok:
+      details = f"items: {_count}"
+    else:
+      details = get_error_details(resp, _data)
+    results["/vector_stores (GET)"] = {"Result": f"{emoji} {main}", "Details": details}
   except Exception as e:
     results["/vector_stores (GET)"] = {"Result": f"Error: {str(e)}", "Details": ""}
     
-  
-  api_version = AZURE_OPENAI_API_VERSION
   uploaded_file_id = None
   vector_store_id = None
   
@@ -487,7 +495,10 @@ async def self_test(request: Request):
     ok = bool(uploaded_file_id)
     emoji = "✅" if ok else "❌"
     main = ("OK" if ok else "No file id returned") + f" ({format_milliseconds(_milliseconds)})"
-    details = f"filename: 'selftest.txt' id: '{format_for_display(uploaded_file_id)}'"
+    if ok:
+      details = f"filename: 'selftest.txt' id: '{format_for_display(uploaded_file_id)}'"
+    else:
+      details = get_error_details(upload_resp, data)
     results["/files (POST upload)"] = {"Result": f"{emoji} {main}", "Details": details}
   except Exception as e:
     results["/files (POST upload)"] = {"Result": f"Error: {str(e)}", "Details": ""}
@@ -502,7 +513,10 @@ async def self_test(request: Request):
     ok = bool(vector_store_id)
     emoji = "✅" if ok else "❌"
     main = ("OK" if ok else "No vector_store id returned") + f" ({format_milliseconds(_milliseconds)})"
-    details = f"name: '{format_for_display(vs_name)}' id: '{format_for_display(vector_store_id)}'"
+    if ok:
+      details = f"name: '{format_for_display(vs_name)}' id: '{format_for_display(vector_store_id)}'"
+    else:
+      details = get_error_details(vs_resp, vs_data)
     results["/vector_stores (POST create)"] = {"Result": f"{emoji} {main}", "Details": details}
   except Exception as e:
     results["/vector_stores (POST create)"] = {"Result": f"Error: {str(e)}", "Details": ""}
@@ -515,12 +529,57 @@ async def self_test(request: Request):
       ok = add_resp.status_code < 400
       emoji = "✅" if ok else "❌"
       main = ("OK" if ok else f"HTTP {add_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
-      details = f"vector_store_id: '{format_for_display(vector_store_id)}' file_id: '{format_for_display(uploaded_file_id)}'"
+      if ok:
+        details = f"vector_store_id: '{format_for_display(vector_store_id)}' file_id: '{format_for_display(uploaded_file_id)}'"
+      else:
+        add_data = json.loads(add_resp.body.decode("utf-8")) if add_resp.body else {}
+        details = get_error_details(add_resp, add_data)
       results["/vector_stores/{id}/files (POST add)"] = {"Result": f"{emoji} {main}", "Details": details}
     else:
       results["/vector_stores/{id}/files (POST add)"] = {"Result": "Skipped (missing ids)", "Details": ""}
   except Exception as e:
     results["/vector_stores/{id}/files (POST add)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
+  # Search vector store (wait for file processing)
+  try:
+    if vector_store_id and uploaded_file_id:
+      # Wait for file to be processed (check status)
+      max_wait_seconds = 10; wait_interval = 2; max_retries = 3; file_ready = False
+      
+      for attempt in range(max_wait_seconds // wait_interval):
+        try:
+          status_resp, _ms = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"vector_stores/{vector_store_id}/files/{uploaded_file_id}"), "GET", timeout_seconds=5)
+          if status_resp.status_code < 400:
+            status_data = json.loads(status_resp.body.decode("utf-8")) if status_resp.body else {}
+            file_status = status_data.get("status", "unknown")
+            if file_status == "completed":
+              file_ready = True
+              break
+            elif file_status in ["failed", "cancelled"]:
+              break
+        except Exception:
+          pass
+        await asyncio.sleep(wait_interval)
+      
+      # Perform search
+      search_query = "hello"
+      search_req = DummyRequestJson({"query": search_query})
+      search_resp, _milliseconds = await proxy_request(search_req, build_azure_openai_endpoint_path(f"vector_stores/{vector_store_id}/search"), "POST", timeout_seconds=timeout_seconds)
+      search_data = json.loads(search_resp.body.decode("utf-8")) if search_resp.body else {}
+      results_count = len(search_data.get("data", [])) if isinstance(search_data, dict) else 0
+      ok = search_resp.status_code < 400
+      emoji = "✅" if ok else "❌"
+      main = ("OK" if ok else f"HTTP {search_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        status_note = f" (file {'ready' if file_ready else 'not ready'})"
+        details = f"query: '{format_for_display(search_query)}' results: {results_count}{status_note}"
+      else:
+        details = get_error_details(search_resp, search_data)
+      results["/vector_stores/{id}/search (POST)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/vector_stores/{id}/search (POST)"] = {"Result": "Skipped (missing ids)", "Details": ""}
+  except Exception as e:
+    results["/vector_stores/{id}/search (POST)"] = {"Result": f"Error: {str(e)}", "Details": ""}
   
   # Remove file from vector store
   try:
@@ -529,7 +588,11 @@ async def self_test(request: Request):
       ok = delvf_resp.status_code < 400
       emoji = "✅" if ok else "❌"
       main = ("OK" if ok else f"HTTP {delvf_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
-      details = f"vector_store_id: '{format_for_display(vector_store_id)}' file_id: '{format_for_display(uploaded_file_id)}'"
+      if ok:
+        details = f"vector_store_id: '{format_for_display(vector_store_id)}' file_id: '{format_for_display(uploaded_file_id)}'"
+      else:
+        delvf_data = json.loads(delvf_resp.body.decode("utf-8")) if delvf_resp.body else {}
+        details = get_error_details(delvf_resp, delvf_data)
       results["/vector_stores/{id}/files/{file_id} (DELETE)"] = {"Result": f"{emoji} {main}", "Details": details}
     else:
       results["/vector_stores/{id}/files/{file_id} (DELETE)"] = {"Result": "Skipped (missing ids)", "Details": ""}
@@ -543,7 +606,11 @@ async def self_test(request: Request):
       ok = delvs_resp.status_code < 400
       emoji = "✅" if ok else "❌"
       main = ("OK" if ok else f"HTTP {delvs_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
-      details = f"id: '{format_for_display(vector_store_id)}'"
+      if ok:
+        details = f"id: '{format_for_display(vector_store_id)}'"
+      else:
+        delvs_data = json.loads(delvs_resp.body.decode("utf-8")) if delvs_resp.body else {}
+        details = get_error_details(delvs_resp, delvs_data)
       results["/vector_stores/{id} (DELETE)"] = {"Result": f"{emoji} {main}", "Details": details}
     else:
       results["/vector_stores/{id} (DELETE)"] = {"Result": "Skipped (missing id)", "Details": ""}
@@ -557,7 +624,11 @@ async def self_test(request: Request):
       ok = delf_resp.status_code < 400
       emoji = "✅" if ok else "❌"
       main = ("OK" if ok else f"HTTP {delf_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
-      details = f"id: '{format_for_display(uploaded_file_id)}'"
+      if ok:
+        details = f"id: '{format_for_display(uploaded_file_id)}'"
+      else:
+        delf_data = json.loads(delf_resp.body.decode("utf-8")) if delf_resp.body else {}
+        details = get_error_details(delf_resp, delf_data)
       results["/files/{id} (DELETE)"] = {"Result": f"{emoji} {main}", "Details": details}
     else:
       results["/files/{id} (DELETE)"] = {"Result": "Skipped (missing id)", "Details": ""}
@@ -567,11 +638,9 @@ async def self_test(request: Request):
   # Generate HTML
   html = "<html><body style='font-family: Arial, sans-serif;'>"
   html += "<h2>OpenAI Proxy Self Test Results</h2>"
-  html += f"<p><b>Service Type:</b> {OPENAI_SERVICE_TYPE}</p>"
-  if OPENAI_SERVICE_TYPE == 'azure_openai':
-    html += f"<p><b>Authentication:</b> {'Key' if AZURE_OPENAI_USE_KEY_AUTHENTICATION else 'Azure AD Token'}</p>"
-    html += f"<p><b>Endpoint:</b> {AZURE_OPENAI_ENDPOINT}</p>"
   html += convert_to_nested_html_table(results)
+  html += "<p><b>Configuration:</b></p>"
+  html += convert_to_nested_html_table(format_config_for_displaying(config))
   html += "</body></html>"
   try:
     return HTMLResponse(content=html)
