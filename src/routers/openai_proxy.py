@@ -53,7 +53,7 @@ async def proxy_request(request: Request, target_path: str, method: str = "POST"
   # Construct target URL
   if config.OPENAI_SERVICE_TYPE == "azure_openai":
     base = config.AZURE_OPENAI_ENDPOINT.rstrip('/')
-    if "/openai" not in base:
+    if not base.endswith("/openai"):
       base = f"{base}/openai"
     target_url = f"{base}/{target_path.lstrip('/')}"
     if "api-version" not in target_url:
@@ -717,7 +717,7 @@ async def self_test(request: Request):
   
   # Upload file
   try:
-    files = {"file": ("selftest.txt", b"hello from selftest", "text/plain"), "purpose": (None, "assistants")}
+    files = {"file": ("selftest.txt", b"Arilena Drovik was born 1987-05-03", "text/plain"), "purpose": (None, "assistants")}
     upload_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path("files"), "POST", files=files, timeout_seconds=timeout_seconds)
     data = json.loads(upload_resp.body.decode("utf-8")) if upload_resp.body else {}
     uploaded_file_id = data.get("id")
@@ -850,70 +850,23 @@ async def self_test(request: Request):
   except Exception as e:
     results["/vector_stores/{id}/search (POST)"] = {"Result": f"Error: {str(e)}", "Details": ""}
   
-  # Remove file from vector store
-  try:
-    if vector_store_id and uploaded_file_id:
-      delvf_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"vector_stores/{vector_store_id}/files/{uploaded_file_id}"), "DELETE", timeout_seconds=timeout_seconds)
-      ok = delvf_resp.status_code < 400
-      emoji = "✅" if ok else "❌"
-      main = ("OK" if ok else f"HTTP {delvf_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
-      if ok:
-        details = f"vector_store_id: '{format_for_display(vector_store_id)}' file_id: '{format_for_display(uploaded_file_id)}'"
-      else:
-        delvf_data = json.loads(delvf_resp.body.decode("utf-8")) if delvf_resp.body else {}
-        details = get_error_details(delvf_resp, delvf_data)
-      results["/vector_stores/{id}/files/{file_id} (DELETE)"] = {"Result": f"{emoji} {main}", "Details": details}
-    else:
-      results["/vector_stores/{id}/files/{file_id} (DELETE)"] = {"Result": "Skipped (missing ids)", "Details": ""}
-  except Exception as e:
-    results["/vector_stores/{id}/files/{file_id} (DELETE)"] = {"Result": f"Error: {str(e)}", "Details": ""}
-  
-  # Delete vector store
-  try:
-    if vector_store_id:
-      delvs_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"vector_stores/{vector_store_id}"), "DELETE", timeout_seconds=timeout_seconds)
-      ok = delvs_resp.status_code < 400
-      emoji = "✅" if ok else "❌"
-      main = ("OK" if ok else f"HTTP {delvs_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
-      if ok:
-        details = f"id: '{format_for_display(vector_store_id)}'"
-      else:
-        delvs_data = json.loads(delvs_resp.body.decode("utf-8")) if delvs_resp.body else {}
-        details = get_error_details(delvs_resp, delvs_data)
-      results["/vector_stores/{id} (DELETE)"] = {"Result": f"{emoji} {main}", "Details": details}
-    else:
-      results["/vector_stores/{id} (DELETE)"] = {"Result": "Skipped (missing id)", "Details": ""}
-  except Exception as e:
-    results["/vector_stores/{id} (DELETE)"] = {"Result": f"Error: {str(e)}", "Details": ""}
-  
-  # Delete file
-  try:
-    if uploaded_file_id:
-      delf_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"files/{uploaded_file_id}"), "DELETE", timeout_seconds=timeout_seconds)
-      ok = delf_resp.status_code < 400
-      emoji = "✅" if ok else "❌"
-      main = ("OK" if ok else f"HTTP {delf_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
-      if ok:
-        details = f"id: '{format_for_display(uploaded_file_id)}'"
-      else:
-        delf_data = json.loads(delf_resp.body.decode("utf-8")) if delf_resp.body else {}
-        details = get_error_details(delf_resp, delf_data)
-      results["/files/{id} (DELETE)"] = {"Result": f"{emoji} {main}", "Details": details}
-    else:
-      results["/files/{id} (DELETE)"] = {"Result": "Skipped (missing id)", "Details": ""}
-  except Exception as e:
-    results["/files/{id} (DELETE)"] = {"Result": f"Error: {str(e)}", "Details": ""}
-  
   assistant_id = None
   
-  # Create assistant
+  # Create assistant with file_search tool and vector store
   try:
     model_name = config.AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME if config.OPENAI_SERVICE_TYPE == "azure_openai" else config.OPENAI_DEFAULT_MODEL_NAME
-    if not model_name:
-      results["/assistants (POST create)"] = {"Result": "Skipped (missing model name)", "Details": ""}
+    if not model_name or not vector_store_id:
+      results["/assistants (POST create)"] = {"Result": "Skipped (missing model name or vector store)", "Details": ""}
     else:
       assistant_name = f"selftest-assistant-{uuid.uuid4().hex[:8]}"
-      create_assistant_req = DummyRequestJson({"model": model_name, "name": assistant_name, "instructions": "You are a helpful assistant for testing purposes."})
+      assistant_payload = {
+        "model": model_name,
+        "name": assistant_name,
+        "instructions": "You are a helpful assistant that can search through files to answer questions about their content.",
+        "tools": [{"type": "file_search"}],
+        "tool_resources": {"file_search": {"vector_store_ids": [vector_store_id]}}
+      }
+      create_assistant_req = DummyRequestJson(assistant_payload)
       create_assistant_resp, _milliseconds = await proxy_request(create_assistant_req, build_azure_openai_endpoint_path("assistants"), "POST", timeout_seconds=timeout_seconds)
       create_assistant_data = json.loads(create_assistant_resp.body.decode("utf-8")) if create_assistant_resp.body else {}
       assistant_id = create_assistant_data.get("id")
@@ -921,7 +874,7 @@ async def self_test(request: Request):
       emoji = "✅" if ok else "❌"
       main = ("OK" if ok else "No assistant id returned") + f" ({format_milliseconds(_milliseconds)})"
       if ok:
-        details = f"name: '{format_for_display(assistant_name)}' id: '{format_for_display(assistant_id)}'"
+        details = f"name: '{format_for_display(assistant_name)}' id: '{format_for_display(assistant_id)}' with file_search"
       else:
         details = get_error_details(create_assistant_resp, create_assistant_data)
       results["/assistants (POST create)"] = {"Result": f"{emoji} {main}", "Details": details}
@@ -947,25 +900,7 @@ async def self_test(request: Request):
     results["/assistants (GET)"] = {"Result": f"{emoji} {main}", "Details": details}
   except Exception as e:
     results["/assistants (GET)"] = {"Result": f"Error: {str(e)}", "Details": ""}
-  
-  # Delete assistant
-  try:
-    if assistant_id:
-      delete_assistant_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"assistants/{assistant_id}"), "DELETE", timeout_seconds=timeout_seconds)
-      ok = delete_assistant_resp.status_code < 400
-      emoji = "✅" if ok else "❌"
-      main = ("OK" if ok else f"HTTP {delete_assistant_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
-      if ok:
-        details = f"id: '{format_for_display(assistant_id)}'"
-      else:
-        delete_assistant_data = json.loads(delete_assistant_resp.body.decode("utf-8")) if delete_assistant_resp.body else {}
-        details = get_error_details(delete_assistant_resp, delete_assistant_data)
-      results["/assistants/{id} (DELETE)"] = {"Result": f"{emoji} {main}", "Details": details}
-    else:
-      results["/assistants/{id} (DELETE)"] = {"Result": "Skipped (missing id)", "Details": ""}
-  except Exception as e:
-    results["/assistants/{id} (DELETE)"] = {"Result": f"Error: {str(e)}", "Details": ""}
-  
+    
   thread_id = None
   message_id = None
   
@@ -1024,10 +959,10 @@ async def self_test(request: Request):
   except Exception as e:
     results["/threads/{id} (GET)"] = {"Result": f"Error: {str(e)}", "Details": ""}
   
-  # Create thread message
+  # Create thread message asking about file content
   try:
     if thread_id:
-      message_content = "Hello, this is a test message from the self test."
+      message_content = "What is Arilena Drovik's birthday?"
       create_message_req = DummyRequestJson({"role": "user", "content": message_content})
       create_message_resp, _milliseconds = await proxy_request(create_message_req, build_azure_openai_endpoint_path(f"threads/{thread_id}/messages"), "POST", timeout_seconds=timeout_seconds)
       create_message_data = json.loads(create_message_resp.body.decode("utf-8")) if create_message_resp.body else {}
@@ -1036,7 +971,7 @@ async def self_test(request: Request):
       emoji = "✅" if ok else "❌"
       main = ("OK" if ok else "No message id returned") + f" ({format_milliseconds(_milliseconds)})"
       if ok:
-        details = f"content: '{format_for_display(message_content, 30)}' id: '{format_for_display(message_id)}'"
+        details = f"content: '{format_for_display(message_content, 50)}' id: '{format_for_display(message_id)}'"
       else:
         details = get_error_details(create_message_resp, create_message_data)
       results["/threads/{id}/messages (POST create)"] = {"Result": f"{emoji} {main}", "Details": details}
@@ -1131,9 +1066,26 @@ async def self_test(request: Request):
   except Exception as e:
     results["/threads/{id}/runs (GET)"] = {"Result": f"Error: {str(e)}", "Details": ""}
   
-  # Get thread run
+  # Get thread run and wait for completion
   try:
     if thread_id and run_id:
+      # Wait for run to complete (similar to file processing wait)
+      max_wait_seconds = 30; wait_interval = 2; run_completed = False; final_status = "unknown"
+      
+      for attempt in range(max_wait_seconds // wait_interval):
+        try:
+          get_run_resp, _ms = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/runs/{run_id}"), "GET", timeout_seconds=5)
+          if get_run_resp.status_code < 400:
+            get_run_data = json.loads(get_run_resp.body.decode("utf-8")) if get_run_resp.body else {}
+            final_status = get_run_data.get("status", "unknown")
+            if final_status in ["completed", "failed", "cancelled", "expired"]:
+              run_completed = True
+              break
+        except Exception:
+          pass
+        await asyncio.sleep(wait_interval)
+      
+      # Final status check
       get_run_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/runs/{run_id}"), "GET", timeout_seconds=timeout_seconds)
       get_run_data = json.loads(get_run_resp.body.decode("utf-8")) if get_run_resp.body else {}
       ok = get_run_resp.status_code < 400
@@ -1141,7 +1093,8 @@ async def self_test(request: Request):
       main = ("OK" if ok else f"HTTP {get_run_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
       if ok:
         run_status = get_run_data.get("status", "unknown")
-        details = f"thread_id: '{format_for_display(thread_id)}' run_id: '{format_for_display(run_id)}' status: '{run_status}'"
+        completion_note = f" ({'completed' if run_completed else 'timeout'})"
+        details = f"thread_id: '{format_for_display(thread_id)}' run_id: '{format_for_display(run_id)}' status: '{run_status}'{completion_note}"
       else:
         details = get_error_details(get_run_resp, get_run_data)
       results["/threads/{id}/runs/{run_id} (GET)"] = {"Result": f"{emoji} {main}", "Details": details}
@@ -1150,6 +1103,40 @@ async def self_test(request: Request):
   except Exception as e:
     results["/threads/{id}/runs/{run_id} (GET)"] = {"Result": f"Error: {str(e)}", "Details": ""}
   
+  # Get assistant response (if run completed successfully)
+  try:
+    if thread_id and run_completed and final_status == "completed":
+      # Get updated messages to see assistant's response
+      list_messages_after_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/messages"), "GET", timeout_seconds=timeout_seconds)
+      try:
+        list_messages_after_data = json.loads(list_messages_after_resp.body.decode("utf-8")) if list_messages_after_resp.body else {}
+        messages = list_messages_after_data.get("data", []) if isinstance(list_messages_after_data, dict) else []
+        # Find the latest assistant message
+        assistant_response = None
+        for msg in messages:
+          if isinstance(msg, dict) and msg.get("role") == "assistant":
+            content = msg.get("content", [])
+            if isinstance(content, list) and len(content) > 0:
+              text_content = content[0].get("text", {}).get("value", "") if isinstance(content[0], dict) else ""
+              if text_content:
+                assistant_response = text_content
+                break
+      except (UnicodeDecodeError, json.JSONDecodeError):
+        list_messages_after_data = {}
+        assistant_response = None
+      ok = list_messages_after_resp.status_code < 400 and assistant_response is not None
+      emoji = "✅" if ok else "❌"
+      main = ("OK" if ok else f"HTTP {list_messages_after_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        details = f"response: '{format_for_display(assistant_response, 60)}'"
+      else:
+        details = get_error_details(list_messages_after_resp, list_messages_after_data) if not assistant_response else "No assistant response found"
+      results["/threads/{id}/messages (GET assistant response)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/threads/{id}/messages (GET assistant response)"] = {"Result": "Skipped (run not completed)", "Details": ""}
+  except Exception as e:
+    results["/threads/{id}/messages (GET assistant response)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+
   # List run steps
   try:
     if thread_id and run_id:
@@ -1172,25 +1159,7 @@ async def self_test(request: Request):
       results["/threads/{id}/runs/{run_id}/steps (GET)"] = {"Result": "Skipped (missing ids)", "Details": ""}
   except Exception as e:
     results["/threads/{id}/runs/{run_id}/steps (GET)"] = {"Result": f"Error: {str(e)}", "Details": ""}
-  
-  # Cancel run (if still running)
-  try:
-    if thread_id and run_id:
-      cancel_run_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"threads/{thread_id}/runs/{run_id}/cancel"), "POST", timeout_seconds=timeout_seconds)
-      ok = cancel_run_resp.status_code < 400
-      emoji = "✅" if ok else "❌"
-      main = ("OK" if ok else f"HTTP {cancel_run_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
-      if ok:
-        details = f"thread_id: '{format_for_display(thread_id)}' run_id: '{format_for_display(run_id)}'"
-      else:
-        cancel_run_data = json.loads(cancel_run_resp.body.decode("utf-8")) if cancel_run_resp.body else {}
-        details = get_error_details(cancel_run_resp, cancel_run_data)
-      results["/threads/{id}/runs/{run_id}/cancel (POST)"] = {"Result": f"{emoji} {main}", "Details": details}
-    else:
-      results["/threads/{id}/runs/{run_id}/cancel (POST)"] = {"Result": "Skipped (missing ids)", "Details": ""}
-  except Exception as e:
-    results["/threads/{id}/runs/{run_id}/cancel (POST)"] = {"Result": f"Error: {str(e)}", "Details": ""}
-  
+    
   # Delete thread
   try:
     if thread_id:
@@ -1209,6 +1178,78 @@ async def self_test(request: Request):
   except Exception as e:
     results["/threads/{id} (DELETE)"] = {"Result": f"Error: {str(e)}", "Details": ""}
   
+  # Delete assistant
+  try:
+    if assistant_id:
+      delete_assistant_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"assistants/{assistant_id}"), "DELETE", timeout_seconds=timeout_seconds)
+      ok = delete_assistant_resp.status_code < 400
+      emoji = "✅" if ok else "❌"
+      main = ("OK" if ok else f"HTTP {delete_assistant_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        details = f"id: '{format_for_display(assistant_id)}'"
+      else:
+        delete_assistant_data = json.loads(delete_assistant_resp.body.decode("utf-8")) if delete_assistant_resp.body else {}
+        details = get_error_details(delete_assistant_resp, delete_assistant_data)
+      results["/assistants/{id} (DELETE)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/assistants/{id} (DELETE)"] = {"Result": "Skipped (missing id)", "Details": ""}
+  except Exception as e:
+    results["/assistants/{id} (DELETE)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
+  # Remove file from vector store
+  try:
+    if vector_store_id and uploaded_file_id:
+      delvf_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"vector_stores/{vector_store_id}/files/{uploaded_file_id}"), "DELETE", timeout_seconds=timeout_seconds)
+      ok = delvf_resp.status_code < 400
+      emoji = "✅" if ok else "❌"
+      main = ("OK" if ok else f"HTTP {delvf_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        details = f"vector_store_id: '{format_for_display(vector_store_id)}' file_id: '{format_for_display(uploaded_file_id)}'"
+      else:
+        delvf_data = json.loads(delvf_resp.body.decode("utf-8")) if delvf_resp.body else {}
+        details = get_error_details(delvf_resp, delvf_data)
+      results["/vector_stores/{id}/files/{file_id} (DELETE)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/vector_stores/{id}/files/{file_id} (DELETE)"] = {"Result": "Skipped (missing ids)", "Details": ""}
+  except Exception as e:
+    results["/vector_stores/{id}/files/{file_id} (DELETE)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
+  # Delete vector store
+  try:
+    if vector_store_id:
+      delvs_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"vector_stores/{vector_store_id}"), "DELETE", timeout_seconds=timeout_seconds)
+      ok = delvs_resp.status_code < 400
+      emoji = "✅" if ok else "❌"
+      main = ("OK" if ok else f"HTTP {delvs_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        details = f"id: '{format_for_display(vector_store_id)}'"
+      else:
+        delvs_data = json.loads(delvs_resp.body.decode("utf-8")) if delvs_resp.body else {}
+        details = get_error_details(delvs_resp, delvs_data)
+      results["/vector_stores/{id} (DELETE)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/vector_stores/{id} (DELETE)"] = {"Result": "Skipped (missing id)", "Details": ""}
+  except Exception as e:
+    results["/vector_stores/{id} (DELETE)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
+  # Delete file
+  try:
+    if uploaded_file_id:
+      delf_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"files/{uploaded_file_id}"), "DELETE", timeout_seconds=timeout_seconds)
+      ok = delf_resp.status_code < 400
+      emoji = "✅" if ok else "❌"
+      main = ("OK" if ok else f"HTTP {delf_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        details = f"id: '{format_for_display(uploaded_file_id)}'"
+      else:
+        delf_data = json.loads(delf_resp.body.decode("utf-8")) if delf_resp.body else {}
+        details = get_error_details(delf_resp, delf_data)
+      results["/files/{id} (DELETE)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/files/{id} (DELETE)"] = {"Result": "Skipped (missing id)", "Details": ""}
+  except Exception as e:
+    results["/files/{id} (DELETE)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+
   # Generate HTML
   html = "<html><body style='font-family: Arial, sans-serif;'>"
   html += "<h2>OpenAI Proxy Self Test Results</h2>"

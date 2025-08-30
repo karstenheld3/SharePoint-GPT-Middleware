@@ -4,6 +4,7 @@ from typing import Optional
 from dataclasses import dataclass
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse, HTMLResponse, Response
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from routers import openai_proxy
 from utils import *
@@ -45,6 +46,15 @@ def load_config() -> Config:
 config = load_config()
 
 app = FastAPI(title="SharePoint-GPT-Middleware")
+
+# Add CORS middleware to handle preflight OPTIONS requests
+app.add_middleware(
+  CORSMiddleware,
+  allow_origins=["*"],
+  allow_credentials=True,
+  allow_methods=["*"],
+  allow_headers=["*"],
+)
 
 # Include OpenAI proxy router under /openai
 app.include_router(openai_proxy.router, tags=["OpenAI Proxy"], prefix="/openai")
