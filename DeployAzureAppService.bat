@@ -8,12 +8,12 @@ if not exist %PWSH% (
     exit /b 1
 )
 
-echo This will delete the web app in Azure based on the configuration in the .env file
+echo This will zip the source code and deploy it to the Azure Web App
 pause
 
 rem change to folder where BAT file is
 cd /d "%~dp0"
-set SCRIPT=%~dp0DeleteAzureWebApp.ps1
+set SCRIPT=%~dp0DeployAzureAppService.ps1
 
 rem unblock the PowerShell script first
 %PWSH% -Command "Unblock-File -Path %SCRIPT%"

@@ -47,13 +47,13 @@ $subscription = Connect-AzAccount -Tenant "$($config.AZURE_TENANT_ID)" -Subscrip
 if ($null -eq $subscription) { throw "ERROR: Failed to connect to Azure subscription: '$($config.AZURE_SUBSCRIPTION_ID)'" }
 az account set --subscription "$($config.AZURE_SUBSCRIPTION_ID)"
 
-# === Delete Web App ===
-Write-Host "Deleting web app '$($config.AZURE_APP_NAME)'..."
+# === Delete App Service ===
+Write-Host "Deleting app service '$($config.AZURE_APP_SERVICE_NAME)'..."
 try {
-  Remove-AzWebApp -ResourceGroupName $config.AZURE_RESOURCE_GROUP -Name $config.AZURE_APP_NAME -Force -ErrorAction Stop
-  Write-Host "Web app '$($config.AZURE_APP_NAME)' deleted successfully." -ForegroundColor Green
+  Remove-AzWebApp -ResourceGroupName $config.AZURE_RESOURCE_GROUP -Name $config.AZURE_APP_SERVICE_NAME -Force -ErrorAction Stop
+  Write-Host "Web app '$($config.AZURE_APP_SERVICE_NAME)' deleted successfully." -ForegroundColor Green
 } catch {
-  Write-Warning "Web app '$($config.AZURE_APP_NAME)' could not be deleted or does not exist. $_"
+  Write-Warning "Web app '$($config.AZURE_APP_SERVICE_NAME)' could not be deleted or does not exist. $_"
 }
 
 # === Delete App Service Plan ===

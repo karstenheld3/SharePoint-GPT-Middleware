@@ -25,10 +25,10 @@ $ignoreFilesAndFoldersForDeployment = @('.git','*.bat', '*.ps1', $deployZipFilen
 
 # https://learn.microsoft.com/en-us/azure/app-service/configure-language-python
 # "BUILD_FLAGS=UseExpressBuild" -> will use fast deployment
-$webAppSettings = @("SCM_DO_BUILD_DURING_DEPLOYMENT=1", "BUILD_FLAGS=UseExpressBuild")
-# Exclude deployment variables from .env file to NOT being set in Azure Web App
-$excludeVarsFromEnvFile = @( "AZURE_SUBSCRIPTION_ID","AZURE_TENANT_ID","AZURE_RESOURCE_GROUP", "AZURE_LOCATION", "AZURE_APP_NAME", "AZURE_PYTHON_VERSION", "AZURE_APP_SERVICE_PLAN")
-$webAppStartupCommand = 'python -m uvicorn app:app --host 0.0.0.0 --port 8000 --workers 2 --log-level info --access-log --proxy-headers --forwarded-allow-ips=*'
+$appServiceSettings = @("SCM_DO_BUILD_DURING_DEPLOYMENT=1", "BUILD_FLAGS=UseExpressBuild")
+# Exclude deployment variables from .env file to NOT being set in Azure App Service
+$excludeVarsFromEnvFile = @( "AZURE_SUBSCRIPTION_ID","AZURE_TENANT_ID","AZURE_RESOURCE_GROUP", "AZURE_LOCATION", "AZURE_APP_SERVICE_NAME", "AZURE_PYTHON_VERSION", "AZURE_APP_SERVICE_PLAN")
+$appServiceStartupCommand = 'python -m uvicorn app:app --host 0.0.0.0 --port 8000 --workers 2 --log-level info --access-log --proxy-headers --forwarded-allow-ips=*'
 
 ### Overwrite .env variables if needed
 # $config.AZURE_OPENAI_ENDPOINT = ""
@@ -81,27 +81,27 @@ az account set --subscription "$($config.AZURE_SUBSCRIPTION_ID)"
 
 Set-Location $PSScriptRoot
 
-# Check if web app exists
-Write-Host "Checking if web app '$($config.AZURE_APP_NAME)' exists..."
-$errorMessage = "ERROR: Web app not found '$($config.AZURE_APP_NAME)'"
-try { $retVal = az webapp show --name $config.AZURE_APP_NAME --resource-group $config.AZURE_RESOURCE_GROUP }
+# Check if app service exists
+Write-Host "Checking if app service '$($config.AZURE_APP_SERVICE_NAME)' exists..."
+$errorMessage = "ERROR: Web app not found '$($config.AZURE_APP_SERVICE_NAME)'"
+try { $retVal = az webapp show --name $config.AZURE_APP_SERVICE_NAME --resource-group $config.AZURE_RESOURCE_GROUP }
 catch {throw "$($_.Exception.Message)"}
 if ($null -eq $retVal) { throw $errorMessage }
 
-Write-Host "Access the web app here:"
-Write-Host "   https://$($config.AZURE_APP_NAME).azurewebsites.net" -ForegroundColor Cyan
+Write-Host "Access the app service here:"
+Write-Host "   https://$($config.AZURE_APP_SERVICE_NAME).azurewebsites.net" -ForegroundColor Cyan
 Write-Host "Access the deployment tools and docker logs:"
-Write-Host "   https://$($config.AZURE_APP_NAME).scm.azurewebsites.net" -ForegroundColor Cyan
-Write-Host "   https://$($config.AZURE_APP_NAME).scm.azurewebsites.net/deploymentlogs/" -ForegroundColor Cyan
-Write-Host "   https://$($config.AZURE_APP_NAME).scm.azurewebsites.net/api/logs/docker/zip" -ForegroundColor Cyan
+Write-Host "   https://$($config.AZURE_APP_SERVICE_NAME).scm.azurewebsites.net" -ForegroundColor Cyan
+Write-Host "   https://$($config.AZURE_APP_SERVICE_NAME).scm.azurewebsites.net/deploymentlogs/" -ForegroundColor Cyan
+Write-Host "   https://$($config.AZURE_APP_SERVICE_NAME).scm.azurewebsites.net/api/logs/docker/zip" -ForegroundColor Cyan
 
 # Stop the script if any command fails
 $ErrorActionPreference = 'Stop'
 
-# Configure the web app settings and environment variables
-Write-Host "Configuring web app settings and environment variables..."
+# Configure the app service settings and environment variables
+Write-Host "Configuring app service settings and environment variables..."
 
-$envVarsToSet = $webAppSettings.Clone()
+$envVarsToSet = $appServiceSettings.Clone()
 # Set environment variables from .env file
 Write-Host "Getting environment variables from .env file:"
 foreach ($key in $config.Keys | Sort-Object) {
@@ -111,17 +111,17 @@ foreach ($key in $config.Keys | Sort-Object) {
 }
 
 if ($envVarsToSet.Count -gt 0) {
-    Write-Host "Setting Azure Web App environment variables..."    
+    Write-Host "Setting Azure App Service environment variables..."    
     # Set the app settings
     $retVal = az webapp config appsettings set `
-        --name $config.AZURE_APP_NAME `
+        --name $config.AZURE_APP_SERVICE_NAME `
         --resource-group $config.AZURE_RESOURCE_GROUP `
         --settings $envVarsToSet
         
     # Verify the settings were set
-    Write-Host "Verifying environment variables in Azure Web App:"
+    Write-Host "Verifying environment variables in Azure App Service:"
     $currentSettings = az webapp config appsettings list `
-        --name $config.AZURE_APP_NAME `
+        --name $config.AZURE_APP_SERVICE_NAME `
         --resource-group $config.AZURE_RESOURCE_GROUP | ConvertFrom-Json 
         
     # Convert $envVarsToSet into a hashtable for easier lookup
@@ -145,11 +145,11 @@ if ($envVarsToSet.Count -gt 0) {
     }
 }
 
-Write-Host "Setting startup command to '$($webAppStartupCommand)'..."
-$retVal = az webapp config set --name $config.AZURE_APP_NAME --resource-group $config.AZURE_RESOURCE_GROUP --startup-file $webAppStartupCommand
+Write-Host "Setting startup command to '$($appServiceStartupCommand)'..."
+$retVal = az webapp config set --name $config.AZURE_APP_SERVICE_NAME --resource-group $config.AZURE_RESOURCE_GROUP --startup-file $appServiceStartupCommand
 
 Write-Host "Configuring logging..."
-$retVal = az webapp log config --name $config.AZURE_APP_NAME --resource-group $config.AZURE_RESOURCE_GROUP --application-logging filesystem
+$retVal = az webapp log config --name $config.AZURE_APP_SERVICE_NAME --resource-group $config.AZURE_RESOURCE_GROUP --application-logging filesystem
 
 # Delete old zip file if it exists
 If (Test-Path "$PSScriptRoot\$deployZipFilename") { Remove-Item "$PSScriptRoot\$deployZipFilename" -Force }
@@ -165,10 +165,10 @@ if (Test-Path $rootReq) { $items = @($items) + $rootReq }
 Compress-Archive -Path $items -DestinationPath $zipPath -Force
 
 Write-Host "Deploying application..."
-$retVal = az webapp deploy --resource-group $config.AZURE_RESOURCE_GROUP --name $config.AZURE_APP_NAME --src-path $zipPath --type zip
+$retVal = az webapp deploy --resource-group $config.AZURE_RESOURCE_GROUP --name $config.AZURE_APP_SERVICE_NAME --src-path $zipPath --type zip
 
 Write-Host "Deleting '$zipPath'..."
 if (Test-Path "$PSScriptRoot\$deployZipFilename") { Remove-Item "$PSScriptRoot\$deployZipFilename" -Force }
 
 # https://learn.microsoft.com/en-us/cli/azure/webapp/log?view=azure-cli-latest
-# az webapp log tail --name $config.AZURE_APP_NAME --resource-group $config.AZURE_RESOURCE_GROUP
+# az webapp log tail --name $config.AZURE_APP_SERVICE_NAME --resource-group $config.AZURE_RESOURCE_GROUP

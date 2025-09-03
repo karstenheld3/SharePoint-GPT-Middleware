@@ -75,8 +75,8 @@ async def proxy_request(request: Request, target_path: str, method: str = "POST"
     if config.OPENAI_ORGANIZATION:
       headers["OpenAI-Organization"] = config.OPENAI_ORGANIZATION
   
-  # Add OpenAI-Beta header for assistants API endpoints
-  if "assistants" in target_path:
+  # Add OpenAI-Beta header for assistants API endpoints (includes threads, runs, messages, etc.)
+  if any(keyword in target_path for keyword in ["assistants", "threads", "runs", "messages", "vector_stores"]):
     headers["OpenAI-Beta"] = "assistants=v2"
   
   # Copy incoming headers except hop-by-hop and auth; let our auth override
@@ -122,6 +122,21 @@ async def proxy_request(request: Request, target_path: str, method: str = "POST"
   except Exception as e:
     logger.error(f"Unexpected error when proxying to OpenAI: {e}")
     raise HTTPException(status_code=500, detail="Internal server error")
+  finally:
+    await log_function_footer(log_data)
+
+# ============================================================================
+# CHAT COMPLETIONS API
+# ============================================================================
+
+@router.post("/chat/completions")
+async def create_chat_completion(request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Chat Completions API - Create Chat Completion. Mirrors: POST /chat/completions"""
+  log_data = log_function_header("create_chat_completion")
+  try:
+    target_path = f"chat/completions?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "POST")
+    return retVal
   finally:
     await log_function_footer(log_data)
 
@@ -371,7 +386,7 @@ async def create_assistant(request: Request, api_version: str = "2025-04-01-prev
   finally:
     await log_function_footer(log_data)
 
-@router.get("/assistants")
+@router.get("/assistants")  
 async def list_assistants(request: Request, api_version: str = "2025-04-01-preview"):
   """Proxy for OpenAI Assistants API - List Assistants. Mirrors: GET /assistants"""
   log_data = log_function_header("list_assistants")
@@ -642,13 +657,13 @@ async def self_test(request: Request):
     try: return truncate_string(clean_response(str(input_string)), max_length)
     except Exception: return input_string
   
-  def get_error_details(response, data: Dict[str, Any] = None) -> str:
-    """Extract error message from API response for display in Details column."""
-    if response.status_code < 400: return ""
+  def get_error_details(response, data):
+    """Extract error details from response for display."""
+    if not response: return "No response"
     error_msg = ""
     if data: error_msg = data.get("error", {}).get("message", "") if isinstance(data.get("error"), dict) else str(data.get("error", ""))
     if not error_msg and response.body:
-      try: error_msg = format_for_display(response.body.decode("utf-8"), 100)
+      try: error_msg = format_for_display(response.body.decode("utf-8", errors="replace"), 100)
       except: error_msg = f"HTTP {response.status_code}"
     return f"Error: {error_msg}" if error_msg else f"HTTP {response.status_code}"
   
@@ -671,6 +686,44 @@ async def self_test(request: Request):
     if "message" in obj and isinstance(obj["message"], str): return obj["message"]
     return None
   
+  # Chat Completions API test: create a chat completion
+  try:
+    chat_post_path = build_azure_openai_endpoint_path("chat/completions")
+    model_name = config.AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME if config.OPENAI_SERVICE_TYPE == "azure_openai" else config.OPENAI_DEFAULT_MODEL_NAME
+    if not model_name:
+      results["/chat/completions (POST create)"] = {"Result": "Skipped (missing model name)", "Details": ""}
+    else:
+      question = "What is 2+2?"
+      chat_req = DummyRequestJson({"model": model_name, "messages": [{"role": "user", "content": question}], "max_tokens": 50})
+      chat_resp, _milliseconds = await proxy_request(chat_req, chat_post_path, "POST", timeout_seconds=timeout_seconds)
+      try:
+        chat_data = json.loads(chat_resp.body.decode("utf-8", errors="replace")) if chat_resp.body else {}
+        has_decode_error = False
+      except (UnicodeDecodeError, json.JSONDecodeError):
+        chat_data = {}
+        has_decode_error = True
+      
+      # Extract answer from chat completion response
+      answer = "?"
+      if chat_data.get("choices") and len(chat_data["choices"]) > 0:
+        choice = chat_data["choices"][0]
+        if choice.get("message") and choice["message"].get("content"):
+          answer = choice["message"]["content"].strip()
+      
+      status_ok = chat_resp.status_code < 400 and chat_data.get("choices")
+      emoji = "✅" if status_ok and not has_decode_error else ("⚠️" if has_decode_error else "❌")
+      main = ("OK" if status_ok else f"HTTP {chat_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      if status_ok:
+        details = f"Q: '{format_for_display(question)}' A: '{format_for_display(answer, 40)}'"
+      else:
+        error_msg = chat_data.get("error", {}).get("message", "") if chat_data else ""
+        if not error_msg and chat_resp.body:
+          error_msg = format_for_display(chat_resp.body.decode("utf-8", errors="replace"), 100)
+        details = f"Error: {error_msg}" if error_msg else f"HTTP {chat_resp.status_code}"
+      results["/chat/completions (POST create)"] = {"Result": f"{emoji} {main}", "Details": details}
+  except Exception as e:
+    results["/chat/completions (POST create)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+
   # Responses API test: create a response
   try:
     resp_post_path = build_azure_openai_endpoint_path("responses")
@@ -682,18 +735,23 @@ async def self_test(request: Request):
       question = "3rd Roman emperor?"
       create_req = DummyRequestJson({"model": model_name, "input": question})
       create_resp, _milliseconds = await proxy_request(create_req, resp_post_path, "POST", timeout_seconds=timeout_seconds)
-      create_data = json.loads(create_resp.body.decode("utf-8")) if create_resp.body else {}
+      try:
+        create_data = json.loads(create_resp.body.decode("utf-8", errors="replace")) if create_resp.body else {}
+        has_decode_error = False
+      except (UnicodeDecodeError, json.JSONDecodeError):
+        create_data = {}
+        has_decode_error = True
       resp_id = create_data.get("id")
       answer = _extract_answer(create_data) or "?"
       status_ok = create_resp.status_code < 400 and resp_id
-      emoji = "✅" if status_ok else "❌"
+      emoji = "✅" if status_ok and not has_decode_error else ("⚠️" if has_decode_error else "❌")
       main = ("OK" if status_ok else f"HTTP {create_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
       if status_ok:
         details = f"Q: '{format_for_display(question)}' A: '{format_for_display(answer, 40)}'"
       else:
         error_msg = create_data.get("error", {}).get("message", "") if create_data else ""
         if not error_msg and create_resp.body:
-          error_msg = format_for_display(create_resp.body.decode("utf-8"), 100)
+          error_msg = format_for_display(create_resp.body.decode("utf-8", errors="replace"), 100)
         details = f"Error: {error_msg}" if error_msg else f"HTTP {create_resp.status_code}"
       results["/responses (POST create)"] = {"Result": f"{emoji} {main}", "Details": details}
       # If created, immediately try GET by id
@@ -719,10 +777,15 @@ async def self_test(request: Request):
   try:
     files = {"file": ("selftest.txt", b"Arilena Drovik was born 1987-05-03", "text/plain"), "purpose": (None, "assistants")}
     upload_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path("files"), "POST", files=files, timeout_seconds=timeout_seconds)
-    data = json.loads(upload_resp.body.decode("utf-8")) if upload_resp.body else {}
+    try:
+      data = json.loads(upload_resp.body.decode("utf-8", errors="replace")) if upload_resp.body else {}
+      has_decode_error = False
+    except (UnicodeDecodeError, json.JSONDecodeError):
+      data = {}
+      has_decode_error = True
     uploaded_file_id = data.get("id")
     ok = bool(uploaded_file_id)
-    emoji = "✅" if ok else "❌"
+    emoji = "✅" if ok else ("⚠️" if has_decode_error else "❌")
     main = ("OK" if ok else "No file id returned") + f" ({format_milliseconds(_milliseconds)})"
     if ok:
       details = f"filename: 'selftest.txt' id: '{format_for_display(uploaded_file_id)}'"
@@ -736,9 +799,14 @@ async def self_test(request: Request):
   try:
     if uploaded_file_id:
       get_file_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"files/{uploaded_file_id}"), "GET", timeout_seconds=timeout_seconds)
-      get_file_data = json.loads(get_file_resp.body.decode("utf-8")) if get_file_resp.body else {}
+      try:
+        get_file_data = json.loads(get_file_resp.body.decode("utf-8", errors="replace")) if get_file_resp.body else {}
+        has_decode_error = False
+      except (UnicodeDecodeError, json.JSONDecodeError):
+        get_file_data = {}
+        has_decode_error = True
       ok = get_file_resp.status_code < 400
-      emoji = "✅" if ok else "❌"
+      emoji = "✅" if ok else ("⚠️" if has_decode_error else "❌")
       main = ("OK" if ok else f"HTTP {get_file_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
       if ok:
         filename = get_file_data.get("filename", "unknown")
@@ -757,10 +825,15 @@ async def self_test(request: Request):
     vs_name = f"selftest-vs-{uuid.uuid4().hex[:8]}"
     vs_req = DummyRequestJson({"name": vs_name})
     vs_resp, _milliseconds = await proxy_request(vs_req, build_azure_openai_endpoint_path("vector_stores"), "POST", timeout_seconds=timeout_seconds)
-    vs_data = json.loads(vs_resp.body.decode("utf-8")) if vs_resp.body else {}
+    try:
+      vs_data = json.loads(vs_resp.body.decode("utf-8", errors="replace")) if vs_resp.body else {}
+      has_decode_error = False
+    except (UnicodeDecodeError, json.JSONDecodeError):
+      vs_data = {}
+      has_decode_error = True
     vector_store_id = vs_data.get("id")
     ok = bool(vector_store_id)
-    emoji = "✅" if ok else "❌"
+    emoji = "✅" if ok else ("⚠️" if has_decode_error else "❌")
     main = ("OK" if ok else "No vector_store id returned") + f" ({format_milliseconds(_milliseconds)})"
     if ok:
       details = f"name: '{format_for_display(vs_name)}' id: '{format_for_display(vector_store_id)}'"
@@ -774,13 +847,15 @@ async def self_test(request: Request):
   try:
     list_vs_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path("vector_stores"), "GET", timeout_seconds=timeout_seconds)
     try:
-      list_vs_data = json.loads(list_vs_resp.body.decode("utf-8")) if list_vs_resp.body else {}
+      list_vs_data = json.loads(list_vs_resp.body.decode("utf-8", errors="replace")) if list_vs_resp.body else {}
       vs_count = len(list_vs_data.get("data", [])) if isinstance(list_vs_data, dict) else 0
+      has_decode_error = False
     except (UnicodeDecodeError, json.JSONDecodeError):
       list_vs_data = {}
       vs_count = 0
+      has_decode_error = True
     ok = list_vs_resp.status_code < 400
-    emoji = "✅" if ok else "❌"
+    emoji = "✅" if ok else ("⚠️" if has_decode_error else "❌")
     main = ("OK" if ok else f"HTTP {list_vs_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
     if ok:
       details = f"items: {vs_count}"
@@ -801,13 +876,16 @@ async def self_test(request: Request):
       if ok:
         details = f"vector_store_id: '{format_for_display(vector_store_id)}' file_id: '{format_for_display(uploaded_file_id)}'"
       else:
-        add_data = json.loads(add_resp.body.decode("utf-8")) if add_resp.body else {}
+        try:
+          add_data = json.loads(add_resp.body.decode("utf-8", errors="replace")) if add_resp.body else {}
+        except (UnicodeDecodeError, json.JSONDecodeError):
+          add_data = {}
         details = get_error_details(add_resp, add_data)
       results["/vector_stores/{id}/files (POST add)"] = {"Result": f"{emoji} {main}", "Details": details}
     else:
-      results["/vector_stores/{id}/files (POST add)"] = {"Result": "Skipped (missing ids)", "Details": ""}
+      results["/vector_stores/{id}/files (POST with attributes)"] = {"Result": "Skipped (missing ids)", "Details": ""}
   except Exception as e:
-    results["/vector_stores/{id}/files (POST add)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+    results["/vector_stores/{id}/files (POST with attributes)"] = {"Result": f"Error: {str(e)}", "Details": ""}
   
   # Search vector store (wait for file processing)
   try:
@@ -819,7 +897,10 @@ async def self_test(request: Request):
         try:
           status_resp, _ms = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"vector_stores/{vector_store_id}/files/{uploaded_file_id}"), "GET", timeout_seconds=5)
           if status_resp.status_code < 400:
-            status_data = json.loads(status_resp.body.decode("utf-8")) if status_resp.body else {}
+            try:
+              status_data = json.loads(status_resp.body.decode("utf-8", errors="replace")) if status_resp.body else {}
+            except (UnicodeDecodeError, json.JSONDecodeError):
+              status_data = {}
             file_status = status_data.get("status", "unknown")
             if file_status == "completed":
               file_ready = True
@@ -834,10 +915,15 @@ async def self_test(request: Request):
       search_query = "hello"
       search_req = DummyRequestJson({"query": search_query})
       search_resp, _milliseconds = await proxy_request(search_req, build_azure_openai_endpoint_path(f"vector_stores/{vector_store_id}/search"), "POST", timeout_seconds=timeout_seconds)
-      search_data = json.loads(search_resp.body.decode("utf-8")) if search_resp.body else {}
+      try:
+        search_data = json.loads(search_resp.body.decode("utf-8", errors="replace")) if search_resp.body else {}
+        has_decode_error = False
+      except (UnicodeDecodeError, json.JSONDecodeError):
+        search_data = {}
+        has_decode_error = True
       results_count = len(search_data.get("data", [])) if isinstance(search_data, dict) else 0
       ok = search_resp.status_code < 400
-      emoji = "✅" if ok else "❌"
+      emoji = "✅" if ok else ("⚠️" if has_decode_error else "❌")
       main = ("OK" if ok else f"HTTP {search_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
       if ok:
         status_note = f" (file {'ready' if file_ready else 'not ready'})"
@@ -868,10 +954,15 @@ async def self_test(request: Request):
       }
       create_assistant_req = DummyRequestJson(assistant_payload)
       create_assistant_resp, _milliseconds = await proxy_request(create_assistant_req, build_azure_openai_endpoint_path("assistants"), "POST", timeout_seconds=timeout_seconds)
-      create_assistant_data = json.loads(create_assistant_resp.body.decode("utf-8")) if create_assistant_resp.body else {}
+      try:
+        create_assistant_data = json.loads(create_assistant_resp.body.decode("utf-8", errors="replace")) if create_assistant_resp.body else {}
+        has_decode_error = False
+      except (UnicodeDecodeError, json.JSONDecodeError):
+        create_assistant_data = {}
+        has_decode_error = True
       assistant_id = create_assistant_data.get("id")
       ok = bool(assistant_id)
-      emoji = "✅" if ok else "❌"
+      emoji = "✅" if ok else ("⚠️" if has_decode_error else "❌")
       main = ("OK" if ok else "No assistant id returned") + f" ({format_milliseconds(_milliseconds)})"
       if ok:
         details = f"name: '{format_for_display(assistant_name)}' id: '{format_for_display(assistant_id)}' with file_search"
@@ -885,13 +976,15 @@ async def self_test(request: Request):
   try:
     list_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path("assistants"), "GET", timeout_seconds=timeout_seconds)
     try:
-      list_data = json.loads(list_resp.body.decode("utf-8")) if list_resp.body else {}
+      list_data = json.loads(list_resp.body.decode("utf-8", errors="replace")) if list_resp.body else {}
       assistants_count = len(list_data.get("data", [])) if isinstance(list_data, dict) else 0
+      has_decode_error = False
     except (UnicodeDecodeError, json.JSONDecodeError):
       list_data = {}
       assistants_count = 0
+      has_decode_error = True
     ok = list_resp.status_code < 400
-    emoji = "✅" if ok else "❌"
+    emoji = "✅" if ok else ("⚠️" if has_decode_error else "❌")
     main = ("OK" if ok else f"HTTP {list_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
     if ok:
       details = f"assistants: {assistants_count}"
@@ -908,10 +1001,15 @@ async def self_test(request: Request):
   try:
     create_thread_req = DummyRequestJson({})
     create_thread_resp, _milliseconds = await proxy_request(create_thread_req, build_azure_openai_endpoint_path("threads"), "POST", timeout_seconds=timeout_seconds)
-    create_thread_data = json.loads(create_thread_resp.body.decode("utf-8")) if create_thread_resp.body else {}
+    try:
+      create_thread_data = json.loads(create_thread_resp.body.decode("utf-8", errors="replace")) if create_thread_resp.body else {}
+      has_decode_error = False
+    except (UnicodeDecodeError, json.JSONDecodeError):
+      create_thread_data = {}
+      has_decode_error = True
     thread_id = create_thread_data.get("id")
     ok = bool(thread_id)
-    emoji = "✅" if ok else "❌"
+    emoji = "✅" if ok else ("⚠️" if has_decode_error else "❌")
     main = ("OK" if ok else "No thread id returned") + f" ({format_milliseconds(_milliseconds)})"
     if ok:
       details = f"id: '{format_for_display(thread_id)}'"
@@ -920,34 +1018,19 @@ async def self_test(request: Request):
     results["/threads (POST create)"] = {"Result": f"{emoji} {main}", "Details": details}
   except Exception as e:
     results["/threads (POST create)"] = {"Result": f"Error: {str(e)}", "Details": ""}
-  
-  # List threads
-  try:
-    list_threads_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path("threads"), "GET", timeout_seconds=timeout_seconds)
-    try:
-      list_threads_data = json.loads(list_threads_resp.body.decode("utf-8")) if list_threads_resp.body else {}
-      threads_count = len(list_threads_data.get("data", [])) if isinstance(list_threads_data, dict) else 0
-    except (UnicodeDecodeError, json.JSONDecodeError):
-      list_threads_data = {}
-      threads_count = 0
-    ok = list_threads_resp.status_code < 400
-    emoji = "✅" if ok else "❌"
-    main = ("OK" if ok else f"HTTP {list_threads_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
-    if ok:
-      details = f"threads: {threads_count}"
-    else:
-      details = get_error_details(list_threads_resp, list_threads_data)
-    results["/threads (GET)"] = {"Result": f"{emoji} {main}", "Details": details}
-  except Exception as e:
-    results["/threads (GET)"] = {"Result": f"Error: {str(e)}", "Details": ""}
-  
+    
   # Get thread
   try:
     if thread_id:
       get_thread_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}"), "GET", timeout_seconds=timeout_seconds)
-      get_thread_data = json.loads(get_thread_resp.body.decode("utf-8")) if get_thread_resp.body else {}
+      try:
+        get_thread_data = json.loads(get_thread_resp.body.decode("utf-8", errors="replace")) if get_thread_resp.body else {}
+        has_decode_error = False
+      except (UnicodeDecodeError, json.JSONDecodeError):
+        get_thread_data = {}
+        has_decode_error = True
       ok = get_thread_resp.status_code < 400
-      emoji = "✅" if ok else "❌"
+      emoji = "✅" if ok else ("⚠️" if has_decode_error else "❌")
       main = ("OK" if ok else f"HTTP {get_thread_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
       if ok:
         details = f"id: '{format_for_display(thread_id)}'"
@@ -965,10 +1048,15 @@ async def self_test(request: Request):
       message_content = "What is Arilena Drovik's birthday?"
       create_message_req = DummyRequestJson({"role": "user", "content": message_content})
       create_message_resp, _milliseconds = await proxy_request(create_message_req, build_azure_openai_endpoint_path(f"threads/{thread_id}/messages"), "POST", timeout_seconds=timeout_seconds)
-      create_message_data = json.loads(create_message_resp.body.decode("utf-8")) if create_message_resp.body else {}
+      try:
+        create_message_data = json.loads(create_message_resp.body.decode("utf-8", errors="replace")) if create_message_resp.body else {}
+        has_decode_error = False
+      except (UnicodeDecodeError, json.JSONDecodeError):
+        create_message_data = {}
+        has_decode_error = True
       message_id = create_message_data.get("id")
       ok = bool(message_id)
-      emoji = "✅" if ok else "❌"
+      emoji = "✅" if ok else ("⚠️" if has_decode_error else "❌")
       main = ("OK" if ok else "No message id returned") + f" ({format_milliseconds(_milliseconds)})"
       if ok:
         details = f"content: '{format_for_display(message_content, 50)}' id: '{format_for_display(message_id)}'"
@@ -985,13 +1073,15 @@ async def self_test(request: Request):
     if thread_id:
       list_messages_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/messages"), "GET", timeout_seconds=timeout_seconds)
       try:
-        list_messages_data = json.loads(list_messages_resp.body.decode("utf-8")) if list_messages_resp.body else {}
+        list_messages_data = json.loads(list_messages_resp.body.decode("utf-8", errors="replace")) if list_messages_resp.body else {}
         messages_count = len(list_messages_data.get("data", [])) if isinstance(list_messages_data, dict) else 0
+        has_decode_error = False
       except (UnicodeDecodeError, json.JSONDecodeError):
         list_messages_data = {}
         messages_count = 0
+        has_decode_error = True
       ok = list_messages_resp.status_code < 400
-      emoji = "✅" if ok else "❌"
+      emoji = "✅" if ok else ("⚠️" if has_decode_error else "❌")
       main = ("OK" if ok else f"HTTP {list_messages_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
       if ok:
         details = f"messages: {messages_count}"
@@ -1007,9 +1097,14 @@ async def self_test(request: Request):
   try:
     if thread_id and message_id:
       get_message_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/messages/{message_id}"), "GET", timeout_seconds=timeout_seconds)
-      get_message_data = json.loads(get_message_resp.body.decode("utf-8")) if get_message_resp.body else {}
+      try:
+        get_message_data = json.loads(get_message_resp.body.decode("utf-8", errors="replace")) if get_message_resp.body else {}
+        has_decode_error = False
+      except (UnicodeDecodeError, json.JSONDecodeError):
+        get_message_data = {}
+        has_decode_error = True
       ok = get_message_resp.status_code < 400
-      emoji = "✅" if ok else "❌"
+      emoji = "✅" if ok else ("⚠️" if has_decode_error else "❌")
       main = ("OK" if ok else f"HTTP {get_message_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
       if ok:
         details = f"thread_id: '{format_for_display(thread_id)}' message_id: '{format_for_display(message_id)}'"
@@ -1028,10 +1123,15 @@ async def self_test(request: Request):
     if thread_id and assistant_id:
       create_run_req = DummyRequestJson({"assistant_id": assistant_id})
       create_run_resp, _milliseconds = await proxy_request(create_run_req, build_azure_openai_endpoint_path(f"threads/{thread_id}/runs"), "POST", timeout_seconds=timeout_seconds)
-      create_run_data = json.loads(create_run_resp.body.decode("utf-8")) if create_run_resp.body else {}
+      try:
+        create_run_data = json.loads(create_run_resp.body.decode("utf-8", errors="replace")) if create_run_resp.body else {}
+        has_decode_error = False
+      except (UnicodeDecodeError, json.JSONDecodeError):
+        create_run_data = {}
+        has_decode_error = True
       run_id = create_run_data.get("id")
       ok = bool(run_id)
-      emoji = "✅" if ok else "❌"
+      emoji = "✅" if ok else ("⚠️" if has_decode_error else "❌")
       main = ("OK" if ok else "No run id returned") + f" ({format_milliseconds(_milliseconds)})"
       if ok:
         details = f"thread_id: '{format_for_display(thread_id)}' assistant_id: '{format_for_display(assistant_id)}' run_id: '{format_for_display(run_id)}'"
@@ -1048,13 +1148,15 @@ async def self_test(request: Request):
     if thread_id:
       list_runs_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/runs"), "GET", timeout_seconds=timeout_seconds)
       try:
-        list_runs_data = json.loads(list_runs_resp.body.decode("utf-8")) if list_runs_resp.body else {}
+        list_runs_data = json.loads(list_runs_resp.body.decode("utf-8", errors="replace")) if list_runs_resp.body else {}
         runs_count = len(list_runs_data.get("data", [])) if isinstance(list_runs_data, dict) else 0
+        has_decode_error = False
       except (UnicodeDecodeError, json.JSONDecodeError):
         list_runs_data = {}
         runs_count = 0
+        has_decode_error = True
       ok = list_runs_resp.status_code < 400
-      emoji = "✅" if ok else "❌"
+      emoji = "✅" if ok else ("⚠️" if has_decode_error else "❌")
       main = ("OK" if ok else f"HTTP {list_runs_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
       if ok:
         details = f"runs: {runs_count}"
@@ -1069,30 +1171,44 @@ async def self_test(request: Request):
   # Get thread run and wait for completion
   try:
     if thread_id and run_id:
-      # Wait for run to complete (similar to file processing wait)
-      max_wait_seconds = 30; wait_interval = 2; run_completed = False; final_status = "unknown"
+      # Wait for run to complete with proper polling and timeout
+      run_completed = False; final_status = "unknown"
+      max_wait_seconds = 15; elapsed_seconds = 0
       
-      for attempt in range(max_wait_seconds // wait_interval):
+      # Poll run status until completion or timeout
+      while elapsed_seconds < max_wait_seconds:
         try:
           get_run_resp, _ms = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/runs/{run_id}"), "GET", timeout_seconds=5)
           if get_run_resp.status_code < 400:
-            get_run_data = json.loads(get_run_resp.body.decode("utf-8")) if get_run_resp.body else {}
+            try:
+              get_run_data = json.loads(get_run_resp.body.decode("utf-8", errors="replace")) if get_run_resp.body else {}
+            except (UnicodeDecodeError, json.JSONDecodeError):
+              get_run_data = {}
             final_status = get_run_data.get("status", "unknown")
-            if final_status in ["completed", "failed", "cancelled", "expired"]:
+            if final_status == 'completed':
               run_completed = True
               break
+            elif final_status in ['requires_action', 'failed', 'cancelled', 'expired', 'incomplete']:
+              break
+          await asyncio.sleep(1)
+          elapsed_seconds += 1
         except Exception:
-          pass
-        await asyncio.sleep(wait_interval)
+          break
       
       # Final status check
       get_run_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/runs/{run_id}"), "GET", timeout_seconds=timeout_seconds)
-      get_run_data = json.loads(get_run_resp.body.decode("utf-8")) if get_run_resp.body else {}
+      try:
+        get_run_data = json.loads(get_run_resp.body.decode("utf-8", errors="replace")) if get_run_resp.body else {}
+        has_decode_error = False
+      except (UnicodeDecodeError, json.JSONDecodeError):
+        get_run_data = {}
+        has_decode_error = True
       ok = get_run_resp.status_code < 400
-      emoji = "✅" if ok else "❌"
+      run_status = get_run_data.get("status", "unknown")
+      is_timeout = not run_completed and run_status == "unknown"
+      emoji = "⚠️" if is_timeout else ("✅" if ok else ("⚠️" if has_decode_error else "❌"))
       main = ("OK" if ok else f"HTTP {get_run_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
       if ok:
-        run_status = get_run_data.get("status", "unknown")
         completion_note = f" ({'completed' if run_completed else 'timeout'})"
         details = f"thread_id: '{format_for_display(thread_id)}' run_id: '{format_for_display(run_id)}' status: '{run_status}'{completion_note}"
       else:
@@ -1109,7 +1225,7 @@ async def self_test(request: Request):
       # Get updated messages to see assistant's response
       list_messages_after_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/messages"), "GET", timeout_seconds=timeout_seconds)
       try:
-        list_messages_after_data = json.loads(list_messages_after_resp.body.decode("utf-8")) if list_messages_after_resp.body else {}
+        list_messages_after_data = json.loads(list_messages_after_resp.body.decode("utf-8", errors="replace")) if list_messages_after_resp.body else {}
         messages = list_messages_after_data.get("data", []) if isinstance(list_messages_after_data, dict) else []
         # Find the latest assistant message
         assistant_response = None
@@ -1142,7 +1258,7 @@ async def self_test(request: Request):
     if thread_id and run_id:
       list_steps_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/runs/{run_id}/steps"), "GET", timeout_seconds=timeout_seconds)
       try:
-        list_steps_data = json.loads(list_steps_resp.body.decode("utf-8")) if list_steps_resp.body else {}
+        list_steps_data = json.loads(list_steps_resp.body.decode("utf-8", errors="replace")) if list_steps_resp.body else {}
         steps_count = len(list_steps_data.get("data", [])) if isinstance(list_steps_data, dict) else 0
       except (UnicodeDecodeError, json.JSONDecodeError):
         list_steps_data = {}
@@ -1170,7 +1286,10 @@ async def self_test(request: Request):
       if ok:
         details = f"id: '{format_for_display(thread_id)}'"
       else:
-        delete_thread_data = json.loads(delete_thread_resp.body.decode("utf-8")) if delete_thread_resp.body else {}
+        try:
+          delete_thread_data = json.loads(delete_thread_resp.body.decode("utf-8", errors="replace")) if delete_thread_resp.body else {}
+        except (UnicodeDecodeError, json.JSONDecodeError):
+          delete_thread_data = {}
         details = get_error_details(delete_thread_resp, delete_thread_data)
       results["/threads/{id} (DELETE)"] = {"Result": f"{emoji} {main}", "Details": details}
     else:
@@ -1188,14 +1307,149 @@ async def self_test(request: Request):
       if ok:
         details = f"id: '{format_for_display(assistant_id)}'"
       else:
-        delete_assistant_data = json.loads(delete_assistant_resp.body.decode("utf-8")) if delete_assistant_resp.body else {}
+        try:
+          delete_assistant_data = json.loads(delete_assistant_resp.body.decode("utf-8", errors="replace")) if delete_assistant_resp.body else {}
+        except (UnicodeDecodeError, json.JSONDecodeError):
+          delete_assistant_data = {}
         details = get_error_details(delete_assistant_resp, delete_assistant_data)
       results["/assistants/{id} (DELETE)"] = {"Result": f"{emoji} {main}", "Details": details}
     else:
       results["/assistants/{id} (DELETE)"] = {"Result": "Skipped (missing id)", "Details": ""}
   except Exception as e:
     results["/assistants/{id} (DELETE)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+    
+
+  # Vector Store Attributes Tests
+  vector_store_with_attrs_id = None
+  file_with_attrs_id = None
   
+  # Create vector store with attributes
+  try:
+    long_text_512 = "A" * 512  # 512 character text
+    test_metadata = {
+      "short_text": "test_value",
+      "long_text_512": long_text_512,
+    }
+    vs_attrs_req = DummyRequestJson({"name": "test-vector-store-attrs", "metadata": test_metadata})
+    create_vs_attrs_resp, _milliseconds = await proxy_request(vs_attrs_req, build_azure_openai_endpoint_path("vector_stores"), "POST", timeout_seconds=timeout_seconds)
+    try:
+      create_vs_attrs_data = json.loads(create_vs_attrs_resp.body.decode("utf-8", errors="replace")) if create_vs_attrs_resp.body else {}
+      has_decode_error = False
+    except (UnicodeDecodeError, json.JSONDecodeError):
+      create_vs_attrs_data = {}
+      has_decode_error = True
+    ok = create_vs_attrs_resp.status_code < 400
+    emoji = "✅" if ok else ("⚠️" if has_decode_error else "❌")
+    main = ("OK" if ok else f"HTTP {create_vs_attrs_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+    if ok:
+      vector_store_with_attrs_id = create_vs_attrs_data.get("id")
+      metadata = create_vs_attrs_data.get("metadata", {})
+      details = f"id: '{format_for_display(vector_store_with_attrs_id)}' metadata_count: {len(metadata)}"
+    else:
+      details = get_error_details(create_vs_attrs_resp, create_vs_attrs_data)
+    results["/vector_stores (POST with attributes)"] = {"Result": f"{emoji} {main}", "Details": details}
+  except Exception as e:
+    results["/vector_stores (POST with attributes)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+
+  # Get vector store with attributes
+  try:
+    if vector_store_with_attrs_id:
+      get_vs_attrs_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"vector_stores/{vector_store_with_attrs_id}"), "GET", timeout_seconds=timeout_seconds)
+      try:
+        get_vs_attrs_data = json.loads(get_vs_attrs_resp.body.decode("utf-8", errors="replace")) if get_vs_attrs_resp.body else {}
+        has_decode_error = False
+      except (UnicodeDecodeError, json.JSONDecodeError):
+        get_vs_attrs_data = {}
+        has_decode_error = True
+      ok = get_vs_attrs_resp.status_code < 400
+      emoji = "✅" if ok else ("⚠️" if has_decode_error else "❌")
+      main = ("OK" if ok else f"HTTP {get_vs_attrs_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        metadata = get_vs_attrs_data.get("metadata", {})
+        # Validate all attribute types
+        short_text_match = metadata.get("short_text") == test_metadata["short_text"]
+        long_text_match = metadata.get("long_text_512") == test_metadata["long_text_512"]
+        all_attrs_match = all([short_text_match, long_text_match])
+        details = f"id: '{format_for_display(vector_store_with_attrs_id)}' attrs_count: {len(metadata)}; all_match: {all_attrs_match}"
+      else:
+        details = get_error_details(get_vs_attrs_resp, get_vs_attrs_data)
+      results["/vector_stores/{id} (GET with attributes)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/vector_stores/{id} (GET with attributes)"] = {"Result": "Skipped (missing id)", "Details": ""}
+  except Exception as e:
+    results["/vector_stores/{id} (GET with attributes)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+
+  # Add file to vector store with attributes
+  try:
+    if vector_store_with_attrs_id and uploaded_file_id:
+      file_long_text_512 = "B" * 512  # Different 512 character text for files
+      file_test_attributes = {
+        "file_short_text": "file_test_value",
+        "file_long_text_512": file_long_text_512,
+        "file_integer_number": 99,
+        "file_float_number": 2.71828,
+        "file_date_iso": "2024-02-20T14:45:30Z",
+        "is_test": True
+      }
+      file_attrs_req = DummyRequestJson({"file_id": uploaded_file_id, "attributes": file_test_attributes})
+      add_file_attrs_resp, _milliseconds = await proxy_request(file_attrs_req, build_azure_openai_endpoint_path(f"vector_stores/{vector_store_with_attrs_id}/files"), "POST", timeout_seconds=timeout_seconds)
+      try:
+        add_file_attrs_data = json.loads(add_file_attrs_resp.body.decode("utf-8", errors="replace")) if add_file_attrs_resp.body else {}
+        has_decode_error = False
+      except (UnicodeDecodeError, json.JSONDecodeError):
+        add_file_attrs_data = {}
+        has_decode_error = True
+      ok = add_file_attrs_resp.status_code < 400
+      emoji = "✅" if ok else ("⚠️" if has_decode_error else "❌")
+      main = ("OK" if ok else f"HTTP {add_file_attrs_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        file_with_attrs_id = add_file_attrs_data.get("id")
+        attributes = add_file_attrs_data.get("attributes", {})
+        details = f"vector_store_id: '{format_for_display(vector_store_with_attrs_id)}' file_id: '{format_for_display(file_with_attrs_id)}' attrs_count: {len(attributes)}"
+      else:
+        details = get_error_details(add_file_attrs_resp, add_file_attrs_data)
+      results["/vector_stores/{id}/files (POST with attributes)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/vector_stores/{id}/files (POST with attributes)"] = {"Result": "Skipped (missing ids)", "Details": ""}
+  except Exception as e:
+    results["/vector_stores/{id}/files (POST with attributes)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+
+  # Get file from vector store with attributes
+  try:
+    if vector_store_with_attrs_id and file_with_attrs_id:
+      get_file_attrs_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"vector_stores/{vector_store_with_attrs_id}/files/{file_with_attrs_id}"), "GET", timeout_seconds=timeout_seconds)
+      try:
+        get_file_attrs_data = json.loads(get_file_attrs_resp.body.decode("utf-8", errors="replace")) if get_file_attrs_resp.body else {}
+        has_decode_error = False
+      except (UnicodeDecodeError, json.JSONDecodeError):
+        get_file_attrs_data = {}
+        has_decode_error = True
+      ok = get_file_attrs_resp.status_code < 400
+      if ok:
+        attributes = get_file_attrs_data.get("attributes", {})
+        # Validate all file attribute types
+        file_short_text_match = attributes.get("file_short_text") == file_test_attributes["file_short_text"]
+        file_long_text_match = attributes.get("file_long_text_512") == file_test_attributes["file_long_text_512"]
+        file_integer_match = attributes.get("file_integer_number") == file_test_attributes["file_integer_number"]
+        file_float_match = attributes.get("file_float_number") == file_test_attributes["file_float_number"]
+        file_date_match = attributes.get("file_date_iso") == file_test_attributes["file_date_iso"]
+        file_boolean_match = attributes.get("is_test") == file_test_attributes["is_test"]
+        all_file_attrs_match = all([file_short_text_match, file_long_text_match, file_integer_match, file_float_match, file_date_match, file_boolean_match])
+        # Test passes only if HTTP OK AND attributes are correctly preserved
+        test_success = ok and len(attributes) > 0 and all_file_attrs_match
+        emoji = "✅" if test_success else "❌"
+        main = ("OK" if ok else f"HTTP {get_file_attrs_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+        details = f"vector_store_id: '{format_for_display(vector_store_with_attrs_id)}' file_id: '{format_for_display(file_with_attrs_id)}' attrs_count: {len(attributes)}; all_match: {all_file_attrs_match}"
+      else:
+        emoji = "⚠️" if has_decode_error else "❌"
+        main = f"HTTP {get_file_attrs_resp.status_code}" + f" ({format_milliseconds(_milliseconds)})"
+        details = get_error_details(get_file_attrs_resp, get_file_attrs_data)
+      results["/vector_stores/{id}/files/{file_id} (GET with attributes)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/vector_stores/{id}/files/{file_id} (GET with attributes)"] = {"Result": "Skipped (missing ids)", "Details": ""}
+  except Exception as e:
+    results["/vector_stores/{id}/files/{file_id} (GET with attributes)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+
   # Remove file from vector store
   try:
     if vector_store_id and uploaded_file_id:
@@ -1206,31 +1460,58 @@ async def self_test(request: Request):
       if ok:
         details = f"vector_store_id: '{format_for_display(vector_store_id)}' file_id: '{format_for_display(uploaded_file_id)}'"
       else:
-        delvf_data = json.loads(delvf_resp.body.decode("utf-8")) if delvf_resp.body else {}
+        try:
+          delvf_data = json.loads(delvf_resp.body.decode("utf-8", errors="replace")) if delvf_resp.body else {}
+        except (UnicodeDecodeError, json.JSONDecodeError):
+          delvf_data = {}
         details = get_error_details(delvf_resp, delvf_data)
       results["/vector_stores/{id}/files/{file_id} (DELETE)"] = {"Result": f"{emoji} {main}", "Details": details}
     else:
       results["/vector_stores/{id}/files/{file_id} (DELETE)"] = {"Result": "Skipped (missing ids)", "Details": ""}
   except Exception as e:
     results["/vector_stores/{id}/files/{file_id} (DELETE)"] = {"Result": f"Error: {str(e)}", "Details": ""}
-  
-  # Delete vector store
+
+  # Remove file with attributes from vector store
   try:
-    if vector_store_id:
-      delvs_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"vector_stores/{vector_store_id}"), "DELETE", timeout_seconds=timeout_seconds)
-      ok = delvs_resp.status_code < 400
+    if vector_store_with_attrs_id and file_with_attrs_id:
+      delvf_attrs_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"vector_stores/{vector_store_with_attrs_id}/files/{file_with_attrs_id}"), "DELETE", timeout_seconds=timeout_seconds)
+      ok = delvf_attrs_resp.status_code < 400
       emoji = "✅" if ok else "❌"
-      main = ("OK" if ok else f"HTTP {delvs_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      main = ("OK" if ok else f"HTTP {delvf_attrs_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
       if ok:
-        details = f"id: '{format_for_display(vector_store_id)}'"
+        details = f"vector_store_id: '{format_for_display(vector_store_with_attrs_id)}' file_id: '{format_for_display(file_with_attrs_id)}'"
       else:
-        delvs_data = json.loads(delvs_resp.body.decode("utf-8")) if delvs_resp.body else {}
-        details = get_error_details(delvs_resp, delvs_data)
-      results["/vector_stores/{id} (DELETE)"] = {"Result": f"{emoji} {main}", "Details": details}
+        try:
+          delvf_attrs_data = json.loads(delvf_attrs_resp.body.decode("utf-8", errors="replace")) if delvf_attrs_resp.body else {}
+        except (UnicodeDecodeError, json.JSONDecodeError):
+          delvf_attrs_data = {}
+        details = get_error_details(delvf_attrs_resp, delvf_attrs_data)
+      results["/vector_stores/{id}/files/{file_id} (DELETE with attributes)"] = {"Result": f"{emoji} {main}", "Details": details}
     else:
-      results["/vector_stores/{id} (DELETE)"] = {"Result": "Skipped (missing id)", "Details": ""}
+      results["/vector_stores/{id}/files/{file_id} (DELETE with attributes)"] = {"Result": "Skipped (missing ids)", "Details": ""}
   except Exception as e:
-    results["/vector_stores/{id} (DELETE)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+    results["/vector_stores/{id}/files/{file_id} (DELETE with attributes)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+
+  # Delete vector store with attributes
+  try:
+    if vector_store_with_attrs_id:
+      delvs_attrs_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"vector_stores/{vector_store_with_attrs_id}"), "DELETE", timeout_seconds=timeout_seconds)
+      ok = delvs_attrs_resp.status_code < 400
+      emoji = "✅" if ok else "❌"
+      main = ("OK" if ok else f"HTTP {delvs_attrs_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        details = f"id: '{format_for_display(vector_store_with_attrs_id)}'"
+      else:
+        try:
+          delvs_attrs_data = json.loads(delvs_attrs_resp.body.decode("utf-8", errors="replace")) if delvs_attrs_resp.body else {}
+        except (UnicodeDecodeError, json.JSONDecodeError):
+          delvs_attrs_data = {}
+        details = get_error_details(delvs_attrs_resp, delvs_attrs_data)
+      results["/vector_stores/{id} (DELETE with attributes)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/vector_stores/{id} (DELETE with attributes)"] = {"Result": "Skipped (missing id)", "Details": ""}
+  except Exception as e:
+    results["/vector_stores/{id} (DELETE with attributes)"] = {"Result": f"Error: {str(e)}", "Details": ""}
   
   # Delete file
   try:
@@ -1242,7 +1523,10 @@ async def self_test(request: Request):
       if ok:
         details = f"id: '{format_for_display(uploaded_file_id)}'"
       else:
-        delf_data = json.loads(delf_resp.body.decode("utf-8")) if delf_resp.body else {}
+        try:
+          delf_data = json.loads(delf_resp.body.decode("utf-8", errors="replace")) if delf_resp.body else {}
+        except (UnicodeDecodeError, json.JSONDecodeError):
+          delf_data = {}
         details = get_error_details(delf_resp, delf_data)
       results["/files/{id} (DELETE)"] = {"Result": f"{emoji} {main}", "Details": details}
     else:
@@ -1252,7 +1536,7 @@ async def self_test(request: Request):
 
   # Generate HTML
   html = "<html><body style='font-family: Arial, sans-serif;'>"
-  html += "<h2>OpenAI Proxy Self Test Results</h2>"
+  html += f"<h2>OpenAI Proxy Self Test Results ({config.OPENAI_SERVICE_TYPE})</h2>"
   html += convert_to_nested_html_table(results)
   html += "<p><b>Configuration:</b></p>"
   html += convert_to_nested_html_table(format_config_for_displaying(config))

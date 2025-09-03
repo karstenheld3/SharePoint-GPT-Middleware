@@ -25,7 +25,7 @@ $config = Read-EnvFile -Path ($envPath)
 # $config.AZURE_SUBSCRIPTION_ID = ""
 # $config.AZURE_RESOURCE_GROUP = ""
 # $config.AZURE_AZURE_LOCATION = ""
-# $config.AZURE_APP_NAME = ""
+# $config.AZURE_APP_SERVICE_NAME = ""
 # $config.AZURE_PYTHON_VERSION = ""
 # $config.AZURE_APP_SERVICE_PLAN = ""
 
@@ -112,22 +112,22 @@ if (-not $appServicePlan) {
   Write-Host "Using existing app service plan '$($config.AZURE_APP_SERVICE_PLAN)'."
 }
 
-# === Create/Update Web App ===
-$webApp = Get-AzWebApp -ResourceGroupName $config.AZURE_RESOURCE_GROUP -Name $config.AZURE_APP_NAME -ErrorAction SilentlyContinue
-if (-not $webApp) {
-  Write-Host "Creating web app '$($config.AZURE_APP_NAME)'..."
+# === Create/Update App Service ===
+$appService = Get-AzWebApp -ResourceGroupName $config.AZURE_RESOURCE_GROUP -Name $config.AZURE_APP_SERVICE_NAME -ErrorAction SilentlyContinue
+if (-not $appService) {
+  Write-Host "Creating app service '$($config.AZURE_APP_SERVICE_NAME)'..."
 
-  $webApp = New-AzWebApp -Name $config.AZURE_APP_NAME `
+  $appService = New-AzWebApp -Name $config.AZURE_APP_SERVICE_NAME `
     -ResourceGroupName $config.AZURE_RESOURCE_GROUP `
     -Location $config.AZURE_LOCATION `
     -AppServicePlan $config.AZURE_APP_SERVICE_PLAN
-    if (-not $webApp){
-      Write-Host "Error creating web app '$($config.AZURE_APP_NAME)'!" -ForegroundColor White -BackgroundColor red; exit 1
+    if (-not $appService){
+      Write-Host "Error creating app service '$($config.AZURE_APP_SERVICE_NAME)'!" -ForegroundColor White -BackgroundColor red; exit 1
     } else {
-      Write-Host "Created new web app ID = '$($webApp.Id)'."
+      Write-Host "Created new app service ID = '$($appService.Id)'."
     }
   } else {
-  Write-Host "Using existing web app '$($config.AZURE_APP_NAME)'"
+  Write-Host "Using existing app service '$($config.AZURE_APP_SERVICE_NAME)'"
 }  
 
 # === Configure App Settings and Runtime ===
@@ -137,13 +137,13 @@ if (-not $webApp) {
 if ($config.OS -eq "Linux") {
   # For Linux, configure via az cli
   $linuxFxVersion = 'PYTHON|' + $config.AZURE_PYTHON_VERSION
-  $appConfig = az webapp config set --name $config.AZURE_APP_NAME --resource-group $config.AZURE_RESOURCE_GROUP --linux-fx-version "`"$linuxFxVersion`""
+  $appConfig = az webapp config set --name $config.AZURE_APP_SERVICE_NAME --resource-group $config.AZURE_RESOURCE_GROUP --linux-fx-version "`"$linuxFxVersion`""
 } else {
   # For Windows, configure via az cli
-  $appConfig = az webapp config set --name $config.AZURE_APP_NAME --resource-group $config.AZURE_RESOURCE_GROUP --python-version $config.AZURE_PYTHON_VERSION
+  $appConfig = az webapp config set --name $config.AZURE_APP_SERVICE_NAME --resource-group $config.AZURE_RESOURCE_GROUP --python-version $config.AZURE_PYTHON_VERSION
   
   # Configure basic settings via PowerShell
-  $appSettings = Set-AzWebApp -Name $config.AZURE_APP_NAME `
+  $appSettings = Set-AzWebApp -Name $config.AZURE_APP_SERVICE_NAME `
     -ResourceGroupName $config.AZURE_RESOURCE_GROUP `
     -WebSocketsEnabled $true `
     -PhpVersion "OFF" `
@@ -154,19 +154,19 @@ Write-Host "Waiting for startup command to apply..."
 Start-Sleep -Seconds 10
 
 Write-Host "Configuring logging..."
-$retVal = az webapp log config --name $config.AZURE_APP_NAME --resource-group $config.AZURE_RESOURCE_GROUP --application-logging filesystem
+$retVal = az webapp log config --name $config.AZURE_APP_SERVICE_NAME --resource-group $config.AZURE_RESOURCE_GROUP --application-logging filesystem
 
 
 # === Output Results ===
-$webAppUrl = "https://$($config.AZURE_APP_NAME).azurewebsites.net"
+$appServiceUrl = "https://$($config.AZURE_APP_SERVICE_NAME).azurewebsites.net"
 Write-Host "`nDeployment completed successfully!"
-Write-Host "Web App URL: $webAppUrl"
+Write-Host "App Service URL: $appServiceUrl"
 Write-Host "`nTo deploy your code:"
 Write-Host "1. Open an Administrator PowerShell window"
 Write-Host "2. Navigate to your project directory:"
 Write-Host "   cd $PSScriptRoot"
 Write-Host "3. Run the deployment command:"
-Write-Host "   az webapp up --name $($config.AZURE_APP_NAME) --resource-group $($config.AZURE_RESOURCE_GROUP) --runtime 'PYTHON:$($config.AZURE_PYTHON_VERSION)'"
+Write-Host "   az webapp up --name $($config.AZURE_APP_SERVICE_NAME) --resource-group $($config.AZURE_RESOURCE_GROUP) --runtime 'PYTHON:$($config.AZURE_PYTHON_VERSION)'"
 Write-Host "4. Access the deployment tools and docker logs:"
-Write-Host "   https://$($config.AZURE_APP_NAME).scm.azurewebsites.net" -ForegroundColor Cyan
-Write-Host "   https://$($config.AZURE_APP_NAME).scm.azurewebsites.net/api/logs/docker/zip" -ForegroundColor Cyan
+Write-Host "   https://$($config.AZURE_APP_SERVICE_NAME).scm.azurewebsites.net" -ForegroundColor Cyan
+Write-Host "   https://$($config.AZURE_APP_SERVICE_NAME).scm.azurewebsites.net/api/logs/docker/zip" -ForegroundColor Cyan

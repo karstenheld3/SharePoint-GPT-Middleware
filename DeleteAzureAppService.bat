@@ -8,12 +8,12 @@ if not exist %PWSH% (
     exit /b 1
 )
 
-echo This will create the web app in Azure based on the configuration in the .env file
+echo This will delete the web app in Azure based on the configuration in the .env file
 pause
 
 rem change to folder where BAT file is
 cd /d "%~dp0"
-set SCRIPT=%~dp0CreateAzureWebApp.ps1
+set SCRIPT=%~dp0DeleteAzureAppService.ps1
 
 rem unblock the PowerShell script first
 %PWSH% -Command "Unblock-File -Path %SCRIPT%"

@@ -34,14 +34,14 @@ AZURE_OPENAI_API_VERSION=2025-04-01-preview
 
 # ------------------------- END: Azure Open AI Service (if OPENAI_SERVICE_TYPE=azure_openai) --------------------------
 
-# ------------------------- START: Azure Web App Deployment Settings --------------------------------------------------
+# ------------------------- START: Azure App Service Deployment Settings --------------------------------------------------
 
 AZURE_SUBSCRIPTION_ID=<your_azure_subscription_id>
 AZURE_TENANT_ID=<your_azure_tenant_id>
 AZURE_RESOURCE_GROUP=<your_azure_resource_group>
 AZURE_LOCATION=swedencentral
-AZURE_APP_NAME=<your_azure_app_name>
+AZURE_APP_SERVICE_NAME=<your_AZURE_APP_SERVICE_NAME>
 AZURE_PYTHON_VERSION=3.12
 AZURE_APP_SERVICE_PLAN=appservice-webapp-01
 
-# ------------------------- END: Azure Web App Deployment Settings ----------------------------------------------------
+# ------------------------- END: Azure App Service Deployment Settings ----------------------------------------------------
