@@ -13,6 +13,8 @@ echo SharePoint-GPT-Middleware - Install Dependencies
 echo Root dir: %SCRIPT_DIR%
 echo Src dir:  %SRC_DIR%
 echo Venv dir: %VENV_DIR%
+echo Py dir:   %VENV_PY%
+echo UV dir:   %VENV_UV%
 echo ==================================================
 
 REM Ensure virtual environment exists (prefer Python 3.12, fallback to 3.13)
@@ -64,10 +66,14 @@ REM Sync/install project dependencies from src/pyproject.toml using uv
 pushd "%SRC_DIR%" >nul
 "%VENV_UV%" pip install -e .[dev]
 if errorlevel 1 (
-  echo [ERROR] Dependency installation failed via 'uv'.
-  popd >nul
-  pause
-  exit /b 1
+  echo [WARN] Dependency installation failed via 'uv'. Trying 'uv --native-tls'...
+  "%VENV_UV%" --native-tls pip install -e .[dev]
+  if errorlevel 1 (
+    echo [ERROR] Dependency installation failed via 'uv'.
+    popd >nul
+    pause
+    exit /b 1
+  )
 )
 popd >nul
 
