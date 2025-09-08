@@ -14,6 +14,7 @@ OPENAI_DEFAULT_MODEL_NAME=gpt-4o-mini
 
 # 'true': uses AZURE_OPENAI_API_KEY; 'false': uses DefaultAzureCredential(), defined using AZURE_TENANT_ID, AZURE_CLIENT_ID, and (optionally) AZURE_CLIENT_SECRET
 AZURE_OPENAI_USE_KEY_AUTHENTICATION=true
+AZURE_OPENAI_USE_MANAGED_IDENTITY=false
 
 # Azure Open AI Service Access
 # 1) Service Principal (AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET)
@@ -26,6 +27,8 @@ AZURE_CLIENT_ID=<your_azure_client_id>
 AZURE_CLIENT_SECRET=<your_azure_client_secret>
 # not needed but useful to find the app registration in the Azure portal
 AZURE_CLIENT_NAME=<your_azure_client_name>
+# Only if key authentication and service principal is not used and default managed identity should be overwritten with assigned managed identity 
+AZURE_MANAGED_IDENTITY_CLIENT_ID=<your_azure_managed_identity_client_id>
 
 # Azure Open AI Service Configuration
 AZURE_OPENAI_ENDPOINT=https://<your_azure_openai_endpoint>.openai.azure.com/
@@ -33,6 +36,12 @@ AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME=gpt-4o-mini
 AZURE_OPENAI_API_VERSION=2025-04-01-preview
 
 # ------------------------- END: Azure Open AI Service (if OPENAI_SERVICE_TYPE=azure_openai) --------------------------
+
+# ------------------------- START: Search Configuration ---------------------------------------------------------------
+
+DEFAULT_GLOBAL_VECTOR_STORE_ID=
+
+# ------------------------- END: Search Configuration -----------------------------------------------------------------
 
 # ------------------------- START: Azure App Service Deployment Settings --------------------------------------------------
 

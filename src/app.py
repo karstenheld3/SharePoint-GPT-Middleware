@@ -7,8 +7,10 @@ from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse, HTMLResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from routers import openai_proxy
+from azure.identity.aio import DefaultAzureCredential, ClientSecretCredential
+from routers import openai_proxy, sharepoint_search
 from utils import *
+from common_openai_functions import *
 
 # Load environment variables from a local .env file if present
 load_dotenv()
@@ -17,26 +19,38 @@ load_dotenv()
 class Config:
   OPENAI_SERVICE_TYPE: str
   AZURE_OPENAI_USE_KEY_AUTHENTICATION: Optional[bool]
+  AZURE_OPENAI_USE_MANAGED_IDENTITY: Optional[bool]
   AZURE_OPENAI_ENDPOINT: Optional[str]
   AZURE_OPENAI_API_KEY: Optional[str]
   AZURE_OPENAI_API_VERSION: str
   AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME: Optional[str]
+  AZURE_TENANT_ID: Optional[str]
+  AZURE_CLIENT_ID: Optional[str]
+  AZURE_CLIENT_SECRET: Optional[str]
+  AZURE_CLIENT_NAME: Optional[str]
+  AZURE_MANAGED_IDENTITY_CLIENT_ID: Optional[str]
   OPENAI_API_KEY: Optional[str]
   OPENAI_ORGANIZATION: Optional[str]
-  OPENAI_DEFAULT_MODEL_NAME: str
+  OPENAI_DEFAULT_MODEL_NAME: Optional[str]
 
 def load_config() -> Config:
   """Load configuration from environment variables."""
   return Config(
-    OPENAI_SERVICE_TYPE=os.getenv("OPENAI_SERVICE_TYPE", "openai"),
-    AZURE_OPENAI_USE_KEY_AUTHENTICATION=os.getenv("AZURE_OPENAI_USE_KEY_AUTHENTICATION").lower() == "true" if os.getenv("AZURE_OPENAI_USE_KEY_AUTHENTICATION") else None,
+    OPENAI_SERVICE_TYPE=os.getenv("OPENAI_SERVICE_TYPE", "azure_openai"),
+    AZURE_OPENAI_USE_KEY_AUTHENTICATION=os.getenv("AZURE_OPENAI_USE_KEY_AUTHENTICATION", "true").lower() == "true",
+    AZURE_OPENAI_USE_MANAGED_IDENTITY=os.getenv("AZURE_OPENAI_USE_MANAGED_IDENTITY", "false").lower() == "true",
     AZURE_OPENAI_ENDPOINT=os.getenv("AZURE_OPENAI_ENDPOINT"),
     AZURE_OPENAI_API_KEY=os.getenv("AZURE_OPENAI_API_KEY"),
     AZURE_OPENAI_API_VERSION=os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview"),
     AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME=os.getenv("AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME"),
+    AZURE_TENANT_ID=os.getenv("AZURE_TENANT_ID"),
+    AZURE_CLIENT_ID=os.getenv("AZURE_CLIENT_ID"),
+    AZURE_CLIENT_SECRET=os.getenv("AZURE_CLIENT_SECRET"),
+    AZURE_CLIENT_NAME=os.getenv("AZURE_CLIENT_NAME"),
+    AZURE_MANAGED_IDENTITY_CLIENT_ID=os.getenv("AZURE_MANAGED_IDENTITY_CLIENT_ID"),
     OPENAI_API_KEY=os.getenv("OPENAI_API_KEY"),
     OPENAI_ORGANIZATION=os.getenv("OPENAI_ORGANIZATION"),
-    OPENAI_DEFAULT_MODEL_NAME=os.getenv("OPENAI_DEFAULT_MODEL_NAME")
+    OPENAI_DEFAULT_MODEL_NAME=os.getenv("OPENAI_DEFAULT_MODEL_NAME", "gpt-4o-mini")
   )
 
 def configure_logging():
@@ -72,15 +86,40 @@ def create_app() -> FastAPI:
     allow_headers=["*"],
   )
   
+  # Create the appropriate OpenAI client based on configuration
+  if config.OPENAI_SERVICE_TYPE.lower() == "azure_openai":
+    if config.AZURE_OPENAI_USE_KEY_AUTHENTICATION:
+      # 1) Use Azure key authentication
+      openai_client = create_async_azure_openai_client_with_api_key(config.AZURE_OPENAI_ENDPOINT, config.AZURE_OPENAI_API_VERSION, config.AZURE_OPENAI_API_KEY)
+    elif config.AZURE_OPENAI_USE_MANAGED_IDENTITY and config.AZURE_MANAGED_IDENTITY_CLIENT_ID:
+      # 2) Use managed identity if configured
+      credential = DefaultAzureCredential(managed_identity_client_id=config.AZURE_MANAGED_IDENTITY_CLIENT_ID)
+      openai_client = create_async_azure_openai_client_with_credential(config.AZURE_OPENAI_ENDPOINT, config.AZURE_OPENAI_API_VERSION, credential)
+    elif config.AZURE_TENANT_ID and config.AZURE_CLIENT_ID and config.AZURE_CLIENT_SECRET:
+      # 3) Use service principal if configured
+      credential = ClientSecretCredential(tenant_id=config.AZURE_TENANT_ID, client_id=config.AZURE_CLIENT_ID, client_secret=config.AZURE_CLIENT_SECRET)
+      openai_client = create_async_azure_openai_client_with_credential(config.AZURE_OPENAI_ENDPOINT, config.AZURE_OPENAI_API_VERSION, credential)
+    else:
+      # 4) Use default credential as fallback
+      credential = DefaultAzureCredential()
+      openai_client = create_async_azure_openai_client_with_credential(config.AZURE_OPENAI_ENDPOINT, config.AZURE_OPENAI_API_VERSION, credential)
+  else:
+    openai_client = create_openai_client(config.OPENAI_API_KEY)
+  
   # Include OpenAI proxy router under /openai
   app.include_router(openai_proxy.router, tags=["OpenAI Proxy"], prefix="/openai")
   openai_proxy.set_config(config)
   
+  # Include SharePoint Search router at root /
+  app.include_router(sharepoint_search.router, tags=["SharePoint Search"])
+  sharepoint_search.set_config(config)
+  
   # Configure logging
   configure_logging()
   
-  # Store config in app state for access in endpoints
+  # Store config and client in app state for access in endpoints
   app.state.config = config
+  app.state.openai_client = openai_client
   
   return app
 
