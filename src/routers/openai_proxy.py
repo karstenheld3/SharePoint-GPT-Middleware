@@ -50,12 +50,39 @@ async def proxy_request(request: Request, target_path: str, method: str = "POST"
     if not config.OPENAI_API_KEY:
       raise HTTPException(status_code=500, detail="OpenAI API key not configured")
   
+  # Azure deployment endpoints that require model-based URL transformation
+  _deployments_endpoints = {"completions", "chat/completions", "embeddings", "audio/transcriptions", "audio/translations", "audio/speech", "images/generations", "images/edits"}
+  
+  # For Azure OpenAI deployment endpoints, check if we need to transform the URL
+  transformed_target_path = target_path
+  request_body = None
+  if config.OPENAI_SERVICE_TYPE == "azure_openai":
+    # Extract the base path without query parameters for comparison
+    base_path = target_path.split('?')[0]
+    if base_path in _deployments_endpoints and not files:
+      # Read request body to extract model name for deployment URL transformation
+      try:
+        request_body = await request.body()
+        if request_body:
+          request_data = json.loads(request_body.decode('utf-8'))
+          model = request_data.get('model')
+          if model and "/deployments" not in target_path:
+            # Transform URL to deployment format: /deployments/{model}/chat/completions
+            if '?' in target_path:
+              query_part = target_path.split('?', 1)[1]
+              transformed_target_path = f"deployments/{model}/{base_path}?{query_part}"
+            else:
+              transformed_target_path = f"deployments/{model}/{base_path}"
+      except (json.JSONDecodeError, UnicodeDecodeError):
+        # If we can't parse the body, continue with original path
+        pass
+  
   # Construct target URL
   if config.OPENAI_SERVICE_TYPE == "azure_openai":
     base = config.AZURE_OPENAI_ENDPOINT.rstrip('/')
     if not base.endswith("/openai"):
       base = f"{base}/openai"
-    target_url = f"{base}/{target_path.lstrip('/')}"
+    target_url = f"{base}/{transformed_target_path.lstrip('/')}"
     if "api-version" not in target_url:
       separator = "&" if "?" in target_url else "?"
       target_url += f"{separator}api-version={config.AZURE_OPENAI_API_VERSION}"
@@ -98,7 +125,7 @@ async def proxy_request(request: Request, target_path: str, method: str = "POST"
         response = await client.request(method=method, url=target_url, files=files, headers=headers)
       else:
         # Pass through body and content-type as-is
-        body = await request.body()
+        body = request_body if request_body is not None else await request.body()
         response = await client.request(method=method, url=target_url, content=body, headers=headers)
       _elapsed_milliseconds = int((datetime.datetime.now() - _start).total_seconds() * 1000)
       service_type = "Azure OpenAI" if config.OPENAI_SERVICE_TYPE == "azure_openai" else "OpenAI"
@@ -636,9 +663,10 @@ async def self_test(request: Request):
   except Exception: timeout_seconds = None
   if timeout_seconds is None: timeout_seconds = 120
   
-  # Build path helper: append api-version only for Azure
-  def build_azure_openai_endpoint_path(base_path: str) -> str:
-    return f"{base_path}?api-version={config.AZURE_OPENAI_API_VERSION}" if config.OPENAI_SERVICE_TYPE == "azure_openai" else base_path
+  # Build path helper: use standard OpenAI format, let proxy handle Azure transformation
+  def build_openai_endpoint_path(base_path: str) -> str:
+    # Always use standard OpenAI format - the proxy will transform for Azure if needed
+    return base_path
   
   # Helpers for dummy requests (defined before first use)
   class DummyRequest:
@@ -688,7 +716,7 @@ async def self_test(request: Request):
   
   # Chat Completions API test: create a chat completion
   try:
-    chat_post_path = build_azure_openai_endpoint_path("chat/completions")
+    chat_post_path = build_openai_endpoint_path("chat/completions")
     model_name = config.AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME if config.OPENAI_SERVICE_TYPE == "azure_openai" else config.OPENAI_DEFAULT_MODEL_NAME
     if not model_name:
       results["/chat/completions (POST create)"] = {"Result": "Skipped (missing model name)", "Details": ""}
@@ -726,7 +754,7 @@ async def self_test(request: Request):
 
   # Responses API test: create a response
   try:
-    resp_post_path = build_azure_openai_endpoint_path("responses")
+    resp_post_path = build_openai_endpoint_path("responses")
     # Build minimal request body
     model_name = config.AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME if config.OPENAI_SERVICE_TYPE == "azure_openai" else config.OPENAI_DEFAULT_MODEL_NAME
     if not model_name:
@@ -757,7 +785,7 @@ async def self_test(request: Request):
       # If created, immediately try GET by id
       try:
         if resp_id:
-          get_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"responses/{resp_id}"), "GET", timeout_seconds=timeout_seconds)
+          get_resp, _milliseconds = await proxy_request(request, build_openai_endpoint_path(f"responses/{resp_id}"), "GET", timeout_seconds=timeout_seconds)
           ok = get_resp.status_code < 400
           emoji = "✅" if ok else "❌"
           main = ("OK" if ok else f"HTTP {get_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
@@ -776,7 +804,7 @@ async def self_test(request: Request):
   # Upload file
   try:
     files = {"file": ("selftest.txt", b"Arilena Drovik was born 1987-05-03", "text/plain"), "purpose": (None, "assistants")}
-    upload_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path("files"), "POST", files=files, timeout_seconds=timeout_seconds)
+    upload_resp, _milliseconds = await proxy_request(DummyRequest(), build_openai_endpoint_path("files"), "POST", files=files, timeout_seconds=timeout_seconds)
     try:
       data = json.loads(upload_resp.body.decode("utf-8", errors="replace")) if upload_resp.body else {}
       has_decode_error = False
@@ -798,7 +826,7 @@ async def self_test(request: Request):
   # Get file
   try:
     if uploaded_file_id:
-      get_file_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"files/{uploaded_file_id}"), "GET", timeout_seconds=timeout_seconds)
+      get_file_resp, _milliseconds = await proxy_request(request, build_openai_endpoint_path(f"files/{uploaded_file_id}"), "GET", timeout_seconds=timeout_seconds)
       try:
         get_file_data = json.loads(get_file_resp.body.decode("utf-8", errors="replace")) if get_file_resp.body else {}
         has_decode_error = False
@@ -824,7 +852,7 @@ async def self_test(request: Request):
   try:
     vs_name = f"selftest-vs-{uuid.uuid4().hex[:8]}"
     vs_req = DummyRequestJson({"name": vs_name})
-    vs_resp, _milliseconds = await proxy_request(vs_req, build_azure_openai_endpoint_path("vector_stores"), "POST", timeout_seconds=timeout_seconds)
+    vs_resp, _milliseconds = await proxy_request(vs_req, build_openai_endpoint_path("vector_stores"), "POST", timeout_seconds=timeout_seconds)
     try:
       vs_data = json.loads(vs_resp.body.decode("utf-8", errors="replace")) if vs_resp.body else {}
       has_decode_error = False
@@ -845,7 +873,7 @@ async def self_test(request: Request):
   
   # List vector stores
   try:
-    list_vs_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path("vector_stores"), "GET", timeout_seconds=timeout_seconds)
+    list_vs_resp, _milliseconds = await proxy_request(request, build_openai_endpoint_path("vector_stores"), "GET", timeout_seconds=timeout_seconds)
     try:
       list_vs_data = json.loads(list_vs_resp.body.decode("utf-8", errors="replace")) if list_vs_resp.body else {}
       vs_count = len(list_vs_data.get("data", [])) if isinstance(list_vs_data, dict) else 0
@@ -869,7 +897,7 @@ async def self_test(request: Request):
   try:
     if vector_store_id and uploaded_file_id:
       add_req = DummyRequestJson({"file_id": uploaded_file_id})
-      add_resp, _milliseconds = await proxy_request(add_req, build_azure_openai_endpoint_path(f"vector_stores/{vector_store_id}/files"), "POST", timeout_seconds=timeout_seconds)
+      add_resp, _milliseconds = await proxy_request(add_req, build_openai_endpoint_path(f"vector_stores/{vector_store_id}/files"), "POST", timeout_seconds=timeout_seconds)
       ok = add_resp.status_code < 400
       emoji = "✅" if ok else "❌"
       main = ("OK" if ok else f"HTTP {add_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
@@ -895,7 +923,7 @@ async def self_test(request: Request):
       
       for attempt in range(max_wait_seconds // wait_interval):
         try:
-          status_resp, _ms = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"vector_stores/{vector_store_id}/files/{uploaded_file_id}"), "GET", timeout_seconds=5)
+          status_resp, _ms = await proxy_request(DummyRequest(), build_openai_endpoint_path(f"vector_stores/{vector_store_id}/files/{uploaded_file_id}"), "GET", timeout_seconds=5)
           if status_resp.status_code < 400:
             try:
               status_data = json.loads(status_resp.body.decode("utf-8", errors="replace")) if status_resp.body else {}
@@ -914,7 +942,7 @@ async def self_test(request: Request):
       # Perform search
       search_query = "hello"
       search_req = DummyRequestJson({"query": search_query})
-      search_resp, _milliseconds = await proxy_request(search_req, build_azure_openai_endpoint_path(f"vector_stores/{vector_store_id}/search"), "POST", timeout_seconds=timeout_seconds)
+      search_resp, _milliseconds = await proxy_request(search_req, build_openai_endpoint_path(f"vector_stores/{vector_store_id}/search"), "POST", timeout_seconds=timeout_seconds)
       try:
         search_data = json.loads(search_resp.body.decode("utf-8", errors="replace")) if search_resp.body else {}
         has_decode_error = False
@@ -953,7 +981,7 @@ async def self_test(request: Request):
         "tool_resources": {"file_search": {"vector_store_ids": [vector_store_id]}}
       }
       create_assistant_req = DummyRequestJson(assistant_payload)
-      create_assistant_resp, _milliseconds = await proxy_request(create_assistant_req, build_azure_openai_endpoint_path("assistants"), "POST", timeout_seconds=timeout_seconds)
+      create_assistant_resp, _milliseconds = await proxy_request(create_assistant_req, build_openai_endpoint_path("assistants"), "POST", timeout_seconds=timeout_seconds)
       try:
         create_assistant_data = json.loads(create_assistant_resp.body.decode("utf-8", errors="replace")) if create_assistant_resp.body else {}
         has_decode_error = False
@@ -974,7 +1002,7 @@ async def self_test(request: Request):
 
   # List assistants
   try:
-    list_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path("assistants"), "GET", timeout_seconds=timeout_seconds)
+    list_resp, _milliseconds = await proxy_request(request, build_openai_endpoint_path("assistants"), "GET", timeout_seconds=timeout_seconds)
     try:
       list_data = json.loads(list_resp.body.decode("utf-8", errors="replace")) if list_resp.body else {}
       assistants_count = len(list_data.get("data", [])) if isinstance(list_data, dict) else 0
@@ -1000,7 +1028,7 @@ async def self_test(request: Request):
   # Create thread
   try:
     create_thread_req = DummyRequestJson({})
-    create_thread_resp, _milliseconds = await proxy_request(create_thread_req, build_azure_openai_endpoint_path("threads"), "POST", timeout_seconds=timeout_seconds)
+    create_thread_resp, _milliseconds = await proxy_request(create_thread_req, build_openai_endpoint_path("threads"), "POST", timeout_seconds=timeout_seconds)
     try:
       create_thread_data = json.loads(create_thread_resp.body.decode("utf-8", errors="replace")) if create_thread_resp.body else {}
       has_decode_error = False
@@ -1022,7 +1050,7 @@ async def self_test(request: Request):
   # Get thread
   try:
     if thread_id:
-      get_thread_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}"), "GET", timeout_seconds=timeout_seconds)
+      get_thread_resp, _milliseconds = await proxy_request(request, build_openai_endpoint_path(f"threads/{thread_id}"), "GET", timeout_seconds=timeout_seconds)
       try:
         get_thread_data = json.loads(get_thread_resp.body.decode("utf-8", errors="replace")) if get_thread_resp.body else {}
         has_decode_error = False
@@ -1047,7 +1075,7 @@ async def self_test(request: Request):
     if thread_id:
       message_content = "What is Arilena Drovik's birthday?"
       create_message_req = DummyRequestJson({"role": "user", "content": message_content})
-      create_message_resp, _milliseconds = await proxy_request(create_message_req, build_azure_openai_endpoint_path(f"threads/{thread_id}/messages"), "POST", timeout_seconds=timeout_seconds)
+      create_message_resp, _milliseconds = await proxy_request(create_message_req, build_openai_endpoint_path(f"threads/{thread_id}/messages"), "POST", timeout_seconds=timeout_seconds)
       try:
         create_message_data = json.loads(create_message_resp.body.decode("utf-8", errors="replace")) if create_message_resp.body else {}
         has_decode_error = False
@@ -1071,7 +1099,7 @@ async def self_test(request: Request):
   # List thread messages
   try:
     if thread_id:
-      list_messages_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/messages"), "GET", timeout_seconds=timeout_seconds)
+      list_messages_resp, _milliseconds = await proxy_request(request, build_openai_endpoint_path(f"threads/{thread_id}/messages"), "GET", timeout_seconds=timeout_seconds)
       try:
         list_messages_data = json.loads(list_messages_resp.body.decode("utf-8", errors="replace")) if list_messages_resp.body else {}
         messages_count = len(list_messages_data.get("data", [])) if isinstance(list_messages_data, dict) else 0
@@ -1096,7 +1124,7 @@ async def self_test(request: Request):
   # Get thread message
   try:
     if thread_id and message_id:
-      get_message_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/messages/{message_id}"), "GET", timeout_seconds=timeout_seconds)
+      get_message_resp, _milliseconds = await proxy_request(request, build_openai_endpoint_path(f"threads/{thread_id}/messages/{message_id}"), "GET", timeout_seconds=timeout_seconds)
       try:
         get_message_data = json.loads(get_message_resp.body.decode("utf-8", errors="replace")) if get_message_resp.body else {}
         has_decode_error = False
@@ -1122,7 +1150,7 @@ async def self_test(request: Request):
   try:
     if thread_id and assistant_id:
       create_run_req = DummyRequestJson({"assistant_id": assistant_id})
-      create_run_resp, _milliseconds = await proxy_request(create_run_req, build_azure_openai_endpoint_path(f"threads/{thread_id}/runs"), "POST", timeout_seconds=timeout_seconds)
+      create_run_resp, _milliseconds = await proxy_request(create_run_req, build_openai_endpoint_path(f"threads/{thread_id}/runs"), "POST", timeout_seconds=timeout_seconds)
       try:
         create_run_data = json.loads(create_run_resp.body.decode("utf-8", errors="replace")) if create_run_resp.body else {}
         has_decode_error = False
@@ -1146,7 +1174,7 @@ async def self_test(request: Request):
   # List thread runs
   try:
     if thread_id:
-      list_runs_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/runs"), "GET", timeout_seconds=timeout_seconds)
+      list_runs_resp, _milliseconds = await proxy_request(request, build_openai_endpoint_path(f"threads/{thread_id}/runs"), "GET", timeout_seconds=timeout_seconds)
       try:
         list_runs_data = json.loads(list_runs_resp.body.decode("utf-8", errors="replace")) if list_runs_resp.body else {}
         runs_count = len(list_runs_data.get("data", [])) if isinstance(list_runs_data, dict) else 0
@@ -1178,7 +1206,7 @@ async def self_test(request: Request):
       # Poll run status until completion or timeout
       while elapsed_seconds < max_wait_seconds:
         try:
-          get_run_resp, _ms = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/runs/{run_id}"), "GET", timeout_seconds=5)
+          get_run_resp, _ms = await proxy_request(request, build_openai_endpoint_path(f"threads/{thread_id}/runs/{run_id}"), "GET", timeout_seconds=5)
           if get_run_resp.status_code < 400:
             try:
               get_run_data = json.loads(get_run_resp.body.decode("utf-8", errors="replace")) if get_run_resp.body else {}
@@ -1196,7 +1224,7 @@ async def self_test(request: Request):
           break
       
       # Final status check
-      get_run_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/runs/{run_id}"), "GET", timeout_seconds=timeout_seconds)
+      get_run_resp, _milliseconds = await proxy_request(request, build_openai_endpoint_path(f"threads/{thread_id}/runs/{run_id}"), "GET", timeout_seconds=timeout_seconds)
       try:
         get_run_data = json.loads(get_run_resp.body.decode("utf-8", errors="replace")) if get_run_resp.body else {}
         has_decode_error = False
@@ -1223,7 +1251,7 @@ async def self_test(request: Request):
   try:
     if thread_id and run_completed and final_status == "completed":
       # Get updated messages to see assistant's response
-      list_messages_after_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/messages"), "GET", timeout_seconds=timeout_seconds)
+      list_messages_after_resp, _milliseconds = await proxy_request(request, build_openai_endpoint_path(f"threads/{thread_id}/messages"), "GET", timeout_seconds=timeout_seconds)
       try:
         list_messages_after_data = json.loads(list_messages_after_resp.body.decode("utf-8", errors="replace")) if list_messages_after_resp.body else {}
         messages = list_messages_after_data.get("data", []) if isinstance(list_messages_after_data, dict) else []
@@ -1256,7 +1284,7 @@ async def self_test(request: Request):
   # List run steps
   try:
     if thread_id and run_id:
-      list_steps_resp, _milliseconds = await proxy_request(request, build_azure_openai_endpoint_path(f"threads/{thread_id}/runs/{run_id}/steps"), "GET", timeout_seconds=timeout_seconds)
+      list_steps_resp, _milliseconds = await proxy_request(request, build_openai_endpoint_path(f"threads/{thread_id}/runs/{run_id}/steps"), "GET", timeout_seconds=timeout_seconds)
       try:
         list_steps_data = json.loads(list_steps_resp.body.decode("utf-8", errors="replace")) if list_steps_resp.body else {}
         steps_count = len(list_steps_data.get("data", [])) if isinstance(list_steps_data, dict) else 0
@@ -1279,7 +1307,7 @@ async def self_test(request: Request):
   # Delete thread
   try:
     if thread_id:
-      delete_thread_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"threads/{thread_id}"), "DELETE", timeout_seconds=timeout_seconds)
+      delete_thread_resp, _milliseconds = await proxy_request(DummyRequest(), build_openai_endpoint_path(f"threads/{thread_id}"), "DELETE", timeout_seconds=timeout_seconds)
       ok = delete_thread_resp.status_code < 400
       emoji = "✅" if ok else "❌"
       main = ("OK" if ok else f"HTTP {delete_thread_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
@@ -1300,7 +1328,7 @@ async def self_test(request: Request):
   # Delete assistant
   try:
     if assistant_id:
-      delete_assistant_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"assistants/{assistant_id}"), "DELETE", timeout_seconds=timeout_seconds)
+      delete_assistant_resp, _milliseconds = await proxy_request(DummyRequest(), build_openai_endpoint_path(f"assistants/{assistant_id}"), "DELETE", timeout_seconds=timeout_seconds)
       ok = delete_assistant_resp.status_code < 400
       emoji = "✅" if ok else "❌"
       main = ("OK" if ok else f"HTTP {delete_assistant_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
@@ -1331,7 +1359,7 @@ async def self_test(request: Request):
       "long_text_512": long_text_512,
     }
     vs_attrs_req = DummyRequestJson({"name": "test-vector-store-attrs", "metadata": test_metadata})
-    create_vs_attrs_resp, _milliseconds = await proxy_request(vs_attrs_req, build_azure_openai_endpoint_path("vector_stores"), "POST", timeout_seconds=timeout_seconds)
+    create_vs_attrs_resp, _milliseconds = await proxy_request(vs_attrs_req, build_openai_endpoint_path("vector_stores"), "POST", timeout_seconds=timeout_seconds)
     try:
       create_vs_attrs_data = json.loads(create_vs_attrs_resp.body.decode("utf-8", errors="replace")) if create_vs_attrs_resp.body else {}
       has_decode_error = False
@@ -1354,7 +1382,7 @@ async def self_test(request: Request):
   # Get vector store with attributes
   try:
     if vector_store_with_attrs_id:
-      get_vs_attrs_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"vector_stores/{vector_store_with_attrs_id}"), "GET", timeout_seconds=timeout_seconds)
+      get_vs_attrs_resp, _milliseconds = await proxy_request(DummyRequest(), build_openai_endpoint_path(f"vector_stores/{vector_store_with_attrs_id}"), "GET", timeout_seconds=timeout_seconds)
       try:
         get_vs_attrs_data = json.loads(get_vs_attrs_resp.body.decode("utf-8", errors="replace")) if get_vs_attrs_resp.body else {}
         has_decode_error = False
@@ -1392,7 +1420,7 @@ async def self_test(request: Request):
         "is_test": True
       }
       file_attrs_req = DummyRequestJson({"file_id": uploaded_file_id, "attributes": file_test_attributes})
-      add_file_attrs_resp, _milliseconds = await proxy_request(file_attrs_req, build_azure_openai_endpoint_path(f"vector_stores/{vector_store_with_attrs_id}/files"), "POST", timeout_seconds=timeout_seconds)
+      add_file_attrs_resp, _milliseconds = await proxy_request(file_attrs_req, build_openai_endpoint_path(f"vector_stores/{vector_store_with_attrs_id}/files"), "POST", timeout_seconds=timeout_seconds)
       try:
         add_file_attrs_data = json.loads(add_file_attrs_resp.body.decode("utf-8", errors="replace")) if add_file_attrs_resp.body else {}
         has_decode_error = False
@@ -1417,7 +1445,7 @@ async def self_test(request: Request):
   # Get file from vector store with attributes
   try:
     if vector_store_with_attrs_id and file_with_attrs_id:
-      get_file_attrs_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"vector_stores/{vector_store_with_attrs_id}/files/{file_with_attrs_id}"), "GET", timeout_seconds=timeout_seconds)
+      get_file_attrs_resp, _milliseconds = await proxy_request(DummyRequest(), build_openai_endpoint_path(f"vector_stores/{vector_store_with_attrs_id}/files/{file_with_attrs_id}"), "GET", timeout_seconds=timeout_seconds)
       try:
         get_file_attrs_data = json.loads(get_file_attrs_resp.body.decode("utf-8", errors="replace")) if get_file_attrs_resp.body else {}
         has_decode_error = False
@@ -1453,7 +1481,7 @@ async def self_test(request: Request):
   # Remove file from vector store
   try:
     if vector_store_id and uploaded_file_id:
-      delvf_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"vector_stores/{vector_store_id}/files/{uploaded_file_id}"), "DELETE", timeout_seconds=timeout_seconds)
+      delvf_resp, _milliseconds = await proxy_request(DummyRequest(), build_openai_endpoint_path(f"vector_stores/{vector_store_id}/files/{uploaded_file_id}"), "DELETE", timeout_seconds=timeout_seconds)
       ok = delvf_resp.status_code < 400
       emoji = "✅" if ok else "❌"
       main = ("OK" if ok else f"HTTP {delvf_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
@@ -1474,7 +1502,7 @@ async def self_test(request: Request):
   # Remove file with attributes from vector store
   try:
     if vector_store_with_attrs_id and file_with_attrs_id:
-      delvf_attrs_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"vector_stores/{vector_store_with_attrs_id}/files/{file_with_attrs_id}"), "DELETE", timeout_seconds=timeout_seconds)
+      delvf_attrs_resp, _milliseconds = await proxy_request(DummyRequest(), build_openai_endpoint_path(f"vector_stores/{vector_store_with_attrs_id}/files/{file_with_attrs_id}"), "DELETE", timeout_seconds=timeout_seconds)
       ok = delvf_attrs_resp.status_code < 400
       emoji = "✅" if ok else "❌"
       main = ("OK" if ok else f"HTTP {delvf_attrs_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
@@ -1495,7 +1523,7 @@ async def self_test(request: Request):
   # Delete vector store with attributes
   try:
     if vector_store_with_attrs_id:
-      delvs_attrs_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"vector_stores/{vector_store_with_attrs_id}"), "DELETE", timeout_seconds=timeout_seconds)
+      delvs_attrs_resp, _milliseconds = await proxy_request(DummyRequest(), build_openai_endpoint_path(f"vector_stores/{vector_store_with_attrs_id}"), "DELETE", timeout_seconds=timeout_seconds)
       ok = delvs_attrs_resp.status_code < 400
       emoji = "✅" if ok else "❌"
       main = ("OK" if ok else f"HTTP {delvs_attrs_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
@@ -1516,7 +1544,7 @@ async def self_test(request: Request):
   # Delete file
   try:
     if uploaded_file_id:
-      delf_resp, _milliseconds = await proxy_request(DummyRequest(), build_azure_openai_endpoint_path(f"files/{uploaded_file_id}"), "DELETE", timeout_seconds=timeout_seconds)
+      delf_resp, _milliseconds = await proxy_request(DummyRequest(), build_openai_endpoint_path(f"files/{uploaded_file_id}"), "DELETE", timeout_seconds=timeout_seconds)
       ok = delf_resp.status_code < 400
       emoji = "✅" if ok else "❌"
       main = ("OK" if ok else f"HTTP {delf_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"

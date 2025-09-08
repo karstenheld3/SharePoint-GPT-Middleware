@@ -6,7 +6,6 @@ import logging
 import sys
 import dataclasses
 
-
 # Configure logging for multi-worker environment
 logging.basicConfig(
     level=logging.INFO,

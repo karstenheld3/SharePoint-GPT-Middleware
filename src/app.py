@@ -1,5 +1,6 @@
 import os
 import inspect
+import logging
 from typing import Optional
 from dataclasses import dataclass
 from fastapi import FastAPI, Request
@@ -26,10 +27,6 @@ class Config:
 
 def load_config() -> Config:
   """Load configuration from environment variables."""
-  # Debug: Print the actual environment variable value
-  openai_model_name = os.getenv("OPENAI_DEFAULT_MODEL_NAME")
-  print(f"DEBUG: OPENAI_DEFAULT_MODEL_NAME from env = '{openai_model_name}'")
-  
   return Config(
     OPENAI_SERVICE_TYPE=os.getenv("OPENAI_SERVICE_TYPE", "openai"),
     AZURE_OPENAI_USE_KEY_AUTHENTICATION=os.getenv("AZURE_OPENAI_USE_KEY_AUTHENTICATION").lower() == "true" if os.getenv("AZURE_OPENAI_USE_KEY_AUTHENTICATION") else None,
@@ -39,42 +36,60 @@ def load_config() -> Config:
     AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME=os.getenv("AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME"),
     OPENAI_API_KEY=os.getenv("OPENAI_API_KEY"),
     OPENAI_ORGANIZATION=os.getenv("OPENAI_ORGANIZATION"),
-    OPENAI_DEFAULT_MODEL_NAME=openai_model_name
+    OPENAI_DEFAULT_MODEL_NAME=os.getenv("OPENAI_DEFAULT_MODEL_NAME")
   )
 
-# Load configuration once at startup
-config = load_config()
+def configure_logging():
+  """Configure logging to suppress verbose Azure SDK and HTTP logs."""
+  logging.getLogger('azure').setLevel(logging.WARNING)
+  logging.getLogger('azure.core.pipeline.policies.http_logging_policy').setLevel(logging.WARNING)
+  logging.getLogger('azure.identity').setLevel(logging.WARNING)
+  logging.getLogger('azure.identity._credentials').setLevel(logging.WARNING)
+  logging.getLogger('azure.identity._internal').setLevel(logging.WARNING)
+  logging.getLogger('msal').setLevel(logging.WARNING)
+  logging.getLogger('urllib3').setLevel(logging.WARNING)
+  logging.getLogger('requests').setLevel(logging.WARNING)
+  logging.getLogger('httpx').setLevel(logging.WARNING)
+  # Suppress OpenAI SDK retry and HTTP logs
+  logging.getLogger('openai').setLevel(logging.WARNING)
+  logging.getLogger('openai._base_client').setLevel(logging.WARNING)
+  logging.getLogger('httpcore').setLevel(logging.WARNING)
 
-app = FastAPI(title="SharePoint-GPT-Middleware")
+def create_app() -> FastAPI:
+  """Initialize and configure the FastAPI application."""
+  # Load configuration
+  config = load_config()
+  
+  # Create FastAPI app instance
+  app = FastAPI(title="SharePoint-GPT-Middleware")
+  
+  # Add CORS middleware to handle preflight OPTIONS requests
+  app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+  )
+  
+  # Include OpenAI proxy router under /openai
+  app.include_router(openai_proxy.router, tags=["OpenAI Proxy"], prefix="/openai")
+  openai_proxy.set_config(config)
+  
+  # Configure logging
+  configure_logging()
+  
+  # Store config in app state for access in endpoints
+  app.state.config = config
+  
+  return app
 
-# Add CORS middleware to handle preflight OPTIONS requests
-app.add_middleware(
-  CORSMiddleware,
-  allow_origins=["*"],
-  allow_credentials=True,
-  allow_methods=["*"],
-  allow_headers=["*"],
-)
+# Initialize the FastAPI application
+app = create_app()
 
-# Include OpenAI proxy router under /openai
-app.include_router(openai_proxy.router, tags=["OpenAI Proxy"], prefix="/openai")
-openai_proxy.set_config(config)
-
-# Configure logging to suppress verbose Azure SDK and HTTP logs
-# ------------------------------------------------------------------------------
-logging.getLogger('azure').setLevel(logging.WARNING)
-logging.getLogger('azure.core.pipeline.policies.http_logging_policy').setLevel(logging.WARNING)
-logging.getLogger('azure.identity').setLevel(logging.WARNING)
-logging.getLogger('azure.identity._credentials').setLevel(logging.WARNING)
-logging.getLogger('azure.identity._internal').setLevel(logging.WARNING)
-logging.getLogger('msal').setLevel(logging.WARNING)
-logging.getLogger('urllib3').setLevel(logging.WARNING)
-logging.getLogger('requests').setLevel(logging.WARNING)
-logging.getLogger('httpx').setLevel(logging.WARNING)
-# Suppress OpenAI SDK retry and HTTP logs
-logging.getLogger('openai').setLevel(logging.WARNING)
-logging.getLogger('openai._base_client').setLevel(logging.WARNING)
-logging.getLogger('httpcore').setLevel(logging.WARNING)
+def get_config() -> Config:
+  """Get the current application configuration."""
+  return app.state.config
 
 
 @app.get("/alive", response_class=PlainTextResponse)
@@ -110,7 +125,7 @@ def root() -> str:
 </ul>
 
 <h4>Configuration</h4>
-{convert_to_nested_html_table(format_config_for_displaying(config))}
+{convert_to_nested_html_table(format_config_for_displaying(app.state.config))}
 </font></body></html>
 """
 
