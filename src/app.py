@@ -1,6 +1,4 @@
-import os
-import inspect
-import logging
+import os, json, inspect, logging, psutil, shutil
 from typing import Optional
 from dataclasses import dataclass
 from fastapi import FastAPI, Request
@@ -8,12 +6,26 @@ from fastapi.responses import PlainTextResponse, HTMLResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from azure.identity.aio import DefaultAzureCredential, ClientSecretCredential
-from routers import openai_proxy, sharepoint_search
+from routers import openai_proxy, sharepoint_search, inventory
 from utils import *
 from common_openai_functions import *
+from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 
 # Load environment variables from a local .env file if present
 load_dotenv()
+
+# Global initialization errors array
+initialization_errors = []
+
+@dataclass
+class SystemInfo:
+  TOTAL_MEMORY_BYTES: int
+  FREE_MEMORY_BYTES: int
+  ENVIRONMENT: str
+  PERSISTENT_STORAGE_PATH: str
+  PERSISTENT_STORAGE_FREE_SPACE_BYTES: int | str
+  PERSISTENT_STORAGE_TOTAL_SPACE_BYTES: int | str
+  APP_SRC_PATH: str
 
 @dataclass
 class Config:
@@ -32,25 +44,41 @@ class Config:
   OPENAI_API_KEY: Optional[str]
   OPENAI_ORGANIZATION: Optional[str]
   OPENAI_DEFAULT_MODEL_NAME: Optional[str]
+  LOCAL_PERSISTENT_STORAGE_PATH: Optional[str]
+  # SharePoint Search Configuration
+  SEARCH_DEFAULT_GLOBAL_VECTOR_STORE_ID: Optional[str]
+  SEARCH_DEFAULT_MAX_NUM_RESULTS: int
+  SEARCH_DEFAULT_TEMPERATURE: float
+  SEARCH_DEFAULT_INSTRUCTIONS: str
+  SEARCH_DEFAULT_SHAREPOINT_ROOT_URL: str
+
 
 def load_config() -> Config:
   """Load configuration from environment variables."""
+  
   return Config(
-    OPENAI_SERVICE_TYPE=os.getenv("OPENAI_SERVICE_TYPE", "azure_openai"),
-    AZURE_OPENAI_USE_KEY_AUTHENTICATION=os.getenv("AZURE_OPENAI_USE_KEY_AUTHENTICATION", "true").lower() == "true",
-    AZURE_OPENAI_USE_MANAGED_IDENTITY=os.getenv("AZURE_OPENAI_USE_MANAGED_IDENTITY", "false").lower() == "true",
-    AZURE_OPENAI_ENDPOINT=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    AZURE_OPENAI_API_KEY=os.getenv("AZURE_OPENAI_API_KEY"),
-    AZURE_OPENAI_API_VERSION=os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview"),
-    AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME=os.getenv("AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME"),
-    AZURE_TENANT_ID=os.getenv("AZURE_TENANT_ID"),
-    AZURE_CLIENT_ID=os.getenv("AZURE_CLIENT_ID"),
-    AZURE_CLIENT_SECRET=os.getenv("AZURE_CLIENT_SECRET"),
-    AZURE_CLIENT_NAME=os.getenv("AZURE_CLIENT_NAME"),
-    AZURE_MANAGED_IDENTITY_CLIENT_ID=os.getenv("AZURE_MANAGED_IDENTITY_CLIENT_ID"),
-    OPENAI_API_KEY=os.getenv("OPENAI_API_KEY"),
-    OPENAI_ORGANIZATION=os.getenv("OPENAI_ORGANIZATION"),
-    OPENAI_DEFAULT_MODEL_NAME=os.getenv("OPENAI_DEFAULT_MODEL_NAME", "gpt-4o-mini")
+    OPENAI_SERVICE_TYPE=os.getenv("OPENAI_SERVICE_TYPE", "azure_openai")
+    ,AZURE_OPENAI_USE_KEY_AUTHENTICATION=os.getenv("AZURE_OPENAI_USE_KEY_AUTHENTICATION", "true").lower() == "true"
+    ,AZURE_OPENAI_USE_MANAGED_IDENTITY=os.getenv("AZURE_OPENAI_USE_MANAGED_IDENTITY", "false").lower() == "true"
+    ,AZURE_OPENAI_ENDPOINT=os.getenv("AZURE_OPENAI_ENDPOINT")
+    ,AZURE_OPENAI_API_KEY=os.getenv("AZURE_OPENAI_API_KEY")
+    ,AZURE_OPENAI_API_VERSION=os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")
+    ,AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME=os.getenv("AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME")
+    ,AZURE_TENANT_ID=os.getenv("AZURE_TENANT_ID")
+    ,AZURE_CLIENT_ID=os.getenv("AZURE_CLIENT_ID")
+    ,AZURE_CLIENT_SECRET=os.getenv("AZURE_CLIENT_SECRET")
+    ,AZURE_CLIENT_NAME=os.getenv("AZURE_CLIENT_NAME")
+    ,AZURE_MANAGED_IDENTITY_CLIENT_ID=os.getenv("AZURE_MANAGED_IDENTITY_CLIENT_ID")
+    ,OPENAI_API_KEY=os.getenv("OPENAI_API_KEY")
+    ,OPENAI_ORGANIZATION=os.getenv("OPENAI_ORGANIZATION")
+    ,OPENAI_DEFAULT_MODEL_NAME=os.getenv("OPENAI_DEFAULT_MODEL_NAME", "gpt-4o-mini")
+    ,LOCAL_PERSISTENT_STORAGE_PATH=os.getenv('LOCAL_PERSISTENT_STORAGE_PATH')
+    # SharePoint Search Configuration
+    ,SEARCH_DEFAULT_GLOBAL_VECTOR_STORE_ID=os.getenv('SEARCH_DEFAULT_GLOBAL_VECTOR_STORE_ID')
+    ,SEARCH_DEFAULT_MAX_NUM_RESULTS=int(os.getenv('SEARCH_DEFAULT_MAX_NUM_RESULTS', '20'))
+    ,SEARCH_DEFAULT_TEMPERATURE=float(os.getenv('SEARCH_DEFAULT_TEMPERATURE', '0.0'))
+    ,SEARCH_DEFAULT_INSTRUCTIONS=os.getenv('SEARCH_DEFAULT_INSTRUCTIONS', 'If the query can\'t be answered based on the available information, return N/A.')
+    ,SEARCH_DEFAULT_SHAREPOINT_ROOT_URL=os.getenv('SEARCH_DEFAULT_SHAREPOINT_ROOT_URL', '')
   )
 
 def configure_logging():
@@ -69,67 +97,189 @@ def configure_logging():
   logging.getLogger('openai._base_client').setLevel(logging.WARNING)
   logging.getLogger('httpcore').setLevel(logging.WARNING)
 
+def build_domains_and_metadata_cache(config, system_info):
+  metadata_cache = {}; domains = []
+  try:
+    domains_folder_path = os.path.join(system_info.PERSISTENT_STORAGE_PATH, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER)
+    
+    if not os.path.exists(domains_folder_path):
+      initialization_errors.append({"component": "SharePoint Data Loading", "error": f"Domains folder not found: {domains_folder_path}"})
+      return domains, metadata_cache
+    
+    # Iterate through each domain folder (VMS, HOIT, etc.)
+    for domain_folder_name in os.listdir(domains_folder_path):
+      domain_folder_path = os.path.join(domains_folder_path, domain_folder_name)
+      
+      # Skip folders that start with an underscore (_)
+      if not os.path.isdir(domain_folder_path) or domain_folder_name.startswith('_'):
+        continue
+      
+      # Load domain.json
+      domain_json_path = os.path.join(domain_folder_path, "domain.json")
+      if os.path.exists(domain_json_path):
+        with open(domain_json_path, 'r', encoding='utf-8') as f:
+          domain_data = json.load(f)
+          # exclude global vector store from domains
+          if domain_data.get('vector_store_id') != config.SEARCH_DEFAULT_GLOBAL_VECTOR_STORE_ID:
+            domains.append({"name": domain_data.get('name', domain_folder_name), "description": domain_data.get('description', '')})
+      
+      # Load files_metadata.json
+      files_metadata_json_path = os.path.join(domain_folder_path, "files_metadata.json")
+      if os.path.exists(files_metadata_json_path):
+        with open(files_metadata_json_path, 'r', encoding='utf-8') as f:
+          files_metadata = json.load(f)
+          for file_data in files_metadata:
+            if 'file_id' in file_data and 'file_metadata' in file_data:
+              metadata_cache[file_data['file_id']] = file_data['file_metadata']
+              
+  except Exception as e:
+    initialization_errors.append({"component": "SharePoint Data Loading", "error": str(e)})
+  return domains, metadata_cache
+  
+
+def is_running_on_azure_app_service() -> bool:
+  """Detect if the application is running on Azure App Service."""
+  return os.path.exists("/home/site/wwwroot") or os.path.exists("/opt/startup") or os.path.exists("/home/site")
+
+def test_directory_writable(directory_path: str) -> bool:
+  """Test if a directory is writable by creating and deleting a temporary file."""
+  if not os.path.exists(directory_path) or not os.path.isdir(directory_path):
+    return False
+  
+  import tempfile
+  try:
+    # Create a temporary file in the directory
+    with tempfile.NamedTemporaryFile(dir=directory_path, delete=False) as temp_file:
+      temp_file.write(b"test")
+      temp_file_path = temp_file.name
+    
+    # Clean up the temporary file
+    os.unlink(temp_file_path)
+    return True
+  except (OSError, PermissionError, IOError):
+    return False
+
+def create_system_info() -> SystemInfo:
+  """Create system information with original values (not converted to GB)."""
+  try:
+    # Get memory information
+    memory = psutil.virtual_memory()
+    
+    # Determine environment and persistent storage path
+    is_azure_environment = is_running_on_azure_app_service()
+    
+    if is_azure_environment: persistent_storage_path = os.getenv("HOME", "/home")
+    else: persistent_storage_path = os.getenv('LOCAL_PERSISTENT_STORAGE_PATH') or ""
+    
+    # Determine APP_SRC_PATH
+    # Get the directory where this file is located (should be the src folder)
+    app_src_path = os.path.dirname(os.path.abspath(__file__))
+    
+    # Get disk space for persistent storage path
+    try:
+      persistent_storage_path_exists = os.path.exists(persistent_storage_path)
+      check_path = persistent_storage_path if persistent_storage_path_exists else (os.getcwd() if os.path.exists(os.getcwd()) else os.path.expanduser("~"))
+      disk_usage = shutil.disk_usage(check_path)
+      free_space_bytes = disk_usage.free
+      total_space_bytes = disk_usage.total
+    except (OSError, FileNotFoundError, PermissionError) as e:
+      print(f"Warning: Could not get disk usage for path '{persistent_storage_path}': {e}")
+      free_space_bytes = "N/A"
+      total_space_bytes = "N/A"
+    
+    return SystemInfo(
+      TOTAL_MEMORY_BYTES=memory.total,
+      FREE_MEMORY_BYTES=memory.available,
+      ENVIRONMENT="Azure" if is_azure_environment else "Local",
+      PERSISTENT_STORAGE_PATH=persistent_storage_path,
+      PERSISTENT_STORAGE_FREE_SPACE_BYTES=free_space_bytes,
+      PERSISTENT_STORAGE_TOTAL_SPACE_BYTES=total_space_bytes,
+      APP_SRC_PATH=app_src_path
+    )
+    
+  except Exception as e:
+    # Return a fallback SystemInfo with error information
+    return SystemInfo(
+      TOTAL_MEMORY_BYTES=0,
+      FREE_MEMORY_BYTES=0,
+      ENVIRONMENT="Error",
+      PERSISTENT_STORAGE_PATH=f"Error: {str(e)}",
+      PERSISTENT_STORAGE_FREE_SPACE_BYTES="N/A",
+      PERSISTENT_STORAGE_TOTAL_SPACE_BYTES="N/A",
+      APP_SRC_PATH="N/A"
+    )
+
 def create_app() -> FastAPI:
-  """Initialize and configure the FastAPI application."""
+  """Create and configure the FastAPI application."""
+  # Configure logging first to ensure all initialization logs are properly formatted
+  configure_logging()
   # Load configuration
   config = load_config()
-  
   # Create FastAPI app instance
   app = FastAPI(title="SharePoint-GPT-Middleware")
+  # Store config in app state
+  app.state.config = config
+  # Create system info
+  system_info = create_system_info()
+  app.state.system_info = system_info
+  # Build domains and metadata cache
+  domains, metadata_cache = build_domains_and_metadata_cache(config, system_info)
+  app.state.domains = domains
+  app.state.metadata_cache = metadata_cache
   
   # Add CORS middleware to handle preflight OPTIONS requests
-  app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-  )
+  app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
   
   # Create the appropriate OpenAI client based on configuration
-  if config.OPENAI_SERVICE_TYPE.lower() == "azure_openai":
-    if config.AZURE_OPENAI_USE_KEY_AUTHENTICATION:
-      # 1) Use Azure key authentication
-      openai_client = create_async_azure_openai_client_with_api_key(config.AZURE_OPENAI_ENDPOINT, config.AZURE_OPENAI_API_VERSION, config.AZURE_OPENAI_API_KEY)
-    elif config.AZURE_OPENAI_USE_MANAGED_IDENTITY and config.AZURE_MANAGED_IDENTITY_CLIENT_ID:
-      # 2) Use managed identity if configured
-      credential = DefaultAzureCredential(managed_identity_client_id=config.AZURE_MANAGED_IDENTITY_CLIENT_ID)
-      openai_client = create_async_azure_openai_client_with_credential(config.AZURE_OPENAI_ENDPOINT, config.AZURE_OPENAI_API_VERSION, credential)
-    elif config.AZURE_TENANT_ID and config.AZURE_CLIENT_ID and config.AZURE_CLIENT_SECRET:
-      # 3) Use service principal if configured
-      credential = ClientSecretCredential(tenant_id=config.AZURE_TENANT_ID, client_id=config.AZURE_CLIENT_ID, client_secret=config.AZURE_CLIENT_SECRET)
-      openai_client = create_async_azure_openai_client_with_credential(config.AZURE_OPENAI_ENDPOINT, config.AZURE_OPENAI_API_VERSION, credential)
+  openai_client = None
+  try:
+    if config.OPENAI_SERVICE_TYPE.lower() == "azure_openai":
+      if config.AZURE_OPENAI_USE_KEY_AUTHENTICATION:
+        # 1) Use Azure key authentication
+        openai_client = create_async_azure_openai_client_with_api_key(config.AZURE_OPENAI_ENDPOINT, config.AZURE_OPENAI_API_VERSION, config.AZURE_OPENAI_API_KEY)
+      elif config.AZURE_OPENAI_USE_MANAGED_IDENTITY and config.AZURE_MANAGED_IDENTITY_CLIENT_ID:
+        # 2) Use managed identity if configured
+        credential = DefaultAzureCredential(managed_identity_client_id=config.AZURE_MANAGED_IDENTITY_CLIENT_ID)
+        openai_client = create_async_azure_openai_client_with_credential(config.AZURE_OPENAI_ENDPOINT, config.AZURE_OPENAI_API_VERSION, credential)
+      elif config.AZURE_TENANT_ID and config.AZURE_CLIENT_ID and config.AZURE_CLIENT_SECRET:
+        # 3) Use service principal if configured
+        credential = ClientSecretCredential(tenant_id=config.AZURE_TENANT_ID, client_id=config.AZURE_CLIENT_ID, client_secret=config.AZURE_CLIENT_SECRET)
+        openai_client = create_async_azure_openai_client_with_credential(config.AZURE_OPENAI_ENDPOINT, config.AZURE_OPENAI_API_VERSION, credential)
+      else:
+        # 4) Use default credential as fallback
+        credential = DefaultAzureCredential()
+        openai_client = create_async_azure_openai_client_with_credential(config.AZURE_OPENAI_ENDPOINT, config.AZURE_OPENAI_API_VERSION, credential)
     else:
-      # 4) Use default credential as fallback
-      credential = DefaultAzureCredential()
-      openai_client = create_async_azure_openai_client_with_credential(config.AZURE_OPENAI_ENDPOINT, config.AZURE_OPENAI_API_VERSION, credential)
-  else:
-    openai_client = create_openai_client(config.OPENAI_API_KEY)
-  
+      openai_client = create_async_openai_client(config.OPENAI_API_KEY)
+  except Exception as e:
+    initialization_errors.append({"component": "OpenAI Client Creation", "error": str(e)})
+  app.state.openai_client = openai_client
+
   # Include OpenAI proxy router under /openai
-  app.include_router(openai_proxy.router, tags=["OpenAI Proxy"], prefix="/openai")
-  openai_proxy.set_config(config)
+  try:
+    app.include_router(openai_proxy.router, tags=["OpenAI Proxy"], prefix="/openai")
+    openai_proxy.set_config(config)
+  except Exception as e:
+    initialization_errors.append({"component": "OpenAI Proxy Router", "error": str(e)})
   
   # Include SharePoint Search router at root /
-  app.include_router(sharepoint_search.router, tags=["SharePoint Search"])
-  sharepoint_search.set_config(config)
+  try:
+    app.include_router(sharepoint_search.router, tags=["SharePoint Search"])
+    sharepoint_search.set_config(config)
+  except Exception as e:
+    initialization_errors.append({"component": "SharePoint Search Router", "error": str(e)})
   
-  # Configure logging
-  configure_logging()
-  
-  # Store config and client in app state for access in endpoints
-  app.state.config = config
-  app.state.openai_client = openai_client
-  
+  # Include Inventory router under /inventory
+  try:
+    app.include_router(inventory.router, tags=["Inventory Management"], prefix="/inventory")
+    inventory.set_config(config)
+  except Exception as e:
+    initialization_errors.append({"component": "Inventory Router", "error": str(e)})
+    
   return app
 
 # Initialize the FastAPI application
 app = create_app()
-
-def get_config() -> Config:
-  """Get the current application configuration."""
-  return app.state.config
-
 
 @app.get("/alive", response_class=PlainTextResponse)
 async def health():
@@ -149,29 +299,57 @@ async def ignore_default_doc():
 
 
 @app.get("/", response_class=HTMLResponse)
-def root() -> str:  
+def root() -> str:
+  errors_html = f"<h4>Errors</h4>{convert_to_html_table(initialization_errors)}" if initialization_errors else ""
+  system_info = app.state.system_info
+  system_info_list = []
+  for field in system_info.__dataclass_fields__:
+    value = getattr(system_info, field)
+    key = field
+    # Create verification column
+    verification = ""
+    if (key.endswith('MEMORY_BYTES') or key.endswith('SPACE_BYTES')) and isinstance(value, int):
+      verification = format_filesize(value)
+    elif key.endswith('PATH') and isinstance(value, str) and value != "N/A":
+      exists = os.path.exists(value)
+      writable = test_directory_writable(value) if exists else False
+      if exists and writable:
+        verification = "✅ Exists, ✅ Writable"
+      elif exists:
+        verification = "✅ Exists, ❌ Not writable"
+      else:
+        verification = "❌ Not found"
+    
+    system_info_list.append({"Field": key, "Value": value, "Verification": verification})
+  
+  system_info_html = f"<h4>System Information</h4>{convert_to_html_table(system_info_list)}"
+  
   return f"""
 <!doctype html><html lang="en"><head><meta charset="utf-8"><title>SharePoint-GPT-Middleware</title></head><body>
 <font face="Open Sans, Arial, Helvetica, sans-serif">
 <h3>SharePoint-GPT-Middleware is running</h3>
-<p>This middleware provides 1:1 proxy endpoints for OpenAI and Azure OpenAI Service.</p>
+<p>This middleware provides OpenAI proxy endpoints, SharePoint search functionality, and inventory management for vector stores.</p>
 
 <h4>Available Links</h4>
 <ul>
   <li><a href="/docs">/docs</a> - API Documentation</li>
   <li><a href="/openapi.json">/openapi.json</a> - OpenAPI JSON</li>
   <li><a href="/openaiproxyselftest">/openaiproxyselftest</a> - Self Test (will take a while)</li>
+  <li><a href="/describe">/describe</a> - SharePoint Search Description</li>
+  <li><a href="/query">/query</a> - SharePoint Search Query (JSON)</li>
+  <li><a href="/query2">/query2</a> - SharePoint Search Query (<a href="/query2?query=List+all+documents">HTML</a> +  JSON)</li>
+  <li><a href="/inventory/vectorstores">/inventory/vectorstores</a> - Vector Stores Inventory (<a href="/inventory/vectorstores?format=html">HTML</a> + <a href="/inventory/vectorstores?format=json">JSON</a>)</li>
 </ul>
-
 <h4>Configuration</h4>
-{convert_to_nested_html_table(format_config_for_displaying(app.state.config))}
+{convert_to_html_table(format_config_for_displaying(app.state.config))}
+{system_info_html}
+{errors_html}
 </font></body></html>
 """
 
-
 # Self-test endpoint (not under /openai)
 @app.get("/openaiproxyselftest", response_class=HTMLResponse)
-async def openai_proxy_self_test(request: Request, timeoutSecs: Optional[float] = None):
+async def openai_proxy_self_test(request: Request):
   log_data = log_function_header("openai_proxy_self_test")
   try:
     retVal = await openai_proxy.self_test(request)

@@ -1,29 +1,25 @@
 # Common Open AI functions (COAI)
 # Copyright 2025, Karsten Held (MIT License)
 
-from azure.identity.aio import DefaultAzureCredential, ClientSecretCredential, get_bearer_token_provider
-from azure.identity import ClientSecretCredential as SyncClientSecretCredential
-from azure.identity import DefaultAzureCredential as SyncDefaultAzureCredential
-from azure.identity import get_bearer_token_provider as sync_get_bearer_token_provider
-from azure.core.credentials import TokenCredential
-from azure.core.credentials_async import AsyncTokenCredential
-import openai
-import httpx
+import os, time, openai, httpx
 from dataclasses import dataclass
 from typing import List, Optional, Union, Iterable, Literal, Dict
-from openai.types.responses import (ResponseInputParam,ResponseTextConfigParam,ToolParam)
+from azure.identity.aio import DefaultAzureCredential, ClientSecretCredential, get_bearer_token_provider
+from azure.identity import ClientSecretCredential as SyncClientSecretCredential, DefaultAzureCredential as SyncDefaultAzureCredential, get_bearer_token_provider as sync_get_bearer_token_provider
+from azure.core.credentials import TokenCredential
+from azure.core.credentials_async import AsyncTokenCredential
+from openai.types.responses import ResponseInputParam, ResponseTextConfigParam, ToolParam
 from openai.types.responses.response_includable import ResponseIncludable
 from openai.types.responses.response_prompt_param import ResponsePromptParam
 from openai.types.shared_params.responses_model import ResponsesModel
 from openai.types.shared_params.metadata import Metadata
 from openai.types.shared_params.reasoning import Reasoning
 from openai.types.responses import response_create_params
-from openai._types import NOT_GIVEN, NotGiven
-from openai._types import Headers, Query, Body
-import time
+from openai._types import NOT_GIVEN, NotGiven, Headers, Query, Body
 from utils import log_function_output
-import os
 
+# Replicate OpenAI Vector Store Search Response types
+# https://github.com/openai/openai-python/blob/main/src/openai/types/vector_store_search_response.py
 @dataclass
 class CoaiSearchContent:
   text: str
@@ -35,6 +31,7 @@ class CoaiSearchResults:
   file_id: str
   filename: str
   score: float
+  # Set of 16 key-value pairs that can be attached to an object.
   attributes: Optional[Dict[str, Union[str, float, bool]]] = None
 
 @dataclass
@@ -83,31 +80,16 @@ class CoaiResponseParams:
   extra_body: Body | None = None
   timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN
 
-def create_openai_client(api_key):
+def create_async_openai_client(api_key):
   if not api_key:
     raise ValueError("OPENAI_API_KEY is required when OPENAI_SERVICE_TYPE is set to 'openai'")
-  return openai.OpenAI(api_key=api_key)
-
-# Create an Azure OpenAI client using API key authentication
-def create_azure_openai_client_with_api_key(endpoint, api_version, api_key):
-  if not endpoint or not api_key:
-    raise ValueError("AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY are required for Azure OpenAI key authentication")
-  return openai.AzureOpenAI(api_version=api_version, azure_endpoint=endpoint, api_key=api_key)
+  return openai.AsyncOpenAI(api_key=api_key)
 
 # Create an async Azure OpenAI client using API key authentication
 def create_async_azure_openai_client_with_api_key(endpoint, api_version, api_key):
   if not endpoint or not api_key:
     raise ValueError("AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY are required for Azure OpenAI key authentication")
   return openai.AsyncAzureOpenAI(api_version=api_version, azure_endpoint=endpoint, api_key=api_key)
-
-# Create an Azure OpenAI client with any TokenCredential
-# ClientSecretCredential(tenant_id=tenant_id, client_id=client_id, client_secret=client_secret)
-# SyncDefaultAzureCredential(managed_identity_client_id=managed_identity_client_id)
-def create_azure_openai_client_with_credential(endpoint, api_version, credential: TokenCredential):
-  if not endpoint:
-    raise ValueError("AZURE_OPENAI_ENDPOINT is required for Azure OpenAI credential authentication")
-  token_provider = sync_get_bearer_token_provider(credential, "https://cognitiveservices.azure.com/.default")
-  return openai.AzureOpenAI(api_version=api_version, azure_endpoint=endpoint, azure_ad_token_provider=token_provider)
 
 # Create an async Azure OpenAI client with any AsyncTokenCredential
 # ClientSecretCredential(tenant_id=tenant_id, client_id=client_id, client_secret=client_secret)
@@ -137,7 +119,7 @@ def retry_on_openai_rate_limit_errors_for_sync_client(fn, function_name="retry_o
 # -> Client error '404 Resource Not Found' for url 'https://<ai-resource>.cognitiveservices.azure.com/openai/vector_stores/<VECTOR-STORE-ID>/search?api-version=2025-04-01-preview'
 # https://platform.openai.com/docs/guides/tools-file-search
 # https://github.com/openai/openai-python/blob/main/src/openai/resources/responses/responses.py
-async def get_search_results_using_responses(openai_client, search_params: CoaiSearchParams, vector_store_id: str, model: str, instructions: str) -> tuple[List[CoaiSearchResults], any]:
+async def get_search_results_using_responses_api(openai_client, search_params: CoaiSearchParams, vector_store_id: str, model: str, instructions: str) -> tuple[List[CoaiSearchResults], any]:
   # Apply instructions before and after query as they are frequently ignored in OpenAI Responses
   enhanced_query = f"INSTRUCTIONS: {instructions}\n\n---\n\n{search_params.query}\n\n---\n\nINSTRUCTIONS: {instructions}"
 
@@ -195,11 +177,24 @@ async def get_search_results_using_search_api(openai_client, search_params: Coai
   search_results: List[CoaiSearchResults] = []
   if search_response.data:
     for result in search_response.data:
-      content = [CoaiSearchContent(text=result.text, type="text")]
+      content = [CoaiSearchContent(text=content_item.text, type=content_item.type) for content_item in result.content]
       item = CoaiSearchResults(attributes=result.attributes, content=content, file_id=result.file_id, filename=result.filename, score=result.score)
       search_results.append(item)
   
-  return search_results, search_response
+  # Create a compatible response object that matches the Responses API structure
+  class SearchApiResponse:
+    def __init__(self):
+      self.output_text = ""  # Search API doesn't generate text, only finds content
+      self.status = "completed"
+      self.tool_choice = "file_search"
+      # Create mock usage stats
+      class MockUsage:
+        input_tokens = 0
+        output_tokens = 0
+      self.usage = MockUsage()
+  
+  compatible_response = SearchApiResponse()
+  return search_results, compatible_response
 
 # Tries to get the vector store by id and returns None if it fails
 async def try_get_vector_store_by_id(client, vsid):
@@ -220,3 +215,13 @@ def remove_temperature_from_request_params_for_reasoning_models(request_params, 
       # For 'o' models, 'minimal' is invalid and will be mapped to 'low'
       if model_name.startswith('o') and reasoning_effort == "minimal": request_params["reasoning"] = {"effort": "low"}
       else: request_params["reasoning"] = {"effort": reasoning_effort}
+
+# ----------------------------------------------------- START: Vector stores --------------------------------------------------
+
+async def get_all_vector_stores(client):
+  all_vector_stores = []
+  # Use async iteration to get all vector stores
+  async for vector_store in client.vector_stores.list(): all_vector_stores.append(vector_store)
+  return all_vector_stores
+  
+# ----------------------------------------------------- END: Vector stores ----------------------------------------------------

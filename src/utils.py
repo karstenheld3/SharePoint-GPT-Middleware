@@ -1,10 +1,5 @@
+import datetime, os, html, logging, sys, dataclasses
 from typing import Dict, Any, List
-import datetime
-import os
-import html
-import logging
-import sys
-import dataclasses
 
 # Configure logging for multi-worker environment
 logging.basicConfig(
@@ -117,6 +112,15 @@ def convert_to_nested_html_table(data: Any, max_depth: int = 10) -> str:
     dc_dict = {field.name: getattr(dc, field.name) for field in dataclasses.fields(dc)}
     return handle_dict(dc_dict, depth)
 
+
+# Returns a nested html table from the given data (Dict or List or Array)
+def convert_to_nested_html_table(data: Any, max_depth: int = 10) -> str:
+  def handle_value(v: Any, depth: int) -> str:
+    if depth >= max_depth: return html.escape(str(v))
+    if isinstance(v, dict): return handle_dict(v, depth + 1)
+    elif isinstance(v, list): return handle_list(v, depth + 1)
+    else: return html.escape(str(v))
+
   def handle_list(items: List[Any], depth: int) -> str:
     if not items or depth >= max_depth: return html.escape(str(items))
     # For simple lists, just return the string representation
@@ -127,31 +131,78 @@ def convert_to_nested_html_table(data: Any, max_depth: int = 10) -> str:
   
   def handle_dict(d: Dict[str, Any], depth: int) -> str:
     if not d or depth >= max_depth: return html.escape(str(d))
-    # Generic multi-column rendering when values are dict-like with shared keys
-    dict_values = [v for v in d.values() if isinstance(v, dict)]
-    if dict_values:
-      # Find common keys across all dict values
-      common_keys = set(dict_values[0].keys())
-      for dict_val in dict_values[1:]:
-        common_keys &= set(dict_val.keys())
-      if common_keys:
-        # Use keys in order they appear in first dict
-        ordered_keys = [k for k in dict_values[0].keys() if k in common_keys]
-        rows: List[str] = []
-        for k, v in d.items():
-          cells: List[str] = [html.escape(str(k))]
-          if isinstance(v, dict):
-            for subk in ordered_keys:
-              cells.append(html.escape(str(v.get(subk, ""))))
-          else:
-            # Non-dict value: put entire value into first sub-column, leave others blank
-            cells.append(html.escape(str(v)))
-            for _ in range(len(ordered_keys) - 1): cells.append("")
-          rows.append("<tr>" + "".join([f"<td>{c}</td>" for c in cells]) + "</tr>")
-        header_cells = ["Key"] + [html.escape(str(k)) for k in ordered_keys]
-        header = "<tr>" + "".join([f"<th>{h}</th>" for h in header_cells]) + "</tr>"
-        return f"<table border=1>{header}{''.join(rows)}</table>"
-    # Default: simple 2-column key/value rendering
-    rows = [f"<tr><td>{html.escape(str(k))}</td><td>{html.escape(str(v))}</td></tr>" for k, v in d.items()]
+    rows = [f"<tr><td>{html.escape(str(k))}</td><td>{handle_value(v, depth)}</td></tr>" for k, v in d.items()]
     return f"<table border=1>{''.join(rows)}</table>"
   return handle_value(data, 1)
+
+# Returns a formatted HTML table from lists, dicts, or arrays with proper rows and columns
+def convert_to_html_table(data: Any) -> str:
+  if not data: return "<p>No data</p>"
+  
+  # Handle list of dictionaries (like initialization_errors)
+  if isinstance(data, list):
+    if not data: return "<p>No items</p>"
+    
+    # Check if all items are dictionaries with same keys
+    if all(isinstance(item, dict) for item in data):
+      # Get all unique keys from all dictionaries, preserving order
+      all_keys = []
+      seen_keys = set()
+      for item in data:
+        for key in item.keys():
+          if key not in seen_keys:
+            all_keys.append(key)
+            seen_keys.add(key)
+      
+      if all_keys:
+        # Create table with headers
+        header_row = "".join(f"<th>{html.escape(str(key))}</th>" for key in all_keys)
+        rows = []
+        for item in data:
+          cells = []
+          for key in all_keys:
+            value = item.get(key, "")
+            cells.append(f"<td>{html.escape(str(value))}</td>")
+          rows.append(f"<tr>{''.join(cells)}</tr>")
+        return f"<table border=1><tr>{header_row}</tr>{''.join(rows)}</table>"
+    
+    # Handle simple list or mixed content
+    rows = [f"<tr><td>[{i}]</td><td>{html.escape(str(item))}</td></tr>" for i, item in enumerate(data)]
+    return f"<table border=1><tr><th>Index</th><th>Value</th></tr>{''.join(rows)}</table>"
+  
+  # Handle dictionary (like results or config)
+  elif isinstance(data, dict):
+    if not data: return "<p>No data</p>"
+    
+    # Check if values are dictionaries with consistent structure (like results)
+    values_are_dicts = all(isinstance(v, dict) for v in data.values())
+    if values_are_dicts and data:
+      # Get all unique keys from all value dictionaries, preserving order
+      all_value_keys = []
+      seen_keys = set()
+      for v in data.values():
+        if isinstance(v, dict):
+          for key in v.keys():
+            if key not in seen_keys:
+              all_value_keys.append(key)
+              seen_keys.add(key)
+      
+      if all_value_keys:
+        # Create table with main key + sub-keys as columns
+        header_row = f"<th>Key</th>{''.join(f'<th>{html.escape(str(key))}</th>' for key in all_value_keys)}"
+        rows = []
+        for main_key, value_dict in data.items():
+          cells = [f"<td>{html.escape(str(main_key))}</td>"]
+          for sub_key in all_value_keys:
+            sub_value = value_dict.get(sub_key, "") if isinstance(value_dict, dict) else ""
+            cells.append(f"<td>{html.escape(str(sub_value))}</td>")
+          rows.append(f"<tr>{''.join(cells)}</tr>")
+        return f"<table border=1><tr>{header_row}</tr>{''.join(rows)}</table>"
+    
+    # Handle simple key-value dictionary
+    rows = [f"<tr><td>{html.escape(str(k))}</td><td>{html.escape(str(v))}</td></tr>" for k, v in data.items()]
+    return f"<table border=1><tr><th>Key</th><th>Value</th></tr>{''.join(rows)}</table>"
+  
+  # Handle other types
+  else:
+    return f"<table border=1><tr><th>Value</th></tr><tr><td>{html.escape(str(data))}</td></tr></table>"

@@ -19,3 +19,6 @@ __pycache__/*
 
 # Deployment artifact
 deploy.zip
+
+# This folder contains files that are deployed using ZIP deployment to Azure and then copied to the persistant storage after deployment
+src/.copy_to_persistant_storage/

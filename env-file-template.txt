@@ -39,9 +39,21 @@ AZURE_OPENAI_API_VERSION=2025-04-01-preview
 
 # ------------------------- START: Search Configuration ---------------------------------------------------------------
 
-DEFAULT_GLOBAL_VECTOR_STORE_ID=
+# Default vector store id that will be used for search
+SEARCH_DEFAULT_GLOBAL_VECTOR_STORE_ID=
+SEARCH_DEFAULT_MAX_NUM_RESULTS=20
+SEARCH_DEFAULT_TEMPERATURE=0.0
+SEARCH_DEFAULT_INSTRUCTIONS=If the query can't be answered based on the available information, return N/A.
+SEARCH_DEFAULT_SHAREPOINT_ROOT_URL=https://<your_sharepoint_url>/
 
 # ------------------------- END: Search Configuration -----------------------------------------------------------------
+
+# ------------------------- START: Global Configuration ---------------------------------------------------------------
+
+# Path of home directory to save files when app runs under http://127.0.0.1:8000/, mimicking the app service D:\home folder
+LOCAL_PERSISTENT_STORAGE_PATH=C:\dev\localhome
+
+# ------------------------- END: Global Configuration -----------------------------------------------------------------
 
 # ------------------------- START: Azure App Service Deployment Settings --------------------------------------------------
 

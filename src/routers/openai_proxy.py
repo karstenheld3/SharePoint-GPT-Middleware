@@ -1,10 +1,4 @@
-import os
-import json
-import uuid
-import httpx
-import logging
-import datetime
-import asyncio
+import os, json, uuid, httpx, logging, datetime, asyncio
 from typing import Any, Dict, Optional
 from fastapi import APIRouter, Request, HTTPException, Header, File, UploadFile, Form
 from fastapi.responses import StreamingResponse, Response, HTMLResponse
@@ -1540,6 +1534,27 @@ async def self_test(request: Request):
       results["/vector_stores/{id} (DELETE with attributes)"] = {"Result": "Skipped (missing id)", "Details": ""}
   except Exception as e:
     results["/vector_stores/{id} (DELETE with attributes)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+
+  # Delete main vector store
+  try:
+    if vector_store_id:
+      delvs_resp, _milliseconds = await proxy_request(DummyRequest(), build_openai_endpoint_path(f"vector_stores/{vector_store_id}"), "DELETE", timeout_seconds=timeout_seconds)
+      ok = delvs_resp.status_code < 400
+      emoji = "✅" if ok else "❌"
+      main = ("OK" if ok else f"HTTP {delvs_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+      if ok:
+        details = f"id: '{format_for_display(vector_store_id)}'"
+      else:
+        try:
+          delvs_data = json.loads(delvs_resp.body.decode("utf-8", errors="replace")) if delvs_resp.body else {}
+        except (UnicodeDecodeError, json.JSONDecodeError):
+          delvs_data = {}
+        details = get_error_details(delvs_resp, delvs_data)
+      results["/vector_stores/{id} (DELETE)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/vector_stores/{id} (DELETE)"] = {"Result": "Skipped (missing id)", "Details": ""}
+  except Exception as e:
+    results["/vector_stores/{id} (DELETE)"] = {"Result": f"Error: {str(e)}", "Details": ""}
   
   # Delete file
   try:
@@ -1565,9 +1580,9 @@ async def self_test(request: Request):
   # Generate HTML
   html = "<html><body style='font-family: Arial, sans-serif;'>"
   html += f"<h2>OpenAI Proxy Self Test Results ({config.OPENAI_SERVICE_TYPE})</h2>"
-  html += convert_to_nested_html_table(results)
+  html += convert_to_html_table(results)
   html += "<p><b>Configuration:</b></p>"
-  html += convert_to_nested_html_table(format_config_for_displaying(config))
+  html += convert_to_html_table(format_config_for_displaying(config))
   html += "</body></html>"
   try:
     return HTMLResponse(content=html)

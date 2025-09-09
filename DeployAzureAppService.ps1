@@ -27,7 +27,7 @@ $ignoreFilesAndFoldersForDeployment = @('.git', '*.bat', '*.ps1', $deployZipFile
 # "BUILD_FLAGS=UseExpressBuild" -> will use fast deployment
 $appServiceSettings = @("SCM_DO_BUILD_DURING_DEPLOYMENT=1", "BUILD_FLAGS=UseExpressBuild")
 # Exclude deployment variables from .env file to NOT being set in Azure App Service
-$excludeVarsFromEnvFile = @( "AZURE_SUBSCRIPTION_ID", "AZURE_RESOURCE_GROUP", "AZURE_LOCATION", "AZURE_APP_SERVICE_NAME", "AZURE_PYTHON_VERSION", "AZURE_APP_SERVICE_PLAN")
+$excludeVarsFromEnvFile = @( "AZURE_SUBSCRIPTION_ID", "AZURE_RESOURCE_GROUP", "AZURE_LOCATION", "AZURE_APP_SERVICE_NAME", "AZURE_PYTHON_VERSION", "AZURE_APP_SERVICE_PLAN", "LOCAL_PERSISTENT_STORAGE_PATH")
 $appServiceStartupCommand = 'python -m uvicorn app:app --host 0.0.0.0 --port 8000 --workers 2 --log-level info --access-log --proxy-headers --forwarded-allow-ips=*'
 
 ### Overwrite .env variables if needed

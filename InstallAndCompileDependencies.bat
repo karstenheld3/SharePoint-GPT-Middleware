@@ -10,11 +10,11 @@ set VENV_UV=%VENV_DIR%\Scripts\uv.exe
 
 echo ==================================================
 echo SharePoint-GPT-Middleware - Install Dependencies
-echo Root dir: %SCRIPT_DIR%
-echo Src dir:  %SRC_DIR%
-echo Venv dir: %VENV_DIR%
-echo Py dir:   %VENV_PY%
-echo UV dir:   %VENV_UV%
+echo Root dir : %SCRIPT_DIR%
+echo Src dir  : %SRC_DIR%
+echo Venv dir : %VENV_DIR%
+echo Py dir   : %VENV_PY%
+echo UV dir   : %VENV_UV%
 echo ==================================================
 
 REM Ensure virtual environment exists (prefer Python 3.12, fallback to 3.13)
