@@ -4,9 +4,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
-from common_openai_functions import *
-from common_openai_functions import CoaiSearchParams
-from utils import *
+from common_openai_functions import get_search_results_using_responses_api, get_search_results_using_search_api, CoaiSearchParams
+from utils import log_function_header, log_function_footer, log_function_output, sanitize_queries_and_responses, truncate_string, remove_linebreaks, convert_to_nested_html_table
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 
 router = APIRouter()

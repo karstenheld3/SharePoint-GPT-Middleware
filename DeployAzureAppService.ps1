@@ -127,8 +127,12 @@ if ($envVarsToSet.Count -gt 0) {
     # Convert $envVarsToSet into a hashtable for easier lookup
     $expectedVars = @{}
     $envVarsToSet | ForEach-Object {
-        $name, $value = $_ -split '='
-        $expectedVars[$name] = $value
+        $equalIndex = $_.IndexOf('=')
+        if ($equalIndex -gt 0) {
+            $name = $_.Substring(0, $equalIndex)
+            $value = $_.Substring($equalIndex + 1)
+            $expectedVars[$name] = $value
+        }
     }
 
     foreach ($name in $expectedVars.Keys) {

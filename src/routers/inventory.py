@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from common_openai_functions import get_all_vector_stores
-from utils import *
+from utils import log_function_header, log_function_footer, log_function_output, convert_to_html_table
 
 router = APIRouter()
 

@@ -1,4 +1,4 @@
-import asyncio, datetime, json, logging, os, uuid
+import datetime, json, logging
 from typing import Any, Dict, Optional
 
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
@@ -6,8 +6,7 @@ from fastapi import APIRouter, File, Form, Header, HTTPException, Request, Uploa
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 import httpx
 
-from utils import *
-
+from utils import log_function_header, log_function_footer, log_function_output
 router = APIRouter()
 
 # Configuration will be injected from app.py

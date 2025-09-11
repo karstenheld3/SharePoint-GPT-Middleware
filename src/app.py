@@ -1,4 +1,4 @@
-import ctypes, inspect, logging, os, platform
+import ctypes, inspect, logging, os, platform, shutil
 from dataclasses import dataclass
 from typing import Optional
 
@@ -8,11 +8,11 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 
-from common_openai_functions import *
-from hardcoded_config import *
+from common_openai_functions import create_async_azure_openai_client_with_api_key, create_async_azure_openai_client_with_credential, create_async_openai_client
+from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from routers.sharepoint_search import build_domains_and_metadata_cache
 from routers import sharepoint_search, openai_proxy, inventory
-from utils import *
+from utils import ZipExtractionMode, extract_zip_files, format_filesize, format_config_for_displaying, convert_to_html_table, log_function_header, log_function_footer
 
 # Load environment variables from a local .env file if present
 load_dotenv()
