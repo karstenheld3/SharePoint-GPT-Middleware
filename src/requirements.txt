@@ -64,8 +64,6 @@ msal-extensions==1.3.1
     # via azure-identity
 openai==1.101.0
     # via sharepoint-gpt-middleware (src/pyproject.toml)
-psutil==7.0.0
-    # via sharepoint-gpt-middleware (src/pyproject.toml)
 pycparser==2.22
     # via cffi
 pydantic==2.11.7
