@@ -9,8 +9,7 @@ from azure.core.credentials import TokenCredential
 from azure.core.credentials_async import AsyncTokenCredential
 from azure.identity import ClientSecretCredential as SyncClientSecretCredential, DefaultAzureCredential as SyncDefaultAzureCredential, get_bearer_token_provider as sync_get_bearer_token_provider
 from azure.identity.aio import ClientSecretCredential, DefaultAzureCredential, get_bearer_token_provider
-import httpx
-import openai
+from openai import AsyncAzureOpenAI, AsyncOpenAI
 from openai._types import Body, Headers, NOT_GIVEN, NotGiven, Query
 from openai.types.responses import ResponseInputParam, ResponseTextConfigParam, ToolParam, response_create_params
 from openai.types.responses.response_includable import ResponseIncludable
@@ -18,6 +17,8 @@ from openai.types.responses.response_prompt_param import ResponsePromptParam
 from openai.types.shared_params.metadata import Metadata
 from openai.types.shared_params.reasoning import Reasoning
 from openai.types.shared_params.responses_model import ResponsesModel
+
+import httpx
 
 from utils import log_function_output
 
@@ -86,13 +87,13 @@ class CoaiResponseParams:
 def create_async_openai_client(api_key):
   if not api_key:
     raise ValueError("OPENAI_API_KEY is required when OPENAI_SERVICE_TYPE is set to 'openai'")
-  return openai.AsyncOpenAI(api_key=api_key)
+  return AsyncOpenAI(api_key=api_key)
 
 # Create an async Azure OpenAI client using API key authentication
 def create_async_azure_openai_client_with_api_key(endpoint, api_version, api_key):
   if not endpoint or not api_key:
     raise ValueError("AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY are required for Azure OpenAI key authentication")
-  return openai.AsyncAzureOpenAI(api_version=api_version, azure_endpoint=endpoint, api_key=api_key)
+  return AsyncAzureOpenAI(api_version=api_version, azure_endpoint=endpoint, api_key=api_key)
 
 # Create an async Azure OpenAI client with any AsyncTokenCredential
 # ClientSecretCredential(tenant_id=tenant_id, client_id=client_id, client_secret=client_secret)
@@ -101,7 +102,7 @@ def create_async_azure_openai_client_with_credential(endpoint, api_version, cred
   if not endpoint:
     raise ValueError("AZURE_OPENAI_ENDPOINT is required for Azure OpenAI credential authentication")
   token_provider = get_bearer_token_provider(credential, "https://cognitiveservices.azure.com/.default")
-  return openai.AsyncAzureOpenAI(api_version=api_version, azure_endpoint=endpoint, azure_ad_token_provider=token_provider, max_retries=5)
+  return AsyncAzureOpenAI(api_version=api_version, azure_endpoint=endpoint, azure_ad_token_provider=token_provider, max_retries=5)
 
 # Retries the given function on rate limit errors
 def retry_on_openai_rate_limit_errors_for_sync_client(fn, function_name="retry_on_openai_errors", request_number=0, indentation=0, retries=5, backoff_seconds=10):

@@ -76,17 +76,17 @@ try {$subscription = Connect-AzAccount -Tenant "$($config.AZURE_TENANT_ID)" -Sub
 catch {throw "$($_.Exception.Message)"}
 if ($null -eq $subscription) { throw $errorMessage }
 
-# Set the Azure CLI subscription
-az account set --subscription "$($config.AZURE_SUBSCRIPTION_ID)"
+# Set the Azure PowerShell subscription context
+Set-AzContext -Subscription "$($config.AZURE_SUBSCRIPTION_ID)"
 
 Set-Location $PSScriptRoot
 
 # Check if app service exists
 Write-Host "Checking if app service '$($config.AZURE_APP_SERVICE_NAME)' exists..."
 $errorMessage = "ERROR: Web app not found '$($config.AZURE_APP_SERVICE_NAME)'"
-try { $retVal = az webapp show --name $config.AZURE_APP_SERVICE_NAME --resource-group $config.AZURE_RESOURCE_GROUP }
+try { $webAppCheck = Get-AzWebApp -ResourceGroupName $config.AZURE_RESOURCE_GROUP -Name $config.AZURE_APP_SERVICE_NAME }
 catch {throw "$($_.Exception.Message)"}
-if ($null -eq $retVal) { throw $errorMessage }
+if ($null -eq $webAppCheck) { throw $errorMessage }
 
 Write-Host "Access the app service here:"
 Write-Host "   https://$($config.AZURE_APP_SERVICE_NAME).azurewebsites.net" -ForegroundColor Cyan
@@ -112,12 +112,20 @@ foreach ($key in $config.Keys | Sort-Object) {
 
 if ($envVarsToSet.Count -gt 0) {
     Write-Host "Setting Azure App Service environment variables..."    
-    # Set the app settings
-    $retVal = az webapp config appsettings set `
-        --name $config.AZURE_APP_SERVICE_NAME `
-        --resource-group $config.AZURE_RESOURCE_GROUP `
-        --settings $envVarsToSet
-        
+    # Convert array of "key=value" strings to hashtable for PowerShell
+    $settingsHashtable = @{}
+    $envVarsToSet | ForEach-Object {
+        $equalIndex = $_.IndexOf('=')
+        if ($equalIndex -gt 0) {
+            $name = $_.Substring(0, $equalIndex)
+            $value = $_.Substring($equalIndex + 1)
+            $settingsHashtable[$name] = $value
+        }
+    }
+    
+    # Set the app settings using PowerShell
+    $retVal = Set-AzWebAppSlot -ResourceGroupName $config.AZURE_RESOURCE_GROUP -Name $config.AZURE_APP_SERVICE_NAME -AppSettings $settingsHashtable -Slot "production"
+
     # Verify the settings were set
     Write-Host "Verifying environment variables in Azure App Service:"
     $currentSettings = az webapp config appsettings list `
@@ -150,10 +158,14 @@ if ($envVarsToSet.Count -gt 0) {
 }
 
 Write-Host "Setting startup command to '$($appServiceStartupCommand)'..."
-$retVal = az webapp config set --name $config.AZURE_APP_SERVICE_NAME --resource-group $config.AZURE_RESOURCE_GROUP --startup-file $appServiceStartupCommand
+# Get current web app configuration
+$webApp = Get-AzWebApp -ResourceGroupName $config.AZURE_RESOURCE_GROUP -Name $config.AZURE_APP_SERVICE_NAME
+$webApp.SiteConfig.AppCommandLine = $appServiceStartupCommand
+$retVal = Set-AzWebApp -WebApp $webApp
 
 Write-Host "Configuring logging..."
-$retVal = az webapp log config --name $config.AZURE_APP_SERVICE_NAME --resource-group $config.AZURE_RESOURCE_GROUP --application-logging filesystem
+# Enable application logging using PowerShell
+$retVal = Set-AzWebApp -ResourceGroupName $config.AZURE_RESOURCE_GROUP -Name $config.AZURE_APP_SERVICE_NAME -AppServicePlan $config.AZURE_APP_SERVICE_PLAN -HttpLoggingEnabled $true -RequestTracingEnabled $true
 
 # Delete old zip file if it exists
 If (Test-Path "$PSScriptRoot\$deployZipFilename") { Remove-Item "$PSScriptRoot\$deployZipFilename" -Force }
@@ -169,7 +181,8 @@ if (Test-Path $rootReq) { $items = @($items) + $rootReq }
 Compress-Archive -Path $items -DestinationPath $zipPath -Force
 
 Write-Host "Deploying application..."
-$retVal = az webapp deploy --resource-group $config.AZURE_RESOURCE_GROUP --name $config.AZURE_APP_SERVICE_NAME --src-path $zipPath --type zip
+# Deploy using PowerShell - Publish-AzWebApp
+$retVal = Publish-AzWebApp -ResourceGroupName $config.AZURE_RESOURCE_GROUP -Name $config.AZURE_APP_SERVICE_NAME -ArchivePath $zipPath -Force
 
 Write-Host "Deleting '$zipPath'..."
 if (Test-Path "$PSScriptRoot\$deployZipFilename") { Remove-Item "$PSScriptRoot\$deployZipFilename" -Force }

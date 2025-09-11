@@ -1,4 +1,4 @@
-import ctypes, inspect, logging, os, platform, shutil
+import ctypes, inspect, logging, os, platform, shutil, tempfile
 from dataclasses import dataclass
 from typing import Optional
 
@@ -10,9 +10,9 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 
 from common_openai_functions import create_async_azure_openai_client_with_api_key, create_async_azure_openai_client_with_credential, create_async_openai_client
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
+from routers import inventory, openai_proxy, sharepoint_search
 from routers.sharepoint_search import build_domains_and_metadata_cache
-from routers import sharepoint_search, openai_proxy, inventory
-from utils import ZipExtractionMode, extract_zip_files, format_filesize, format_config_for_displaying, convert_to_html_table, log_function_header, log_function_footer
+from utils import ZipExtractionMode, convert_to_html_table, extract_zip_files, format_config_for_displaying, format_filesize, log_function_footer, log_function_header
 
 # Load environment variables from a local .env file if present
 load_dotenv()
@@ -113,7 +113,6 @@ def test_directory_writable(directory_path: str) -> bool:
   if not os.path.exists(directory_path) or not os.path.isdir(directory_path):
     return False
   
-  import tempfile
   try:
     # Create a temporary file in the directory
     with tempfile.NamedTemporaryFile(dir=directory_path, delete=False) as temp_file:
