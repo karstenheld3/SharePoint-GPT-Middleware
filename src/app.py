@@ -1,15 +1,17 @@
-import os, json, inspect, logging, psutil, shutil
-from typing import Optional
+import ctypes, inspect, json, logging, os, platform
 from dataclasses import dataclass
-from fastapi import FastAPI, Request
-from fastapi.responses import PlainTextResponse, HTMLResponse, Response
-from fastapi.middleware.cors import CORSMiddleware
+from typing import Optional
+
+from azure.identity.aio import ClientSecretCredential, DefaultAzureCredential
 from dotenv import load_dotenv
-from azure.identity.aio import DefaultAzureCredential, ClientSecretCredential
-from routers import openai_proxy, sharepoint_search, inventory
-from utils import *
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response
+
 from common_openai_functions import *
-from hardcoded_config import CRAWLER_HARDCODED_CONFIG
+from hardcoded_config import *
+from routers import *
+from utils import *
 
 # Load environment variables from a local .env file if present
 load_dotenv()
@@ -161,53 +163,71 @@ def test_directory_writable(directory_path: str) -> bool:
 
 def create_system_info() -> SystemInfo:
   """Create system information with original values (not converted to GB)."""
+  retVal = SystemInfo(
+    TOTAL_MEMORY_BYTES=0,
+    FREE_MEMORY_BYTES=0,
+    ENVIRONMENT="Error",
+    PERSISTENT_STORAGE_PATH="",
+    PERSISTENT_STORAGE_FREE_SPACE_BYTES="N/A",
+    PERSISTENT_STORAGE_TOTAL_SPACE_BYTES="N/A",
+    APP_SRC_PATH=os.path.dirname(os.path.abspath(__file__))
+  )
+
   try:
     # Get memory information
-    memory = psutil.virtual_memory()
-    
-    # Determine environment and persistent storage path
+    if platform.system() == "Windows":
+      class MEMORYSTATUSEX(ctypes.Structure):
+        _fields_ = [
+          ("dwLength", ctypes.c_ulong),
+          ("dwMemoryLoad", ctypes.c_ulong),
+          ("ullTotalPhys", ctypes.c_ulonglong),
+          ("ullAvailPhys", ctypes.c_ulonglong),
+          ("ullTotalPageFile", ctypes.c_ulonglong),
+          ("ullAvailPageFile", ctypes.c_ulonglong),
+          ("ullTotalVirtual", ctypes.c_ulonglong),
+          ("ullAvailVirtual", ctypes.c_ulonglong),
+          ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+        ]
+      stat = MEMORYSTATUSEX()
+      stat.dwLength = ctypes.sizeof(stat)
+      ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
+      retVal.TOTAL_MEMORY_BYTES = stat.ullTotalPhys
+      retVal.FREE_MEMORY_BYTES = stat.ullAvailPhys
+    else:
+      # Unix-like systems
+      pagesize = os.sysconf("SC_PAGE_SIZE")
+      total_pages = os.sysconf("SC_PHYS_PAGES")
+      avail_pages = os.sysconf("SC_AVPHYS_PAGES")
+      retVal.TOTAL_MEMORY_BYTES = pagesize * total_pages
+      retVal.FREE_MEMORY_BYTES = pagesize * avail_pages
+
+    # Determine environment
     is_azure_environment = is_running_on_azure_app_service()
-    
-    if is_azure_environment: persistent_storage_path = os.getenv("HOME", "/home")
-    else: persistent_storage_path = os.getenv('LOCAL_PERSISTENT_STORAGE_PATH') or ""
-    
-    # Determine APP_SRC_PATH
-    # Get the directory where this file is located (should be the src folder)
-    app_src_path = os.path.dirname(os.path.abspath(__file__))
-    
+    retVal.ENVIRONMENT = "Azure" if is_azure_environment else "Local"
+
+    # Set persistent storage path
+    if is_azure_environment:
+      retVal.PERSISTENT_STORAGE_PATH = os.getenv("HOME", "/home")
+    else:
+      retVal.PERSISTENT_STORAGE_PATH = os.getenv('LOCAL_PERSISTENT_STORAGE_PATH') or ""
+
     # Get disk space for persistent storage path
-    try:
-      persistent_storage_path_exists = os.path.exists(persistent_storage_path)
-      check_path = persistent_storage_path if persistent_storage_path_exists else (os.getcwd() if os.path.exists(os.getcwd()) else os.path.expanduser("~"))
+    if retVal.PERSISTENT_STORAGE_PATH and os.path.exists(retVal.PERSISTENT_STORAGE_PATH):
+      disk_usage = shutil.disk_usage(retVal.PERSISTENT_STORAGE_PATH)
+      retVal.PERSISTENT_STORAGE_FREE_SPACE_BYTES = disk_usage.free
+      retVal.PERSISTENT_STORAGE_TOTAL_SPACE_BYTES = disk_usage.total
+    else:
+      # Try current directory or home directory as fallback
+      check_path = os.getcwd() if os.path.exists(os.getcwd()) else os.path.expanduser("~")
       disk_usage = shutil.disk_usage(check_path)
-      free_space_bytes = disk_usage.free
-      total_space_bytes = disk_usage.total
-    except (OSError, FileNotFoundError, PermissionError) as e:
-      print(f"Warning: Could not get disk usage for path '{persistent_storage_path}': {e}")
-      free_space_bytes = "N/A"
-      total_space_bytes = "N/A"
-    
-    return SystemInfo(
-      TOTAL_MEMORY_BYTES=memory.total,
-      FREE_MEMORY_BYTES=memory.available,
-      ENVIRONMENT="Azure" if is_azure_environment else "Local",
-      PERSISTENT_STORAGE_PATH=persistent_storage_path,
-      PERSISTENT_STORAGE_FREE_SPACE_BYTES=free_space_bytes,
-      PERSISTENT_STORAGE_TOTAL_SPACE_BYTES=total_space_bytes,
-      APP_SRC_PATH=app_src_path
-    )
-    
+      retVal.PERSISTENT_STORAGE_FREE_SPACE_BYTES = disk_usage.free
+      retVal.PERSISTENT_STORAGE_TOTAL_SPACE_BYTES = disk_usage.total
+
   except Exception as e:
-    # Return a fallback SystemInfo with error information
-    return SystemInfo(
-      TOTAL_MEMORY_BYTES=0,
-      FREE_MEMORY_BYTES=0,
-      ENVIRONMENT="Error",
-      PERSISTENT_STORAGE_PATH=f"Error: {str(e)}",
-      PERSISTENT_STORAGE_FREE_SPACE_BYTES="N/A",
-      PERSISTENT_STORAGE_TOTAL_SPACE_BYTES="N/A",
-      APP_SRC_PATH="N/A"
-    )
+    retVal.ENVIRONMENT = "Error"
+    retVal.PERSISTENT_STORAGE_PATH = f"Error: {str(e)}"
+
+  return retVal
 
 def create_app() -> FastAPI:
   """Create and configure the FastAPI application."""
@@ -222,6 +242,25 @@ def create_app() -> FastAPI:
   # Create system info
   system_info = create_system_info()
   app.state.system_info = system_info
+
+  # Validate paths before zip extraction
+  if not system_info.APP_SRC_PATH or system_info.APP_SRC_PATH == "N/A":
+    initialization_errors.append({"component": "Zip Extraction", "error": "Source path not configured"})
+  elif not os.path.exists(system_info.APP_SRC_PATH):
+    initialization_errors.append({"component": "Zip Extraction", "error": f"Source path not found: {system_info.APP_SRC_PATH}"})
+  elif not system_info.PERSISTENT_STORAGE_PATH:
+    initialization_errors.append({"component": "Zip Extraction", "error": "Destination path not configured. Set LOCAL_PERSISTENT_STORAGE_PATH environment variable."})
+  elif not os.path.exists(system_info.PERSISTENT_STORAGE_PATH):
+    initialization_errors.append({"component": "Zip Extraction", "error": f"Destination path not found: {system_info.PERSISTENT_STORAGE_PATH}"})
+  else:
+    # Process overwrite folder
+    overwrite_source_folder = os.path.join(system_info.APP_SRC_PATH, CRAWLER_HARDCODED_CONFIG.UNZIP_TO_PERSISTENT_STORAGE_OVERWRITE)
+    extract_zip_files(overwrite_source_folder, system_info.PERSISTENT_STORAGE_PATH, ZipExtractionMode.OVERWRITE, initialization_errors)
+
+    # Process if-newer folder
+    if_newer_source_folder = os.path.join(system_info.APP_SRC_PATH, CRAWLER_HARDCODED_CONFIG.UNZIP_TO_PERSISTENT_STORAGE_IF_NEWER)
+    extract_zip_files(if_newer_source_folder, system_info.PERSISTENT_STORAGE_PATH, ZipExtractionMode.OVERWRITE_IF_NEWER, initialization_errors)
+
   # Build domains and metadata cache
   domains, metadata_cache = build_domains_and_metadata_cache(config, system_info)
   app.state.domains = domains

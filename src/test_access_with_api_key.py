@@ -1,6 +1,7 @@
-import os, logging
-from openai import AzureOpenAI
+import logging, os
+
 from dotenv import load_dotenv
+from openai import AzureOpenAI
 
 load_dotenv()
 

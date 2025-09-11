@@ -1,21 +1,24 @@
 # Common Open AI functions (COAI)
 # Copyright 2025, Karsten Held (MIT License)
 
-import os, time, openai, httpx
+import os, time
 from dataclasses import dataclass
-from typing import List, Optional, Union, Iterable, Literal, Dict
-from azure.identity.aio import DefaultAzureCredential, ClientSecretCredential, get_bearer_token_provider
-from azure.identity import ClientSecretCredential as SyncClientSecretCredential, DefaultAzureCredential as SyncDefaultAzureCredential, get_bearer_token_provider as sync_get_bearer_token_provider
+from typing import Dict, Iterable, List, Literal, Optional, Union
+
 from azure.core.credentials import TokenCredential
 from azure.core.credentials_async import AsyncTokenCredential
-from openai.types.responses import ResponseInputParam, ResponseTextConfigParam, ToolParam
+from azure.identity import ClientSecretCredential as SyncClientSecretCredential, DefaultAzureCredential as SyncDefaultAzureCredential, get_bearer_token_provider as sync_get_bearer_token_provider
+from azure.identity.aio import ClientSecretCredential, DefaultAzureCredential, get_bearer_token_provider
+import httpx
+import openai
+from openai._types import Body, Headers, NOT_GIVEN, NotGiven, Query
+from openai.types.responses import ResponseInputParam, ResponseTextConfigParam, ToolParam, response_create_params
 from openai.types.responses.response_includable import ResponseIncludable
 from openai.types.responses.response_prompt_param import ResponsePromptParam
-from openai.types.shared_params.responses_model import ResponsesModel
 from openai.types.shared_params.metadata import Metadata
 from openai.types.shared_params.reasoning import Reasoning
-from openai.types.responses import response_create_params
-from openai._types import NOT_GIVEN, NotGiven, Headers, Query, Body
+from openai.types.shared_params.responses_model import ResponsesModel
+
 from utils import log_function_output
 
 # Replicate OpenAI Vector Store Search Response types

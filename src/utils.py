@@ -1,5 +1,6 @@
-import datetime, os, html, logging, sys, dataclasses
-from typing import Dict, Any, List
+import dataclasses, datetime, glob, html, logging, os, shutil, sys, time, zipfile
+from enum import Enum
+from typing import Any, Dict, List
 
 # Configure logging for multi-worker environment
 logging.basicConfig(
@@ -10,6 +11,73 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+class ZipExtractionMode(Enum):
+  DO_NOT_OVERWRITE = "do_not_overwrite"
+  OVERWRITE_IF_NEWER = "overwrite_if_newer"
+  OVERWRITE = "overwrite"
+
+def extract_zip_files(source_folder: str, destination_folder: str, mode: ZipExtractionMode, initialization_errors: List[Dict[str, str]]) -> None:
+  """Extract all zip files from source folder to destination folder based on the specified mode."""
+  try:
+    if not os.path.exists(source_folder):
+      return
+    
+    zip_files = glob.glob(os.path.join(source_folder, "*.zip"))
+    for zip_file_path in zip_files:
+      try:
+        with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+          # Process all files in zip
+          for member in zip_ref.infolist():
+            target_file_path = os.path.join(destination_folder, member.filename)
+            target_dir_path = os.path.dirname(target_file_path)
+            
+            # Handle directories
+            if member.is_dir():
+              os.makedirs(target_dir_path, exist_ok=True)
+              continue
+            
+            # Determine if we should extract based on mode
+            should_extract = False
+            if mode == ZipExtractionMode.OVERWRITE:
+              should_extract = True
+            elif mode == ZipExtractionMode.DO_NOT_OVERWRITE:
+              should_extract = not os.path.exists(target_file_path)
+            elif mode == ZipExtractionMode.OVERWRITE_IF_NEWER:
+              if not os.path.exists(target_file_path):
+                should_extract = True
+              else:
+                # Get modification times
+                zip_file_time = member.date_time
+                target_file_mtime = os.path.getmtime(target_file_path)
+                zip_timestamp = time.mktime(zip_file_time + (0, 0, -1))
+                
+                # Check directory timestamp first
+                if os.path.exists(target_dir_path):
+                  dir_mtime = os.path.getmtime(target_dir_path)
+                  should_extract = dir_mtime < zip_timestamp or target_file_mtime <= zip_timestamp
+                else:
+                  should_extract = True
+            else:
+              should_extract = True
+            
+            # Extract if needed
+            if should_extract:
+              os.makedirs(target_dir_path, exist_ok=True)
+              with zip_ref.open(member) as source, open(target_file_path, 'wb') as target:
+                shutil.copyfileobj(source, target)
+              
+              # Set file timestamp to match zip entry
+              zip_file_time = member.date_time
+              zip_timestamp = time.mktime(zip_file_time + (0, 0, -1))
+              os.utime(target_file_path, (zip_timestamp, zip_timestamp))
+          
+          print(f"Extracted {zip_file_path} to {destination_folder} ({mode.value} mode)")
+        
+      except Exception as e:
+        initialization_errors.append({"component": f"Zip Extraction ({mode.value})", "error": f"Failed to extract {zip_file_path}: {str(e)}"})
+  except Exception as e:
+    initialization_errors.append({"component": f"Zip Extraction ({mode.value})", "error": str(e)})
 
 # Global request counter
 _request_counter = 0

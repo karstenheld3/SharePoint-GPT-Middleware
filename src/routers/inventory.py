@@ -1,9 +1,11 @@
-import os, json, logging, datetime
-from typing import Any, Dict, Optional, List
-from fastapi import APIRouter, Request, HTTPException, Query
-from fastapi.responses import JSONResponse, HTMLResponse
-from utils import *
+import datetime, json, logging, os
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse
+
 from common_openai_functions import get_all_vector_stores
+from utils import *
 
 router = APIRouter()
 

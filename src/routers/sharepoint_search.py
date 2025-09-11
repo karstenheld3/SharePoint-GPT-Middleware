@@ -1,10 +1,12 @@
-import os, json, logging
-from typing import Any, Dict, Optional, List, Tuple
-from fastapi import APIRouter, Request, HTTPException, Query
-from fastapi.responses import JSONResponse, HTMLResponse, Response
-from utils import *
+import json, logging, os
+from typing import Any, Dict, List, Optional, Tuple
+
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse, Response
+
 from common_openai_functions import *
 from common_openai_functions import CoaiSearchParams
+from utils import *
 
 router = APIRouter()
 
