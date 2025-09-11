@@ -102,9 +102,9 @@ def format_config_for_displaying(config_obj) -> Dict[str, Any]:
   result = {}
   for field in dataclasses.fields(config_obj):
     value = getattr(config_obj, field.name)    
-    if field.name.endswith("_KEY") or field.name.endswith("_SECRET"): result[field.name] = "[CONFIGURED]" if value else "[NOT CONFIGURED]"
-    elif value is None: result[field.name] = "[NOT CONFIGURED]"
-    else: result[field.name] = value
+    if field.name.endswith("_KEY") or field.name.endswith("_SECRET"): result[field.name] = "✅ [CONFIGURED]" if value else "⚠️ [NOT CONFIGURED]"
+    elif value is None: result[field.name] = "⚠️ [NOT CONFIGURED]"
+    else: result[field.name] = "✅ " + str(value)
   return result
 
 # Format milliseconds into a human-readable string

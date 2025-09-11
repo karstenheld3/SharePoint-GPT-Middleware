@@ -55,6 +55,7 @@ class Config:
   SEARCH_DEFAULT_TEMPERATURE: float
   SEARCH_DEFAULT_INSTRUCTIONS: str
   SEARCH_DEFAULT_SHAREPOINT_ROOT_URL: str
+  LOG_QUERIES_AND_RESPONSES: bool
 
 
 def load_config() -> Config:
@@ -83,6 +84,7 @@ def load_config() -> Config:
     ,SEARCH_DEFAULT_TEMPERATURE=float(os.getenv('SEARCH_DEFAULT_TEMPERATURE', '0.0'))
     ,SEARCH_DEFAULT_INSTRUCTIONS=os.getenv('SEARCH_DEFAULT_INSTRUCTIONS', 'If the query can\'t be answered based on the available information, return N/A.')
     ,SEARCH_DEFAULT_SHAREPOINT_ROOT_URL=os.getenv('SEARCH_DEFAULT_SHAREPOINT_ROOT_URL', '')
+    ,LOG_QUERIES_AND_RESPONSES=os.getenv("LOG_QUERIES_AND_RESPONSES", "false").lower() == "true"
   )
 
 def configure_logging():
@@ -305,7 +307,7 @@ def root() -> str:
       else:
         verification = "❌ Not found"
     
-    system_info_list.append({"Field": key, "Value": value, "Verification": verification})
+    system_info_list.append({"Field": key, "Value": value, "Display Value / Verification": verification})
   
   system_info_html = f"<h4>System Information</h4>{convert_to_html_table(system_info_list)}"
   

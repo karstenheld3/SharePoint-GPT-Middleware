@@ -93,20 +93,18 @@ def build_data_object(query, search_results, response, metadata_cache):
 
 # Internal query function (used by /query and /query2) that returns a JSON response, the original data object and an error message (if any)
 async def _internal_request_to_llm(request: Request, request_params: dict, request_data: dict) -> tuple[JSONResponse, Any, str]:
-  request_number = request_data["request_number"]
-  function_name = '_internal_request_to_llm()'
   query = request_params.get('query', '')
   vsid = request_params.get('vsid', None)
   max_num_results = int(request_params.get('results', config.SEARCH_DEFAULT_MAX_NUM_RESULTS))
   temperature = config.SEARCH_DEFAULT_TEMPERATURE
-  instructions = request_params.get('instructions', config.SEARCH_DEFAULT_INSTRUCTIONS)
 
   error_message = ""
   data = {'query': query, 'answer': '', 'source_markers': ['【', '】'], 'sources': []}
 
   # Do not throw errors on empty messages. Instead return empty 'data' result
   if query:
-    log_function_output(request_data, f"Query: {sanitize_queries_and_responses(truncate_string(query,80))}")
+    truncate_length = 200 if config.LOG_QUERIES_AND_RESPONSES else 5
+    log_function_output(request_data, f"Query: {sanitize_queries_and_responses(truncate_string(query, truncate_length))}")
     if not vsid: vsid = config.SEARCH_DEFAULT_GLOBAL_VECTOR_STORE_ID
 
     # try to get the vector store (with caching)
@@ -159,7 +157,7 @@ async def _internal_request_to_llm(request: Request, request_params: dict, reque
       return JSONResponse({'error': error_message}), data, error_message
     
     output_text = openai_response.output_text
-    log_function_output(request_data, f"Response: {sanitize_queries_and_responses(remove_linebreaks(truncate_string(output_text,80)))}")
+    log_function_output(request_data, f"Response: {sanitize_queries_and_responses(remove_linebreaks(truncate_string(output_text, truncate_length)))}")
     search_results_count = len(search_results)
     log_function_output(request_data, f"status='{openai_response.status}', tool_choice='{openai_response.tool_choice}', search_results_count={search_results_count}, input_tokens={openai_response.usage.input_tokens}, output_tokens={openai_response.usage.output_tokens}")
     data = build_data_object(query, search_results, openai_response, request.app.state.metadata_cache)
@@ -169,7 +167,6 @@ async def _internal_request_to_llm(request: Request, request_params: dict, reque
 
 # internal query endpoint function
 async def _internal_query(function_name: str, request: Request, request_data: dict) -> JSONResponse:
-  request_number = request_data["request_number"]
 
   # Get request data and validate
   message = ""

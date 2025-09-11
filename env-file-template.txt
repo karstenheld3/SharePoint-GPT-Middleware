@@ -52,6 +52,8 @@ SEARCH_DEFAULT_SHAREPOINT_ROOT_URL=https://<your_sharepoint_url>/
 
 # Path of home directory to save files when app runs under http://127.0.0.1:8000/, mimicking the app service D:\home folder
 LOCAL_PERSISTENT_STORAGE_PATH=C:\dev\localhome
+# false: truncation of queries and responses to 5 characters in logs to ensure privacy; true: truncation to 200 characters 
+LOG_QUERIES_AND_RESPONSES=false
 
 # ------------------------- END: Global Configuration -----------------------------------------------------------------
 

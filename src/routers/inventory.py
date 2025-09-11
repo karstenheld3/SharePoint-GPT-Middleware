@@ -36,10 +36,12 @@ def convert_vector_stores_to_dict(vector_stores):
     # Handle created_at serialization
     created_at = getattr(vs, 'created_at', None)
     if created_at:
-      try: created_at2 = datetime.datetime.fromtimestamp(float(created_at))
+      try: created_at2 = datetime.datetime.fromtimestamp(float(created_at)).isoformat()
       except Exception as e:
         logger.warning(f"Failed to convert timestamp {created_at}: {e}")
         created_at2 = str(created_at)
+    else:
+      created_at2 = None
     
     vs_dict = {
       'id': vs.id,
@@ -54,7 +56,8 @@ def convert_vector_stores_to_dict(vector_stores):
   return retVal
 
 
-async def _internal_vectorstores(request: Request, request_params, function_name: str, request_data: dict):
+@router.get('/vectorstores')
+async def vectorstores(request: Request):
   """
   Endpoint to retrieve all vector stores from Azure OpenAI.
   
@@ -65,14 +68,19 @@ async def _internal_vectorstores(request: Request, request_params, function_name
   /vectorstores
   /vectorstores?format=json
   """
+  function_name = 'vectorstores()'
+  request_data = log_function_header(function_name)
+  request_params = dict(request.query_params)
+  
   endpoint = '/' + function_name.replace('()','')  
-  endpoint_documentation = _internal_vectorstores.__doc__
+  endpoint_documentation = vectorstores.__doc__
   documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
 
   format = request_params.get('format', None)
   
   # Display documentation if no params are provided
   if len(request_params) == 0:
+    await log_function_footer(request_data)
     return HTMLResponse(documentation_HTML)
   
   try:
@@ -82,31 +90,24 @@ async def _internal_vectorstores(request: Request, request_params, function_name
     if format == 'json':
       # Convert vector stores to serializable format
       retVal = convert_vector_stores_to_dict(vector_stores)
+      await log_function_footer(request_data)
       return JSONResponse({"data": retVal})
     else:
       # HTML format - now uses array of dicts directly
       vector_stores_list = convert_vector_stores_to_dict(vector_stores)
       table_html = convert_to_html_table(vector_stores_list)
       html_content = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Vector Stores</title></head><body><h1>Vector Stores ({len(vector_stores)} found)</h1>{table_html}</body></html>"
+      await log_function_footer(request_data)
       return HTMLResponse(html_content)
       
   except Exception as e:
-    logger.exception(f"Error retrieving vector stores: {e}")
     error_message = f"Error retrieving vector stores: {str(e)}"
+    log_function_output(request_data, f"ERROR: {error_message}")
     
+    await log_function_footer(request_data)
     if format == 'json':
       return JSONResponse({"error": error_message}, status_code=500)
     else:
       error_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Error</title></head><body><h1>Error</h1><p>{error_message}</p></body></html>"
       return HTMLResponse(error_html, status_code=500)
-
-
-@router.get('/vectorstores')
-async def vectorstores(request: Request):
-  function_name = 'vectorstores()'
-  request_data = log_function_header(function_name)
-  request_params = dict(request.query_params)
-  retVal = await _internal_vectorstores(request, request_params, function_name, request_data)
-  await log_function_footer(request_data)
-  return retVal
 
