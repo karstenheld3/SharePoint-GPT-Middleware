@@ -11,7 +11,7 @@
     {
       "label": "Run API (Uvicorn)",
       "type": "shell",
-      "command": "python",
+      "command": ".venv\\Scripts\\python.exe",
       "args": [
         "-m", "uvicorn",
         "app:app",
