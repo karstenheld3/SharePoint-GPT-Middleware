@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from common_openai_functions import *
 from common_openai_functions import CoaiSearchParams
 from utils import *
+from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 
 router = APIRouter()
 
@@ -22,6 +23,46 @@ logger = logging.getLogger(__name__)
 
 # Cache for vector store IDs
 found_vector_store_ids = {}
+
+def build_domains_and_metadata_cache(config, system_info, initialization_errors):
+  metadata_cache = {}; domains = []
+  try:
+    domains_folder_path = os.path.join(system_info.PERSISTENT_STORAGE_PATH, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER)
+    
+    if not os.path.exists(domains_folder_path):
+      initialization_errors.append({"component": "SharePoint Data Loading", "error": f"Domains folder not found: {domains_folder_path}"})
+      return domains, metadata_cache
+    
+    # Iterate through each domain folder (VMS, HOIT, etc.)
+    for domain_folder_name in os.listdir(domains_folder_path):
+      domain_folder_path = os.path.join(domains_folder_path, domain_folder_name)
+      
+      # Skip folders that start with an underscore (_)
+      if not os.path.isdir(domain_folder_path) or domain_folder_name.startswith('_'):
+        continue
+      
+      # Load domain.json
+      domain_json_path = os.path.join(domain_folder_path, "domain.json")
+      if os.path.exists(domain_json_path):
+        with open(domain_json_path, 'r', encoding='utf-8') as f:
+          domain_data = json.load(f)
+          # exclude global vector store from domains
+          if domain_data.get('vector_store_id') != config.SEARCH_DEFAULT_GLOBAL_VECTOR_STORE_ID:
+            domains.append({"name": domain_data.get('name', domain_folder_name), "description": domain_data.get('description', '')})
+      
+      # Load files_metadata.json
+      files_metadata_json_path = os.path.join(domain_folder_path, "files_metadata.json")
+      if os.path.exists(files_metadata_json_path):
+        with open(files_metadata_json_path, 'r', encoding='utf-8') as f:
+          files_metadata = json.load(f)
+          for file_data in files_metadata:
+            if 'file_id' in file_data and 'file_metadata' in file_data:
+              metadata_cache[file_data['file_id']] = file_data['file_metadata']
+              
+  except Exception as e:
+    initialization_errors.append({"component": "SharePoint Data Loading", "error": str(e)})
+  return domains, metadata_cache
+
 
 # Convert search_results to data object as required by /query endpoint with array of sources { "data": "<text>", "source": "<url>", "metadata": { <attributes> } }
 def build_data_object(query, search_results, response, metadata_cache):

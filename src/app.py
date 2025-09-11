@@ -1,4 +1,4 @@
-import ctypes, inspect, json, logging, os, platform
+import ctypes, inspect, logging, os, platform
 from dataclasses import dataclass
 from typing import Optional
 
@@ -10,7 +10,8 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 
 from common_openai_functions import *
 from hardcoded_config import *
-from routers import *
+from routers.sharepoint_search import build_domains_and_metadata_cache
+from routers import sharepoint_search, openai_proxy, inventory
 from utils import *
 
 # Load environment variables from a local .env file if present
@@ -23,6 +24,7 @@ initialization_errors = []
 class SystemInfo:
   TOTAL_MEMORY_BYTES: int
   FREE_MEMORY_BYTES: int
+  NUMBER_OF_CORES: int
   ENVIRONMENT: str
   PERSISTENT_STORAGE_PATH: str
   PERSISTENT_STORAGE_FREE_SPACE_BYTES: int | str
@@ -99,45 +101,6 @@ def configure_logging():
   logging.getLogger('openai._base_client').setLevel(logging.WARNING)
   logging.getLogger('httpcore').setLevel(logging.WARNING)
 
-def build_domains_and_metadata_cache(config, system_info):
-  metadata_cache = {}; domains = []
-  try:
-    domains_folder_path = os.path.join(system_info.PERSISTENT_STORAGE_PATH, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER)
-    
-    if not os.path.exists(domains_folder_path):
-      initialization_errors.append({"component": "SharePoint Data Loading", "error": f"Domains folder not found: {domains_folder_path}"})
-      return domains, metadata_cache
-    
-    # Iterate through each domain folder (VMS, HOIT, etc.)
-    for domain_folder_name in os.listdir(domains_folder_path):
-      domain_folder_path = os.path.join(domains_folder_path, domain_folder_name)
-      
-      # Skip folders that start with an underscore (_)
-      if not os.path.isdir(domain_folder_path) or domain_folder_name.startswith('_'):
-        continue
-      
-      # Load domain.json
-      domain_json_path = os.path.join(domain_folder_path, "domain.json")
-      if os.path.exists(domain_json_path):
-        with open(domain_json_path, 'r', encoding='utf-8') as f:
-          domain_data = json.load(f)
-          # exclude global vector store from domains
-          if domain_data.get('vector_store_id') != config.SEARCH_DEFAULT_GLOBAL_VECTOR_STORE_ID:
-            domains.append({"name": domain_data.get('name', domain_folder_name), "description": domain_data.get('description', '')})
-      
-      # Load files_metadata.json
-      files_metadata_json_path = os.path.join(domain_folder_path, "files_metadata.json")
-      if os.path.exists(files_metadata_json_path):
-        with open(files_metadata_json_path, 'r', encoding='utf-8') as f:
-          files_metadata = json.load(f)
-          for file_data in files_metadata:
-            if 'file_id' in file_data and 'file_metadata' in file_data:
-              metadata_cache[file_data['file_id']] = file_data['file_metadata']
-              
-  except Exception as e:
-    initialization_errors.append({"component": "SharePoint Data Loading", "error": str(e)})
-  return domains, metadata_cache
-  
 
 def is_running_on_azure_app_service() -> bool:
   """Detect if the application is running on Azure App Service."""
@@ -162,70 +125,53 @@ def test_directory_writable(directory_path: str) -> bool:
     return False
 
 def create_system_info() -> SystemInfo:
-  """Create system information with original values (not converted to GB)."""
+  """Create system information."""
   retVal = SystemInfo(
-    TOTAL_MEMORY_BYTES=0,
-    FREE_MEMORY_BYTES=0,
-    ENVIRONMENT="Error",
+    TOTAL_MEMORY_BYTES=-1,
+    FREE_MEMORY_BYTES=-1,
+    NUMBER_OF_CORES=-1,
+    ENVIRONMENT="N/A",
     PERSISTENT_STORAGE_PATH="",
     PERSISTENT_STORAGE_FREE_SPACE_BYTES="N/A",
     PERSISTENT_STORAGE_TOTAL_SPACE_BYTES="N/A",
     APP_SRC_PATH=os.path.dirname(os.path.abspath(__file__))
   )
 
+  # Get number of CPU cores
+  try: retVal.NUMBER_OF_CORES = os.cpu_count() or -1 if platform.system() == "Windows" else os.sysconf('SC_NPROCESSORS_ONLN')
+  except: pass
+  
+  # Get memory information
   try:
-    # Get memory information
     if platform.system() == "Windows":
       class MEMORYSTATUSEX(ctypes.Structure):
         _fields_ = [
-          ("dwLength", ctypes.c_ulong),
-          ("dwMemoryLoad", ctypes.c_ulong),
-          ("ullTotalPhys", ctypes.c_ulonglong),
-          ("ullAvailPhys", ctypes.c_ulonglong),
-          ("ullTotalPageFile", ctypes.c_ulonglong),
-          ("ullAvailPageFile", ctypes.c_ulonglong),
-          ("ullTotalVirtual", ctypes.c_ulonglong),
-          ("ullAvailVirtual", ctypes.c_ulonglong),
-          ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+          ("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong), ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+          ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong), ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong), ("ullAvailExtendedVirtual", ctypes.c_ulonglong)
         ]
-      stat = MEMORYSTATUSEX()
-      stat.dwLength = ctypes.sizeof(stat)
-      ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
-      retVal.TOTAL_MEMORY_BYTES = stat.ullTotalPhys
-      retVal.FREE_MEMORY_BYTES = stat.ullAvailPhys
+      stat = MEMORYSTATUSEX(); stat.dwLength = ctypes.sizeof(stat); ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
+      retVal.TOTAL_MEMORY_BYTES = stat.ullTotalPhys; retVal.FREE_MEMORY_BYTES = stat.ullAvailPhys
     else:
-      # Unix-like systems
-      pagesize = os.sysconf("SC_PAGE_SIZE")
-      total_pages = os.sysconf("SC_PHYS_PAGES")
-      avail_pages = os.sysconf("SC_AVPHYS_PAGES")
-      retVal.TOTAL_MEMORY_BYTES = pagesize * total_pages
-      retVal.FREE_MEMORY_BYTES = pagesize * avail_pages
+      pagesize = os.sysconf("SC_PAGE_SIZE"); total_pages = os.sysconf("SC_PHYS_PAGES"); avail_pages = os.sysconf("SC_AVPHYS_PAGES")
+      retVal.TOTAL_MEMORY_BYTES = pagesize * total_pages; retVal.FREE_MEMORY_BYTES = pagesize * avail_pages
+  except: pass
 
-    # Determine environment
-    is_azure_environment = is_running_on_azure_app_service()
-    retVal.ENVIRONMENT = "Azure" if is_azure_environment else "Local"
+  # Determine environment
+  try: is_azure_environment = is_running_on_azure_app_service(); retVal.ENVIRONMENT = "Azure" if is_azure_environment else "Local"
+  except: pass
 
-    # Set persistent storage path
-    if is_azure_environment:
-      retVal.PERSISTENT_STORAGE_PATH = os.getenv("HOME", "/home")
-    else:
-      retVal.PERSISTENT_STORAGE_PATH = os.getenv('LOCAL_PERSISTENT_STORAGE_PATH') or ""
+  # Set persistent storage path
+  try: retVal.PERSISTENT_STORAGE_PATH = os.getenv("HOME", "/home") if is_azure_environment else os.getenv('LOCAL_PERSISTENT_STORAGE_PATH') or ""
+  except: pass
 
-    # Get disk space for persistent storage path
+  # Get disk space for persistent storage path
+  try:
     if retVal.PERSISTENT_STORAGE_PATH and os.path.exists(retVal.PERSISTENT_STORAGE_PATH):
-      disk_usage = shutil.disk_usage(retVal.PERSISTENT_STORAGE_PATH)
-      retVal.PERSISTENT_STORAGE_FREE_SPACE_BYTES = disk_usage.free
-      retVal.PERSISTENT_STORAGE_TOTAL_SPACE_BYTES = disk_usage.total
+      disk_usage = shutil.disk_usage(retVal.PERSISTENT_STORAGE_PATH); retVal.PERSISTENT_STORAGE_FREE_SPACE_BYTES = disk_usage.free; retVal.PERSISTENT_STORAGE_TOTAL_SPACE_BYTES = disk_usage.total
     else:
-      # Try current directory or home directory as fallback
-      check_path = os.getcwd() if os.path.exists(os.getcwd()) else os.path.expanduser("~")
-      disk_usage = shutil.disk_usage(check_path)
-      retVal.PERSISTENT_STORAGE_FREE_SPACE_BYTES = disk_usage.free
-      retVal.PERSISTENT_STORAGE_TOTAL_SPACE_BYTES = disk_usage.total
-
-  except Exception as e:
-    retVal.ENVIRONMENT = "Error"
-    retVal.PERSISTENT_STORAGE_PATH = f"Error: {str(e)}"
+      check_path = os.getcwd() if os.path.exists(os.getcwd()) else os.path.expanduser("~"); disk_usage = shutil.disk_usage(check_path)
+      retVal.PERSISTENT_STORAGE_FREE_SPACE_BYTES = disk_usage.free; retVal.PERSISTENT_STORAGE_TOTAL_SPACE_BYTES = disk_usage.total
+  except: retVal.PERSISTENT_STORAGE_FREE_SPACE_BYTES = "N/A"; retVal.PERSISTENT_STORAGE_TOTAL_SPACE_BYTES = "N/A"
 
   return retVal
 
@@ -262,7 +208,7 @@ def create_app() -> FastAPI:
     extract_zip_files(if_newer_source_folder, system_info.PERSISTENT_STORAGE_PATH, ZipExtractionMode.OVERWRITE_IF_NEWER, initialization_errors)
 
   # Build domains and metadata cache
-  domains, metadata_cache = build_domains_and_metadata_cache(config, system_info)
+  domains, metadata_cache = build_domains_and_metadata_cache(config, system_info, initialization_errors)
   app.state.domains = domains
   app.state.metadata_cache = metadata_cache
   
