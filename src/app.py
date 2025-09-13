@@ -324,7 +324,9 @@ def root() -> str:
   <li><a href="/describe">/describe</a> - SharePoint Search Description</li>
   <li><a href="/query">/query</a> - SharePoint Search Query (JSON)</li>
   <li><a href="/query2">/query2</a> - SharePoint Search Query (<a href="/query2?query=List+all+documents">HTML</a> +  JSON)</li>
-  <li><a href="/inventory/vectorstores">/inventory/vectorstores</a> - Vector Stores Inventory (<a href="/inventory/vectorstores?format=html">HTML</a> + <a href="/inventory/vectorstores?format=json">JSON</a>)</li>
+  <li><a href="/inventory/vectorstores">/inventory/vectorstores</a> - Vector Stores Inventory (<a href="/inventory/vectorstores?format=html&excludeattributes=metadata">HTML</a> + <a href="/inventory/vectorstores?format=json">JSON</a>)</li>
+  <li><a href="/inventory/files">/inventory/files</a> - Files Inventory (<a href="/inventory/files?format=html&excludeattributes=purpose,status_details">HTML</a> + <a href="/inventory/files?format=json">JSON</a>)</li>
+  <li><a href="/inventory/assistants">/inventory/assistants</a> - Assistants Inventory (<a href="/inventory/assistantsformat=html&excludeattributes=description,instructions,tools,tool_resources">HTML</a> + <a href="/inventory/assistants?format=json">JSON</a>)</li>
 </ul>
 <h4>Configuration</h4>
 {convert_to_html_table(format_config_for_displaying(app.state.config))}

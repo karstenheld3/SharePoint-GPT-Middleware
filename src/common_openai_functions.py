@@ -1,7 +1,7 @@
 # Common Open AI functions (COAI)
 # Copyright 2025, Karsten Held (MIT License)
 
-import os, time
+import datetime, logging, os, time
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Literal, Optional, Union
 
@@ -21,6 +21,11 @@ from openai.types.shared_params.responses_model import ResponsesModel
 import httpx
 
 from utils import log_function_output
+
+logger = logging.getLogger(__name__)
+
+# Global variable for OpenAI datetime attributes that need conversion
+OPENAI_DATETIME_ATTRIBUTES = ["created_at", "expires_at"]
 
 # Replicate OpenAI Vector Store Search Response types
 # https://github.com/openai/openai-python/blob/main/src/openai/types/vector_store_search_response.py
@@ -84,9 +89,81 @@ class CoaiResponseParams:
   extra_body: Body | None = None
   timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN
 
+# Replicate OpenAI Vector Store types
+# https://github.com/openai/openai-python/blob/main/src/openai/types/vector_store.py
+@dataclass
+class CoaiFileCounts:
+  cancelled: int
+  completed: int
+  failed: int
+  in_progress: int
+  total: int
+
+@dataclass
+class CoaiExpiresAfter:
+  anchor: Literal["last_active_at"]
+  days: int
+
+@dataclass
+class CoaiVectorStore:
+  id: str
+  created_at: int
+  file_counts: CoaiFileCounts
+  name: str
+  status: Literal["expired", "in_progress", "completed"]
+  usage_bytes: int
+  last_active_at: Optional[int] = None
+  expires_after: Optional[CoaiExpiresAfter] = None
+  expires_at: Optional[int] = None
+  # Set of 16 key-value pairs that can be attached to an object.
+  metadata: Optional[Dict[str, Union[str, float, bool]]] = None
+
+# Replicate OpenAI File types
+# https://github.com/openai/openai-python/blob/main/src/openai/types/file_object.py
+@dataclass
+class CoaiFile:
+  id: str
+  bytes: int
+  created_at: int
+  filename: str
+  purpose: Literal["assistants", "assistants_output", "batch", "batch_output", "fine-tune", "fine-tune-results", "vision", "user_data"]
+  status: Literal["uploaded", "processed", "error"]
+  expires_at: Optional[int] = None
+  status_details: Optional[str] = None
+
+# Replicate OpenAI Assistant types
+# https://github.com/openai/openai-python/blob/main/src/openai/types/beta/assistant.py
+@dataclass
+class CoaiToolResourcesCodeInterpreter:
+  file_ids: Optional[List[str]] = None
+
+@dataclass
+class CoaiToolResourcesFileSearch:
+  vector_store_ids: Optional[List[str]] = None
+
+@dataclass
+class CoaiToolResources:
+  code_interpreter: Optional[CoaiToolResourcesCodeInterpreter] = None
+  file_search: Optional[CoaiToolResourcesFileSearch] = None
+
+@dataclass
+class CoaiAssistant:
+  id: str
+  created_at: int
+  model: str
+  name: Optional[str] = None
+  description: Optional[str] = None
+  instructions: Optional[str] = None
+  tools: Optional[List[Dict]] = None
+  tool_resources: Optional[CoaiToolResources] = None
+  temperature: Optional[float] = None
+  top_p: Optional[float] = None
+  response_format: Optional[Dict] = None
+  # Set of 16 key-value pairs that can be attached to an object.
+  metadata: Optional[Dict[str, Union[str, float, bool]]] = None
+
 def create_async_openai_client(api_key):
-  if not api_key:
-    raise ValueError("OPENAI_API_KEY is required when OPENAI_SERVICE_TYPE is set to 'openai'")
+  if not api_key:raise ValueError("OPENAI_API_KEY is required when OPENAI_SERVICE_TYPE is set to 'openai'")
   return AsyncOpenAI(api_key=api_key)
 
 # Create an async Azure OpenAI client using API key authentication
@@ -117,6 +194,26 @@ def retry_on_openai_rate_limit_errors_for_sync_client(fn, function_name="retry_o
         raise e
       log_function_output(function_name, request_number, f"{' '*indentation}Rate limit reached, retrying in {backoff_seconds} seconds... (attempt {attempt + 2} of {retries})")
       time.sleep(backoff_seconds)
+
+def convert_openai_timestamps_to_utc(data, request_data=None):
+  """Convert OpenAI timestamp attributes to UTC datetime strings in JSON data."""
+  if isinstance(data, dict):
+    for key, value in data.items():
+      if key in OPENAI_DATETIME_ATTRIBUTES and value is not None:
+        try: 
+          converted_value = datetime.datetime.fromtimestamp(float(value)).isoformat()
+          data[key] = converted_value
+        except Exception as e:
+          data[key] = str(value)
+          if request_data: log_function_output(request_data, f"Failed to convert timestamp {key}: {value} -> {str(e)}")
+          else: logger.warning(f"Failed to convert timestamp {value}: {e}")
+      elif isinstance(value, dict):
+        convert_openai_timestamps_to_utc(value, request_data)
+      elif isinstance(value, list):
+        for item in value:
+          if isinstance(item, dict): convert_openai_timestamps_to_utc(item, request_data)
+  return data
+
 
 # Uses the file_search tool of the Responses API to get search results from a vector store
 # Why? As of 2025-09-08, Azure Open AI Services does not support the Search API. This is a temporary workaround to get similar results.
@@ -225,7 +322,84 @@ def remove_temperature_from_request_params_for_reasoning_models(request_params, 
 async def get_all_vector_stores(client):
   all_vector_stores = []
   # Use async iteration to get all vector stores
-  async for vector_store in client.vector_stores.list(): all_vector_stores.append(vector_store)
+  async for vector_store in client.vector_stores.list():
+    coai_vector_store = CoaiVectorStore(
+      id=vector_store.id,
+      created_at=vector_store.created_at,
+      file_counts=CoaiFileCounts(cancelled=vector_store.file_counts.cancelled, completed=vector_store.file_counts.completed, failed=vector_store.file_counts.failed, in_progress=vector_store.file_counts.in_progress, total=vector_store.file_counts.total),
+      name=vector_store.name,
+      status=vector_store.status,
+      usage_bytes=vector_store.usage_bytes,
+      last_active_at=vector_store.last_active_at,
+      metadata=vector_store.metadata,
+      expires_after=CoaiExpiresAfter(anchor=vector_store.expires_after.anchor, days=vector_store.expires_after.days) if vector_store.expires_after else None,
+      expires_at=vector_store.expires_at
+    )
+    all_vector_stores.append(coai_vector_store)
   return all_vector_stores
+
+async def get_all_files(client):
+  all_files = []
+  # Use async iteration to get all files
+  async for file in client.files.list():
+    coai_file = CoaiFile(id=file.id, bytes=file.bytes, created_at=file.created_at, filename=file.filename, purpose=file.purpose, status=file.status, expires_at=file.expires_at, status_details=file.status_details)
+    all_files.append(coai_file)
+  return all_files
+
+async def get_all_assistants(client):
+  all_assistants = []
+  # Use async iteration to get all assistants
+  async for assistant in client.beta.assistants.list():
+    # Convert tool_resources if present
+    tool_resources = None
+    if assistant.tool_resources:
+      code_interpreter = None
+      if assistant.tool_resources.code_interpreter:
+        code_interpreter = CoaiToolResourcesCodeInterpreter(file_ids=assistant.tool_resources.code_interpreter.file_ids)
+      
+      file_search = None
+      if assistant.tool_resources.file_search:
+        file_search = CoaiToolResourcesFileSearch(vector_store_ids=assistant.tool_resources.file_search.vector_store_ids)
+      
+      tool_resources = CoaiToolResources(code_interpreter=code_interpreter, file_search=file_search)
+    
+    # Convert tools to dict format
+    tools_list = None
+    if assistant.tools:
+      tools_list = []
+      for tool in assistant.tools:
+        if hasattr(tool, 'model_dump'):
+          tools_list.append(tool.model_dump())
+        elif hasattr(tool, '__dict__'):
+          tools_list.append(tool.__dict__)
+        else:
+          tools_list.append({"type": str(tool)})
+    
+    # Convert response_format to dict format
+    response_format_dict = None
+    if assistant.response_format:
+      if hasattr(assistant.response_format, 'model_dump'):
+        response_format_dict = assistant.response_format.model_dump()
+      elif hasattr(assistant.response_format, '__dict__'):
+        response_format_dict = assistant.response_format.__dict__
+      else:
+        response_format_dict = {"format": str(assistant.response_format)}
+    
+    coai_assistant = CoaiAssistant(
+      id=assistant.id,
+      created_at=assistant.created_at,
+      model=assistant.model,
+      name=assistant.name,
+      description=assistant.description,
+      instructions=assistant.instructions,
+      tools=tools_list,
+      tool_resources=tool_resources,
+      temperature=assistant.temperature,
+      top_p=assistant.top_p,
+      response_format=response_format_dict,
+      metadata=assistant.metadata
+    )
+    all_assistants.append(coai_assistant)
+  return all_assistants
   
 # ----------------------------------------------------- END: Vector stores ----------------------------------------------------
