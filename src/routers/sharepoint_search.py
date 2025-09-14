@@ -208,7 +208,7 @@ async def _internal_query2(request: Request, request_params, function_name: str,
   endpoint_documentation = _internal_query2.__doc__.replace('[SEARCH_DEFAULT_GLOBAL_VECTOR_STORE_ID]', str(config.SEARCH_DEFAULT_GLOBAL_VECTOR_STORE_ID)).replace('[SEARCH_DEFAULT_MAX_NUM_RESULTS]', str(config.SEARCH_DEFAULT_MAX_NUM_RESULTS)).replace('[SEARCH_DEFAULT_INSTRUCTIONS]', str(config.SEARCH_DEFAULT_INSTRUCTIONS))
   documentation_HTML = """<!DOCTYPE html><html><head><meta charset="utf-8"><title>[ENDPOINT] - Documentation</title></head><body><pre>[DOCUMENTATION]</pre></body></html>""".replace('[ENDPOINT]', endpoint).replace('[DOCUMENTATION]', endpoint_documentation)
 
-  format = request_params.get('format', 'html')
+  format = request_params.get('format', 'html') 
   query = request_params.get('query', '')
   output = ""
 
@@ -229,8 +229,16 @@ async def _internal_query2(request: Request, request_params, function_name: str,
       else:
         # For HTML response, convert the data dict to HTML table and wrap in proper HTML document
         table_html = convert_to_nested_html_table(data)
-      output = """<!DOCTYPE html><html><head><meta charset="utf-8"><title>[QUERY]</title></head><body>[TABLE_HTML]</body></html>""".replace('[QUERY]', truncate_string(query,50)).replace('[TABLE_HTML]', table_html)
-      output = HTMLResponse(output)
+      html = f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
+      <title>OpenAI Proxy Self Test Results</title>
+      <link rel='stylesheet' href='/static/css/styles.css'>
+      <script src='/static/js/htmx.min.js'></script>
+      </head><body>
+      <h1>{truncate_string(query,50)}</h1>
+      {table_html}
+      </body></html>
+      """
+      output = HTMLResponse(html)
 
   return output
 
