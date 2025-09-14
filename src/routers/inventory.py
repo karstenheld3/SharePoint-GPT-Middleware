@@ -54,6 +54,33 @@ def _filter_single_object(obj: Dict, include_attributes: Optional[str], exclude_
     return {key: value for key, value in obj.items() if key not in exclude_list}
   return obj
 
+def _generate_html_response_from_object_list(title: str, count: int, objects: List[Dict]) -> str:
+  """
+  Generate HTML response with minimal HTMX integration for inventory endpoints.
+  
+  Args:
+    title: Page title (e.g., "Vector Stores", "Files", "Assistants")
+    count: Number of items found
+    objects: List of dictionary objects to convert to HTML table
+    
+  Returns:
+    Complete HTMX page with table
+  """
+  table_html = convert_to_html_table(objects)
+  return f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <title>{title}</title>
+  <link rel='stylesheet' href='/static/css/styles.css'>
+  <script src='/static/js/htmx.min.js'></script>
+</head>
+<body>
+  <h1>{title} ({count})</h1>
+  {table_html}
+</body>
+</html>"""
+
 
 @router.get('/vectorstores')
 async def vectorstores(request: Request):
@@ -98,9 +125,8 @@ async def vectorstores(request: Request):
       await log_function_footer(request_data)
       return JSONResponse({"data": vector_stores_list})
     else:
-      # HTML format
-      table_html = convert_to_html_table(vector_stores_list)
-      html_content = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Vector Stores</title></head><body><h1>Vector Stores ({len(vector_stores)} found)</h1>{table_html}</body></html>"
+      # HTML format with minimal HTMX
+      html_content = _generate_html_response_from_object_list('Vector Stores', len(vector_stores), vector_stores_list)
       await log_function_footer(request_data)
       return HTMLResponse(html_content)
       
@@ -160,9 +186,8 @@ async def files(request: Request):
       await log_function_footer(request_data)
       return JSONResponse({"data": files_dict_list})
     else:
-      # HTML format
-      table_html = convert_to_html_table(files_dict_list)
-      html_content = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Files</title></head><body><h1>Files ({len(files_list)} found)</h1>{table_html}</body></html>"
+      # HTML format with minimal HTMX
+      html_content = _generate_html_response_from_object_list('Files', len(files_list), files_dict_list)
       await log_function_footer(request_data)
       return HTMLResponse(html_content)
       
@@ -222,9 +247,8 @@ async def assistants(request: Request):
       await log_function_footer(request_data)
       return JSONResponse({"data": assistants_dict_list})
     else:
-      # HTML format
-      table_html = convert_to_html_table(assistants_dict_list)
-      html_content = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Assistants</title></head><body><h1>Assistants ({len(assistants_list)} found)</h1>{table_html}</body></html>"
+      # HTML format with minimal HTMX
+      html_content = _generate_html_response_from_object_list('Assistants', len(assistants_list), assistants_dict_list)
       await log_function_footer(request_data)
       return HTMLResponse(html_content)
       

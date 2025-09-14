@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, PlainTextResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from common_openai_functions import create_async_azure_openai_client_with_api_key, create_async_azure_openai_client_with_credential, create_async_openai_client
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
@@ -261,6 +262,13 @@ def create_app() -> FastAPI:
     inventory.set_config(config)
   except Exception as e:
     initialization_errors.append({"component": "Inventory Router", "error": str(e)})
+  
+  # Mount static files directory
+  static_path = os.path.join(os.path.dirname(__file__), "static")
+  if os.path.exists(static_path):
+    app.mount("/static", StaticFiles(directory=static_path), name="static")
+  else:
+    initialization_errors.append({"component": "Static Files", "error": f"Static directory not found: {static_path}"})
     
   return app
 
@@ -286,7 +294,7 @@ async def ignore_default_doc():
 
 @app.get("/", response_class=HTMLResponse)
 def root() -> str:
-  errors_html = f"<h4>Errors</h4>{convert_to_html_table(initialization_errors)}" if initialization_errors else ""
+  errors_html = f'<div class="section"><h4>Errors</h4>{convert_to_html_table(initialization_errors)}</div>' if initialization_errors else ""
   system_info = app.state.system_info
   system_info_list = []
   for field in system_info.__dataclass_fields__:
@@ -308,31 +316,45 @@ def root() -> str:
     
     system_info_list.append({"Field": key, "Value": value, "Display Value / Verification": verification})
   
-  system_info_html = f"<h4>System Information</h4>{convert_to_html_table(system_info_list)}"
-  
   return f"""
-<!doctype html><html lang="en"><head><meta charset="utf-8"><title>SharePoint-GPT-Middleware</title></head><body>
-<font face="Open Sans, Arial, Helvetica, sans-serif">
-<h3>SharePoint-GPT-Middleware is running</h3>
-<p>This middleware provides OpenAI proxy endpoints, SharePoint search functionality, and inventory management for vector stores.</p>
+<!doctype html><html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SharePoint-GPT-Middleware</title>
+  <link rel="stylesheet" href="/static/css/styles.css">
+  <script src="/static/js/htmx.min.js"></script>
+</head>
+<body>
+  <h1>SharePoint-GPT-Middleware</h1>
+  <p>This middleware provides OpenAI proxy endpoints, SharePoint search functionality, and inventory management for vector stores.</p>
 
-<h4>Available Links</h4>
-<ul>
-  <li><a href="/docs">/docs</a> - API Documentation</li>
-  <li><a href="/openapi.json">/openapi.json</a> - OpenAPI JSON</li>
-  <li><a href="/openaiproxyselftest">/openaiproxyselftest</a> - Self Test (will take a while)</li>
-  <li><a href="/describe">/describe</a> - SharePoint Search Description</li>
-  <li><a href="/query">/query</a> - SharePoint Search Query (JSON)</li>
-  <li><a href="/query2">/query2</a> - SharePoint Search Query (<a href="/query2?query=List+all+documents">HTML</a> +  JSON)</li>
-  <li><a href="/inventory/vectorstores">/inventory/vectorstores</a> - Vector Stores Inventory (<a href="/inventory/vectorstores?format=html&excludeattributes=metadata">HTML</a> + <a href="/inventory/vectorstores?format=json">JSON</a>)</li>
-  <li><a href="/inventory/files">/inventory/files</a> - Files Inventory (<a href="/inventory/files?format=html&excludeattributes=purpose,status_details">HTML</a> + <a href="/inventory/files?format=json">JSON</a>)</li>
-  <li><a href="/inventory/assistants">/inventory/assistants</a> - Assistants Inventory (<a href="/inventory/assistantsformat=html&excludeattributes=description,instructions,tools,tool_resources">HTML</a> + <a href="/inventory/assistants?format=json">JSON</a>)</li>
-</ul>
-<h4>Configuration</h4>
-{convert_to_html_table(format_config_for_displaying(app.state.config))}
-{system_info_html}
-{errors_html}
-</font></body></html>
+  <h4>Available Links</h4>
+  <ul>
+    <li><a href="/docs">/docs</a> - API Documentation</li>
+    <li><a href="/openapi.json">/openapi.json</a> - OpenAPI JSON</li>
+    <li><a href="/openaiproxyselftest">/openaiproxyselftest</a> - Self Test (will take a while)</li>
+    <li><a href="/describe">/describe</a> - SharePoint Search Description</li>
+    <li><a href="/query">/query</a> - SharePoint Search Query (JSON)</li>
+    <li><a href="/query2">/query2</a> - SharePoint Search Query (<a href="/query2?query=List+all+documents">HTML</a> +  JSON)</li>
+    <li><a href="/inventory/vectorstores">/inventory/vectorstores</a> - Vector Stores Inventory (<a href="/inventory/vectorstores?format=html&excludeattributes=metadata">HTML</a> + <a href="/inventory/vectorstores?format=json">JSON</a>)</li>
+    <li><a href="/inventory/files">/inventory/files</a> - Files Inventory (<a href="/inventory/files?format=html&excludeattributes=purpose,status_details">HTML</a> + <a href="/inventory/files?format=json">JSON</a>)</li>
+    <li><a href="/inventory/assistants">/inventory/assistants</a> - Assistants Inventory (<a href="/inventory/assistants?format=html&excludeattributes=description,instructions,tools,tool_resources">HTML</a> + <a href="/inventory/assistants?format=json">JSON</a>)</li>
+  </ul>
+
+  <div class="section">
+    <h4>Configuration</h4>
+    {convert_to_html_table(format_config_for_displaying(app.state.config))}
+  </div>
+
+  <div class="section">
+    <h4>System Information</h4>
+    {convert_to_html_table(system_info_list)}
+  </div>
+
+  {errors_html}
+</body>
+</html>
 """
 
 # Self-test endpoint (not under /openai)
