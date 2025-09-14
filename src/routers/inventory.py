@@ -67,10 +67,7 @@ def _generate_html_response_from_object_list(title: str, count: int, objects: Li
     Complete HTMX page with table
   """
   table_html = convert_to_html_table(objects)
-  return f"""<!DOCTYPE html>
-<html>
-<head>
-  <meta charset='utf-8'>
+  return f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
   <title>{title}</title>
   <link rel='stylesheet' href='/static/css/styles.css'>
   <script src='/static/js/htmx.min.js'></script>

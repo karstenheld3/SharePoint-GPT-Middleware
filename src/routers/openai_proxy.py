@@ -1581,8 +1581,13 @@ async def self_test(request: Request):
     results["/files/{id} (DELETE)"] = {"Result": f"Error: {str(e)}", "Details": ""}
 
   # Generate HTML
-  html = "<html><body style='font-family: Arial, sans-serif;'>"
-  html += f"<h2>OpenAI Proxy Self Test Results ({config.OPENAI_SERVICE_TYPE})</h2>"
+  html = f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
+  <title>OpenAI Proxy Self Test Results</title>
+  <link rel='stylesheet' href='/static/css/styles.css'>
+  <script src='/static/js/htmx.min.js'></script>
+</head><body>
+"""
+  html += f"<h1>OpenAI Proxy Self Test Results ({config.OPENAI_SERVICE_TYPE})</h1>"
   html += convert_to_html_table(results)
   html += "<p><b>Configuration:</b></p>"
   html += convert_to_html_table(format_config_for_displaying(config))
