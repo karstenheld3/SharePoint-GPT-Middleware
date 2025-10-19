@@ -1,12 +1,11 @@
 import json, logging, os
 from typing import Any, Dict, List, Optional, Tuple
-
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from common_openai_functions import CoaiSearchParams, get_search_results_using_responses_api, get_search_results_using_search_api, try_get_vector_store_by_id
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
-from utils import convert_to_nested_html_table, log_function_footer, log_function_header, log_function_output, remove_linebreaks, sanitize_queries_and_responses, truncate_string
+from utils import convert_to_nested_html_table, log_function_footer, log_function_header, log_function_output, log_function_footer_sync, remove_linebreaks, sanitize_queries_and_responses, truncate_string
 
 router = APIRouter()
 
@@ -24,42 +23,133 @@ logger = logging.getLogger(__name__)
 found_vector_store_ids = {}
 
 def build_domains_and_metadata_cache(config, system_info, initialization_errors):
+  log_data = log_function_header("build_domains_and_metadata_cache")
   metadata_cache = {}; domains = []
+  
   try:
     domains_folder_path = os.path.join(system_info.PERSISTENT_STORAGE_PATH, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER)
+    log_function_output(log_data, f"Domains folder path: {domains_folder_path}")
     
     if not os.path.exists(domains_folder_path):
-      initialization_errors.append({"component": "SharePoint Data Loading", "error": f"Domains folder not found: {domains_folder_path}"})
+      error_msg = f"Domains folder not found: {domains_folder_path}"
+      log_function_output(log_data, f"ERROR: {error_msg}")
+      initialization_errors.append({"component": "SharePoint Data Loading", "error": error_msg})
+      log_function_footer_sync(log_data)
       return domains, metadata_cache
     
     # Iterate through each domain folder (VMS, HOIT, etc.)
-    for domain_folder_name in os.listdir(domains_folder_path):
+    try:
+      domain_folder_names = os.listdir(domains_folder_path)
+      log_function_output(log_data, f"Found {len(domain_folder_names)} items in domains folder")
+    except Exception as e:
+      error_msg = f"Failed to list domains folder: {str(e)}"
+      log_function_output(log_data, f"ERROR: {error_msg}")
+      initialization_errors.append({"component": "SharePoint Data Loading", "error": error_msg})
+      log_function_footer_sync(log_data)
+      return domains, metadata_cache
+    
+    for domain_folder_name in domain_folder_names:
       domain_folder_path = os.path.join(domains_folder_path, domain_folder_name)
       
       # Skip folders that start with an underscore (_)
       if not os.path.isdir(domain_folder_path) or domain_folder_name.startswith('_'):
+        log_function_output(log_data, f"Skipping: {domain_folder_name}")
         continue
+      
+      log_function_output(log_data, f"Processing domain folder: {domain_folder_name}")
       
       # Load domain.json
       domain_json_path = os.path.join(domain_folder_path, "domain.json")
       if os.path.exists(domain_json_path):
-        with open(domain_json_path, 'r', encoding='utf-8') as f:
-          domain_data = json.load(f)
-          # exclude global vector store from domains
+        file_content = None
+        try:
+          for encoding in ['utf-8', 'utf-16', 'utf-16-le', 'utf-16-be']:
+            try:
+              with open(domain_json_path, 'r', encoding=encoding) as f:
+                file_content = f.read()
+                break
+            except (UnicodeDecodeError, UnicodeError):
+              continue
+          
+          if file_content is None:
+            error_msg = f"domain.json for {domain_folder_name} has unsupported encoding"
+            log_function_output(log_data, f"ERROR: {error_msg}")
+            initialization_errors.append({"component": "SharePoint Data Loading", "error": error_msg})
+            continue
+          
+          if not file_content.strip():
+            error_msg = f"domain.json for {domain_folder_name} is empty (file size: {os.path.getsize(domain_json_path)} bytes)"
+            log_function_output(log_data, f"ERROR: {error_msg}")
+            initialization_errors.append({"component": "SharePoint Data Loading", "error": error_msg})
+            continue
+          
+          domain_data = json.loads(file_content)
           if domain_data.get('vector_store_id') != config.SEARCH_DEFAULT_GLOBAL_VECTOR_STORE_ID:
-            domains.append({"name": domain_data.get('name', domain_folder_name), "description": domain_data.get('description', '')})
+            domain_name = domain_data.get('name', domain_folder_name)
+            domain_description = domain_data.get('description', '')
+            domains[:] = [d for d in domains if d['name'] != domain_name]
+            domains.append({"name": domain_name, "description": domain_description})
+            log_function_output(log_data, f"Added domain: {domain_name}")
+          else:
+            log_function_output(log_data, f"Skipping global vector store domain: {domain_folder_name}")
+        except json.JSONDecodeError as e:
+          error_msg = f"Invalid JSON in domain.json for {domain_folder_name}: {str(e)} (file size: {os.path.getsize(domain_json_path)} bytes, first 100 chars: {file_content[:100]!r})"
+          log_function_output(log_data, f"ERROR: {error_msg}")
+          initialization_errors.append({"component": "SharePoint Data Loading", "error": error_msg})
+        except Exception as e:
+          error_msg = f"Failed to load domain.json for {domain_folder_name}: {str(e)}"
+          log_function_output(log_data, f"ERROR: {error_msg}")
+          initialization_errors.append({"component": "SharePoint Data Loading", "error": error_msg})
       
       # Load files_metadata.json
       files_metadata_json_path = os.path.join(domain_folder_path, "files_metadata.json")
       if os.path.exists(files_metadata_json_path):
-        with open(files_metadata_json_path, 'r', encoding='utf-8') as f:
-          files_metadata = json.load(f)
+        file_content = None
+        try:
+          for encoding in ['utf-8', 'utf-16', 'utf-16-le', 'utf-16-be']:
+            try:
+              with open(files_metadata_json_path, 'r', encoding=encoding) as f:
+                file_content = f.read()
+                break
+            except (UnicodeDecodeError, UnicodeError):
+              continue
+          
+          if file_content is None:
+            error_msg = f"files_metadata.json for {domain_folder_name} has unsupported encoding"
+            log_function_output(log_data, f"ERROR: {error_msg}")
+            initialization_errors.append({"component": "SharePoint Data Loading", "error": error_msg})
+            continue
+          
+          if not file_content.strip():
+            error_msg = f"files_metadata.json for {domain_folder_name} is empty (file size: {os.path.getsize(files_metadata_json_path)} bytes)"
+            log_function_output(log_data, f"ERROR: {error_msg}")
+            initialization_errors.append({"component": "SharePoint Data Loading", "error": error_msg})
+            continue
+          
+          files_metadata = json.loads(file_content)
+          files_added = 0
           for file_data in files_metadata:
             if 'file_id' in file_data and 'file_metadata' in file_data:
               metadata_cache[file_data['file_id']] = file_data['file_metadata']
+              files_added += 1
+          log_function_output(log_data, f"Added {files_added} file metadata entries from {domain_folder_name}")
+        except json.JSONDecodeError as e:
+          error_msg = f"Invalid JSON in files_metadata.json for {domain_folder_name}: {str(e)} (file size: {os.path.getsize(files_metadata_json_path)} bytes, first 100 chars: {file_content[:100]!r})"
+          log_function_output(log_data, f"ERROR: {error_msg}")
+          initialization_errors.append({"component": "SharePoint Data Loading", "error": error_msg})
+        except Exception as e:
+          error_msg = f"Failed to load files_metadata.json for {domain_folder_name}: {str(e)}"
+          log_function_output(log_data, f"ERROR: {error_msg}")
+          initialization_errors.append({"component": "SharePoint Data Loading", "error": error_msg})
+    
+    log_function_output(log_data, f"Total domains loaded: {len(domains)}, Total metadata entries: {len(metadata_cache)}")
               
   except Exception as e:
-    initialization_errors.append({"component": "SharePoint Data Loading", "error": str(e)})
+    error_msg = f"Unexpected error in build_domains_and_metadata_cache: {str(e)}"
+    log_function_output(log_data, f"ERROR: {error_msg}")
+    initialization_errors.append({"component": "SharePoint Data Loading", "error": error_msg})
+  
+  log_function_footer_sync(log_data)
   return domains, metadata_cache
 
 
@@ -137,7 +227,7 @@ async def _internal_request_to_llm(request: Request, request_params: dict, reque
         search_results, openai_response = await get_search_results_using_search_api(request.app.state.openai_client, search_params, vsid)
     except Exception as e:
       # If the search fails, try to refresh the vector store cache
-      log_function_output(request_data, f"ERROR: '{vsid}': {str(e)}")
+      log_function_output(request_data, f"{str(e)}")
       vs_refreshed = await try_get_vector_store_by_id(request.app.state.openai_client, vsid)
       if vs_refreshed:
         # Vector store exists, update cache
@@ -230,7 +320,7 @@ async def _internal_query2(request: Request, request_params, function_name: str,
         # For HTML response, convert the data dict to HTML table and wrap in proper HTML document
         table_html = convert_to_nested_html_table(data)
       html = f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
-      <title>OpenAI Proxy Self Test Results</title>
+      <title>SharePoint Search Query Results</title>
       <link rel='stylesheet' href='/static/css/styles.css'>
       <script src='/static/js/htmx.min.js'></script>
       </head><body>
@@ -261,6 +351,59 @@ async def describe(request: Request):
 
   await log_function_footer(request_data)
   return JSONResponse(content=response, status_code=200)
+
+@router.get('/describe2')
+async def describe2(request: Request):
+  """
+  Describe Endpoint: Returns metadata describing your SharePoint content search tool, including available domains and content root
+  
+  Parameters:
+  - format: The response format (json or html). Default: html
+    
+  Examples:
+  /describe2
+  /describe2?format=json
+  /describe2?format=html
+  """
+  function_name = 'describe2()'
+  request_data = log_function_header(function_name)
+  request_params = dict(request.query_params)
+  
+  endpoint = '/' + function_name.replace('()','')  
+  endpoint_documentation = describe2.__doc__
+  documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
+  
+  format = request_params.get('format', 'html')
+  
+  # Display documentation if no params are provided
+  if len(request_params) == 0:
+    await log_function_footer(request_data)
+    return HTMLResponse(documentation_HTML)
+  
+  # Prepare response data
+  response_data = {
+    'data': {
+      'description': 'This tool can search the content of SharePoint documents.',
+      'domains': request.app.state.domains,
+      'content_root': config.SEARCH_DEFAULT_SHAREPOINT_ROOT_URL
+    }
+  }
+  
+  await log_function_footer(request_data)
+  
+  if format == 'json':
+    return JSONResponse(content=response_data, status_code=200)
+  else:
+    # HTML format using nested table utility
+    title = "SharePoint Search Tool Description"
+    table_html = convert_to_nested_html_table(response_data['data'])
+    html_content = f"""<!DOCTYPE html>
+<html><head><meta charset='utf-8'><title>{title}</title>
+  <link rel='stylesheet' href='/static/css/styles.css'>
+  <script src='/static/js/htmx.min.js'></script>
+</head><body>{table_html}</body></html>"""
+    
+    return HTMLResponse(html_content)
 
 
 # ----------------------------------------------------- /query -------------------------------------------------------

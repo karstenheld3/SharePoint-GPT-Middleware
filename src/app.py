@@ -1,4 +1,4 @@
-import ctypes, inspect, logging, os, platform, shutil, tempfile
+import ctypes, glob, inspect, logging, os, platform, shutil, tempfile
 from dataclasses import dataclass
 from typing import Optional
 
@@ -13,7 +13,7 @@ from common_openai_functions import create_async_azure_openai_client_with_api_ke
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from routers import inventory, openai_proxy, sharepoint_search
 from routers.sharepoint_search import build_domains_and_metadata_cache
-from utils import ZipExtractionMode, convert_to_html_table, extract_zip_files, format_config_for_displaying, format_filesize, log_function_footer, log_function_header
+from utils import ZipExtractionMode, acquire_startup_lock, convert_to_html_table, extract_zip_files, format_config_for_displaying, format_filesize, log_function_footer, log_function_header, log_function_output, log_function_footer_sync, clear_folder
 
 # Load environment variables from a local .env file if present
 load_dotenv()
@@ -27,6 +27,7 @@ class SystemInfo:
   FREE_MEMORY_BYTES: int
   NUMBER_OF_CORES: int
   ENVIRONMENT: str
+  OS_PLATFORM: str
   PERSISTENT_STORAGE_PATH: str
   PERSISTENT_STORAGE_FREE_SPACE_BYTES: int | str
   PERSISTENT_STORAGE_TOTAL_SPACE_BYTES: int | str
@@ -133,6 +134,7 @@ def create_system_info() -> SystemInfo:
     FREE_MEMORY_BYTES=-1,
     NUMBER_OF_CORES=-1,
     ENVIRONMENT="N/A",
+    OS_PLATFORM="N/A",
     PERSISTENT_STORAGE_PATH="",
     PERSISTENT_STORAGE_FREE_SPACE_BYTES="N/A",
     PERSISTENT_STORAGE_TOTAL_SPACE_BYTES="N/A",
@@ -162,8 +164,20 @@ def create_system_info() -> SystemInfo:
   try: is_azure_environment = is_running_on_azure_app_service(); retVal.ENVIRONMENT = "Azure" if is_azure_environment else "Local"
   except: pass
 
+  # Determine OS platform
+  try: retVal.OS_PLATFORM = "Windows" if platform.system() == "Windows" else "Linux"
+  except: pass
+
   # Set persistent storage path
-  try: retVal.PERSISTENT_STORAGE_PATH = os.getenv("HOME", "/home") if is_azure_environment else os.getenv('LOCAL_PERSISTENT_STORAGE_PATH') or ""
+  try: 
+    if is_azure_environment:
+      retVal.PERSISTENT_STORAGE_PATH = os.path.join(os.getenv("HOME", r"d:\home"), "data") if platform.system() == "Windows" else "/home/data"
+    else:
+      retVal.PERSISTENT_STORAGE_PATH = os.getenv('LOCAL_PERSISTENT_STORAGE_PATH') or ""
+  except: pass
+
+  # Create persistent storage directory if it doesn't exist
+  try: os.makedirs(retVal.PERSISTENT_STORAGE_PATH, exist_ok=True)
   except: pass
 
   # Get disk space for persistent storage path
@@ -179,10 +193,13 @@ def create_system_info() -> SystemInfo:
 
 def create_app() -> FastAPI:
   """Create and configure the FastAPI application."""
+  log_data = log_function_header("create_app")
   # Configure logging first to ensure all initialization logs are properly formatted
   configure_logging()
+  log_function_output(log_data, "Logging configured")
   # Load configuration
   config = load_config()
+  log_function_output(log_data, "Configuration loaded")
   # Create FastAPI app instance
   app = FastAPI(title="SharePoint-GPT-Middleware")
   # Store config in app state
@@ -190,32 +207,88 @@ def create_app() -> FastAPI:
   # Create system info
   system_info = create_system_info()
   app.state.system_info = system_info
+  # Summarize key system info
+  try:
+    free_str = format_filesize(system_info.PERSISTENT_STORAGE_FREE_SPACE_BYTES) if isinstance(system_info.PERSISTENT_STORAGE_FREE_SPACE_BYTES, int) else str(system_info.PERSISTENT_STORAGE_FREE_SPACE_BYTES)
+    total_str = format_filesize(system_info.PERSISTENT_STORAGE_TOTAL_SPACE_BYTES) if isinstance(system_info.PERSISTENT_STORAGE_TOTAL_SPACE_BYTES, int) else str(system_info.PERSISTENT_STORAGE_TOTAL_SPACE_BYTES)
+    log_function_output(
+      log_data,
+      f"System info: ENVIRONMENT={system_info.ENVIRONMENT}, PERSISTENT_STORAGE_PATH='{system_info.PERSISTENT_STORAGE_PATH or 'N/A'}', DISK_FREE={free_str}, DISK_TOTAL={total_str}"
+    )
+  except Exception:
+    pass
 
   # Validate paths before zip extraction
   if not system_info.APP_SRC_PATH or system_info.APP_SRC_PATH == "N/A":
-    initialization_errors.append({"component": "Zip Extraction", "error": "Source path not configured"})
+    initialization_errors.append({"component": "Zip Extraction", "error": "APP_SRC_PATH not configured"})
   elif not os.path.exists(system_info.APP_SRC_PATH):
-    initialization_errors.append({"component": "Zip Extraction", "error": f"Source path not found: {system_info.APP_SRC_PATH}"})
+    initialization_errors.append({"component": "Zip Extraction", "error": f"APP_SRC_PATH not found: {system_info.APP_SRC_PATH}"})
   elif not system_info.PERSISTENT_STORAGE_PATH:
-    initialization_errors.append({"component": "Zip Extraction", "error": "Destination path not configured. Set LOCAL_PERSISTENT_STORAGE_PATH environment variable."})
+    initialization_errors.append({"component": "Zip Extraction", "error": "PERSISTENT_STORAGE_PATH not configured. Set LOCAL_PERSISTENT_STORAGE_PATH environment variable."})
   elif not os.path.exists(system_info.PERSISTENT_STORAGE_PATH):
-    initialization_errors.append({"component": "Zip Extraction", "error": f"Destination path not found: {system_info.PERSISTENT_STORAGE_PATH}"})
+    initialization_errors.append({"component": "Zip Extraction", "error": f"PERSISTENT_STORAGE_PATH not found: {system_info.PERSISTENT_STORAGE_PATH}"})
   else:
-    # Process overwrite folder
-    overwrite_source_folder = os.path.join(system_info.APP_SRC_PATH, CRAWLER_HARDCODED_CONFIG.UNZIP_TO_PERSISTENT_STORAGE_OVERWRITE)
-    extract_zip_files(overwrite_source_folder, system_info.PERSISTENT_STORAGE_PATH, ZipExtractionMode.OVERWRITE, initialization_errors)
+    # Use lock to ensure only first worker extracts zip files
+    with acquire_startup_lock("zip_extraction", log_data, timeout_seconds=60) as should_proceed:
+      if should_proceed:
+        log_function_output(log_data, "This worker will extract zip files")
+        
+        # Process clear before folder
+        clear_before_source_folder = os.path.join(system_info.APP_SRC_PATH, CRAWLER_HARDCODED_CONFIG.UNZIP_TO_PERSISTENT_STORAGE_CLEAR_BEFORE)
+        clear_before_zips = glob.glob(os.path.join(clear_before_source_folder, "*.zip"))
+        log_function_output(log_data, f"Found {len(clear_before_zips)} zip file(s) in clear-before folder '{clear_before_source_folder}'")
+        if len(clear_before_zips) > 0:
+          # Safety check: Do not clear if LOCAL_PERSISTENT_STORAGE_PATH equals PERSISTENT_STORAGE_PATH
+          if (config.LOCAL_PERSISTENT_STORAGE_PATH and os.path.normpath(config.LOCAL_PERSISTENT_STORAGE_PATH) == os.path.normpath(system_info.PERSISTENT_STORAGE_PATH)):
+            log_function_output(log_data, f"SAFETY CHECK: Skipping folder clearing because LOCAL_PERSISTENT_STORAGE_PATH equals PERSISTENT_STORAGE_PATH")
+            log_function_output(log_data, f"SAFETY CHECK: Would have cleared contents of folder: {system_info.PERSISTENT_STORAGE_PATH}")
+            log_function_output(log_data, f"SAFETY CHECK: Would have extracted {len(clear_before_zips)} file(s) from clear-before folder.")
+          else:
+            clear_folder(system_info.PERSISTENT_STORAGE_PATH, True, log_data)
+            extracted_files = extract_zip_files(clear_before_source_folder, system_info.PERSISTENT_STORAGE_PATH, ZipExtractionMode.OVERWRITE, initialization_errors)
+            if extracted_files:
+              log_function_output(log_data, f"Extracted {len(extracted_files)} file(s) from clear-before folder:")
+              for file_path in extracted_files:
+                log_function_output(log_data, f"  '{file_path}'")
 
-    # Process if-newer folder
-    if_newer_source_folder = os.path.join(system_info.APP_SRC_PATH, CRAWLER_HARDCODED_CONFIG.UNZIP_TO_PERSISTENT_STORAGE_IF_NEWER)
-    extract_zip_files(if_newer_source_folder, system_info.PERSISTENT_STORAGE_PATH, ZipExtractionMode.OVERWRITE_IF_NEWER, initialization_errors)
+        # Process overwrite folder
+        overwrite_source_folder = os.path.join(system_info.APP_SRC_PATH, CRAWLER_HARDCODED_CONFIG.UNZIP_TO_PERSISTENT_STORAGE_OVERWRITE)
+        overwrite_zips = glob.glob(os.path.join(overwrite_source_folder, "*.zip"))
+        log_function_output(log_data, f"Found {len(overwrite_zips)} zip file(s) in overwrite folder '{overwrite_source_folder}'")
+        if len(overwrite_zips) > 0:
+          extracted_files = extract_zip_files(overwrite_source_folder, system_info.PERSISTENT_STORAGE_PATH, ZipExtractionMode.OVERWRITE, initialization_errors)
+          if extracted_files:
+            log_function_output(log_data, f"Extracted {len(extracted_files)} file(s) from overwrite folder:")
+            for file_path in extracted_files:
+              log_function_output(log_data, f"  '{file_path}'")
 
+        # Process if-newer folder
+        if_newer_source_folder = os.path.join(system_info.APP_SRC_PATH, CRAWLER_HARDCODED_CONFIG.UNZIP_TO_PERSISTENT_STORAGE_IF_NEWER)
+        if_newer_zips = glob.glob(os.path.join(if_newer_source_folder, "*.zip"))    
+        log_function_output(log_data, f"Found {len(if_newer_zips)} zip file(s) in if-newer folder '{if_newer_source_folder}'")
+        if len(if_newer_zips) > 0:
+          extracted_files = extract_zip_files(if_newer_source_folder, system_info.PERSISTENT_STORAGE_PATH, ZipExtractionMode.OVERWRITE_IF_NEWER, initialization_errors)
+          if extracted_files:
+            log_function_output(log_data, f"Extracted {len(extracted_files)} file(s) from if-newer folder:")
+            for file_path in extracted_files:
+              log_function_output(log_data, f"  '{file_path}'")
+      else:
+        log_function_output(log_data, "Zip extraction already completed by another worker, skipping")
+    
   # Build domains and metadata cache
   domains, metadata_cache = build_domains_and_metadata_cache(config, system_info, initialization_errors)
   app.state.domains = domains
   app.state.metadata_cache = metadata_cache
+  try:
+    domains_count = len(domains) if hasattr(domains, "__len__") else "unknown"
+    metadata_count = len(metadata_cache) if hasattr(metadata_cache, "__len__") else "unknown"
+    log_function_output(log_data, f"Domains and metadata cache built. Domains={domains_count}, MetadataEntries={metadata_count}")
+  except Exception:
+    pass
   
   # Add CORS middleware to handle preflight OPTIONS requests
   app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+  log_function_output(log_data, "CORS middleware added")
   
   # Create the appropriate OpenAI client based on configuration
   openai_client = None
@@ -241,11 +314,17 @@ def create_app() -> FastAPI:
   except Exception as e:
     initialization_errors.append({"component": "OpenAI Client Creation", "error": str(e)})
   app.state.openai_client = openai_client
+  try:
+    svc = (config.OPENAI_SERVICE_TYPE or "").lower()
+    log_function_output(log_data, f"OpenAI client created (service='{svc}', available={bool(openai_client)})")
+  except Exception:
+    pass
 
   # Include OpenAI proxy router under /openai
   try:
     app.include_router(openai_proxy.router, tags=["OpenAI Proxy"], prefix="/openai")
     openai_proxy.set_config(config)
+    log_function_output(log_data, "OpenAI proxy router included at /openai")
   except Exception as e:
     initialization_errors.append({"component": "OpenAI Proxy Router", "error": str(e)})
   
@@ -253,6 +332,7 @@ def create_app() -> FastAPI:
   try:
     app.include_router(sharepoint_search.router, tags=["SharePoint Search"])
     sharepoint_search.set_config(config)
+    log_function_output(log_data, "SharePoint Search router included at /")
   except Exception as e:
     initialization_errors.append({"component": "SharePoint Search Router", "error": str(e)})
   
@@ -260,6 +340,7 @@ def create_app() -> FastAPI:
   try:
     app.include_router(inventory.router, tags=["Inventory Management"], prefix="/inventory")
     inventory.set_config(config)
+    log_function_output(log_data, "Inventory router included at /inventory")
   except Exception as e:
     initialization_errors.append({"component": "Inventory Router", "error": str(e)})
   
@@ -267,9 +348,21 @@ def create_app() -> FastAPI:
   static_path = os.path.join(os.path.dirname(__file__), "static")
   if os.path.exists(static_path):
     app.mount("/static", StaticFiles(directory=static_path), name="static")
+    log_function_output(log_data, f"Static files mounted from '{static_path}' at /static")
   else:
     initialization_errors.append({"component": "Static Files", "error": f"Static directory not found: {static_path}"})
+    log_function_output(log_data, f"Static directory not found: {static_path}")
     
+  # Final summary - log any initialization errors
+  try:
+    if initialization_errors:
+      log_function_output(log_data, f"App initialization completed with {len(initialization_errors)} initialization error(s):")
+      for error in initialization_errors:
+        log_function_output(log_data, f"  - {error['component']}: {error['error']}")
+    else:
+      log_function_output(log_data, "App initialization completed successfully with no errors")
+  except Exception: pass
+  log_function_footer_sync(log_data)
   return app
 
 # Initialize the FastAPI application
@@ -335,11 +428,13 @@ def root() -> str:
     <li><a href="/openapi.json">/openapi.json</a> - OpenAPI JSON</li>
     <li><a href="/openaiproxyselftest">/openaiproxyselftest</a> - Self Test (will take a while)</li>
     <li><a href="/describe">/describe</a> - SharePoint Search Description</li>
+    <li><a href="/describe2">/describe2</a> - SharePoint Search Description (<a href="/describe2?format=html">HTML</a> + <a href="/describe2?format=json">JSON</a>)</li>
     <li><a href="/query">/query</a> - SharePoint Search Query (JSON)</li>
-    <li><a href="/query2">/query2</a> - SharePoint Search Query (<a href="/query2?query=List+all+documents">HTML</a> +  JSON)</li>
+    <li><a href="/query2">/query2</a> - SharePoint Search Query (<a href="/query2?query=List+all+documents&results=50">HTML</a> +  JSON)</li>
     <li><a href="/inventory/vectorstores">/inventory/vectorstores</a> - Vector Stores Inventory (<a href="/inventory/vectorstores?format=html&excludeattributes=metadata">HTML</a> + <a href="/inventory/vectorstores?format=json">JSON</a>)</li>
     <li><a href="/inventory/files">/inventory/files</a> - Files Inventory (<a href="/inventory/files?format=html&excludeattributes=purpose,status_details">HTML</a> + <a href="/inventory/files?format=json">JSON</a>)</li>
     <li><a href="/inventory/assistants">/inventory/assistants</a> - Assistants Inventory (<a href="/inventory/assistants?format=html&excludeattributes=description,instructions,tools,tool_resources">HTML</a> + <a href="/inventory/assistants?format=json">JSON</a>)</li>
+    <li><a href="/inventory/localstorage">/inventory/localstorage</a> - Local Storage Inventory (<a href="/inventory/localstorage?format=html">HTML</a> + <a href="/inventory/localstorage?format=json">JSON</a> + <a href="/inventory/localstorage?format=zip">ZIP</a>)</li>
   </ul>
 
   <div class="section">

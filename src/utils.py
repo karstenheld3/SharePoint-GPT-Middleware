@@ -1,4 +1,5 @@
-import dataclasses, datetime, glob, html, logging, os, shutil, sys, time, zipfile
+import dataclasses, datetime, glob, html, logging, os, shutil, sys, tempfile, time, zipfile
+from contextlib import contextmanager
 from enum import Enum
 from typing import Any, Dict, List
 
@@ -17,11 +18,137 @@ class ZipExtractionMode(Enum):
   OVERWRITE_IF_NEWER = "overwrite_if_newer"
   OVERWRITE = "overwrite"
 
-def extract_zip_files(source_folder: str, destination_folder: str, mode: ZipExtractionMode, initialization_errors: List[Dict[str, str]]) -> None:
-  """Extract all zip files from source folder to destination folder based on the specified mode."""
+
+@contextmanager
+def acquire_startup_lock(lock_name: str, log_data: Dict[str, Any], timeout_seconds: int = 30):
+  """Acquire a file-based lock to ensure only one worker performs startup tasks.
+  
+  Uses a lock file mechanism that works across processes. The first worker to acquire
+  the lock will execute the protected code block. Other workers will wait until the
+  lock is released or timeout occurs.
+  
+  Args:
+    lock_name: Name of the lock (used to create lock file)
+    log_data: Logging context from log_function_header
+    timeout_seconds: Maximum time to wait for lock acquisition
+    
+  Yields:
+    bool: True if lock was acquired (worker should proceed), False if another worker already completed the task
+  """
+  lock_file_path = os.path.join(tempfile.gettempdir(), f"{lock_name}.lock")
+  done_file_path = os.path.join(tempfile.gettempdir(), f"{lock_name}.done")
+  lock_fd = None
+  acquired = False
+  
+  try:
+    # Check if task was already completed by another worker
+    if os.path.exists(done_file_path):
+      log_function_output(log_data, f"Startup lock task '{lock_name}': already completed by another worker, skipping (done file exists: '{done_file_path}')")
+      yield False
+      return
+    
+    # Try to acquire lock with timeout
+    start_time = time.time()
+    while time.time() - start_time < timeout_seconds:
+      try:
+        # Try to create lock file exclusively (fails if exists)
+        lock_fd = os.open(lock_file_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        acquired = True
+        log_function_output(log_data, f"Startup lock task '{lock_name}': Created lock file '{lock_file_path}' (PID: {os.getpid()})")
+        
+        # Check again if task was completed while we were waiting
+        if os.path.exists(done_file_path):
+          log_function_output(log_data, f"Startup lock task '{lock_name}': completed while acquiring lock, skipping")
+          yield False
+          return
+        
+        # Lock acquired, proceed with task
+        yield True
+        
+        # Mark task as done
+        try:
+          with open(done_file_path, 'w') as f:
+            f.write(f"{os.getpid()}\n{time.time()}\n")
+          log_function_output(log_data, f"Startup lock task '{lock_name}': marked as completed (created done file: '{done_file_path}')")
+        except Exception as e:
+          log_function_output(log_data, f"Startup lock task '{lock_name}': WARNING - Failed to create done file at '{done_file_path}': {e}")
+        
+        return
+        
+      except FileExistsError:
+        # Lock file exists, another worker has the lock
+        time.sleep(0.1)
+        
+        # Check if done file appeared while waiting
+        if os.path.exists(done_file_path):
+          log_function_output(log_data, f"Startup lock task '{lock_name}': completed by another worker while waiting (done file exists: '{done_file_path}')")
+          yield False
+          return
+      except Exception as e:
+        log_function_output(log_data, f"Startup lock task '{lock_name}': WARNING - Error acquiring lock: {e}")
+        break
+    
+    # Timeout occurred
+    log_function_output(log_data, f"Startup lock task '{lock_name}': WARNING - Timeout waiting for lock, checking if task is done")
+    if os.path.exists(done_file_path):
+      log_function_output(log_data, f"Startup lock task '{lock_name}': was completed, skipping (done file exists: '{done_file_path}')")
+      yield False
+    else:
+      log_function_output(log_data, f"Startup lock task '{lock_name}': WARNING - Timeout and task not done, proceeding anyway (may cause race condition)")
+      yield True
+    
+  finally:
+    # Release lock
+    if acquired and lock_fd is not None:
+      try:
+        os.close(lock_fd)
+        os.unlink(lock_file_path)
+        log_function_output(log_data, f"Startup lock task '{lock_name}': Deleted lock file '{lock_file_path}'")
+      except Exception as e:
+        log_function_output(log_data, f"Startup lock task '{lock_name}': WARNING - Error deleting lock file '{lock_file_path}': {e}")
+
+
+def clear_folder(folder_path: str, include_subfolders: bool, log_data: Dict[str, Any]) -> None:
+  """Clear all files and optionally subfolders from the specified folder.
+  
+  Args:
+    folder_path: Path to the folder to clear
+    include_subfolders: If True, removes subfolders as well; if False, only removes files
+  """
+  if not os.path.exists(folder_path):
+    log_function_output(log_data, f"Folder does not exist: {folder_path}")
+    return
+  
+  if not os.path.isdir(folder_path):
+    log_function_output(log_data, f"Path is not a directory: {folder_path}")
+    return
+  
+  try:
+    for item in os.listdir(folder_path):
+      item_path = os.path.join(folder_path, item)
+      
+      if os.path.isfile(item_path):
+        os.remove(item_path)
+        log_function_output(log_data, f"Removed file: {item_path}")
+      elif os.path.isdir(item_path) and include_subfolders:
+        shutil.rmtree(item_path)
+        log_function_output(log_data, f"Removed folder: {item_path}")
+    
+    log_function_output(log_data, f"Successfully cleared folder: {folder_path}")
+  except Exception as e:
+    log_function_output(log_data, f"Error clearing folder {folder_path}: {str(e)}")
+    raise
+
+def extract_zip_files(source_folder: str, destination_folder: str, mode: ZipExtractionMode, initialization_errors: List[Dict[str, str]]) -> List[str]:
+  """Extract all zip files from source folder to destination folder based on the specified mode.
+  
+  Returns:
+      List[str]: List of absolute paths of all extracted files.
+  """
+  extracted_files = []
   try:
     if not os.path.exists(source_folder):
-      return
+      return extracted_files
     
     zip_files = glob.glob(os.path.join(source_folder, "*.zip"))
     for zip_file_path in zip_files:
@@ -61,7 +188,7 @@ def extract_zip_files(source_folder: str, destination_folder: str, mode: ZipExtr
             else:
               should_extract = True
             
-            # Extract if needed
+            # Extract if neededI asdf
             if should_extract:
               os.makedirs(target_dir_path, exist_ok=True)
               with zip_ref.open(member) as source, open(target_file_path, 'wb') as target:
@@ -71,6 +198,9 @@ def extract_zip_files(source_folder: str, destination_folder: str, mode: ZipExtr
               zip_file_time = member.date_time
               zip_timestamp = time.mktime(zip_file_time + (0, 0, -1))
               os.utime(target_file_path, (zip_timestamp, zip_timestamp))
+              
+              # Add to list of extracted files
+              extracted_files.append(os.path.abspath(target_file_path))
           
           print(f"Extracted {zip_file_path} to {destination_folder} ({mode.value} mode)")
         
@@ -78,6 +208,8 @@ def extract_zip_files(source_folder: str, destination_folder: str, mode: ZipExtr
         initialization_errors.append({"component": f"Zip Extraction ({mode.value})", "error": f"Failed to extract {zip_file_path}: {str(e)}"})
   except Exception as e:
     initialization_errors.append({"component": f"Zip Extraction ({mode.value})", "error": str(e)})
+  
+  return extracted_files
 
 # Global request counter
 _request_counter = 0
@@ -131,13 +263,22 @@ def log_function_header(function_name: str) -> Dict[str, Any]:
   logger.info(f"[{start_time.strftime('%Y-%m-%d %H:%M:%S')},process {process_id},request {_request_counter},{function_name}] START: {function_name}...")
   return data
 
-async def log_function_footer(log_data: Dict[str, Any]) -> None:
+def _log_function_footer_impl(log_data: Dict[str, Any]) -> None:
+  """Internal helper to implement footer logging logic."""
   function_name, start_time, request_number = log_data["function_name"], log_data["start_time"], log_data["request_number"]
   process_id = os.getpid()
   end_time = datetime.datetime.now()
   ms = int((end_time - start_time).total_seconds() * 1000)
   total_time = format_milliseconds(ms)
   logger.info(f"[{end_time.strftime('%Y-%m-%d %H:%M:%S')},process {process_id},request {request_number},{function_name}] END: {function_name} ({total_time}).")
+
+async def log_function_footer(log_data: Dict[str, Any]) -> None:
+  """Async version of function footer logging."""
+  _log_function_footer_impl(log_data)
+
+def log_function_footer_sync(log_data: Dict[str, Any]) -> None:
+  """Sync version of function footer logging."""
+  _log_function_footer_impl(log_data)
 
 def log_function_output(log_data: Dict[str, Any], output):
   function_name, request_number = log_data["function_name"], log_data["request_number"]

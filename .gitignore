@@ -24,5 +24,7 @@ deploy.zip
 # Track the folders but ignore their contents
 src/.unzip_to_persistant_storage_if_newer/*
 src/.unzip_to_persistant_storage_overwrite/*
+src/.unzip_to_persistant_storage_clear_before/*
 !src/.unzip_to_persistant_storage_if_newer/.gitkeep
 !src/.unzip_to_persistant_storage_overwrite/.gitkeep
+!src/.unzip_to_persistant_storage_clear_before/.gitkeep
