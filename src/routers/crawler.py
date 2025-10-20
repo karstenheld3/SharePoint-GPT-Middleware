@@ -370,8 +370,8 @@ async def load_sharepoint_files(request: Request):
       return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
     
     # Validate crawler credentials from config
-    if not config or not config.CRAWLER_CLIENT_ID or not config.CRAWLER_CLIENT_SECRET:
-      error_message = "ERROR: Crawler credentials (CRAWLER_CLIENT_ID, CRAWLER_CLIENT_SECRET) not configured"
+    if not config or not config.CRAWLER_CLIENT_ID or not config.CRAWLER_CLIENT_CERTIFICATE_PFX_FILE or not config.CRAWLER_CLIENT_CERTIFICATE_PASSWORD or not config.CRAWLER_TENANT_ID:
+      error_message = "ERROR: Crawler credentials (CRAWLER_CLIENT_ID, CRAWLER_CLIENT_CERTIFICATE_PFX_FILE, CRAWLER_CLIENT_CERTIFICATE_PASSWORD, CRAWLER_TENANT_ID) not configured"
       log_function_output(request_data, error_message)
       await log_function_footer(request_data)
       if format == 'json':
@@ -407,10 +407,16 @@ async def load_sharepoint_files(request: Request):
     
     # Connect to SharePoint
     log_function_output(request_data, f"Connecting to SharePoint: '{file_source.site_url}'")
+    
+    # Get certificate path from persistent storage
+    cert_path = os.path.join(system_info.PERSISTENT_STORAGE_PATH, config.CRAWLER_CLIENT_CERTIFICATE_PFX_FILE)
+    
     ctx = connect_to_site_using_client_id(
       file_source.site_url,
       config.CRAWLER_CLIENT_ID,
-      config.CRAWLER_CLIENT_SECRET
+      config.CRAWLER_TENANT_ID,
+      cert_path,
+      config.CRAWLER_CLIENT_CERTIFICATE_PASSWORD
     )
     
     # Get document library

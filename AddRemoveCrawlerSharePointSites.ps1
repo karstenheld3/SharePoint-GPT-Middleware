@@ -35,6 +35,53 @@ function Get-SitePermissionsForApp {
   }
 }
 
+# Tests access to a site by attempting to retrieve all lists and libraries
+# Uses certificate-based authentication to verify the crawler app has proper access
+function Test-SiteAccess {
+  param(
+    [Parameter(Mandatory=$true)] [string]$SiteUrl,
+    [Parameter(Mandatory=$true)] [string]$ClientId,
+    [Parameter(Mandatory=$true)] [string]$TenantId,
+    [Parameter(Mandatory=$true)] [string]$CertPath,
+    [Parameter(Mandatory=$true)] [securestring]$CertPassword
+  )
+  
+  $testResult = [PSCustomObject]@{
+    success = $false
+    listsCount = 0
+    librariesCount = 0
+    listNames = @()
+    error = $null
+  }
+  
+  try {
+    # Connect using certificate-based authentication
+    Connect-PnPOnline -Url $SiteUrl -ClientId $ClientId -Tenant $TenantId -CertificatePath $CertPath -CertificatePassword $CertPassword -ErrorAction Stop -WarningAction SilentlyContinue
+    
+    # Get all lists and libraries
+    $lists = Get-PnPList -ErrorAction Stop
+    
+    if ($lists) {
+      $libraries = $lists | Where-Object { $_.BaseTemplate -eq 101 }
+      $regularLists = $lists | Where-Object { $_.BaseTemplate -ne 101 -and -not $_.Hidden }
+      
+      $testResult.success = $true
+      $testResult.listsCount = $regularLists.Count
+      $testResult.librariesCount = $libraries.Count
+      $testResult.listNames = ($lists | Where-Object { -not $_.Hidden } | Select-Object -ExpandProperty Title) -join ", "
+    }
+    else {
+      $testResult.success = $true
+      $testResult.listNames = "No lists found"
+    }
+  }
+  catch {
+    $testResult.error = $_.Exception.Message
+  }
+  
+  return $testResult
+}
+
 # Discovers all sites that have granted permissions to the app
 function Get-SitesWithAppPermissions {
   param(
@@ -56,7 +103,7 @@ function Get-SitesWithAppPermissions {
     foreach ($site in $allSites) {
       $checkedCount++
       if ($checkedCount % 10 -eq 0) {
-        Write-Host "    Checked $checkedCount/$($allSites.Count) sites..." -ForegroundColor DarkGray
+        Write-Host "    Checked [ $checkedCount / $($allSites.Count) ] sites..." -ForegroundColor DarkGray
       }
       
       $permissions = Get-SitePermissionsForApp -SiteUrl $site.Url -ClientId $ClientId
@@ -96,9 +143,36 @@ $config = Read-EnvFile -Path ($envPath)
 
 # === Validate required configuration ===
 if ([string]::IsNullOrWhiteSpace($config.CRAWLER_CLIENT_ID)) { throw "CRAWLER_CLIENT_ID is required in .env file" }
+if ([string]::IsNullOrWhiteSpace($config.CRAWLER_CLIENT_NAME)) { throw "CRAWLER_CLIENT_NAME is required in .env file" }
 if ([string]::IsNullOrWhiteSpace($config.CRAWLER_TENANT_ID)) { throw "CRAWLER_TENANT_ID is required in .env file" }
 if ([string]::IsNullOrWhiteSpace($config.CRAWLER_SHAREPOINT_TENANT_NAME)) { throw "CRAWLER_SHAREPOINT_TENANT_NAME is required in .env file" }
 if ([string]::IsNullOrWhiteSpace($config.PNP_CLIENT_ID)) { throw "PNP_CLIENT_ID is required in .env file" }
+if ([string]::IsNullOrWhiteSpace($config.CRAWLER_CLIENT_CERTIFICATE_PFX_FILE)) { throw "CRAWLER_CLIENT_CERTIFICATE_PFX_FILE is required in .env file" }
+if ([string]::IsNullOrWhiteSpace($config.CRAWLER_CLIENT_CERTIFICATE_PASSWORD)) { throw "CRAWLER_CLIENT_CERTIFICATE_PASSWORD is required in .env file" }
+
+# === Validate certificate file ===
+# Determine certificate path based on LOCAL_PERSISTENT_STORAGE_PATH
+$certPath = if ([string]::IsNullOrWhiteSpace($config.LOCAL_PERSISTENT_STORAGE_PATH)) {
+  # If LOCAL_PERSISTENT_STORAGE_PATH is not set, use script root
+  Join-Path $PSScriptRoot $config.CRAWLER_CLIENT_CERTIFICATE_PFX_FILE
+} else {
+  # Use LOCAL_PERSISTENT_STORAGE_PATH
+  Join-Path $config.LOCAL_PERSISTENT_STORAGE_PATH $config.CRAWLER_CLIENT_CERTIFICATE_PFX_FILE
+}
+
+if (-not (Test-Path $certPath)) {
+  Write-Host "ERROR: Certificate file not found!" -ForegroundColor Red
+  Write-Host "Expected location: $certPath" -ForegroundColor Yellow
+  Write-Host ""
+  Write-Host "Please ensure:" -ForegroundColor Yellow
+  Write-Host "  1. CRAWLER_CLIENT_CERTIFICATE_PFX_FILE is set correctly in .env file" -ForegroundColor White
+  Write-Host "  2. The certificate file exists at the specified location" -ForegroundColor White
+  Write-Host "  3. LOCAL_PERSISTENT_STORAGE_PATH is set correctly (or leave empty to use script folder)" -ForegroundColor White
+  throw "Certificate file not found: $certPath"
+}
+
+Write-Host "Using certificate: $certPath" -ForegroundColor Gray
+$certPasswordSecure = ConvertTo-SecureString $config.CRAWLER_CLIENT_CERTIFICATE_PASSWORD -AsPlainText -Force
 
 Write-Host "Managing SharePoint site permissions for App: $($config.CRAWLER_CLIENT_ID)" -ForegroundColor Cyan
 
@@ -132,6 +206,33 @@ catch {
 Write-Host "`nDiscovering sites with app permissions..."
 $sitesWithPermissions = Get-SitesWithAppPermissions -ClientId $config.CRAWLER_CLIENT_ID -AdminUrl $adminUrl
 
+# === Test access to each site ===
+if ($sitesWithPermissions.Count -gt 0) {
+  Write-Host "`nTesting access to sites (using certificate authentication)..."
+  
+  for ($i = 0; $i -lt $sitesWithPermissions.Count; $i++) {
+    $site = $sitesWithPermissions[$i]
+    Write-Host "  Testing $($site.url)..." -ForegroundColor Gray
+    
+    # Test using certificate authentication to verify the crawler app has access
+    $testResult = Test-SiteAccess -SiteUrl $site.url -ClientId $config.CRAWLER_CLIENT_ID -TenantId $config.CRAWLER_TENANT_ID -CertPath $certPath -CertPassword $certPasswordSecure
+    
+    # Add test results to the site object
+    $sitesWithPermissions[$i] | Add-Member -MemberType NoteProperty -Name "testSuccess" -Value $testResult.success -Force
+    $sitesWithPermissions[$i] | Add-Member -MemberType NoteProperty -Name "listsCount" -Value $testResult.listsCount -Force
+    $sitesWithPermissions[$i] | Add-Member -MemberType NoteProperty -Name "librariesCount" -Value $testResult.librariesCount -Force
+    $sitesWithPermissions[$i] | Add-Member -MemberType NoteProperty -Name "listNames" -Value $testResult.listNames -Force
+    $sitesWithPermissions[$i] | Add-Member -MemberType NoteProperty -Name "testError" -Value $testResult.error -Force
+    
+    if ($testResult.success) {
+      Write-Host "    OK: Found $($testResult.listsCount) lists, $($testResult.librariesCount) libraries" -ForegroundColor Green
+    }
+    else {
+      Write-Host "    FAIL: $($testResult.error)" -ForegroundColor Red
+    }
+  }
+}
+
 Write-Host "`nCurrently configured sites:"
 if ($sitesWithPermissions.Count -eq 0) {
   Write-Host "  No sites configured" -ForegroundColor Gray
@@ -139,7 +240,21 @@ if ($sitesWithPermissions.Count -eq 0) {
 else {
   for ($i = 0; $i -lt $sitesWithPermissions.Count; $i++) {
     $site = $sitesWithPermissions[$i]
-    Write-Host "  [$($i + 1)] $($site.url) - Permissions: $($site.roles)" -ForegroundColor Green
+    Write-Host "  [$($i + 1)] $($site.url)" -ForegroundColor Green
+    Write-Host "      Permissions: $($site.roles)" -ForegroundColor Gray
+    
+    # Display test results if available
+    if ($null -ne $site.testSuccess) {
+      if ($site.testSuccess) {
+        Write-Host "      Access Test: PASSED - $($site.listsCount) lists, $($site.librariesCount) libraries" -ForegroundColor Green
+        if ($site.listNames) {
+          Write-Host "      Lists/Libraries: $($site.listNames)" -ForegroundColor DarkGray
+        }
+      }
+      else {
+        Write-Host "      Access Test: FAILED - $($site.testError)" -ForegroundColor Red
+      }
+    }
   }
 }
 
@@ -196,10 +311,14 @@ if ($choiceNum -eq 1) {
   }
   
   Write-Host "`nGranting $role permission to site..."
+  Write-Host "  Note: This grants permission for both Microsoft Graph and SharePoint REST API access" -ForegroundColor Gray
   
   try {
-    Grant-PnPAzureADAppSitePermission -AppId $config.CRAWLER_CLIENT_ID -DisplayName "Crawler App" -Site $siteUrl -Permissions $role -ErrorAction Stop
+    # Grant permission - this automatically works for both Graph and SharePoint APIs
+    # The PnP cmdlet creates the permission that works with both APIs
+    Grant-PnPAzureADAppSitePermission -AppId $config.CRAWLER_CLIENT_ID -DisplayName $config.CRAWLER_CLIENT_NAME -Site $siteUrl -Permissions $role -ErrorAction Stop
     Write-Host "  OK: Permission granted successfully" -ForegroundColor Green
+    Write-Host "      This permission works with both Microsoft Graph and SharePoint REST APIs" -ForegroundColor Gray
   }
   catch {
     Write-Host "  FAIL: Failed to grant permission - $($_.Exception.Message)" -ForegroundColor White -BackgroundColor Red
@@ -213,14 +332,54 @@ else {
   Write-Host "`nRemoving site: $($siteToRemove.url)"
   Write-Host "========================================"
   
-  Write-Host "Revoking permission..."
+  Write-Host "Revoking permissions from both APIs..."
   
   try {
-    Revoke-PnPAzureADAppSitePermission -PermissionId $siteToRemove.permissionId -Site $siteToRemove.url -Force -ErrorAction Stop
-    Write-Host "  OK: Permission revoked successfully" -ForegroundColor Green
+    # Reconnect to admin center with interactive auth to perform admin operations
+    Connect-PnPOnline -Url $adminUrl -Interactive -ClientId $config.PNP_CLIENT_ID -ErrorAction Stop
+    
+    # Get all permissions for this app on this site
+    $allPermissions = Get-PnPAzureADAppSitePermission -Site $siteToRemove.url -AppIdentity $config.CRAWLER_CLIENT_ID -ErrorAction SilentlyContinue
+    
+    if ($allPermissions) {
+      $revokedCount = 0
+      $failedCount = 0
+      
+      # Handle both single permission and array of permissions
+      $permissionsArray = if ($allPermissions -is [array]) { $allPermissions } else { @($allPermissions) }
+      
+      Write-Host "  Found $($permissionsArray.Count) permission(s) to revoke" -ForegroundColor Gray
+      
+      foreach ($perm in $permissionsArray) {
+        try {
+          Write-Host "  Revoking permission ID: $($perm.Id)..." -ForegroundColor Gray
+          Revoke-PnPAzureADAppSitePermission -PermissionId $perm.Id -Site $siteToRemove.url -Force -ErrorAction Stop
+          Write-Host "    OK: Permission revoked" -ForegroundColor Green
+          $revokedCount++
+        }
+        catch {
+          Write-Host "    FAIL: Could not revoke - $($_.Exception.Message)" -ForegroundColor Red
+          $failedCount++
+        }
+      }
+      
+      # Summary
+      if ($revokedCount -eq $permissionsArray.Count) {
+        Write-Host "`n  SUCCESS: All permissions revoked!" -ForegroundColor Green
+      }
+      elseif ($revokedCount -gt 0) {
+        Write-Host "`n  PARTIAL: $revokedCount of $($permissionsArray.Count) permissions revoked" -ForegroundColor Yellow
+      }
+      else {
+        Write-Host "`n  FAIL: Could not revoke any permissions" -ForegroundColor Red
+      }
+    }
+    else {
+      Write-Host "  WARNING: No permissions found for this app on this site" -ForegroundColor Yellow
+    }
   }
   catch {
-    Write-Host "  WARNING: Could not revoke permission - $($_.Exception.Message)"
+    Write-Host "  FAIL: Could not revoke permissions - $($_.Exception.Message)" -ForegroundColor Red
   }
 }
 

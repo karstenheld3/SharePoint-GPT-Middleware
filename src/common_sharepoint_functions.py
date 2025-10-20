@@ -5,7 +5,8 @@ from urllib.parse import urlparse
 from dataclasses import asdict, dataclass
 from office365.sharepoint.client_context import ClientContext
 from office365.sharepoint.lists.list import List as DocumentLibrary
-from office365.runtime.auth.client_credential import ClientCredential
+from cryptography.hazmat.primitives.serialization import pkcs12, Encoding, PrivateFormat, NoEncryption
+from cryptography.hazmat.backends import default_backend
 
 @dataclass
 class SharePointFile:
@@ -18,22 +19,56 @@ class SharePointFile:
     last_modified_utc: str
     last_modified_timestamp: int
 
-def connect_to_site_using_client_id(site_url: str, client_id: str, client_secret: str) -> ClientContext:
+def connect_to_site_using_client_id(site_url: str, client_id: str, tenant_id: str, cert_path: str, cert_password: str) -> ClientContext:
   """
-  Connect to a SharePoint site using client credentials (App-Only authentication).
-  This method uses the client credentials flow (OAuth 2.0) to authenticate with SharePoint Online or SharePoint on-premises.
+  Connect to a SharePoint site using certificate-based authentication (App-Only authentication).
+  This method uses MSAL with certificate credentials to authenticate with SharePoint Online, which supports Sites.Selected permissions.
   
   Args:
     site_url: The SharePoint site URL (e.g., 'https://contoso.sharepoint.com/sites/mysite')
     client_id: The OAuth client ID of the registered application
-    client_secret: The client secret associated with the application
+    tenant_id: The Azure AD tenant ID
+    cert_path: Path to the PFX certificate file
+    cert_password: Password for the PFX certificate
     
   Returns:
     ClientContext: An authenticated SharePoint client context object
   """
   
-  credentials = ClientCredential(client_id, client_secret)
-  ctx = ClientContext(site_url).with_credentials(credentials)
+  # Load and convert PFX to PEM format (required by with_client_certificate)
+  with open(cert_path, 'rb') as f:
+    pfx_data = f.read()
+  
+  # Extract private key and certificate from PFX
+  private_key, certificate, _ = pkcs12.load_key_and_certificates(
+    pfx_data,
+    cert_password.encode() if cert_password else None,
+    backend=default_backend()
+  )
+  
+  # Create temporary PEM file
+  pem_file = cert_path.replace('.pfx', '_temp.pem')
+  with open(pem_file, 'wb') as f:
+    # Write private key
+    f.write(private_key.private_bytes(
+      encoding=Encoding.PEM,
+      format=PrivateFormat.PKCS8,
+      encryption_algorithm=NoEncryption()
+    ))
+    # Write certificate
+    f.write(certificate.public_bytes(Encoding.PEM))
+  
+  # Get certificate thumbprint
+  thumbprint = certificate.fingerprint(certificate.signature_hash_algorithm).hex().upper()
+  
+  # Connect using certificate-based authentication
+  # The library handles MSAL token acquisition internally
+  ctx = ClientContext(site_url).with_client_certificate(
+    tenant=tenant_id,
+    client_id=client_id,
+    thumbprint=thumbprint,
+    cert_path=pem_file
+  )
   return ctx
 
 def try_get_document_library(ctx: ClientContext, site_url: str, library_url_part: str) -> tuple[Optional[DocumentLibrary], Optional[str]]:

@@ -52,7 +52,8 @@ SEARCH_DEFAULT_SHAREPOINT_ROOT_URL=https://<your_sharepoint_url>/
 
 # The app registration used to access SharePoint
 CRAWLER_CLIENT_ID=<your_crawler_client_id>
-CRAWLER_CLIENT_SECRET=<your_crawler_client_secret>
+CRAWLER_CLIENT_CERTIFICATE_PFX_FILE=SharePoint-GPT-Crawler.pfx
+CRAWLER_CLIENT_CERTIFICATE_PASSWORD=<your_certificate_password>
 CRAWLER_CLIENT_NAME=<your_crawler_client_name>
 # Needed for PowerShell scripts
 CRAWLER_TENANT_ID=<your_crawler_tenant_id>

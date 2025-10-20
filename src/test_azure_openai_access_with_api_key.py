@@ -36,11 +36,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('azure')
 logger.setLevel(logging.ERROR)
 
-client = AzureOpenAI(
-    api_version=api_version,
-    azure_endpoint=endpoint,
-    api_key=api_key
-)
+client = AzureOpenAI(api_version=api_version, azure_endpoint=endpoint, api_key=api_key)
 
 question = "Who was the 3rd roman emperor? Give me just the name and the time span he reigned."
 response = client.chat.completions.create(
