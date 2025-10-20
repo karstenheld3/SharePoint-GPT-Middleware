@@ -1,27 +1,29 @@
 # CLIENT ID will be read from variable CRAWLER_CLIENT_ID in .env file in the same folder 
 
 # === Resource IDs ===
-$graphResourceId = "00000003-0000-0000-c000-000000000000"  # Microsoft Graph
-$sharepointResourceId = "00000003-0000-0ff1-ce00-000000000000"  # SharePoint
+$graphResourceId        = "00000003-0000-0000-c000-000000000000"  # Microsoft Graph
+$sharepointResourceId   = "00000003-0000-0ff1-ce00-000000000000"  # SharePoint
 
 # === Define required permissions ===
 # Permission IDs for Microsoft Graph API (Application permissions)
+# This MS Graph permission should not be confused with the SharePoint API Sites.Selected
+# "Sites.Selected"     = "883ea226-0bf2-4a8f-9f9d-92c9162a727d"  # Access selected sites
+
 $graphPermissions = @{
-  "Sites.Selected"     = "883ea226-0bf2-4a8f-9f9d-92c9162a727d"  # Access selected sites
-  "Group.Read.All"     = "5b567255-7703-4780-807c-7be8301ae99b"  # Read all groups
+  "Group.Read.All"       = "5b567255-7703-4780-807c-7be8301ae99b"  # Read all groups
   "GroupMember.Read.All" = "98830695-27a2-44f7-8c18-0c3ebc9698f6"  # Read group memberships
-  "User.Read.All"      = "df021288-bdef-4463-88db-98f22de89214"  # Read all users
+  "User.Read.All"        = "df021288-bdef-4463-88db-98f22de89214"  # Read all users
 }
 
 # Permission IDs for SharePoint API (Application permissions)
 $sharepointPermissions = @{
-  "Sites.Selected"     = "20d37865-089c-4dee-8c41-6967602d4ac8"  # Access selected sites (required for PnP with certificate auth)
+  "Sites.Selected"       = "20d37865-089c-4dee-8c41-6967602d4ac8"  # Access selected sites (required for PnP with certificate auth)
 }
 
 # Reads an .env file and returns a hashtable of key-value pairs
 function Read-EnvFile {
   param([Parameter(Mandatory=$true)] [string]$Path)
-  $envVars = @{}  
+  $envVars = @{}
   if (!(Test-Path $Path)) { throw "File '$($Path)' not found."  }
   Get-Content $Path | ForEach-Object {
     # ([^=]+)=([^#]*) captures key-value pairs separated by '=' in group 1 and 2
@@ -164,8 +166,13 @@ if ($choice -ne "1" -and $choice -ne "2") {
 }
 
 if ($choice -eq "2") {
-  # === Remove all permissions ===
-  Write-Host "Removing all Microsoft Graph and SharePoint permissions..."
+  # === Remove defined permissions ===
+  Write-Host "Removing defined Microsoft Graph and SharePoint permissions..." -ForegroundColor Cyan
+  Write-Host "  This will remove permissions whether they are granted or not`n" -ForegroundColor Gray
+  
+  # Build list of permission IDs to remove
+  $graphPermissionIdsToRemove = @($graphPermissions.Values)
+  $sharepointPermissionIdsToRemove = @($sharepointPermissions.Values)
   
   try {
     $app = Get-AzADApplication -ApplicationId $config.CRAWLER_CLIENT_ID -ErrorAction Stop
@@ -180,13 +187,23 @@ if ($choice -eq "2") {
       $graphSp = Get-AzADServicePrincipal -Filter "appId eq '$graphResourceId'" -ErrorAction SilentlyContinue
       $sharepointSp = Get-AzADServicePrincipal -Filter "appId eq '$sharepointResourceId'" -ErrorAction SilentlyContinue
       
-      # Remove app role assignments (granted permissions)
+      # Remove app role assignments (granted permissions) - only for defined permissions
       $assignments = Get-AzADServicePrincipalAppRoleAssignment -ServicePrincipalId $sp.Id -ErrorAction SilentlyContinue
       
       if ($assignments) {
         foreach ($assignment in $assignments) {
-          if (($graphSp -and $assignment.ResourceId -eq $graphSp.Id) -or 
-              ($sharepointSp -and $assignment.ResourceId -eq $sharepointSp.Id)) {
+          $shouldRemove = $false
+          
+          # Check if this is a Graph permission we want to remove
+          if ($graphSp -and $assignment.ResourceId -eq $graphSp.Id -and $graphPermissionIdsToRemove -contains $assignment.AppRoleId) {
+            $shouldRemove = $true
+          }
+          # Check if this is a SharePoint permission we want to remove
+          elseif ($sharepointSp -and $assignment.ResourceId -eq $sharepointSp.Id -and $sharepointPermissionIdsToRemove -contains $assignment.AppRoleId) {
+            $shouldRemove = $true
+          }
+          
+          if ($shouldRemove) {
             try {
               Remove-AzADServicePrincipalAppRoleAssignment -ServicePrincipalId $sp.Id -AppRoleAssignmentId $assignment.Id -ErrorAction Stop
               Write-Host "    OK: Revoked granted permission: $($assignment.AppRoleId)" -ForegroundColor Green
@@ -201,68 +218,127 @@ if ($choice -eq "2") {
     }
     
     if ($removedCount -eq 0) {
-      Write-Host "    No granted permissions found to revoke" -ForegroundColor Gray
+      Write-Host "    No permissions found to revoke" -ForegroundColor Gray
     }
     
-    # Step 2: Remove permissions from app registration
-    Write-Host "`n  Step 2: Removing permissions from app registration..." -ForegroundColor Gray
+    # Step 2: Remove permissions from app registration (configured permissions)
+    Write-Host "`n  Step 2: Removing configured permissions from app registration..." -ForegroundColor Gray
     
-    # Filter out Microsoft Graph and SharePoint permissions
+    # Build new resource access list by filtering out defined permissions
     $updatedResourceAccess = @()
-    $hadGraphPermissions = $false
-    $hadSharePointPermissions = $false
+    $removedGraphCount = 0
+    $removedSharePointCount = 0
     
     foreach ($resource in $app.RequiredResourceAccess) {
       if ($resource.ResourceAppId -eq $graphResourceId) {
-        $hadGraphPermissions = $true
+        # Keep Graph permissions that are NOT in our removal list
+        $filteredAccess = @()
+        foreach ($access in $resource.ResourceAccess) {
+          if ($graphPermissionIdsToRemove -notcontains $access.Id) {
+            $filteredAccess += @{
+              Id = $access.Id
+              Type = $access.Type
+            }
+          }
+          else {
+            $removedGraphCount++
+          }
+        }
+        
+        if ($filteredAccess.Count -gt 0) {
+          $updatedResourceAccess += @{
+            ResourceAppId = $graphResourceId
+            ResourceAccess = $filteredAccess
+          }
+        }
       }
       elseif ($resource.ResourceAppId -eq $sharepointResourceId) {
-        $hadSharePointPermissions = $true
+        # Keep SharePoint permissions that are NOT in our removal list
+        $filteredAccess = @()
+        foreach ($access in $resource.ResourceAccess) {
+          if ($sharepointPermissionIdsToRemove -notcontains $access.Id) {
+            $filteredAccess += @{
+              Id = $access.Id
+              Type = $access.Type
+            }
+          }
+          else {
+            $removedSharePointCount++
+          }
+        }
+        
+        if ($filteredAccess.Count -gt 0) {
+          $updatedResourceAccess += @{
+            ResourceAppId = $sharepointResourceId
+            ResourceAccess = $filteredAccess
+          }
+        }
       }
       else {
-        $updatedResourceAccess += $resource
+        # Keep all other API permissions unchanged (only if they have permissions)
+        if ($resource.ResourceAccess -and $resource.ResourceAccess.Count -gt 0) {
+          $otherAccess = @()
+          foreach ($access in $resource.ResourceAccess) {
+            $otherAccess += @{
+              Id = $access.Id
+              Type = $access.Type
+            }
+          }
+          $updatedResourceAccess += @{
+            ResourceAppId = $resource.ResourceAppId
+            ResourceAccess = $otherAccess
+          }
+        }
       }
     }
     
-    if ($hadGraphPermissions -or $hadSharePointPermissions) {
+    if ($removedGraphCount -gt 0 -or $removedSharePointCount -gt 0) {
       # Update the app with filtered permissions
+      Write-Host "    Updating app registration with $($updatedResourceAccess.Count) remaining resource(s)..." -ForegroundColor Gray
+      
+      # Update using ApplicationId like the Add section does
       Update-AzADApplication -ApplicationId $config.CRAWLER_CLIENT_ID -RequiredResourceAccess $updatedResourceAccess -ErrorAction Stop
-      if ($hadGraphPermissions) {
-        Write-Host "    OK: Removed all Microsoft Graph permissions from app registration" -ForegroundColor Green
+      
+      if ($removedGraphCount -gt 0) {
+        Write-Host "    OK: Removed $removedGraphCount Microsoft Graph permission(s) from app registration (granted or not)" -ForegroundColor Green
       }
-      if ($hadSharePointPermissions) {
-        Write-Host "    OK: Removed all SharePoint permissions from app registration" -ForegroundColor Green
+      if ($removedSharePointCount -gt 0) {
+        Write-Host "    OK: Removed $removedSharePointCount SharePoint permission(s) from app registration (granted or not)" -ForegroundColor Green
       }
     }
     else {
-      Write-Host "    No permissions found in app registration" -ForegroundColor Gray
+      Write-Host "    No defined permissions found in app registration to remove" -ForegroundColor Gray
     }
     
     # Verify removal
     Write-Host "`nVerifying removal..."
-    $remainingGraphPermissions = Get-AppPermissions -ClientId $config.CRAWLER_CLIENT_ID -ResourceId $graphResourceId
-    $remainingSharePointPermissions = Get-AppPermissions -ClientId $config.CRAWLER_CLIENT_ID -ResourceId $sharepointResourceId
+    $allGraphPermissions = Get-AppPermissions -ClientId $config.CRAWLER_CLIENT_ID -ResourceId $graphResourceId
+    $allSharePointPermissions = Get-AppPermissions -ClientId $config.CRAWLER_CLIENT_ID -ResourceId $sharepointResourceId
     
-    # Also check for remaining granted permissions
+    # Check if any of the defined permissions still remain
+    $remainingDefinedGraphPermissions = @($allGraphPermissions | Where-Object { $graphPermissionIdsToRemove -contains $_ })
+    $remainingDefinedSharePointPermissions = @($allSharePointPermissions | Where-Object { $sharepointPermissionIdsToRemove -contains $_ })
+    
+    # Also check for remaining granted permissions (only for defined permissions)
     $remainingGranted = 0
     if ($sp) {
       $assignments = Get-AzADServicePrincipalAppRoleAssignment -ServicePrincipalId $sp.Id -ErrorAction SilentlyContinue
       foreach ($assignment in $assignments) {
-        if (($graphSp -and $assignment.ResourceId -eq $graphSp.Id) -or 
-            ($sharepointSp -and $assignment.ResourceId -eq $sharepointSp.Id)) {
+        if (($graphSp -and $assignment.ResourceId -eq $graphSp.Id -and $graphPermissionIdsToRemove -contains $assignment.AppRoleId) -or 
+            ($sharepointSp -and $assignment.ResourceId -eq $sharepointSp.Id -and $sharepointPermissionIdsToRemove -contains $assignment.AppRoleId)) {
           $remainingGranted++
         }
       }
     }
     
-    if ($remainingGraphPermissions.Count -eq 0 -and $remainingSharePointPermissions.Count -eq 0 -and $remainingGranted -eq 0) {
-      Write-Host "  OK: All permissions successfully removed!" -ForegroundColor Green
+    if ($remainingDefinedGraphPermissions.Count -eq 0 -and $remainingDefinedSharePointPermissions.Count -eq 0 -and $remainingGranted -eq 0) {
+      Write-Host "  OK: All defined permissions successfully removed!" -ForegroundColor Green
     }
     else {
-      Write-Host "  WARNING: Some permissions may still remain"
-      Write-Host "    Microsoft Graph permissions: $($remainingGraphPermissions.Count)" -ForegroundColor Gray
-      Write-Host "    SharePoint permissions: $($remainingSharePointPermissions.Count)" -ForegroundColor Gray
-      Write-Host "    Granted permissions: $remainingGranted" -ForegroundColor Gray
+      Write-Host "  WARNING: Some defined permissions may still remain"
+      Write-Host "    Defined Microsoft Graph permissions remaining: $($remainingDefinedGraphPermissions.Count)" -ForegroundColor Gray
+      Write-Host "    Defined SharePoint permissions remaining: $($remainingDefinedSharePointPermissions.Count)" -ForegroundColor Gray
+      Write-Host "    Granted defined permissions remaining: $remainingGranted" -ForegroundColor Gray
     }
   }
   catch {
