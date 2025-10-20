@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse, Response, StreamingResponse
 
 import httpx
 
-from utils import clean_response, convert_to_html_table, format_config_for_displaying, format_milliseconds, log_function_footer, log_function_header, log_function_output, truncate_string
+from utils import clean_response, convert_to_flat_html_table, format_config_for_displaying, format_milliseconds, log_function_footer, log_function_header, log_function_output, truncate_string
 router = APIRouter()
 
 # Configuration will be injected from app.py
@@ -1588,9 +1588,9 @@ async def self_test(request: Request):
 </head><body>
 """
   html += f"<h1>OpenAI Proxy Self Test Results ({config.OPENAI_SERVICE_TYPE})</h1>"
-  html += convert_to_html_table(results)
+  html += convert_to_flat_html_table(results)
   html += "<p><b>Configuration:</b></p>"
-  html += convert_to_html_table(format_config_for_displaying(config))
+  html += convert_to_flat_html_table(format_config_for_displaying(config))
   html += "</body></html>"
   try:
     return HTMLResponse(content=html)

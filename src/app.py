@@ -11,9 +11,9 @@ from fastapi.staticfiles import StaticFiles
 
 from common_openai_functions import create_async_azure_openai_client_with_api_key, create_async_azure_openai_client_with_credential, create_async_openai_client
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
-from routers import inventory, openai_proxy, sharepoint_search
+from routers import crawler, inventory, openai_proxy, sharepoint_search
 from routers.sharepoint_search import build_domains_and_metadata_cache
-from utils import ZipExtractionMode, acquire_startup_lock, convert_to_html_table, extract_zip_files, format_config_for_displaying, format_filesize, log_function_footer, log_function_header, log_function_output, log_function_footer_sync, clear_folder
+from utils import ZipExtractionMode, acquire_startup_lock, convert_to_flat_html_table, extract_zip_files, format_config_for_displaying, format_filesize, log_function_footer, log_function_header, log_function_output, log_function_footer_sync, clear_folder
 
 # Load environment variables from a local .env file if present
 load_dotenv()
@@ -352,6 +352,14 @@ def create_app() -> FastAPI:
   except Exception as e:
     initialization_errors.append({"component": "Inventory Router", "error": str(e)})
   
+  # Include Crawler router under /crawler
+  try:
+    app.include_router(crawler.router, tags=["Crawler"], prefix="/crawler")
+    crawler.set_config(config)
+    log_function_output(log_data, "Crawler router included at /crawler")
+  except Exception as e:
+    initialization_errors.append({"component": "Crawler Router", "error": str(e)})
+  
   # Mount static files directory
   static_path = os.path.join(os.path.dirname(__file__), "static")
   if os.path.exists(static_path):
@@ -395,7 +403,7 @@ async def ignore_default_doc():
 
 @app.get("/", response_class=HTMLResponse)
 def root() -> str:
-  errors_html = f'<div class="section"><h4>Errors</h4>{convert_to_html_table(initialization_errors)}</div>' if initialization_errors else ""
+  errors_html = f'<div class="section"><h4>Errors</h4>{convert_to_flat_html_table(initialization_errors)}</div>' if initialization_errors else ""
   system_info = app.state.system_info
   system_info_list = []
   for field in system_info.__dataclass_fields__:
@@ -442,17 +450,18 @@ def root() -> str:
     <li><a href="/inventory/vectorstores">/inventory/vectorstores</a> - Vector Stores Inventory (<a href="/inventory/vectorstores?format=html&excludeattributes=metadata">HTML</a> + <a href="/inventory/vectorstores?format=json">JSON</a>)</li>
     <li><a href="/inventory/files">/inventory/files</a> - Files Inventory (<a href="/inventory/files?format=html&excludeattributes=purpose,status_details">HTML</a> + <a href="/inventory/files?format=json">JSON</a>)</li>
     <li><a href="/inventory/assistants">/inventory/assistants</a> - Assistants Inventory (<a href="/inventory/assistants?format=html&excludeattributes=description,instructions,tools,tool_resources">HTML</a> + <a href="/inventory/assistants?format=json">JSON</a>)</li>
-    <li><a href="/inventory/localstorage">/inventory/localstorage</a> - Local Storage Inventory (<a href="/inventory/localstorage?format=html">HTML</a> + <a href="/inventory/localstorage?format=json">JSON</a> + <a href="/inventory/localstorage?format=zip">ZIP</a>)</li>
+    <li><a href="/crawler/domains">/crawler/domains</a> - Domains Configuration (<a href="/crawler/domains?format=html">HTML</a> + <a href="/crawler/domains?format=json">JSON</a> + <a href="/crawler/domains?format=ui">UI</a>)</li>
+    <li><a href="/crawler/localstorage">/crawler/localstorage</a> - Local Storage Inventory (<a href="/crawler/localstorage?format=html">HTML</a> + <a href="/crawler/localstorage?format=json">JSON</a> + <a href="/crawler/localstorage?format=zip">ZIP</a> + <a href="/crawler/localstorage?format=zip&exceptfolder=crawler">ZIP except 'crawler' folder</a>)</li>
   </ul>
 
   <div class="section">
     <h4>Configuration</h4>
-    {convert_to_html_table(format_config_for_displaying(app.state.config))}
+    {convert_to_flat_html_table(format_config_for_displaying(app.state.config))}
   </div>
 
   <div class="section">
     <h4>System Information</h4>
-    {convert_to_html_table(system_info_list)}
+    {convert_to_flat_html_table(system_info_list)}
   </div>
 
   {errors_html}

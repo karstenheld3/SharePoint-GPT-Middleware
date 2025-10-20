@@ -305,7 +305,7 @@ def sanitize_queries_and_responses(string):
   if not log_queries_and_responses and len(string) > string_max_visible_chars : return truncate_string(string, string_max_visible_chars,"") + remove_marker
   return string
 
-# Returns a nested html table from the given data (Dict or List or Array)
+# Returns a nested html table from the given data (Dict, List, Array, DataClass)
 def convert_to_nested_html_table(data: Any, max_depth: int = 10) -> str:
   
   def handle_value(v: Any, depth: int) -> str:
@@ -320,16 +320,7 @@ def convert_to_nested_html_table(data: Any, max_depth: int = 10) -> str:
     # Convert dataclass to dict for consistent handling
     dc_dict = {field.name: getattr(dc, field.name) for field in dataclasses.fields(dc)}
     return handle_dict(dc_dict, depth)
-
-
-# Returns a nested html table from the given data (Dict or List or Array)
-def convert_to_nested_html_table(data: Any, max_depth: int = 10) -> str:
-  def handle_value(v: Any, depth: int) -> str:
-    if depth >= max_depth: return html.escape(str(v))
-    if isinstance(v, dict): return handle_dict(v, depth + 1)
-    elif isinstance(v, list): return handle_list(v, depth + 1)
-    else: return html.escape(str(v))
-
+  
   def handle_list(items: List[Any], depth: int) -> str:
     if not items or depth >= max_depth: return html.escape(str(items))
     # For simple lists, just return the string representation
@@ -342,10 +333,11 @@ def convert_to_nested_html_table(data: Any, max_depth: int = 10) -> str:
     if not d or depth >= max_depth: return html.escape(str(d))
     rows = [f"<tr><td>{html.escape(str(k))}</td><td>{handle_value(v, depth)}</td></tr>" for k, v in d.items()]
     return f"<table border=1>{''.join(rows)}</table>"
+  
   return handle_value(data, 1)
 
 # Returns a formatted HTML table from lists, dicts, or arrays with proper rows and columns
-def convert_to_html_table(data: Any) -> str:
+def convert_to_flat_html_table(data: Any) -> str:
   if not data: return "<p>No data</p>"
   
   # Handle list of dictionaries (like initialization_errors)
