@@ -482,7 +482,7 @@ def root() -> str:
     <li><a href="/inventory/vectorstores">/inventory/vectorstores</a> - Vector Stores Inventory (<a href="/inventory/vectorstores?format=html&excludeattributes=metadata">HTML</a> + <a href="/inventory/vectorstores?format=json">JSON</a>)</li>
     <li><a href="/inventory/files">/inventory/files</a> - Files Inventory (<a href="/inventory/files?format=html&excludeattributes=purpose,status_details">HTML</a> + <a href="/inventory/files?format=json">JSON</a>)</li>
     <li><a href="/inventory/assistants">/inventory/assistants</a> - Assistants Inventory (<a href="/inventory/assistants?format=html&excludeattributes=description,instructions,tools,tool_resources">HTML</a> + <a href="/inventory/assistants?format=json">JSON</a>)</li>
-    <li><a href="/domains">/domains</a> - Domains Management (<a href="/domains?format=html">HTML</a> + <a href="/domains?format=json">JSON</a> + <a href="/domains?format=ui">UI</a>)</li>
+    <li><a href="/domains">/domains</a> - Domains Management (<a href="/domains?format=html">HTML</a> + <a href="/domains?format=json">JSON</a> + <a href="/domains?format=ui">UI</a> + <a href="/domains/create">Create</a> + <a href="/domains/update">Update</a> + <a href="/domains/delete">Delete</a>)</li>
     <li><a href="/crawler/localstorage">/crawler/localstorage</a> - Local Storage Inventory (<a href="/crawler/localstorage?format=html">HTML</a> + <a href="/crawler/localstorage?format=json">JSON</a> + <a href="/crawler/localstorage?format=zip">ZIP</a> + <a href="/crawler/localstorage?format=zip&exceptfolder=crawler">ZIP except 'crawler' folder</a>)</li>
   </ul>
 
