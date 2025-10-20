@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
-from utils import log_function_footer, log_function_header, log_function_output
+from utils import convert_to_flat_html_table, convert_to_nested_html_table, log_function_footer, log_function_header, log_function_output
 from common_crawler_functions import (
     DomainConfig, DocumentSource, PageSource, ListSource,
     load_all_domains, domain_config_to_dict, 
@@ -43,6 +43,174 @@ def _generate_success_response(message: str, format: str, data: Dict[str, Any] =
     else:
         return HTMLResponse(f"<div class='success'>{message}</div>")
 
+@router.get('/domains')
+async def list_domains(request: Request):
+    """
+    Endpoint to retrieve all domain configurations from the domains folder.
+    
+    Parameters:
+    - format: The response format (json, html, or ui)
+        
+    Examples:
+    /domains
+    /domains?format=json
+    /domains?format=html
+    /domains?format=ui
+    """
+    function_name = 'list_domains()'
+    request_data = log_function_header(function_name)
+    request_params = dict(request.query_params)
+    
+    endpoint = '/domains'
+    endpoint_documentation = list_domains.__doc__
+    documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
+    # Display documentation if no params are provided
+    if len(request_params) == 0:
+        await log_function_footer(request_data)
+        return HTMLResponse(documentation_HTML)
+
+    format = request_params.get('format', 'html')
+    
+    try:
+        if not hasattr(request.app.state, 'system_info') or not request.app.state.system_info or not request.app.state.system_info.PERSISTENT_STORAGE_PATH:
+            error_message = "PERSISTENT_STORAGE_PATH not configured or is empty"
+            log_function_output(request_data, f"ERROR: {error_message}")
+            await log_function_footer(request_data)
+            if format == 'json':
+                return JSONResponse({"error": error_message}, status_code=500)
+            else:
+                error_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Error</title></head><body><h1>Error</h1><p>{error_message}</p></body></html>"
+                return HTMLResponse(error_html, status_code=500)
+        
+        storage_path = request.app.state.system_info.PERSISTENT_STORAGE_PATH
+        
+        # Load all domains using the new function
+        domains_list = load_all_domains(storage_path, request_data)
+        
+        if format == 'json':
+            # Convert dataclasses to dictionaries for JSON response
+            domains_dict_list = [domain_config_to_dict(domain) for domain in domains_list]
+            await log_function_footer(request_data)
+            return JSONResponse({"data": domains_dict_list, "count": len(domains_dict_list)})
+        elif format == 'ui':
+            # Create UI-friendly list with action buttons
+            table_rows = ""
+            for domain in domains_list:
+                table_rows += f"""
+        <tr id="domain-{domain.domain_id}">
+          <td>{domain.domain_id}</td>
+          <td>{domain.name}</td>
+          <td>{domain.vector_store_name}</td>
+          <td>{domain.vector_store_id}</td>
+          <td class="actions">
+            <button class="btn-small btn-edit" 
+                    hx-get="/domains/update?domain_id={domain.domain_id}&format=ui"
+                    hx-target="#form-container"
+                    hx-swap="innerHTML">
+              Edit
+            </button>
+            <button class="btn-small btn-delete" 
+                    hx-delete="/domains/delete?domain_id={domain.domain_id}&format=html"
+                    hx-confirm="Are you sure you want to delete domain '{domain.name}'?"
+                    hx-target="#domain-{domain.domain_id}"
+                    hx-swap="outerHTML">
+              Delete
+            </button>
+          </td>
+        </tr>
+        """
+            
+            html_content = f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
+  <title>Domains Management ({len(domains_list)})</title>
+  <link rel='stylesheet' href='/static/css/styles.css'>
+  <script src='/static/js/htmx.js'></script>
+</head>
+<body>
+  <div class="container">
+    <h1>Domains Management ({len(domains_list)})</h1>
+    
+    <div class="toolbar">
+      <button class="btn-primary" 
+              hx-get="/domains/create?format=ui"
+              hx-target="#form-container"
+              hx-swap="innerHTML">
+        + Add New Domain
+      </button>
+    </div>
+    
+    <table>
+      <thead>
+        <tr>
+          <th>Domain ID</th>
+          <th>Name</th>
+          <th>Vector Store Name</th>
+          <th>Vector Store ID</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {table_rows if table_rows else '<tr><td colspan="5">No domains found</td></tr>'}
+      </tbody>
+    </table>
+    
+    <div id="form-container"></div>
+  </div>
+</body>
+</html>"""
+            await log_function_footer(request_data)
+            return HTMLResponse(html_content)
+        else:
+            # HTML format with full domain data (using nested table for complex structures)
+            domains_dict_list = [domain_config_to_dict(domain) for domain in domains_list]
+            html_content = _generate_html_response_from_nested_data(
+                f"Domains ({len(domains_dict_list)})",
+                domains_dict_list
+            )
+            await log_function_footer(request_data)
+            return HTMLResponse(html_content)
+            
+    except FileNotFoundError as e:
+        error_message = str(e)
+        await log_function_footer(request_data)
+        if format == 'json':
+            return JSONResponse({"error": error_message}, status_code=404)
+        else:
+            error_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Error</title></head><body><h1>Error</h1><p>{error_message}</p></body></html>"
+            return HTMLResponse(error_html, status_code=404)
+    except Exception as e:
+        error_message = f"Error retrieving domains: {str(e)}"
+        log_function_output(request_data, f"ERROR: {error_message}")
+        
+        await log_function_footer(request_data)
+        if format == 'json':
+            return JSONResponse({"error": error_message}, status_code=500)
+        else:
+            error_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Error</title></head><body><h1>Error</h1><p>{error_message}</p></body></html>"
+            return HTMLResponse(error_html, status_code=500)
+
+def _generate_html_response_from_nested_data(title: str, data: Any) -> str:
+    """
+    Generate HTML response with nested table for complex data structures.
+    
+    Args:
+        title: Page title
+        data: Complex data structure to convert to nested HTML table
+        
+    Returns:
+        Complete HTML page with nested table
+    """
+    table_html = convert_to_nested_html_table(data)
+    return f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
+  <title>{title}</title>
+  <link rel='stylesheet' href='/static/css/styles.css'>
+  <script src='/static/js/htmx.js'></script>
+</head>
+<body>
+  <h1>{title}</h1>
+  {table_html}
+</body>
+</html>"""
+
 @router.get('/domains/create')
 async def get_create_form(request: Request):
     """
@@ -65,7 +233,7 @@ async def get_create_form(request: Request):
     <div class="modal" id="create-modal">
         <div class="modal-content">
             <h2>Create New Domain</h2>
-            <form hx-post="/domains/create?format=json" 
+            <form hx-post="/domains/create?format=html" 
                   hx-target="#form-container"
                   hx-swap="innerHTML">
                 <div class="form-group">
@@ -91,7 +259,7 @@ async def get_create_form(request: Request):
                     <input type="text" id="vector_store_id" name="vector_store_id" required>
                 </div>
                 <div class="form-actions">
-                    <button type="submit" class="btn-primary">Create Domain</button>
+                    <button type="submit" class="btn-primary">Create  </button>
                     <button type="button" class="btn-secondary" onclick="document.getElementById('create-modal').remove()">Cancel</button>
                 </div>
             </form>
@@ -192,12 +360,11 @@ async def create_domain(
                 "data": domain_config_to_dict(domain_config)
             })
         else:
-            return HTMLResponse(f"""
-                <div class='success'>
-                    {success_msg}
-                    <button onclick="location.reload()" class="btn-primary">Refresh Page</button>
-                </div>
-            """)
+            # Use HX-Refresh header to trigger page reload
+            return HTMLResponse(
+                f"<div class='success'>{success_msg} Reloading...</div>",
+                headers={"HX-Refresh": "true"}
+            )
         
     except Exception as e:
         error_message = f"Error creating domain: {str(e)}"
@@ -249,7 +416,7 @@ async def get_update_form(request: Request):
         <div class="modal" id="update-modal">
             <div class="modal-content">
                 <h2>Update Domain: {domain.name}</h2>
-                <form hx-put="/domains/update?format=json" 
+                <form hx-put="/domains/update?format=html" 
                       hx-target="#form-container"
                       hx-swap="innerHTML">
                     <input type="hidden" name="domain_id" value="{domain.domain_id}">
@@ -274,7 +441,7 @@ async def get_update_form(request: Request):
                         <input type="text" id="vector_store_id" name="vector_store_id" value="{domain.vector_store_id}" required>
                     </div>
                     <div class="form-actions">
-                        <button type="submit" class="btn-primary">Update Domain</button>
+                        <button type="submit" class="btn-primary">Update</button>
                         <button type="button" class="btn-secondary" onclick="document.getElementById('update-modal').remove()">Cancel</button>
                     </div>
                 </form>
@@ -379,12 +546,11 @@ async def update_domain(
                 "data": domain_config_to_dict(updated_domain)
             })
         else:
-            return HTMLResponse(f"""
-                <div class='success'>
-                    {success_msg}
-                    <button onclick="location.reload()" class="btn-primary">Refresh Page</button>
-                </div>
-            """)
+            # Use HX-Refresh header to trigger page reload
+            return HTMLResponse(
+                f"<div class='success'>{success_msg} Reloading...</div>",
+                headers={"HX-Refresh": "true"}
+            )
         
     except Exception as e:
         error_message = f"Error updating domain: {str(e)}"
@@ -434,8 +600,8 @@ async def delete_domain(request: Request):
         if format == 'json':
             return JSONResponse({"message": success_msg})
         else:
-            # Return empty response to remove the row from table
-            return HTMLResponse("")
+            # Use HX-Refresh header to trigger page reload and update count
+            return HTMLResponse("", headers={"HX-Refresh": "true"})
         
     except FileNotFoundError as e:
         error_message = str(e)

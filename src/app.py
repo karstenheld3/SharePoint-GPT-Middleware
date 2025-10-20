@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from common_openai_functions import create_async_azure_openai_client_with_api_key, create_async_azure_openai_client_with_credential, create_async_openai_client
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
-from routers import crawler, inventory, openai_proxy, sharepoint_search
+from routers import crawler, inventory, openai_proxy, sharepoint_search, domains
 from routers.sharepoint_search import build_domains_and_metadata_cache
 from utils import ZipExtractionMode, acquire_startup_lock, convert_to_flat_html_table, extract_zip_files, format_config_for_displaying, format_filesize, log_function_footer, log_function_header, log_function_output, log_function_footer_sync, clear_folder
 
@@ -308,11 +308,11 @@ def create_app() -> FastAPI:
         log_function_output(log_data, "Zip extraction already completed by another worker, skipping")
     
   # Build domains and metadata cache
-  domains, metadata_cache = build_domains_and_metadata_cache(config, system_info, initialization_errors)
-  app.state.domains = domains
+  domains_cache, metadata_cache = build_domains_and_metadata_cache(config, system_info, initialization_errors)
+  app.state.domains = domains_cache
   app.state.metadata_cache = metadata_cache
   try:
-    domains_count = len(domains) if hasattr(domains, "__len__") else "unknown"
+    domains_count = len(domains_cache) if hasattr(domains_cache, "__len__") else "unknown"
     metadata_count = len(metadata_cache) if hasattr(metadata_cache, "__len__") else "unknown"
     log_function_output(log_data, f"Domains and metadata cache built. Domains={domains_count}, MetadataEntries={metadata_count}")
   except Exception:
@@ -370,7 +370,7 @@ def create_app() -> FastAPI:
   
   # Include Inventory router under /inventory
   try:
-    app.include_router(inventory.router, tags=["Inventory Management"], prefix="/inventory")
+    app.include_router(inventory.router, tags=["Inventory"], prefix="/inventory")
     inventory.set_config(config)
     log_function_output(log_data, "Inventory router included at /inventory")
   except Exception as e:
@@ -383,6 +383,14 @@ def create_app() -> FastAPI:
     log_function_output(log_data, "Crawler router included at /crawler")
   except Exception as e:
     initialization_errors.append({"component": "Crawler Router", "error": str(e)})
+  
+  # Include Domains router
+  try:
+    app.include_router(domains.router, tags=["Domains"])
+    domains.set_config(config)
+    log_function_output(log_data, "Domains router included at /domains")
+  except Exception as e:
+    initialization_errors.append({"component": "Domains Router", "error": str(e)})
   
   # Mount static files directory
   static_path = os.path.join(os.path.dirname(__file__), "static")
@@ -474,7 +482,7 @@ def root() -> str:
     <li><a href="/inventory/vectorstores">/inventory/vectorstores</a> - Vector Stores Inventory (<a href="/inventory/vectorstores?format=html&excludeattributes=metadata">HTML</a> + <a href="/inventory/vectorstores?format=json">JSON</a>)</li>
     <li><a href="/inventory/files">/inventory/files</a> - Files Inventory (<a href="/inventory/files?format=html&excludeattributes=purpose,status_details">HTML</a> + <a href="/inventory/files?format=json">JSON</a>)</li>
     <li><a href="/inventory/assistants">/inventory/assistants</a> - Assistants Inventory (<a href="/inventory/assistants?format=html&excludeattributes=description,instructions,tools,tool_resources">HTML</a> + <a href="/inventory/assistants?format=json">JSON</a>)</li>
-    <li><a href="/crawler/domains">/crawler/domains</a> - Domains Configuration (<a href="/crawler/domains?format=html">HTML</a> + <a href="/crawler/domains?format=json">JSON</a> + <a href="/crawler/domains?format=ui">UI</a>)</li>
+    <li><a href="/domains">/domains</a> - Domains Management (<a href="/domains?format=html">HTML</a> + <a href="/domains?format=json">JSON</a> + <a href="/domains?format=ui">UI</a>)</li>
     <li><a href="/crawler/localstorage">/crawler/localstorage</a> - Local Storage Inventory (<a href="/crawler/localstorage?format=html">HTML</a> + <a href="/crawler/localstorage?format=json">JSON</a> + <a href="/crawler/localstorage?format=zip">ZIP</a> + <a href="/crawler/localstorage?format=zip&exceptfolder=crawler">ZIP except 'crawler' folder</a>)</li>
   </ul>
 
