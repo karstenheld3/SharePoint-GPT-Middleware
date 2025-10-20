@@ -211,3 +211,99 @@ def create_storage_zip_from_scan(storage_path: str, storage_contents: List[Dict[
   zip_size = os.path.getsize(temp_zip_path)
   log_function_output(log_data, f"Zip file created successfully: {temp_zip_path} ({zip_size} bytes)")
   return temp_zip_path
+
+def validate_domain_config(domain_data: Dict[str, Any]) -> tuple[bool, str]:
+  """
+  Validate domain configuration data.
+  
+  Args:
+    domain_data: Dictionary containing domain configuration
+    
+  Returns:
+    Tuple of (is_valid, error_message)
+  """
+  required_fields = ['domain_id', 'name', 'vector_store_name', 'vector_store_id', 'description']
+  
+  # Check required fields
+  for field in required_fields:
+    if field not in domain_data or not domain_data[field]:
+      return False, f"Missing required field: {field}"
+  
+  # Validate domain_id format (alphanumeric, underscore, hyphen only)
+  domain_id = domain_data['domain_id']
+  if not domain_id.replace('_', '').replace('-', '').isalnum():
+    return False, "domain_id must contain only alphanumeric characters, underscores, and hyphens"
+  
+  # Validate source lists exist
+  if 'document_sources' not in domain_data:
+    domain_data['document_sources'] = []
+  if 'page_sources' not in domain_data:
+    domain_data['page_sources'] = []
+  if 'list_sources' not in domain_data:
+    domain_data['list_sources'] = []
+  
+  return True, ""
+
+def save_domain_to_file(storage_path: str, domain_config: DomainConfig, log_data: Dict[str, Any] = None) -> None:
+  """
+  Save a domain configuration to disk.
+  
+  Args:
+    storage_path: Base persistent storage path
+    domain_config: DomainConfig dataclass to save
+    log_data: Optional logging context
+    
+  Raises:
+    OSError: If file operations fail
+  """
+  domains_path = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER)
+  domain_folder = os.path.join(domains_path, domain_config.domain_id)
+  domain_json_path = os.path.join(domain_folder, "domain.json")
+  
+  # Create domain folder if it doesn't exist
+  os.makedirs(domain_folder, exist_ok=True)
+  
+  if log_data:
+    log_function_output(log_data, f"Saving domain to: {domain_json_path}")
+  
+  # Convert dataclass to dictionary
+  domain_dict = domain_config_to_dict(domain_config)
+  
+  # Write to file with pretty formatting
+  with open(domain_json_path, 'w', encoding='utf-8') as f:
+    json.dump(domain_dict, f, indent=2, ensure_ascii=False)
+  
+  if log_data:
+    log_function_output(log_data, f"Domain saved successfully: {domain_config.domain_id}")
+
+def delete_domain_folder(storage_path: str, domain_id: str, log_data: Dict[str, Any] = None) -> None:
+  """
+  Delete a domain folder and all its contents.
+  
+  Args:
+    storage_path: Base persistent storage path
+    domain_id: ID of the domain to delete
+    log_data: Optional logging context
+    
+  Raises:
+    FileNotFoundError: If domain folder doesn't exist
+    OSError: If deletion fails
+  """
+  import shutil
+  
+  domains_path = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER)
+  domain_folder = os.path.join(domains_path, domain_id)
+  
+  if not os.path.exists(domain_folder):
+    error_msg = f"Domain folder not found: {domain_id}"
+    if log_data:
+      log_function_output(log_data, f"ERROR: {error_msg}")
+    raise FileNotFoundError(error_msg)
+  
+  if log_data:
+    log_function_output(log_data, f"Deleting domain folder: {domain_folder}")
+  
+  shutil.rmtree(domain_folder)
+  
+  if log_data:
+    log_function_output(log_data, f"Domain deleted successfully: {domain_id}")

@@ -1582,7 +1582,7 @@ async def self_test(request: Request):
   html = f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
   <title>OpenAI Proxy Self Test Results</title>
   <link rel='stylesheet' href='/static/css/styles.css'>
-  <script src='/static/js/htmx.min.js'></script>
+  <script src='/static/js/htmx.js'></script>
 </head><body>
 """
   html += f"<h1>OpenAI Proxy Self Test Results ({config.OPENAI_SERVICE_TYPE})</h1>"

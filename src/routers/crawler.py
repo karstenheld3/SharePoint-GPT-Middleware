@@ -46,7 +46,7 @@ def _generate_html_response_from_nested_data(title: str, data: Any) -> str:
   return f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
   <title>{title}</title>
   <link rel='stylesheet' href='/static/css/styles.css'>
-  <script src='/static/js/htmx.min.js'></script>
+  <script src='/static/js/htmx.js'></script>
 </head>
 <body>
   <h1>{title}</h1>
@@ -188,25 +188,68 @@ async def domains(request: Request):
       await log_function_footer(request_data)
       return JSONResponse({"data": domains_dict_list, "count": len(domains_dict_list)})
     elif format == 'ui':
-      # Create UI-friendly list with specific columns
-      ui_list = []
+      # Create UI-friendly list with action buttons
+      table_rows = ""
       for domain in domains_list:
-        ui_list.append({
-          "ID": domain.domain_id,
-          "Name": domain.name,
-          "Vector Store ID": domain.vector_store_id,
-          "Vector Store Name": domain.vector_store_name
-        })
+        table_rows += f"""
+        <tr id="domain-{domain.domain_id}">
+          <td>{domain.domain_id}</td>
+          <td>{domain.name}</td>
+          <td>{domain.vector_store_name}</td>
+          <td>{domain.vector_store_id}</td>
+          <td class="actions">
+            <button class="btn-small btn-edit" 
+                    hx-get="/domains/update?domain_id={domain.domain_id}&format=ui"
+                    hx-target="#form-container"
+                    hx-swap="innerHTML">
+              Edit
+            </button>
+            <button class="btn-small btn-delete" 
+                    hx-delete="/domains/delete?domain_id={domain.domain_id}&format=html"
+                    hx-confirm="Are you sure you want to delete domain '{domain.name}'?"
+                    hx-target="#domain-{domain.domain_id}"
+                    hx-swap="outerHTML">
+              Delete
+            </button>
+          </td>
+        </tr>
+        """
       
-      table_html = convert_to_flat_html_table(ui_list)
       html_content = f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
-  <title>Domains ({len(ui_list)})</title>
+  <title>Domains Management ({len(domains_list)})</title>
   <link rel='stylesheet' href='/static/css/styles.css'>
-  <script src='/static/js/htmx.min.js'></script>
+  <script src='/static/js/htmx.js'></script>
 </head>
 <body>
-  <h1>Domains ({len(ui_list)})</h1>
-  {table_html}
+  <div class="container">
+    <h1>Domains Management ({len(domains_list)})</h1>
+    
+    <div class="toolbar">
+      <button class="btn-primary" 
+              hx-get="/domains/create?format=ui"
+              hx-target="#form-container"
+              hx-swap="innerHTML">
+        + Add New Domain
+      </button>
+    </div>
+    
+    <table>
+      <thead>
+        <tr>
+          <th>Domain ID</th>
+          <th>Name</th>
+          <th>Vector Store Name</th>
+          <th>Vector Store ID</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {table_rows if table_rows else '<tr><td colspan="5">No domains found</td></tr>'}
+      </tbody>
+    </table>
+    
+    <div id="form-container"></div>
+  </div>
 </body>
 </html>"""
       await log_function_footer(request_data)

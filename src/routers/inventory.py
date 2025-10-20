@@ -67,7 +67,7 @@ def _generate_html_response_from_object_list(title: str, count: int, objects: Li
   return f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
   <title>{title}</title>
   <link rel='stylesheet' href='/static/css/styles.css'>
-  <script src='/static/js/htmx.min.js'></script>
+  <script src='/static/js/htmx.js'></script>
 </head>
 <body>
   <h1>{title} ({count})</h1>
