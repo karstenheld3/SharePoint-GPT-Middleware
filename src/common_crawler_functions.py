@@ -9,6 +9,7 @@ from utils import log_function_output
 @dataclass
 class DocumentSource:
     """Represents a SharePoint document library source."""
+    source_id: str
     site_url: str
     sharepoint_url_part: str
     filter: str
@@ -16,6 +17,7 @@ class DocumentSource:
 @dataclass
 class PageSource:
     """Represents a SharePoint site pages source."""
+    source_id: str
     site_url: str
     sharepoint_url_part: str
     filter: str
@@ -23,6 +25,7 @@ class PageSource:
 @dataclass
 class ListSource:
     """Represents a SharePoint list source."""
+    source_id: str
     site_url: str
     list_name: str
     filter: str

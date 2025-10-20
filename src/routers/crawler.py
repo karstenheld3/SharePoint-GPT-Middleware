@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
-from utils import convert_to_flat_html_table, convert_to_nested_html_table, log_function_footer, log_function_header, log_function_output
+from utils import convert_to_flat_html_table, convert_to_nested_html_table, log_function_footer, log_function_header, log_function_output, create_logfile, append_to_logfile
 from common_crawler_functions import DomainConfig, load_all_domains, domain_config_to_dict, scan_directory_recursive, create_storage_zip_from_scan
 
 router = APIRouter()
@@ -53,6 +53,155 @@ def _generate_html_response_from_nested_data(title: str, data: Any) -> str:
   {table_html}
 </body>
 </html>"""
+
+
+@router.get('/', response_class=HTMLResponse)
+async def crawler_root():
+  """
+  Crawler endpoints documentation and overview.
+  """
+  return f"""
+<!doctype html><html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Crawler Endpoints</title>
+  <link rel="stylesheet" href="/static/css/styles.css">
+  <script src="/static/js/htmx.js"></script>
+</head>
+<body>
+  <h1>Crawler Endpoints</h1>
+  <p>This section provides endpoints for SharePoint crawler functionality, local storage management, and domain operations.</p>
+
+  <h4>Available Endpoints</h4>
+  <ul>
+    <li><a href="/crawler/localstorage">/crawler/localstorage</a> - Local Storage Inventory (<a href="/crawler/localstorage?format=html">HTML</a> + <a href="/crawler/localstorage?format=json">JSON</a> + <a href="/crawler/localstorage?format=zip">ZIP</a> + <a href="/crawler/localstorage?format=zip&exceptfolder=crawler">ZIP except 'crawler' folder</a>)</li>
+    <li><a href="/crawler/updatemaps">/crawler/updatemaps</a> - Update Maps for Domain (<a href="/crawler/updatemaps?domain_id=example&logfile=log.txt">Example</a>)</li>
+    <li><a href="/crawler/getlogfile">/crawler/getlogfile</a> - Retrieve Logfile (<a href="/crawler/getlogfile?logfile=log.txt">Example</a>)</li>
+  </ul>
+
+  <p><a href="/">← Back to Main Page</a></p>
+</body>
+</html>
+"""
+
+@router.get('/getlogfile')
+async def getlogfile(request: Request):
+  """
+  Endpoint to retrieve a logfile from the logs folder.
+  
+  Parameters:
+  - logfile: The name of the logfile to retrieve
+    
+  Examples:
+  /getlogfile?logfile=log.txt
+  """
+  function_name = 'getlogfile()'
+  request_data = log_function_header(function_name)
+  request_params = dict(request.query_params)
+  
+  endpoint = '/' + function_name.replace('()','')  
+  endpoint_documentation = getlogfile.__doc__
+  documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
+  # Display documentation if no params are provided
+  if len(request_params) == 0: await log_function_footer(request_data); return HTMLResponse(documentation_HTML)
+
+  logfile = request_params.get('logfile', None)
+  
+  # Validate required parameters
+  if not logfile:
+    error_message = "ERROR: Missing required parameter 'logfile'"
+    log_function_output(request_data, error_message)
+    await log_function_footer(request_data)
+    return HTMLResponse(content=error_message, status_code=400, media_type='text/plain; charset=utf-8')
+  
+  # Validate PERSISTENT_STORAGE_PATH is configured
+  if not hasattr(request.app.state, 'system_info') or not request.app.state.system_info or not request.app.state.system_info.PERSISTENT_STORAGE_PATH:
+    error_message = "ERROR: PERSISTENT_STORAGE_PATH not configured or is empty"
+    log_function_output(request_data, error_message)
+    await log_function_footer(request_data)
+    return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
+  
+  # Build the logfile path
+  storage_path = request.app.state.system_info.PERSISTENT_STORAGE_PATH
+  logs_folder = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_LOGS_SUBFOLDER)
+  logfile_path = os.path.join(logs_folder, logfile)
+  
+  # Check if logfile exists
+  if not os.path.exists(logfile_path):
+    error_message = f"ERROR: Logfile not found: {logfile}"
+    log_function_output(request_data, error_message)
+    await log_function_footer(request_data)
+    return HTMLResponse(content=error_message, status_code=404, media_type='text/plain; charset=utf-8')
+  
+  # Read and return the logfile content
+  try:
+    with open(logfile_path, 'r', encoding='utf-8') as f:
+      logfile_content = f.read()
+    
+    log_function_output(request_data, f"Retrieved logfile: {logfile_path}")
+    await log_function_footer(request_data)
+    return HTMLResponse(content=logfile_content, media_type='text/plain; charset=utf-8')
+  except Exception as e:
+    error_message = f"ERROR: Failed to read logfile: {str(e)}"
+    log_function_output(request_data, error_message)
+    await log_function_footer(request_data)
+    return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
+
+@router.get('/updatemaps')
+async def updatemaps(request: Request):
+  """
+  Endpoint to update maps for a specific domain.
+  
+  Parameters:
+  - domain_id: The ID of the domain to update maps for
+  - logfile: The logfile parameter
+    
+  Examples:
+  /updatemaps?domain_id=example&logfile=log.txt
+  """
+  function_name = 'updatemaps()'
+  request_data = log_function_header(function_name)
+  request_params = dict(request.query_params)
+  
+  endpoint = '/' + function_name.replace('()','')  
+  endpoint_documentation = updatemaps.__doc__
+  documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
+  # Display documentation if no params are provided
+  if len(request_params) == 0: await log_function_footer(request_data); return HTMLResponse(documentation_HTML)
+
+  domain_id = request_params.get('domain_id', None)
+  logfile = request_params.get('logfile', None)
+  
+  # Validate required parameters
+  if not logfile:
+    error_message = "ERROR: Missing required parameter 'logfile'"
+    log_function_output(request_data, error_message)
+    await log_function_footer(request_data)
+    return HTMLResponse(content=error_message, status_code=400, media_type='text/plain; charset=utf-8')
+  
+  # Validate PERSISTENT_STORAGE_PATH is configured
+  if not hasattr(request.app.state, 'system_info') or not request.app.state.system_info or not request.app.state.system_info.PERSISTENT_STORAGE_PATH:
+    error_message = "ERROR: PERSISTENT_STORAGE_PATH not configured or is empty"
+    log_function_output(request_data, error_message)
+    await log_function_footer(request_data)
+    return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
+  
+  # Build the logs directory path
+  storage_path = request.app.state.system_info.PERSISTENT_STORAGE_PATH
+  logs_folder = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_LOGS_SUBFOLDER)
+  logfile_path = os.path.join(logs_folder, logfile)
+  
+  # Create the logfile with initial content
+  logfile_content = f"Log file created at {datetime.datetime.now().isoformat()}\n"
+  logfile_content += f"Domain ID: {domain_id}\n"
+  logfile_content += f"Logfile: {logfile}\n"
+  
+  # Use utility function to create the logfile
+  logfile_content = create_logfile(logfile_path, logfile_content, request_data)
+  
+  await log_function_footer(request_data)
+  return HTMLResponse(content=logfile_content, media_type='text/plain; charset=utf-8')
 
 
 @router.get('/localstorage')
@@ -139,3 +288,4 @@ async def localstorage(request: Request, background_tasks: BackgroundTasks):
     else:
       error_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Error</title></head><body><h1>Error</h1><p>{error_message}</p></body></html>"
       return HTMLResponse(error_html, status_code=500)
+

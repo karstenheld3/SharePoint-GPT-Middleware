@@ -184,6 +184,7 @@ async def list_domains(request: Request):
     const demoJson = {{
       "document_sources": [
         {{
+          "source_id": "source01",
           "site_url": "https://example.sharepoint.com/sites/MySite",
           "sharepoint_url_part": "/Documents",
           "filter": ""
@@ -191,6 +192,7 @@ async def list_domains(request: Request):
       ],
       "page_sources": [
         {{
+          "source_id": "source01",
           "site_url": "https://example.sharepoint.com/sites/MySite",
           "sharepoint_url_part": "/SitePages",
           "filter": "FSObjType eq 0"
@@ -198,6 +200,7 @@ async def list_domains(request: Request):
       ],
       "list_sources": [
         {{
+          "source_id": "source01",
           "site_url": "https://example.sharepoint.com/sites/MySite",
           "list_name": "My List",
           "filter": ""
