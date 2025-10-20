@@ -241,9 +241,37 @@ def create_app() -> FastAPI:
       if should_proceed:
         log_function_output(log_data, "This worker will extract zip files")
         
-        # Process clear before folder
+        # Get all zip files from all folders first
         clear_before_source_folder = os.path.join(system_info.APP_SRC_PATH, CRAWLER_HARDCODED_CONFIG.UNZIP_TO_PERSISTENT_STORAGE_CLEAR_BEFORE)
         clear_before_zips = glob.glob(os.path.join(clear_before_source_folder, "*.zip"))
+        
+        overwrite_source_folder = os.path.join(system_info.APP_SRC_PATH, CRAWLER_HARDCODED_CONFIG.UNZIP_TO_PERSISTENT_STORAGE_OVERWRITE)
+        overwrite_zips = glob.glob(os.path.join(overwrite_source_folder, "*.zip"))
+        
+        if_newer_source_folder = os.path.join(system_info.APP_SRC_PATH, CRAWLER_HARDCODED_CONFIG.UNZIP_TO_PERSISTENT_STORAGE_IF_NEWER)
+        if_newer_zips = glob.glob(os.path.join(if_newer_source_folder, "*.zip"))
+        
+        # If no zip files were found in any folder, delete the .done and .lock files so we check again on next startup
+        total_zips = len(clear_before_zips) + len(overwrite_zips) + len(if_newer_zips)
+        if total_zips == 0:
+          done_file_path = os.path.join(tempfile.gettempdir(), "zip_extraction.done")
+          lock_file_path = os.path.join(tempfile.gettempdir(), "zip_extraction.lock")
+          
+          if os.path.exists(done_file_path):
+            try:
+              os.unlink(done_file_path)
+              log_function_output(log_data, f"No zip files found, deleted done file '{done_file_path}' to allow checking again on next startup")
+            except Exception as e:
+              log_function_output(log_data, f"WARNING: Failed to delete done file '{done_file_path}': {e}")
+          
+          if os.path.exists(lock_file_path):
+            try:
+              os.unlink(lock_file_path)
+              log_function_output(log_data, f"No zip files found, deleted lock file '{lock_file_path}' to allow checking again on next startup")
+            except Exception as e:
+              log_function_output(log_data, f"WARNING: Failed to delete lock file '{lock_file_path}': {e}")
+        
+        # Process clear before folder
         log_function_output(log_data, f"Found {len(clear_before_zips)} zip file(s) in clear-before folder '{clear_before_source_folder}'")
         if len(clear_before_zips) > 0:
           # Safety check: Do not clear if LOCAL_PERSISTENT_STORAGE_PATH equals PERSISTENT_STORAGE_PATH
@@ -260,8 +288,6 @@ def create_app() -> FastAPI:
                 log_function_output(log_data, f"  '{file_path}'")
 
         # Process overwrite folder
-        overwrite_source_folder = os.path.join(system_info.APP_SRC_PATH, CRAWLER_HARDCODED_CONFIG.UNZIP_TO_PERSISTENT_STORAGE_OVERWRITE)
-        overwrite_zips = glob.glob(os.path.join(overwrite_source_folder, "*.zip"))
         log_function_output(log_data, f"Found {len(overwrite_zips)} zip file(s) in overwrite folder '{overwrite_source_folder}'")
         if len(overwrite_zips) > 0:
           extracted_files = extract_zip_files(overwrite_source_folder, system_info.PERSISTENT_STORAGE_PATH, ZipExtractionMode.OVERWRITE, initialization_errors)
@@ -271,8 +297,6 @@ def create_app() -> FastAPI:
               log_function_output(log_data, f"  '{file_path}'")
 
         # Process if-newer folder
-        if_newer_source_folder = os.path.join(system_info.APP_SRC_PATH, CRAWLER_HARDCODED_CONFIG.UNZIP_TO_PERSISTENT_STORAGE_IF_NEWER)
-        if_newer_zips = glob.glob(os.path.join(if_newer_source_folder, "*.zip"))    
         log_function_output(log_data, f"Found {len(if_newer_zips)} zip file(s) in if-newer folder '{if_newer_source_folder}'")
         if len(if_newer_zips) > 0:
           extracted_files = extract_zip_files(if_newer_source_folder, system_info.PERSISTENT_STORAGE_PATH, ZipExtractionMode.OVERWRITE_IF_NEWER, initialization_errors)
