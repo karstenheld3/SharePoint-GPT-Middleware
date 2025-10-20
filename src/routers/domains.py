@@ -1,5 +1,6 @@
 # CRUD endpoints for domain management
 import json
+from dataclasses import asdict
 from typing import Any, Dict
 
 from fastapi import APIRouter, Request, Form
@@ -231,7 +232,7 @@ async def get_create_form(request: Request):
     # Generate form HTML
     form_html = """
     <div class="modal" id="create-modal">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 900px;">
             <h2>Create New Domain</h2>
             <form hx-post="/domains/create?format=html" 
                   hx-target="#form-container"
@@ -258,13 +259,71 @@ async def get_create_form(request: Request):
                     <label for="vector_store_id">Vector Store ID *</label>
                     <input type="text" id="vector_store_id" name="vector_store_id" required>
                 </div>
+                
+                <details class="form-group">
+                    <summary style="cursor: pointer; font-weight: bold; margin-bottom: 10px;">Advanced: Sources Configuration (Optional)</summary>
+                    
+                    <div class="form-group">
+                        <label for="sources_json">Sources JSON (document_sources, page_sources, list_sources)</label>
+                        <button type="button" class="btn-small" onclick="showJsonExampleDialog('sources_json')" style="margin-bottom: 5px;">Show JSON Example</button>
+                        <textarea id="sources_json" name="sources_json" rows="10" placeholder='{"document_sources": [], "page_sources": [], "list_sources": []}'></textarea>
+                        <small style="color: #666;">Leave empty to create domain without sources. You can add them later.</small>
+                    </div>
+                </details>
+                
                 <div class="form-actions">
-                    <button type="submit" class="btn-primary">Create  </button>
+                    <button type="submit" class="btn-primary">Create</button>
                     <button type="button" class="btn-secondary" onclick="document.getElementById('create-modal').remove()">Cancel</button>
                 </div>
             </form>
         </div>
     </div>
+    
+    <script>
+    function showJsonExampleDialog(targetTextareaId) {
+        const demoJson = {
+            "document_sources": [
+                {
+                    "site_url": "https://example.sharepoint.com/sites/MySite",
+                    "sharepoint_url_part": "/Documents",
+                    "filter": ""
+                }
+            ],
+            "page_sources": [
+                {
+                    "site_url": "https://example.sharepoint.com/sites/MySite",
+                    "sharepoint_url_part": "/SitePages",
+                    "filter": "FSObjType eq 0"
+                }
+            ],
+            "list_sources": [
+                {
+                    "site_url": "https://example.sharepoint.com/sites/MySite",
+                    "list_name": "My List",
+                    "filter": ""
+                }
+            ]
+        };
+        
+        const formatted = JSON.stringify(demoJson, null, 2);
+        
+        // Show in a simple alert-style modal
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 700px;">
+                <h3>JSON Example</h3>
+                <p>Copy this example and modify it for your needs:</p>
+                <textarea readonly rows="20" style="width: 100%; font-family: monospace; font-size: 12px;">${formatted}</textarea>
+                <div class="form-actions">
+                    <button class="btn-primary" onclick="document.getElementById('${targetTextareaId}').value = this.parentElement.parentElement.querySelector('textarea').value; this.closest('.modal').remove();">Copy to Form</button>
+                    <button class="btn-secondary" onclick="this.closest('.modal').remove()">Close</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+    </script>
     """
     
     await log_function_footer(request_data)
@@ -277,7 +336,8 @@ async def create_domain(
     name: str = Form(...),
     description: str = Form(...),
     vector_store_name: str = Form(...),
-    vector_store_id: str = Form(...)
+    vector_store_id: str = Form(...),
+    sources_json: str = Form(default="")
 ):
     """
     Create a new domain configuration.
@@ -303,6 +363,29 @@ async def create_domain(
             return _generate_error_response(error_message, format, 500)
         
         storage_path = request.app.state.system_info.PERSISTENT_STORAGE_PATH
+        
+        # Parse sources JSON if provided
+        document_sources_list = []
+        page_sources_list = []
+        list_sources_list = []
+        
+        if sources_json and sources_json.strip():
+            try:
+                sources_data = json.loads(sources_json)
+                document_sources_list = [DocumentSource(**src) for src in sources_data.get('document_sources', [])]
+                page_sources_list = [PageSource(**src) for src in sources_data.get('page_sources', [])]
+                list_sources_list = [ListSource(**src) for src in sources_data.get('list_sources', [])]
+                log_function_output(request_data, f"Parsed sources: {len(document_sources_list)} document, {len(page_sources_list)} page, {len(list_sources_list)} list")
+            except json.JSONDecodeError as e:
+                error_msg = f"Invalid JSON in sources_json: {str(e)}"
+                log_function_output(request_data, f"ERROR: {error_msg}")
+                await log_function_footer(request_data)
+                return _generate_error_response(error_msg, format, 400)
+            except Exception as e:
+                error_msg = f"Error parsing sources: {str(e)}"
+                log_function_output(request_data, f"ERROR: {error_msg}")
+                await log_function_footer(request_data)
+                return _generate_error_response(error_msg, format, 400)
         
         # Prepare domain data
         domain_data = {
@@ -342,9 +425,9 @@ async def create_domain(
             description=domain_data['description'],
             vector_store_name=domain_data['vector_store_name'],
             vector_store_id=domain_data['vector_store_id'],
-            document_sources=[],
-            page_sources=[],
-            list_sources=[]
+            document_sources=document_sources_list,
+            page_sources=page_sources_list,
+            list_sources=list_sources_list
         )
         
         # Save to file
@@ -411,10 +494,18 @@ async def get_update_form(request: Request):
             await log_function_footer(request_data)
             return _generate_error_response(f"Domain '{domain_id}' not found", format, 404)
         
+        # Pre-serialize sources to JSON for the textarea
+        sources_dict = {
+            'document_sources': [asdict(src) for src in domain.document_sources],
+            'page_sources': [asdict(src) for src in domain.page_sources],
+            'list_sources': [asdict(src) for src in domain.list_sources]
+        }
+        sources_json_str = json.dumps(sources_dict, indent=2)
+        
         # Generate pre-filled form
         form_html = f"""
         <div class="modal" id="update-modal">
-            <div class="modal-content">
+            <div class="modal-content" style="max-width: 900px;">
                 <h2>Update Domain: {domain.name}</h2>
                 <form hx-put="/domains/update?format=html" 
                       hx-target="#form-container"
@@ -440,6 +531,18 @@ async def get_update_form(request: Request):
                         <label for="vector_store_id">Vector Store ID *</label>
                         <input type="text" id="vector_store_id" name="vector_store_id" value="{domain.vector_store_id}" required>
                     </div>
+                    
+                    <details class="form-group" open>
+                        <summary style="cursor: pointer; font-weight: bold; margin-bottom: 10px;">Advanced: Sources Configuration</summary>
+                        
+                        <div class="form-group">
+                            <label for="sources_json_update">Sources JSON (document_sources, page_sources, list_sources)</label>
+                            <button type="button" class="btn-small" onclick="showJsonExampleDialog('sources_json_update')" style="margin-bottom: 5px;">Show JSON Example</button>
+                            <textarea id="sources_json_update" name="sources_json" rows="10">{sources_json_str}</textarea>
+                            <small style="color: #666;">Modify the JSON to update sources.</small>
+                        </div>
+                    </details>
+                    
                     <div class="form-actions">
                         <button type="submit" class="btn-primary">Update</button>
                         <button type="button" class="btn-secondary" onclick="document.getElementById('update-modal').remove()">Cancel</button>
@@ -465,7 +568,8 @@ async def update_domain(
     name: str = Form(...),
     description: str = Form(...),
     vector_store_name: str = Form(...),
-    vector_store_id: str = Form(...)
+    vector_store_id: str = Form(...),
+    sources_json: str = Form(default="")
 ):
     """
     Update an existing domain configuration.
@@ -492,7 +596,7 @@ async def update_domain(
         
         storage_path = request.app.state.system_info.PERSISTENT_STORAGE_PATH
         
-        # Load existing domain to preserve sources
+        # Load existing domain
         domains_list = load_all_domains(storage_path, request_data)
         existing_domain = next((d for d in domains_list if d.domain_id == domain_id), None)
         
@@ -501,6 +605,29 @@ async def update_domain(
             log_function_output(request_data, f"ERROR: {error_msg}")
             await log_function_footer(request_data)
             return _generate_error_response(error_msg, format, 404)
+        
+        # Parse sources JSON if provided, otherwise keep existing sources
+        document_sources_list = existing_domain.document_sources
+        page_sources_list = existing_domain.page_sources
+        list_sources_list = existing_domain.list_sources
+        
+        if sources_json and sources_json.strip():
+            try:
+                sources_data = json.loads(sources_json)
+                document_sources_list = [DocumentSource(**src) for src in sources_data.get('document_sources', [])]
+                page_sources_list = [PageSource(**src) for src in sources_data.get('page_sources', [])]
+                list_sources_list = [ListSource(**src) for src in sources_data.get('list_sources', [])]
+                log_function_output(request_data, f"Updated sources: {len(document_sources_list)} document, {len(page_sources_list)} page, {len(list_sources_list)} list")
+            except json.JSONDecodeError as e:
+                error_msg = f"Invalid JSON in sources_json: {str(e)}"
+                log_function_output(request_data, f"ERROR: {error_msg}")
+                await log_function_footer(request_data)
+                return _generate_error_response(error_msg, format, 400)
+            except Exception as e:
+                error_msg = f"Error parsing sources: {str(e)}"
+                log_function_output(request_data, f"ERROR: {error_msg}")
+                await log_function_footer(request_data)
+                return _generate_error_response(error_msg, format, 400)
         
         # Prepare updated domain data
         domain_data = {
@@ -521,16 +648,16 @@ async def update_domain(
             await log_function_footer(request_data)
             return _generate_error_response(error_msg, format, 400)
         
-        # Create updated DomainConfig object (preserve existing sources)
+        # Create updated DomainConfig object
         updated_domain = DomainConfig(
             domain_id=domain_id,
             name=domain_data['name'],
             description=domain_data['description'],
             vector_store_name=domain_data['vector_store_name'],
             vector_store_id=domain_data['vector_store_id'],
-            document_sources=existing_domain.document_sources,
-            page_sources=existing_domain.page_sources,
-            list_sources=existing_domain.list_sources
+            document_sources=document_sources_list,
+            page_sources=page_sources_list,
+            list_sources=list_sources_list
         )
         
         # Save to file
