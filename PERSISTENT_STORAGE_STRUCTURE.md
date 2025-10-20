@@ -108,22 +108,12 @@ Contains metadata for all files that have been uploaded to the OpenAI vector sto
 [
   {
     "file_id": "assistant-BuQoNyXQnoedPjTySDTFU1",
+    "embedded_file_relative_path": "DOMAIN01\\01_files\\source01\\02_embedded\\Document.docx",
+    "embedded_file_last_modified_utc": "2024-01-15T10:30:00.000000Z",
     "file_metadata": {
       "source": "https://contoso.sharepoint.com/sites/Example/Shared%20Documents/Document.docx",
       "filename": "Document.docx",
       "file_type": "docx",
-      "title": "Example Document Title",
-      "description": "Document description or summary",
-      "topics": "Topic1, Topic2, Topic3",
-      "business_area": "BA Example (E)",
-      "business_unit": "BU",
-      "department_olc": "DEPT",
-      "doc_type": "Policy",
-      "doc_language": "English",
-      "doc_year": "2024",
-      "doc_valid_from": "2024-01-01",
-      "doc_valid_to": "2025-01-01",
-      "doc_classification": "C2",
       "file_size": 864368,
       "last_modified": "2024-01-15",
       "raw_url": "https://contoso.sharepoint.com/sites/Example/Shared Documents/Document.docx"
@@ -131,10 +121,15 @@ Contains metadata for all files that have been uploaded to the OpenAI vector sto
   },
   {
     "file_id": "assistant-1TZS6Y9z4V6oYuStT8qLUr",
+    "embedded_file_relative_path": "DOMAIN01\\01_files\\source01\\02_embedded\\SubFolder\\AnotherDocument.pdf",
+    "embedded_file_last_modified_utc": "2024-01-10T14:22:15.000000Z",
     "file_metadata": {
-      "source": "...",
-      "filename": "...",
-      ...
+      "source": "https://contoso.sharepoint.com/sites/Example/Shared%20Documents/SubFolder/AnotherDocument.pdf",
+      "filename": "AnotherDocument.pdf",
+      "file_type": "pdf",
+      "file_size": 1234567,
+      "last_modified": "2024-01-10",
+      "raw_url": "https://contoso.sharepoint.com/sites/Example/Shared Documents/SubFolder/AnotherDocument.pdf"
     }
   }
 ]
@@ -142,22 +137,12 @@ Contains metadata for all files that have been uploaded to the OpenAI vector sto
 
 **Key Fields**:
 - `file_id`: OpenAI file ID (format: `assistant-...`)
+- `embedded_file_relative_path`: Relative path to the embedded file in the crawler storage structure (format: `DOMAIN\\01_files\\source_id\\02_embedded\\filename.ext`)
+- `embedded_file_last_modified_utc`: UTC timestamp of when the file was last modified in ISO 8601 format with microseconds (format: `YYYY-MM-DDTHH:MM:SS.ffffffZ`)
 - `file_metadata`: Object containing all metadata about the file
   - `source`: URL-encoded SharePoint source URL
   - `filename`: Original filename
   - `file_type`: File extension (docx, pdf, xlsx, etc.)
-  - `title`: Document title
-  - `description`: Document description/summary
-  - `topics`: Comma-separated list of topics/keywords
-  - `business_area`: Business area classification
-  - `business_unit`: Business unit code
-  - `department_olc`: Department/OLC code
-  - `doc_type`: Document type (Policy, Procedure, Instruction, etc.)
-  - `doc_language`: Document language
-  - `doc_year`: Document year
-  - `doc_valid_from`: Validity start date (YYYY-MM-DD)
-  - `doc_valid_to`: Validity end date (YYYY-MM-DD)
-  - `doc_classification`: Classification level (C1, C2, C3, etc.)
   - `file_size`: File size in bytes
   - `last_modified`: Last modification date (YYYY-MM-DD)
   - `raw_url`: Raw SharePoint URL (not encoded)
