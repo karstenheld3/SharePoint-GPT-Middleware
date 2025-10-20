@@ -45,7 +45,7 @@ Each domain has a `domain.json` file with the following structure:
   "vector_store_id": "vs_xxxxxxxxxxxxxxxxxxxxx",
   "name": "Example Domain 01",
   "description": "Description of the SharePoint site and its purpose",
-  "document_sources": [
+  "file_sources": [
     {
       "source_id": "source01",
       "site_url": "https://contoso.sharepoint.com/sites/ExampleSite",
@@ -53,7 +53,7 @@ Each domain has a `domain.json` file with the following structure:
       "filter": ""
     }
   ],
-  "page_sources": [
+  "sitepage_sources": [
     {
       "source_id": "source01",
       "site_url": "https://contoso.sharepoint.com/sites/ExampleSite",
@@ -84,12 +84,12 @@ Each domain has a `domain.json` file with the following structure:
 - `vector_store_id`: OpenAI vector store ID (format: `vs_...`)
 - `name`: Human-readable name for the domain
 - `description`: Detailed description of the domain/site
-- `document_sources`: Array of SharePoint document library sources
+- `file_sources`: Array of SharePoint document library sources
   - `source_id`: Unique identifier for this source (used in folder structure)
   - `site_url`: Full SharePoint site URL
   - `sharepoint_url_part`: Path to the document library
   - `filter`: Optional OData filter for documents
-- `page_sources`: Array of SharePoint site page sources
+- `sitepage_sources`: Array of SharePoint site page sources
   - `source_id`: Unique identifier for this source (used in folder structure)
   - `site_url`: Full SharePoint site URL
   - `sharepoint_url_part`: Path to site pages (usually `/SitePages`)

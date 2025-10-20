@@ -7,7 +7,7 @@ from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from utils import log_function_output
 
 @dataclass
-class DocumentSource:
+class FileSource:
     """Represents a SharePoint document library source."""
     source_id: str
     site_url: str
@@ -15,7 +15,7 @@ class DocumentSource:
     filter: str
 
 @dataclass
-class PageSource:
+class SitePageSource:
     """Represents a SharePoint site pages source."""
     source_id: str
     site_url: str
@@ -38,8 +38,8 @@ class DomainConfig:
     vector_store_id: str
     name: str
     description: str
-    document_sources: List[DocumentSource]
-    page_sources: List[PageSource]
+    file_sources: List[FileSource]
+    sitepage_sources: List[SitePageSource]
     list_sources: List[ListSource]
 
 def load_all_domains(storage_path: str, log_data: Dict[str, Any] = None) -> List[DomainConfig]:
@@ -85,8 +85,8 @@ def load_all_domains(storage_path: str, log_data: Dict[str, Any] = None) -> List
           domain_data = json.load(f)
           
           # Convert nested dictionaries to dataclasses
-          document_sources = [DocumentSource(**src) for src in domain_data.get('document_sources', [])]
-          page_sources = [PageSource(**src) for src in domain_data.get('page_sources', [])]
+          file_sources = [FileSource(**src) for src in domain_data.get('file_sources', [])]
+          sitepage_sources = [SitePageSource(**src) for src in domain_data.get('sitepage_sources', [])]
           list_sources = [ListSource(**src) for src in domain_data.get('list_sources', [])]
           
           domain_config = DomainConfig(
@@ -95,8 +95,8 @@ def load_all_domains(storage_path: str, log_data: Dict[str, Any] = None) -> List
             vector_store_id=domain_data['vector_store_id'],
             name=domain_data['name'],
             description=domain_data['description'],
-            document_sources=document_sources,
-            page_sources=page_sources,
+            file_sources=file_sources,
+            sitepage_sources=sitepage_sources,
             list_sources=list_sources
           )
           
@@ -238,10 +238,10 @@ def validate_domain_config(domain_data: Dict[str, Any]) -> tuple[bool, str]:
     return False, "domain_id must contain only alphanumeric characters, underscores, and hyphens"
   
   # Validate source lists exist
-  if 'document_sources' not in domain_data:
-    domain_data['document_sources'] = []
-  if 'page_sources' not in domain_data:
-    domain_data['page_sources'] = []
+  if 'file_sources' not in domain_data:
+    domain_data['file_sources'] = []
+  if 'sitepage_sources' not in domain_data:
+    domain_data['sitepage_sources'] = []
   if 'list_sources' not in domain_data:
     domain_data['list_sources'] = []
   

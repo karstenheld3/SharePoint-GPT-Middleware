@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from utils import convert_to_flat_html_table, convert_to_nested_html_table, log_function_footer, log_function_header, log_function_output
-from common_crawler_functions import ( DomainConfig, DocumentSource, PageSource, ListSource, load_all_domains, domain_config_to_dict, save_domain_to_file, delete_domain_folder, validate_domain_config )
+from common_crawler_functions import ( DomainConfig, FileSource, SitePageSource, ListSource, load_all_domains, domain_config_to_dict, save_domain_to_file, delete_domain_folder, validate_domain_config )
 
 router = APIRouter()
 
@@ -182,7 +182,7 @@ async def list_domains(request: Request):
   
   function showJsonExampleDialog(targetTextareaId) {{
     const demoJson = {{
-      "document_sources": [
+      "file_sources": [
         {{
           "source_id": "source01",
           "site_url": "https://example.sharepoint.com/sites/MySite",
@@ -190,7 +190,7 @@ async def list_domains(request: Request):
           "filter": ""
         }}
       ],
-      "page_sources": [
+      "sitepage_sources": [
         {{
           "source_id": "source01",
           "site_url": "https://example.sharepoint.com/sites/MySite",
@@ -336,9 +336,9 @@ async def get_create_form(request: Request):
           <summary style="cursor: pointer; font-weight: bold; margin-bottom: 10px;">Advanced: Sources Configuration (Optional)</summary>
           
           <div class="form-group">
-            <label for="sources_json">Sources JSON (document_sources, page_sources, list_sources)</label>
+            <label for="sources_json">Sources JSON (file_sources, sitepage_sources, list_sources)</label>
             <button type="button" class="btn-small" onclick="showJsonExampleDialog('sources_json')" style="margin-bottom: 5px;">Show JSON Example</button>
-            <textarea id="sources_json" name="sources_json" rows="10" placeholder='{"document_sources": [], "page_sources": [], "list_sources": []}'></textarea>
+            <textarea id="sources_json" name="sources_json" rows="10" placeholder='{"file_sources": [], "sitepage_sources": [], "list_sources": []}'></textarea>
             <small style="color: #666;">Leave empty to create domain without sources. You can add them later.</small>
           </div>
         </details>
@@ -391,17 +391,17 @@ async def create_domain(
     storage_path = request.app.state.system_info.PERSISTENT_STORAGE_PATH
     
     # Parse sources JSON if provided
-    document_sources_list = []
-    page_sources_list = []
+    file_sources_list = []
+    sitepage_sources_list = []
     list_sources_list = []
     
     if sources_json and sources_json.strip():
       try:
         sources_data = json.loads(sources_json)
-        document_sources_list = [DocumentSource(**src) for src in sources_data.get('document_sources', [])]
-        page_sources_list = [PageSource(**src) for src in sources_data.get('page_sources', [])]
+        file_sources_list = [FileSource(**src) for src in sources_data.get('file_sources', [])]
+        sitepage_sources_list = [SitePageSource(**src) for src in sources_data.get('sitepage_sources', [])]
         list_sources_list = [ListSource(**src) for src in sources_data.get('list_sources', [])]
-        log_function_output(request_data, f"Parsed sources: {len(document_sources_list)} document, {len(page_sources_list)} page, {len(list_sources_list)} list")
+        log_function_output(request_data, f"Parsed sources: {len(file_sources_list)} file, {len(sitepage_sources_list)} sitepage, {len(list_sources_list)} list")
       except json.JSONDecodeError as e:
         error_msg = f"Invalid JSON in sources_json: {str(e)}"
         log_function_output(request_data, f"ERROR: {error_msg}")
@@ -420,8 +420,8 @@ async def create_domain(
       'description': description.strip(),
       'vector_store_name': vector_store_name.strip(),
       'vector_store_id': vector_store_id.strip(),
-      'document_sources': [],
-      'page_sources': [],
+      'file_sources': [],
+      'sitepage_sources': [],
       'list_sources': []
     }
     
@@ -451,8 +451,8 @@ async def create_domain(
       description=domain_data['description'],
       vector_store_name=domain_data['vector_store_name'],
       vector_store_id=domain_data['vector_store_id'],
-      document_sources=document_sources_list,
-      page_sources=page_sources_list,
+      file_sources=file_sources_list,
+      sitepage_sources=sitepage_sources_list,
       list_sources=list_sources_list
     )
     
@@ -522,8 +522,8 @@ async def get_update_form(request: Request):
     
     # Pre-serialize sources to JSON for the textarea
     sources_dict = {
-      'document_sources': [asdict(src) for src in domain.document_sources],
-      'page_sources': [asdict(src) for src in domain.page_sources],
+      'file_sources': [asdict(src) for src in domain.file_sources],
+      'sitepage_sources': [asdict(src) for src in domain.sitepage_sources],
       'list_sources': [asdict(src) for src in domain.list_sources]
     }
     sources_json_str = json.dumps(sources_dict, indent=2)
@@ -562,7 +562,7 @@ async def get_update_form(request: Request):
             <summary style="cursor: pointer; font-weight: bold; margin-bottom: 10px;">Advanced: Sources Configuration</summary>
             
             <div class="form-group">
-              <label for="sources_json_update">Sources JSON (document_sources, page_sources, list_sources)</label>
+              <label for="sources_json_update">Sources JSON (file_sources, sitepage_sources, list_sources)</label>
               <button type="button" class="btn-small" onclick="showJsonExampleDialog('sources_json_update')" style="margin-bottom: 5px;">Show JSON Example</button>
               <textarea id="sources_json_update" name="sources_json" rows="10">{sources_json_str}</textarea>
               <small style="color: #666;">Modify the JSON to update sources.</small>
@@ -633,17 +633,17 @@ async def update_domain(
       return _generate_error_response(error_msg, format, 404)
     
     # Parse sources JSON if provided, otherwise keep existing sources
-    document_sources_list = existing_domain.document_sources
-    page_sources_list = existing_domain.page_sources
+    file_sources_list = existing_domain.file_sources
+    sitepage_sources_list = existing_domain.sitepage_sources
     list_sources_list = existing_domain.list_sources
     
     if sources_json and sources_json.strip():
       try:
         sources_data = json.loads(sources_json)
-        document_sources_list = [DocumentSource(**src) for src in sources_data.get('document_sources', [])]
-        page_sources_list = [PageSource(**src) for src in sources_data.get('page_sources', [])]
+        file_sources_list = [FileSource(**src) for src in sources_data.get('file_sources', [])]
+        sitepage_sources_list = [SitePageSource(**src) for src in sources_data.get('sitepage_sources', [])]
         list_sources_list = [ListSource(**src) for src in sources_data.get('list_sources', [])]
-        log_function_output(request_data, f"Updated sources: {len(document_sources_list)} document, {len(page_sources_list)} page, {len(list_sources_list)} list")
+        log_function_output(request_data, f"Updated sources: {len(file_sources_list)} file, {len(sitepage_sources_list)} sitepage, {len(list_sources_list)} list")
       except json.JSONDecodeError as e:
         error_msg = f"Invalid JSON in sources_json: {str(e)}"
         log_function_output(request_data, f"ERROR: {error_msg}")
@@ -662,8 +662,8 @@ async def update_domain(
       'description': description.strip(),
       'vector_store_name': vector_store_name.strip(),
       'vector_store_id': vector_store_id.strip(),
-      'document_sources': [],
-      'page_sources': [],
+      'file_sources': [],
+      'sitepage_sources': [],
       'list_sources': []
     }
     
@@ -681,8 +681,8 @@ async def update_domain(
       description=domain_data['description'],
       vector_store_name=domain_data['vector_store_name'],
       vector_store_id=domain_data['vector_store_id'],
-      document_sources=document_sources_list,
-      page_sources=page_sources_list,
+      file_sources=file_sources_list,
+      sitepage_sources=sitepage_sources_list,
       list_sources=list_sources_list
     )
     
