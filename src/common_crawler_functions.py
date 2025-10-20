@@ -42,6 +42,71 @@ class DomainConfig:
     sitepage_sources: List[SitePageSource]
     list_sources: List[ListSource]
 
+def load_domain(storage_path: str, domain_id: str, log_data: Dict[str, Any] = None) -> DomainConfig:
+  """
+  Load a single domain configuration by domain_id.
+  
+  Args:
+    storage_path: Base persistent storage path
+    domain_id: The ID of the domain to load
+    log_data: Optional logging context
+    
+  Returns:
+    DomainConfig dataclass
+    
+  Raises:
+    FileNotFoundError: If domain folder or domain.json doesn't exist
+    ValueError: If domain data is invalid
+  """
+  domains_path = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER)
+  domain_json_path = os.path.join(domains_path, domain_id, "domain.json")
+  
+  if log_data:
+    log_function_output(log_data, f"Loading domain '{domain_id}' from: {domain_json_path}")
+  
+  # Check if domain.json exists
+  if not os.path.exists(domain_json_path):
+    error_message = f"Domain configuration not found: {domain_json_path}"
+    if log_data:
+      log_function_output(log_data, f"ERROR: {error_message}")
+    raise FileNotFoundError(error_message)
+  
+  try:
+    with open(domain_json_path, 'r', encoding='utf-8') as f:
+      domain_data = json.load(f)
+      
+      # Convert nested dictionaries to dataclasses
+      file_sources = [FileSource(**src) for src in domain_data.get('file_sources', [])]
+      sitepage_sources = [SitePageSource(**src) for src in domain_data.get('sitepage_sources', [])]
+      list_sources = [ListSource(**src) for src in domain_data.get('list_sources', [])]
+      
+      domain_config = DomainConfig(
+        domain_id=domain_data['domain_id'],
+        vector_store_name=domain_data['vector_store_name'],
+        vector_store_id=domain_data['vector_store_id'],
+        name=domain_data['name'],
+        description=domain_data['description'],
+        file_sources=file_sources,
+        sitepage_sources=sitepage_sources,
+        list_sources=list_sources
+      )
+      
+      if log_data:
+        log_function_output(log_data, f"Successfully loaded domain: {domain_config.domain_id}")
+      
+      return domain_config
+      
+  except KeyError as e:
+    error_message = f"Missing required field in domain.json: {str(e)}"
+    if log_data:
+      log_function_output(log_data, f"ERROR: {error_message}")
+    raise ValueError(error_message)
+  except Exception as e:
+    error_message = f"Failed to load domain '{domain_id}': {str(e)}"
+    if log_data:
+      log_function_output(log_data, f"ERROR: {error_message}")
+    raise
+
 def load_all_domains(storage_path: str, log_data: Dict[str, Any] = None) -> List[DomainConfig]:
   """
   Load all domain configurations from the domains folder.
@@ -55,7 +120,6 @@ def load_all_domains(storage_path: str, log_data: Dict[str, Any] = None) -> List
     
   Raises:
     FileNotFoundError: If domains folder doesn't exist
-    ValueError: If domain data is invalid
   """
   domains_path = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER)
   
@@ -69,47 +133,22 @@ def load_all_domains(storage_path: str, log_data: Dict[str, Any] = None) -> List
       log_function_output(log_data, f"ERROR: {error_message}")
     raise FileNotFoundError(error_message)
   
-  # Collect all domain.json files
-  domains_list = []
+  # Get all domain folders
   domain_folders = [d for d in os.listdir(domains_path) if os.path.isdir(os.path.join(domains_path, d))]
   
   if log_data:
     log_function_output(log_data, f"Found {len(domain_folders)} domain folder(s)")
   
+  # Load each domain using load_domain function
+  domains_list = []
   for domain_folder in domain_folders:
-    domain_json_path = os.path.join(domains_path, domain_folder, "domain.json")
-    
-    if os.path.exists(domain_json_path):
-      try:
-        with open(domain_json_path, 'r', encoding='utf-8') as f:
-          domain_data = json.load(f)
-          
-          # Convert nested dictionaries to dataclasses
-          file_sources = [FileSource(**src) for src in domain_data.get('file_sources', [])]
-          sitepage_sources = [SitePageSource(**src) for src in domain_data.get('sitepage_sources', [])]
-          list_sources = [ListSource(**src) for src in domain_data.get('list_sources', [])]
-          
-          domain_config = DomainConfig(
-            domain_id=domain_data['domain_id'],
-            vector_store_name=domain_data['vector_store_name'],
-            vector_store_id=domain_data['vector_store_id'],
-            name=domain_data['name'],
-            description=domain_data['description'],
-            file_sources=file_sources,
-            sitepage_sources=sitepage_sources,
-            list_sources=list_sources
-          )
-          
-          domains_list.append(domain_config)
-          
-          if log_data:
-            log_function_output(log_data, f"Loaded domain: {domain_config.domain_id}")
-      except Exception as e:
-        if log_data:
-          log_function_output(log_data, f"WARNING: Failed to load {domain_json_path}: {str(e)}")
-    else:
+    try:
+      domain_config = load_domain(storage_path, domain_folder, log_data)
+      domains_list.append(domain_config)
+    except (FileNotFoundError, ValueError) as e:
       if log_data:
-        log_function_output(log_data, f"WARNING: domain.json not found in {domain_folder}")
+        log_function_output(log_data, f"WARNING: Skipping domain '{domain_folder}': {str(e)}")
+      continue
   
   if log_data:
     log_function_output(log_data, f"Successfully loaded {len(domains_list)} domain(s)")

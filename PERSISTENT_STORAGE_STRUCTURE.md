@@ -49,7 +49,7 @@ Each domain has a `domain.json` file with the following structure:
     {
       "source_id": "source01",
       "site_url": "https://contoso.sharepoint.com/sites/ExampleSite",
-      "sharepoint_url_part": "/Documents",
+      "sharepoint_url_part": "/Shared Documents",
       "filter": ""
     }
   ],

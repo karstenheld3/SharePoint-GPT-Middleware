@@ -8,9 +8,6 @@ if not exist %PWSH% (
     exit /b 1
 )
 
-echo This will zip the source code and deploy it to the Azure Web App
-pause
-
 rem change to folder where BAT file is
 cd /d "%~dp0"
 set SCRIPT=%~dp0AddRemoveCrawlerPermissions.ps1

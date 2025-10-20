@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 from dataclasses import asdict, dataclass
 from office365.sharepoint.client_context import ClientContext
 from office365.sharepoint.lists.list import List as DocumentLibrary
+from office365.runtime.auth.client_credential import ClientCredential
 
 @dataclass
 class SharePointFile:
@@ -30,10 +31,12 @@ def connect_to_site_using_client_id(site_url: str, client_id: str, client_secret
   Returns:
     ClientContext: An authenticated SharePoint client context object
   """
-  ctx = ClientContext(site_url).with_credentials(client_id=client_id, client_secret=client_secret)
+  
+  credentials = ClientCredential(client_id, client_secret)
+  ctx = ClientContext(site_url).with_credentials(credentials)
   return ctx
 
-def try_get_document_library(ctx: ClientContext, site_url: str, library_url_part: str) -> Optional[DocumentLibrary]:
+def try_get_document_library(ctx: ClientContext, site_url: str, library_url_part: str) -> tuple[Optional[DocumentLibrary], Optional[str]]:
   """
   Get a SharePoint document library by its server-relative URL.
   
@@ -43,12 +46,20 @@ def try_get_document_library(ctx: ClientContext, site_url: str, library_url_part
     library_url_part: The URL part of the document library (e.g., '/Shared Documents')
     
   Returns:
-    DocumentLibrary: The SharePoint list/document library object, or None if the operation fails
+    tuple: (DocumentLibrary or None, error_message or None)
+      - If successful: (DocumentLibrary, None)
+      - If failed: (None, error_message)
     
   Example:
     site_url = "https://contoso.sharepoint.com/sites/demosite"
     library_url_part = "/Shared Documents"
     # This will construct: "/sites/demosite/Shared Documents"
+    
+    library, error = try_get_document_library(ctx, site_url, library_url_part)
+    if library:
+      # Success
+    else:
+      # Failed, error contains the message
   """
   
   # Extract the site path from the site URL
@@ -66,9 +77,10 @@ def try_get_document_library(ctx: ClientContext, site_url: str, library_url_part
   # Get the list (document library) by its server-relative URL
   try:
     document_library = ctx.web.get_list(site_relative_url).get().execute_query()
-    return document_library
+    return document_library, None
   except Exception as e:
-    return None
+    error_message = f"Failed to get document library at '{site_relative_url}': {str(e)}"
+    return None, error_message
 
 
 def get_document_library_files(ctx: ClientContext, document_library: DocumentLibrary, filter: str, request_data: dict) -> list[SharePointFile]:

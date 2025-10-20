@@ -186,7 +186,7 @@ async def list_domains(request: Request):
         {{
           "source_id": "source01",
           "site_url": "https://example.sharepoint.com/sites/MySite",
-          "sharepoint_url_part": "/Documents",
+          "sharepoint_url_part": "/Shared Documents",
           "filter": ""
         }}
       ],
