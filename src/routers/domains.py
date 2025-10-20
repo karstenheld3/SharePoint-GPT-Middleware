@@ -26,7 +26,7 @@ def _generate_error_response(error_message: str, format: str, status_code: int =
     return JSONResponse({"error": error_message}, status_code=status_code)
   else:
     return HTMLResponse(
-      f"<div class='error'>{error_message}</div>",
+      f"<div class='error' style='padding: 15px; margin: 10px 0; background-color: #fee; border: 1px solid #fcc; border-radius: 4px; color: #c00;'><strong>Error:</strong> {error_message}</div>",
       status_code=status_code
     )
 
@@ -118,13 +118,13 @@ async def list_domains(request: Request):
     """
       
       html_content = f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
-  <title>Domains Management ({len(domains_list)})</title>
+  <title>Domains ({len(domains_list)})</title>
   <link rel='stylesheet' href='/static/css/styles.css'>
   <script src='/static/js/htmx.js'></script>
 </head>
 <body>
   <div class="container">
-  <h1>Domains Management ({len(domains_list)})</h1>
+  <h1>Domains ({len(domains_list)})</h1>
   
   <div class="toolbar">
     <button class="btn-primary" 
@@ -152,6 +152,77 @@ async def list_domains(request: Request):
   
   <div id="form-container"></div>
   </div>
+  
+  <script>
+  // Store existing domain IDs for client-side validation
+  const existingDomainIds = {json.dumps([d.domain_id for d in domains_list])};
+  
+  function validateDomainId(domainIdInput) {{
+    const domainId = domainIdInput.value.trim();
+    const errorDiv = document.getElementById('domain-id-error');
+    
+    if (existingDomainIds.includes(domainId)) {{
+      if (!errorDiv) {{
+        const error = document.createElement('div');
+        error.id = 'domain-id-error';
+        error.style.cssText = 'color: #c00; font-size: 0.9em; margin-top: 5px;';
+        error.textContent = `Domain ID '${{domainId}}' already exists. Please choose a different ID.`;
+        domainIdInput.parentElement.appendChild(error);
+      }}
+      domainIdInput.setCustomValidity('Domain ID already exists');
+      return false;
+    }} else {{
+      if (errorDiv) {{
+        errorDiv.remove();
+      }}
+      domainIdInput.setCustomValidity('');
+      return true;
+    }}
+  }}
+  
+  function showJsonExampleDialog(targetTextareaId) {{
+    const demoJson = {{
+      "document_sources": [
+        {{
+          "site_url": "https://example.sharepoint.com/sites/MySite",
+          "sharepoint_url_part": "/Documents",
+          "filter": ""
+        }}
+      ],
+      "page_sources": [
+        {{
+          "site_url": "https://example.sharepoint.com/sites/MySite",
+          "sharepoint_url_part": "/SitePages",
+          "filter": "FSObjType eq 0"
+        }}
+      ],
+      "list_sources": [
+        {{
+          "site_url": "https://example.sharepoint.com/sites/MySite",
+          "list_name": "My List",
+          "filter": ""
+        }}
+      ]
+    }};
+    
+    const formatted = JSON.stringify(demoJson, null, 2);
+    
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width: 700px;">
+        <h3>JSON Example</h3>
+        <p>Copy this example and modify it for your needs:</p>
+        <textarea readonly rows="20" style="width: 100%; font-family: monospace; font-size: 12px;">${{formatted}}</textarea>
+        <div class="form-actions">
+          <button class="btn-primary" onclick="document.getElementById('${{targetTextareaId}}').value = this.parentElement.parentElement.querySelector('textarea').value; this.closest('.modal').remove();">Copy to Form</button>
+          <button class="btn-secondary" onclick="this.closest('.modal').remove()">Close</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  }}
+  </script>
 </body>
 </html>"""
       await log_function_footer(request_data)
@@ -236,8 +307,10 @@ async def get_create_form(request: Request):
         <div class="form-group">
           <label for="domain_id">Domain ID *</label>
           <input type="text" id="domain_id" name="domain_id" required 
-               pattern="[a-zA-Z0-9_-]+" 
-               title="Only letters, numbers, underscores, and hyphens allowed">
+               pattern="[a-zA-Z0-9_\-]+" 
+               title="Only letters, numbers, underscores, and hyphens allowed"
+               onblur="validateDomainId(this)"
+               oninput="validateDomainId(this)">
         </div>
         <div class="form-group">
           <label for="name">Name *</label>
@@ -274,52 +347,6 @@ async def get_create_form(request: Request):
       </form>
     </div>
   </div>
-  
-  <script>
-  function showJsonExampleDialog(targetTextareaId) {
-    const demoJson = {
-      "document_sources": [
-        {
-          "site_url": "https://example.sharepoint.com/sites/MySite",
-          "sharepoint_url_part": "/Documents",
-          "filter": ""
-        }
-      ],
-      "page_sources": [
-        {
-          "site_url": "https://example.sharepoint.com/sites/MySite",
-          "sharepoint_url_part": "/SitePages",
-          "filter": "FSObjType eq 0"
-        }
-      ],
-      "list_sources": [
-        {
-          "site_url": "https://example.sharepoint.com/sites/MySite",
-          "list_name": "My List",
-          "filter": ""
-        }
-      ]
-    };
-    
-    const formatted = JSON.stringify(demoJson, null, 2);
-    
-    // Show in a simple alert-style modal
-    const modal = document.createElement('div');
-    modal.className = 'modal';
-    modal.innerHTML = `
-      <div class="modal-content" style="max-width: 700px;">
-        <h3>JSON Example</h3>
-        <p>Copy this example and modify it for your needs:</p>
-        <textarea readonly rows="20" style="width: 100%; font-family: monospace; font-size: 12px;">${formatted}</textarea>
-        <div class="form-actions">
-          <button class="btn-primary" onclick="document.getElementById('${targetTextareaId}').value = this.parentElement.parentElement.querySelector('textarea').value; this.closest('.modal').remove();">Copy to Form</button>
-          <button class="btn-secondary" onclick="this.closest('.modal').remove()">Close</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(modal);
-  }
-  </script>
   """
   
   await log_function_footer(request_data)
