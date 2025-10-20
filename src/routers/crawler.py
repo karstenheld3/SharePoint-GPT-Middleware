@@ -1,0 +1,1 @@
+# endpoints for then sharepoint crawler

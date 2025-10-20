@@ -58,6 +58,10 @@ class Config:
   SEARCH_DEFAULT_INSTRUCTIONS: str
   SEARCH_DEFAULT_SHAREPOINT_ROOT_URL: str
   LOG_QUERIES_AND_RESPONSES: bool
+  # Crawler Configuration
+  CRAWLER_CLIENT_ID: Optional[str]
+  CRAWLER_CLIENT_SECRET: Optional[str]
+  CRAWLER_TENANT_ID: Optional[str]
 
 
 def load_config() -> Config:
@@ -87,6 +91,10 @@ def load_config() -> Config:
     ,SEARCH_DEFAULT_INSTRUCTIONS=os.getenv('SEARCH_DEFAULT_INSTRUCTIONS', 'If the query can\'t be answered based on the available information, return N/A.')
     ,SEARCH_DEFAULT_SHAREPOINT_ROOT_URL=os.getenv('SEARCH_DEFAULT_SHAREPOINT_ROOT_URL', '')
     ,LOG_QUERIES_AND_RESPONSES=os.getenv("LOG_QUERIES_AND_RESPONSES", "false").lower() == "true"
+    # Crawler Configuration
+    ,CRAWLER_CLIENT_ID=os.getenv('CRAWLER_CLIENT_ID')
+    ,CRAWLER_CLIENT_SECRET=os.getenv('CRAWLER_CLIENT_SECRET')
+    ,CRAWLER_TENANT_ID=os.getenv('CRAWLER_TENANT_ID')
   )
 
 def configure_logging():

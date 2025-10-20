@@ -48,6 +48,20 @@ SEARCH_DEFAULT_SHAREPOINT_ROOT_URL=https://<your_sharepoint_url>/
 
 # ------------------------- END: Search Configuration -----------------------------------------------------------------
 
+# ------------------------- START: Crawler Configuration --------------------------------------------------------------
+
+# The app registration used to access SharePoint
+CRAWLER_CLIENT_ID=<your_crawler_client_id>
+CRAWLER_CLIENT_SECRET=<your_crawler_client_secret>
+CRAWLER_CLIENT_NAME=<your_crawler_client_name>
+# Needed for PowerShell scripts
+CRAWLER_TENANT_ID=<your_crawler_tenant_id>
+CRAWLER_SHAREPOINT_TENANT_NAME=<your_sharepoint_tenant_name>
+# Search in Azure > App registrations > "PnP Rocks" > Overview > Application (client) ID
+PNP_CLIENT_ID=<your_pnp_client_id>
+
+# ------------------------- END: Crawler Configuration ----------------------------------------------------------------
+
 # ------------------------- START: Global Configuration ---------------------------------------------------------------
 
 # Path of home directory to save files when app runs under http://127.0.0.1:8000/, mimicking the app service D:\home folder
