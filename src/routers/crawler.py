@@ -7,13 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from utils import convert_to_flat_html_table, convert_to_nested_html_table, log_function_footer, log_function_header, log_function_output
-from common_crawler_functions import (
-    DomainConfig, 
-    load_all_domains, 
-    domain_config_to_dict,
-    scan_directory_recursive,
-    create_storage_zip_from_scan
-)
+from common_crawler_functions import DomainConfig, load_all_domains, domain_config_to_dict, scan_directory_recursive, create_storage_zip_from_scan
 
 router = APIRouter()
 
