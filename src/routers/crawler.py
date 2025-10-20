@@ -1,5 +1,5 @@
 # endpoints for the sharepoint crawler
-import datetime, json, logging, os, tempfile
+import datetime, json, os, tempfile
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Request, BackgroundTasks
@@ -20,8 +20,6 @@ router = APIRouter()
 # Configuration will be injected from app.py
 config = None
 
-logger = logging.getLogger(__name__)
-
 def set_config(app_config):
   """Set the configuration for Crawler management."""
   global config
@@ -34,14 +32,10 @@ def _delete_zip_file(file_path: str, log_data: Dict[str, Any] = None) -> None:
       os.remove(file_path)
       if log_data:
         log_function_output(log_data, f"Deleted zip file: {file_path}")
-      else:
-        logger.info(f"Deleted zip file: {file_path}")
   except Exception as e:
     error_msg = f"Failed to delete zip file {file_path}: {str(e)}"
     if log_data:
       log_function_output(log_data, f"ERROR: {error_msg}")
-    else:
-      logger.error(error_msg)
 
 def _generate_html_response_from_nested_data(title: str, data: Any) -> str:
   """

@@ -1,4 +1,3 @@
-import logging
 from dataclasses import asdict
 from typing import Dict, List, Optional, Union
 
@@ -12,8 +11,6 @@ router = APIRouter()
 
 # Configuration will be injected from app.py
 config = None
-
-logger = logging.getLogger(__name__)
 
 def set_config(app_config):
   """Set the configuration for Inventory management."""

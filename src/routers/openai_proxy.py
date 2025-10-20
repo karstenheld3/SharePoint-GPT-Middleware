@@ -1,4 +1,4 @@
-import asyncio, datetime, json, logging, uuid
+import asyncio, datetime, json, uuid
 from typing import Any, Dict, Optional
 
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
@@ -14,8 +14,6 @@ router = APIRouter()
 config = None
 token_provider = None
 
-logger = logging.getLogger(__name__)
-
 def set_config(app_config):
   """Set the configuration and initialize Azure AD credentials if needed."""
   global config, token_provider
@@ -27,7 +25,7 @@ def set_config(app_config):
       cred = DefaultAzureCredential()
       token_provider = get_bearer_token_provider(cred, "https://cognitiveservices.azure.com/.default")
     except Exception as e:
-      logger.error(f"Failed to initialize Azure AD credentials: {e}")
+      # Note: No log_data available in set_config, error will be caught during first request
       token_provider = None
 
 async def proxy_request(request: Request, target_path: str, method: str = "POST", files: Optional[Dict[str, Any]] = None, timeout_seconds: Optional[float] = None) -> Any:
@@ -114,7 +112,7 @@ async def proxy_request(request: Request, target_path: str, method: str = "POST"
   
   try:
     # Pre-request diagnostic logging
-    logger.info(f"Proxying {method} -> {target_url}")
+    log_function_output(log_data, f"Proxying {method} -> {target_url}")
     async with httpx.AsyncClient(timeout=http_timeout) as client:
       _start = log_data.get("start_time", datetime.datetime.now())
       if files:
@@ -141,10 +139,10 @@ async def proxy_request(request: Request, target_path: str, method: str = "POST"
       return (retVal, _elapsed_milliseconds)
       
   except httpx.RequestError as e:
-    logger.error(f"Request error when proxying to OpenAI: {e}")
+    log_function_output(log_data, f"ERROR: Request error when proxying to OpenAI: {e}")
     raise HTTPException(status_code=502, detail=f"Error connecting to {config.OPENAI_SERVICE_TYPE}")
   except Exception as e:
-    logger.error(f"Unexpected error when proxying to OpenAI: {e}")
+    log_function_output(log_data, f"ERROR: Unexpected error when proxying to OpenAI: {e}")
     raise HTTPException(status_code=500, detail="Internal server error")
   finally:
     await log_function_footer(log_data)

@@ -1,12 +1,10 @@
 # Common functions and dataclasses for SharePoint crawler
-import json, logging, os, zipfile
-from dataclasses import dataclass
+import json, os, zipfile
+from dataclasses import asdict, dataclass
 from typing import Any, Dict, List
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from utils import log_function_output
-
-logger = logging.getLogger(__name__)
 
 @dataclass
 class DocumentSource:
@@ -60,16 +58,12 @@ def load_all_domains(storage_path: str, log_data: Dict[str, Any] = None) -> List
   
   if log_data:
     log_function_output(log_data, f"Scanning domains path: {domains_path}")
-  else:
-    logger.info(f"Scanning domains path: {domains_path}")
   
   # Check if domains folder exists
   if not os.path.exists(domains_path):
     error_message = f"Domains folder not found: {domains_path}"
     if log_data:
       log_function_output(log_data, f"ERROR: {error_message}")
-    else:
-      logger.error(error_message)
     raise FileNotFoundError(error_message)
   
   # Collect all domain.json files
@@ -78,8 +72,6 @@ def load_all_domains(storage_path: str, log_data: Dict[str, Any] = None) -> List
   
   if log_data:
     log_function_output(log_data, f"Found {len(domain_folders)} domain folder(s)")
-  else:
-    logger.info(f"Found {len(domain_folders)} domain folder(s)")
   
   for domain_folder in domain_folders:
     domain_json_path = os.path.join(domains_path, domain_folder, "domain.json")
@@ -109,55 +101,21 @@ def load_all_domains(storage_path: str, log_data: Dict[str, Any] = None) -> List
           
           if log_data:
             log_function_output(log_data, f"Loaded domain: {domain_config.domain_id}")
-          else:
-            logger.info(f"Loaded domain: {domain_config.domain_id}")
       except Exception as e:
         if log_data:
           log_function_output(log_data, f"WARNING: Failed to load {domain_json_path}: {str(e)}")
-        else:
-          logger.warning(f"Failed to load {domain_json_path}: {str(e)}")
     else:
       if log_data:
         log_function_output(log_data, f"WARNING: domain.json not found in {domain_folder}")
-      else:
-        logger.warning(f"domain.json not found in {domain_folder}")
   
   if log_data:
     log_function_output(log_data, f"Successfully loaded {len(domains_list)} domain(s)")
-  else:
-    logger.info(f"Successfully loaded {len(domains_list)} domain(s)")
   
   return domains_list
 
+# Convert a DomainConfig dataclass to a dictionary
 def domain_config_to_dict(domain: DomainConfig) -> Dict[str, Any]:
-  """
-  Convert a DomainConfig dataclass to a dictionary.
-  
-  Args:
-    domain: DomainConfig dataclass instance
-    
-  Returns:
-    Dictionary representation of the domain configuration
-  """
-  return {
-    "domain_id": domain.domain_id,
-    "vector_store_name": domain.vector_store_name,
-    "vector_store_id": domain.vector_store_id,
-    "name": domain.name,
-    "description": domain.description,
-    "document_sources": [
-      {"site_url": src.site_url, "sharepoint_url_part": src.sharepoint_url_part, "filter": src.filter}
-      for src in domain.document_sources
-    ],
-    "page_sources": [
-      {"site_url": src.site_url, "sharepoint_url_part": src.sharepoint_url_part, "filter": src.filter}
-      for src in domain.page_sources
-    ],
-    "list_sources": [
-      {"site_url": src.site_url, "list_name": src.list_name, "filter": src.filter}
-      for src in domain.list_sources
-    ]
-  }
+  return asdict(domain)
 
 def scan_directory_recursive(path: str, log_data: Dict[str, Any] = None, except_folder: str = None) -> List[Dict[str, Any]]:
   """
@@ -197,8 +155,6 @@ def scan_directory_recursive(path: str, log_data: Dict[str, Any] = None, except_
   except (OSError, PermissionError) as e:
     if log_data:
       log_function_output(log_data, f"Error scanning directory {path}: {str(e)}")
-    else:
-      logger.error(f"Error scanning directory {path}: {str(e)}")
   return items
 
 def create_storage_zip_from_scan(storage_path: str, storage_contents: List[Dict[str, Any]], log_data: Dict[str, Any], temp_zip_path: str, temp_zip_name: str) -> str:

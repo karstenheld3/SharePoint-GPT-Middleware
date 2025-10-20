@@ -74,12 +74,15 @@ msal==1.33.0
     # via
     #   azure-identity
     #   msal-extensions
+    #   office365-rest-python-client
 msal-extensions==1.3.1
     # via azure-identity
 multidict==6.6.4
     # via
     #   aiohttp
     #   yarl
+office365-rest-python-client==2.6.2
+    # via sharepoint-gpt-middleware (src/pyproject.toml)
 openai==1.101.0
     # via sharepoint-gpt-middleware (src/pyproject.toml)
 propcache==0.3.2
@@ -102,12 +105,15 @@ python-dotenv==1.1.1
     #   uvicorn
 python-multipart==0.0.20
     # via sharepoint-gpt-middleware (src/pyproject.toml)
+pytz==2025.2
+    # via office365-rest-python-client
 pyyaml==6.0.2
     # via uvicorn
 requests==2.32.5
     # via
     #   azure-core
     #   msal
+    #   office365-rest-python-client
 six==1.17.0
     # via azure-core
 sniffio==1.3.1
@@ -124,6 +130,7 @@ typing-extensions==4.15.0
     #   anyio
     #   azure-core
     #   fastapi
+    #   office365-rest-python-client
     #   openai
     #   pydantic
     #   pydantic-core

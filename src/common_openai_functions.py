@@ -1,7 +1,7 @@
 # Common Open AI functions (COAI)
 # Copyright 2025, Karsten Held (MIT License)
 
-import datetime, logging, os, time
+import datetime, os, time
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Literal, Optional, Union
 
@@ -21,8 +21,6 @@ from openai.types.shared_params.responses_model import ResponsesModel
 import httpx
 
 from utils import log_function_output
-
-logger = logging.getLogger(__name__)
 
 # Global variable for OpenAI datetime attributes that need conversion
 OPENAI_DATETIME_ATTRIBUTES = ["created_at", "expires_at"]
@@ -206,7 +204,6 @@ def convert_openai_timestamps_to_utc(data, request_data=None):
         except Exception as e:
           data[key] = str(value)
           if request_data: log_function_output(request_data, f"Failed to convert timestamp {key}: {value} -> {str(e)}")
-          else: logger.warning(f"Failed to convert timestamp {value}: {e}")
       elif isinstance(value, dict):
         convert_openai_timestamps_to_utc(value, request_data)
       elif isinstance(value, list):
