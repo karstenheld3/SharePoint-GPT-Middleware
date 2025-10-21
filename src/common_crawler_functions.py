@@ -288,7 +288,7 @@ def validate_domain_config(domain_data: Dict[str, Any]) -> tuple[bool, str]:
   Returns:
     Tuple of (is_valid, error_message)
   """
-  required_fields = ['domain_id', 'name', 'vector_store_name', 'vector_store_id', 'description']
+  required_fields = ['domain_id', 'name', 'vector_store_name', 'description']
   
   # Check required fields
   for field in required_fields:
@@ -995,10 +995,12 @@ def download_files_from_sharepoint(system_info, domain_id: str, source_id: str, 
     
     for file_idx, sp_file in enumerate(supported_files, 1):
       try:
-        # Extract relative path from file_relative_path
-        # file_relative_path format: domain_id/01_files/source_id/02_embedded/relative_path
-        path_parts = sp_file.file_relative_path.split(os.sep)
-        # Find the index of EMBEDDED_SUBFOLDER and take everything after it
+        # Use the file_relative_path from SharePoint (already normalized with backslashes)
+        # This matches what was written to sharepoint_map.csv
+        file_relative_path_normalized = sp_file.file_relative_path.replace('/', '\\')
+        
+        # Extract just the part after 02_embedded for local file path
+        path_parts = file_relative_path_normalized.split(os.sep)
         try:
           embedded_idx = path_parts.index(CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_EMBEDDED_SUBFOLDER)
           file_rel_path = os.sep.join(path_parts[embedded_idx + 1:])
@@ -1036,7 +1038,7 @@ def download_files_from_sharepoint(system_info, domain_id: str, source_id: str, 
           writer = csv.writer(csvfile)
           writer.writerow([
             file_source.source_id,
-            file_rel_path,
+            file_relative_path_normalized,
             actual_file_size,
             actual_mtime_utc_str,
             actual_mtime

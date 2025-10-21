@@ -328,8 +328,8 @@ async def get_create_form(request: Request):
           <input type="text" id="vector_store_name" name="vector_store_name" required>
         </div>
         <div class="form-group">
-          <label for="vector_store_id">Vector Store ID *</label>
-          <input type="text" id="vector_store_id" name="vector_store_id" required>
+          <label for="vector_store_id">Vector Store ID</label>
+          <input type="text" id="vector_store_id" name="vector_store_id" value="" placeholder="Optional - leave empty if not needed">
         </div>
         
         <details class="form-group">
@@ -362,7 +362,7 @@ async def create_domain(
   name: str = Form(...),
   description: str = Form(...),
   vector_store_name: str = Form(...),
-  vector_store_id: str = Form(...),
+  vector_store_id: str = Form(default=""),
   sources_json: str = Form(default="")
 ):
   """
@@ -380,6 +380,9 @@ async def create_domain(
   request_params = dict(request.query_params)
   
   format = request_params.get('format', 'json')
+  
+  # Log received form data for debugging
+  log_function_output(request_data, f"Received form data - domain_id: {domain_id}, name: {name}, vector_store_id: '{vector_store_id}'")
   
   try:
     if not hasattr(request.app.state, 'system_info') or not request.app.state.system_info.PERSISTENT_STORAGE_PATH:
@@ -476,8 +479,10 @@ async def create_domain(
       )
     
   except Exception as e:
+    import traceback
     error_message = f"Error creating domain: {str(e)}"
     log_function_output(request_data, f"ERROR: {error_message}")
+    log_function_output(request_data, f"TRACEBACK: {traceback.format_exc()}")
     await log_function_footer(request_data)
     return _generate_error_response(error_message, format, 500)
 
@@ -554,8 +559,8 @@ async def get_update_form(request: Request):
             <input type="text" id="vector_store_name" name="vector_store_name" value="{domain.vector_store_name}" required>
           </div>
           <div class="form-group">
-            <label for="vector_store_id">Vector Store ID *</label>
-            <input type="text" id="vector_store_id" name="vector_store_id" value="{domain.vector_store_id}" required>
+            <label for="vector_store_id">Vector Store ID</label>
+            <input type="text" id="vector_store_id" name="vector_store_id" value="{domain.vector_store_id}" placeholder="Optional - leave empty if not needed">
           </div>
           
           <details class="form-group" open>
@@ -594,7 +599,7 @@ async def update_domain(
   name: str = Form(...),
   description: str = Form(...),
   vector_store_name: str = Form(...),
-  vector_store_id: str = Form(...),
+  vector_store_id: str = Form(default=""),
   sources_json: str = Form(default="")
 ):
   """
