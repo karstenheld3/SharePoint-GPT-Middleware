@@ -1,10 +1,10 @@
 # Common functions and dataclasses for SharePoint crawler
-import json, os, zipfile, datetime
+import json, os, zipfile, datetime, csv, shutil
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
-from utils import log_function_output
+from utils import log_function_output, normalize_long_path
 from common_sharepoint_functions import connect_to_site_using_client_id_and_certificate, try_get_document_library, get_document_library_files
 from common_openai_functions import get_vector_store_files_with_filenames_as_dict
 
@@ -771,3 +771,317 @@ def convert_file_metadata_item_from_v2_to_v3(v2_item: Dict[str, Any]) -> Dict[st
   }
   
   return v3_item
+
+def download_files_from_sharepoint(system_info, domain_id: str, source_id: str, request_data: Dict[str, Any], config) -> Dict[str, Any]:
+  """
+  Download files from SharePoint for a specific domain source, creating CSV maps.
+  
+  This function:
+  1. Loads files from SharePoint using load_files_from_sharepoint_source
+  2. Filters files by accepted file types
+  3. Creates sharepoint_map.csv with SharePoint metadata
+  4. Downloads each file preserving folder structure
+  5. Creates files_map.csv with local file metadata
+  6. Logs failed downloads to sharepoint_error_map.csv
+  
+  Args:
+    system_info: System configuration object with PERSISTENT_STORAGE_PATH
+    domain_id: The ID of the domain to download files for
+    source_id: The ID of the file source within the domain (optional, if None all sources are downloaded)
+    request_data: Dictionary for logging output
+    config: Configuration object with crawler credentials
+    
+  Returns:
+    Dictionary with download statistics and results
+    
+  Raises:
+    ValueError: If validation fails or required configuration is missing
+    FileNotFoundError: If domain or source is not found
+  """
+  
+  # Validate PERSISTENT_STORAGE_PATH
+  if not system_info.PERSISTENT_STORAGE_PATH:
+    raise ValueError("PERSISTENT_STORAGE_PATH not configured")
+  
+  storage_path = system_info.PERSISTENT_STORAGE_PATH
+  
+  # Load domain configuration
+  log_function_output(request_data, f"Loading domain: '{domain_id}'")
+  domain_config = load_domain(storage_path, domain_id, request_data)
+  
+  # Determine which sources to process
+  sources_to_process = []
+  if source_id:
+    file_source = next((src for src in domain_config.file_sources if src.source_id == source_id), None)
+    if not file_source:
+      raise FileNotFoundError(f"File source '{source_id}' not found in domain '{domain_id}'")
+    sources_to_process.append(file_source)
+  else:
+    sources_to_process = domain_config.file_sources
+  
+  if not sources_to_process:
+    raise ValueError(f"No file sources found in domain '{domain_id}'")
+  
+  log_function_output(request_data, f"Processing {len(sources_to_process)} source(s)")
+  
+  # Prepare paths
+  crawler_base_path = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_CRAWLER_SUBFOLDER, domain_id)
+  files_base_path = os.path.join(crawler_base_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOCUMENTS_FOLDER)
+  
+  # Ensure base path exists
+  os.makedirs(files_base_path, exist_ok=True)
+  
+  # CSV file paths
+  sharepoint_map_path = os.path.join(files_base_path, "sharepoint_map.csv")
+  files_map_path = os.path.join(files_base_path, "files_map.csv")
+  sharepoint_error_map_path = os.path.join(files_base_path, "sharepoint_error_map.csv")
+  
+  # Define CSV file configurations (path, header)
+  map_file_headers = [
+    (sharepoint_map_path, ['source_id', 'sharepoint_listitem_id', 'sharepoint_unique_file_id', 'server_relative_url', 'file_relative_path', 'file_size', 'last_modified_utc', 'last_modified_timestamp']),
+    (files_map_path, ['source_id', 'file_relative_path', 'file_size', 'last_modified_utc', 'last_modified_timestamp']),
+    (sharepoint_error_map_path, ['source_id', 'sharepoint_listitem_id', 'sharepoint_unique_file_id', 'file_relative_path', 'error_message'])
+  ]
+  
+  # Handle existing CSV files based on source_id parameter
+  if source_id:
+    # If source_id is specified, remove entries for this source_id from existing CSV files
+    log_function_output(request_data, f"Cleaning existing entries for source_id='{source_id}' from CSV files...")
+    
+    for csv_path, header in map_file_headers:
+      if os.path.exists(csv_path):
+        # Read existing entries
+        rows_to_keep = []
+        with open(csv_path, 'r', newline='', encoding='utf-8') as csvfile:
+          reader = csv.reader(csvfile)
+          header_row = next(reader, None)
+          
+          # Keep rows that don't match the source_id
+          for row in reader:
+            if len(row) > 0 and row[0] != source_id:
+              rows_to_keep.append(row)
+        
+        # Rewrite the file with filtered entries
+        with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+          writer = csv.writer(csvfile)
+          writer.writerow(header)
+          writer.writerows(rows_to_keep)
+        
+        log_function_output(request_data, f"Removed entries for source_id='{source_id}' from {os.path.basename(csv_path)}")
+      else:
+        # Create new file with header
+        with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+          writer = csv.writer(csvfile)
+          writer.writerow(header)
+        log_function_output(request_data, f"Created: {csv_path}")
+  else:
+    # If no source_id specified, delete all CSV files
+    log_function_output(request_data, "Deleting all existing CSV files...")
+    
+    for csv_path, header in map_file_headers:
+      if os.path.exists(csv_path):
+        os.remove(csv_path)
+        log_function_output(request_data, f"Deleted: {os.path.basename(csv_path)}")
+      
+      # Create new file with header
+      with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(header)
+      log_function_output(request_data, f"Created: {csv_path}")
+  
+  # Initialize results
+  results = {
+    'domain_id': domain_id,
+    'sources_processed': [],
+    'total_files_in_sharepoint': 0,
+    'total_files_in_sharepoint_unsupported': 0,
+    'total_files_downloaded': 0,
+    'total_files_failed': 0
+  }
+  
+  # Process each source
+  for idx, file_source in enumerate(sources_to_process, 1):
+    log_function_output(request_data, "")
+    log_function_output(request_data, f"{'=' * 80}")
+    log_function_output(request_data, f"PROCESSING SOURCE [ {idx} / {len(sources_to_process)} ]: {file_source.source_id}")
+    log_function_output(request_data, f"{'=' * 80}")
+    
+    source_result = {
+      'source_id': file_source.source_id,
+      'site_url': file_source.site_url,
+      'sharepoint_url_part': file_source.sharepoint_url_part,
+      'filter': file_source.filter,
+      'files_in_sharepoint': 0,
+      'files_downloaded': 0,
+      'files_failed': 0
+    }
+    
+    # Paths for this source
+    local_embedded_path = os.path.join(files_base_path, file_source.source_id, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_EMBEDDED_SUBFOLDER)
+    local_failed_path = os.path.join(files_base_path, file_source.source_id, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_FAILED_SUBFOLDER)
+    
+    # Clean the download folders before downloading
+    if os.path.exists(local_embedded_path):
+      log_function_output(request_data, f"Cleaning embedded folder: {local_embedded_path}")
+      shutil.rmtree(local_embedded_path)
+      log_function_output(request_data, f"Cleaned embedded folder")
+    
+    if os.path.exists(local_failed_path):
+      log_function_output(request_data, f"Cleaning failed folder: {local_failed_path}")
+      shutil.rmtree(local_failed_path)
+      log_function_output(request_data, f"Cleaned failed folder")
+    
+    # Create fresh download folders
+    os.makedirs(local_embedded_path, exist_ok=True)
+    log_function_output(request_data, f"Created embedded folder: {local_embedded_path}")
+    
+    os.makedirs(local_failed_path, exist_ok=True)
+    log_function_output(request_data, f"Created failed folder: {local_failed_path}")
+    
+    # Load files from SharePoint
+    log_function_output(request_data, "Loading files from SharePoint...")
+    sharepoint_files = load_files_from_sharepoint_source(system_info, domain_id, file_source.source_id, request_data, config)
+    log_function_output(request_data, f"Loaded {len(sharepoint_files)} files from SharePoint")
+    
+    # Filter files by accepted file types
+    supported_files = [f for f in sharepoint_files if f.file_type.lower() in CRAWLER_HARDCODED_CONFIG.DEFAULT_FILETYPES_ACCEPTED_BY_VECTOR_STORES]
+    unsupported_count = len(sharepoint_files) - len(supported_files)
+    
+    log_function_output(request_data, f"Total files in SharePoint: {len(sharepoint_files)}")
+    
+    if unsupported_count > 0:
+      log_function_output(request_data, f"Filtered out {unsupported_count} unsupported file type(s)")
+    
+    log_function_output(request_data, f"Files with supported types: {len(supported_files)}")
+    
+    source_result['files_in_sharepoint'] = len(sharepoint_files)
+    source_result['files_in_sharepoint_unsupported'] = unsupported_count
+    results['total_files_in_sharepoint'] += len(sharepoint_files)
+    results['total_files_in_sharepoint_unsupported'] += unsupported_count
+    
+    # Write to sharepoint_map.csv
+    log_function_output(request_data, "Writing to sharepoint_map.csv...")
+    with open(sharepoint_map_path, 'a', newline='', encoding='utf-8') as csvfile:
+      writer = csv.writer(csvfile)
+      for sp_file in supported_files:
+        writer.writerow([
+          file_source.source_id,
+          sp_file.sharepoint_listitem_id,
+          sp_file.sharepoint_unique_file_id,
+          sp_file.server_relative_url,
+          sp_file.file_relative_path,
+          sp_file.file_size,
+          sp_file.last_modified_utc,
+          sp_file.last_modified_timestamp
+        ])
+    
+    log_function_output(request_data, f"Wrote {len(supported_files)} entries to sharepoint_map.csv")
+    
+    # Connect to SharePoint for downloading
+    log_function_output(request_data, "Connecting to SharePoint for file downloads...")
+    cert_path = os.path.join(storage_path, config.CRAWLER_CLIENT_CERTIFICATE_PFX_FILE)
+    ctx = connect_to_site_using_client_id_and_certificate(
+      file_source.site_url,
+      config.CRAWLER_CLIENT_ID,
+      config.CRAWLER_TENANT_ID,
+      cert_path,
+      config.CRAWLER_CLIENT_CERTIFICATE_PASSWORD
+    )
+    
+    # Download files
+    log_function_output(request_data, f"Downloading {len(supported_files)} files...")
+    downloaded_count = 0
+    failed_count = 0
+    
+    for file_idx, sp_file in enumerate(supported_files, 1):
+      try:
+        # Extract relative path from file_relative_path
+        # file_relative_path format: domain_id/01_files/source_id/02_embedded/relative_path
+        path_parts = sp_file.file_relative_path.split(os.sep)
+        # Find the index of EMBEDDED_SUBFOLDER and take everything after it
+        try:
+          embedded_idx = path_parts.index(CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_EMBEDDED_SUBFOLDER)
+          file_rel_path = os.sep.join(path_parts[embedded_idx + 1:])
+        except ValueError:
+          # Fallback: use filename only
+          file_rel_path = sp_file.filename
+        
+        local_file_path = os.path.join(local_embedded_path, file_rel_path)
+        local_file_path_normalized = normalize_long_path(local_file_path)
+        
+        # Create directory structure
+        local_dir = os.path.dirname(local_file_path_normalized)
+        os.makedirs(local_dir, exist_ok=True)
+        
+        # Download file from SharePoint
+        with open(local_file_path_normalized, 'wb') as local_file:
+          file_obj = ctx.web.get_file_by_server_relative_url(sp_file.server_relative_url)
+          file_obj.download(local_file).execute_query()
+        
+        # Set file modification time to match SharePoint
+        timestamp = sp_file.last_modified_timestamp
+        os.utime(local_file_path_normalized, (timestamp, timestamp))
+        
+        # Get actual file size from disk
+        actual_file_size = os.path.getsize(local_file_path_normalized)
+        
+        # Get actual modification time from disk
+        file_stat = os.stat(local_file_path_normalized)
+        actual_mtime = int(file_stat.st_mtime)
+        actual_mtime_utc = datetime.datetime.fromtimestamp(actual_mtime, tz=datetime.timezone.utc)
+        actual_mtime_utc_str = actual_mtime_utc.strftime('%Y-%m-%dT%H:%M:%S.%f') + 'Z'
+        
+        # Append to files_map.csv immediately after successful download
+        with open(files_map_path, 'a', newline='', encoding='utf-8') as csvfile:
+          writer = csv.writer(csvfile)
+          writer.writerow([
+            file_source.source_id,
+            file_rel_path,
+            actual_file_size,
+            actual_mtime_utc_str,
+            actual_mtime
+          ])
+        
+        downloaded_count += 1
+        
+        # Log progress every 10 files
+        if downloaded_count % 10 == 0 or downloaded_count == len(supported_files):
+          log_function_output(request_data, f"Downloaded [ {downloaded_count} / {len(supported_files)} ] files...")
+        
+      except Exception as e:
+        failed_count += 1
+        error_message = str(e)
+        
+        # Log to sharepoint_error_map.csv
+        with open(sharepoint_error_map_path, 'a', newline='', encoding='utf-8') as csvfile:
+          writer = csv.writer(csvfile)
+          writer.writerow([
+            file_source.source_id,
+            sp_file.sharepoint_listitem_id,
+            sp_file.sharepoint_unique_file_id,
+            sp_file.file_relative_path,
+            error_message
+          ])
+        
+        log_function_output(request_data, f"ERROR downloading file {file_idx}/{len(supported_files)}: {sp_file.filename} - {error_message}")
+    
+    log_function_output(request_data, f"Downloaded {downloaded_count} files successfully")
+    if failed_count > 0:
+      log_function_output(request_data, f"Failed to download {failed_count} files (see sharepoint_error_map.csv)")
+    
+    source_result['files_downloaded'] = downloaded_count
+    source_result['files_failed'] = failed_count
+    results['sources_processed'].append(source_result)
+    results['total_files_downloaded'] += downloaded_count
+    results['total_files_failed'] += failed_count
+  
+  log_function_output(request_data, "")
+  log_function_output(request_data, f"{'=' * 80}")
+  log_function_output(request_data, "DOWNLOAD COMPLETE")
+  log_function_output(request_data, f"{'=' * 80}")
+  log_function_output(request_data, f"Total files in SharePoint: {results['total_files_in_sharepoint']}")
+  log_function_output(request_data, f"Total files in SharePoint (unsupported): {results['total_files_in_sharepoint_unsupported']}")
+  log_function_output(request_data, f"Total files downloaded: {results['total_files_downloaded']}")
+  log_function_output(request_data, f"Total files failed: {results['total_files_failed']}")
+  
+  return results

@@ -315,6 +315,29 @@ def format_milliseconds(millisecs: int) -> str:
   if seconds: parts.append(f"{seconds} sec{'s' if seconds != 1 else ''}")
   return ', '.join(parts) if parts else "0 sec"
 
+def normalize_long_path(path: str) -> str:
+  """
+  Normalize a path to handle Windows long path limitations (>260 characters).
+  
+  On Windows, paths longer than 260 characters require special prefixes:
+  - Regular paths: \\\\?\\ prefix
+  - UNC paths: \\\\?\\UNC\\ prefix
+  
+  Args:
+    path: The path to normalize
+    
+  Returns:
+    Normalized path with long path prefix if needed on Windows
+  """
+  if os.name == 'nt' and not path.startswith('\\\\?\\'):
+    abs_path = os.path.abspath(path)
+    if len(abs_path) > 260:
+      if abs_path.startswith('\\\\'):
+        return '\\\\?\\UNC\\' + abs_path[2:]
+      else:
+        return '\\\\?\\' + abs_path
+  return path
+
 def log_function_header(function_name: str) -> Dict[str, Any]:
   global _request_counter
   _request_counter += 1

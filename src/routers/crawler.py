@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from utils import convert_to_flat_html_table, convert_to_nested_html_table, log_function_footer, log_function_header, log_function_output, create_logfile, append_to_logfile, include_exclude_attributes
-from common_crawler_functions import DomainConfig, load_all_domains, domain_config_to_dict, scan_directory_recursive, create_storage_zip_from_scan, load_domain, load_files_from_sharepoint_source, load_crawled_files, load_vector_store_files_as_crawled_files, is_files_metadata_v2_format, is_files_metadata_v3_format, convert_file_metadata_item_from_v2_to_v3
+from common_crawler_functions import DomainConfig, load_all_domains, domain_config_to_dict, scan_directory_recursive, create_storage_zip_from_scan, load_domain, load_files_from_sharepoint_source, load_crawled_files, load_vector_store_files_as_crawled_files, is_files_metadata_v2_format, is_files_metadata_v3_format, convert_file_metadata_item_from_v2_to_v3, download_files_from_sharepoint
 from common_openai_functions import OPENAI_DATETIME_ATTRIBUTES
 
 
@@ -77,6 +77,7 @@ async def crawler_root():
 
   <h4>Available Endpoints</h4>
   <ul>
+    <li><a href="/crawler/downloadfiles">/crawler/downloadfiles</a> - Download SharePoint Files (<a href="/crawler/downloadfiles?domain_id=ExampleDomain01&source_id=source01&format=html">Example HTML</a> + <a href="/crawler/downloadfiles?domain_id=ExampleDomain01&format=json">Example JSON</a>)</li>
     <li><a href="/crawler/localstorage">/crawler/localstorage</a> - Local Storage Inventory (<a href="/crawler/localstorage?format=html">HTML</a> + <a href="/crawler/localstorage?format=json">JSON</a> + <a href="/crawler/localstorage?format=zip">ZIP</a> + <a href="/crawler/localstorage?format=zip&exceptfolder=crawler">ZIP except 'crawler' folder</a>)</li>
     <li><a href="/crawler/loadsharepointfiles">/crawler/loadsharepointfiles</a> - Load SharePoint Files (<a href="/crawler/loadsharepointfiles?domain_id=ExampleDomain01&source_id=source01&format=html&includeattributes=sharepoint_listitem_id,sharepoint_unique_file_id,raw_url,filename,file_size,last_modified_utc">Example HTML</a> + <a href="/crawler/loadsharepointfiles?domain_id=ExampleDomain01&source_id=source01&format=json">Example JSON</a>)</li>
     <li><a href="/crawler/loadlocalfiles">/crawler/loadlocalfiles</a> - Load Local Embedded Files (<a href="/crawler/loadlocalfiles?domain_id=ExampleDomain01&source_id=source01&format=html&includeattributes=file_path,raw_url,file_size,last_modified_utc">Example HTML</a> + <a href="/crawler/loadlocalfiles?domain_id=ExampleDomain01&source_id=source01&format=json">Example JSON</a>)</li>
@@ -861,4 +862,102 @@ async def migrate_from_v2_to_v3(request: Request):
     log_function_footer(request_data)
     if format == 'json':
       return JSONResponse({"error": error_message}, status_code=500)
+    return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
+
+@router.get('/downloadfiles')
+async def downloadfiles(request: Request):
+  """
+  Endpoint to download files from SharePoint for a specific domain.
+  
+  Parameters:
+  - domain_id: The ID of the domain to load files for (required)
+  - source_id: The ID of the file source within the domain (optional, if not given all sources are downloaded)
+  - format: Response format - 'html' or 'json' (default: 'html')
+    
+  Examples:
+  /downloadfiles?domain_id=ExampleDomain01&source_id=source01&format=html
+  /downloadfiles?domain_id=ExampleDomain01&format=json
+  """
+  function_name = 'downloadfiles()'
+  request_data = log_function_header(function_name)
+  request_params = dict(request.query_params)
+  
+  endpoint = '/' + function_name.replace('()','')  
+  endpoint_documentation = downloadfiles.__doc__
+  documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
+  # Display documentation if no params are provided
+  if len(request_params) == 0: await log_function_footer(request_data); return HTMLResponse(documentation_HTML)
+
+  domain_id = request_params.get('domain_id', None)
+  source_id = request_params.get('source_id', None)
+  format = request_params.get('format', 'html').lower()
+  
+  # Validate required parameters
+  if not domain_id:
+    error_message = "ERROR: Missing required parameter 'domain_id'"
+    log_function_output(request_data, error_message)
+    await log_function_footer(request_data)
+    return HTMLResponse(content=error_message, status_code=400, media_type='text/plain; charset=utf-8')
+  
+  # Validate format parameter
+  if format not in ['html', 'json']:
+    error_message = f"ERROR: Invalid format '{format}'. Must be 'html' or 'json'"
+    log_function_output(request_data, error_message)
+    await log_function_footer(request_data)
+    return HTMLResponse(content=error_message, status_code=400, media_type='text/plain; charset=utf-8')
+  
+  # Validate system configuration
+  if not hasattr(request.app.state, 'system_info') or not request.app.state.system_info or not request.app.state.system_info.PERSISTENT_STORAGE_PATH:
+    error_message = "ERROR: PERSISTENT_STORAGE_PATH not configured or is empty"
+    log_function_output(request_data, error_message)
+    await log_function_footer(request_data)
+    return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
+  
+  # Validate crawler configuration
+  if not config or not config.CRAWLER_CLIENT_ID or not config.CRAWLER_CLIENT_CERTIFICATE_PFX_FILE or not config.CRAWLER_CLIENT_CERTIFICATE_PASSWORD or not config.CRAWLER_TENANT_ID:
+    error_message = "ERROR: Crawler credentials not configured"
+    log_function_output(request_data, error_message)
+    await log_function_footer(request_data)
+    return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
+  
+  try:
+    # Call the download function
+    log_function_output(request_data, f"Starting download for domain_id='{domain_id}', source_id='{source_id or '(all sources)'}'")
+    
+    results = download_files_from_sharepoint(
+      system_info=request.app.state.system_info,
+      domain_id=domain_id,
+      source_id=source_id,
+      request_data=request_data,
+      config=config
+    )
+    
+    log_function_output(request_data, "Download completed successfully")
+    await log_function_footer(request_data)
+    
+    # Return response based on format
+    if format == 'json':
+      return JSONResponse(content=results)
+    else:
+      # Generate HTML response
+      html_response = _generate_html_response_from_nested_data(
+        title=f"Download Files - {domain_id}",
+        data=results
+      )
+      return HTMLResponse(content=html_response)
+      
+  except FileNotFoundError as e:
+    error_message = f"ERROR: {str(e)}"
+    log_function_output(request_data, error_message)
+    await log_function_footer(request_data)
+    return HTMLResponse(content=error_message, status_code=404, media_type='text/plain; charset=utf-8')
+  except ValueError as e:
+    error_message = f"ERROR: {str(e)}"
+    log_function_output(request_data, error_message)
+    await log_function_footer(request_data)
+    return HTMLResponse(content=error_message, status_code=400, media_type='text/plain; charset=utf-8')
+  except Exception as e:
+    error_message = f"ERROR: Failed to download files: {str(e)}"
+    log_function_output(request_data, error_message)
+    await log_function_footer(request_data)
     return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
