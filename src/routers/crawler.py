@@ -1,13 +1,14 @@
 # endpoints for the sharepoint crawler
 import datetime, json, os, tempfile
 from typing import Any, Dict, List
-
+from dataclasses import asdict
 from fastapi import APIRouter, Request, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
-from utils import convert_to_flat_html_table, convert_to_nested_html_table, log_function_footer, log_function_header, log_function_output, create_logfile, append_to_logfile
-from common_crawler_functions import DomainConfig, load_all_domains, domain_config_to_dict, scan_directory_recursive, create_storage_zip_from_scan
+from utils import convert_to_flat_html_table, convert_to_nested_html_table, log_function_footer, log_function_header, log_function_output, create_logfile, append_to_logfile, include_exclude_attributes
+from common_crawler_functions import DomainConfig, load_all_domains, domain_config_to_dict, scan_directory_recursive, create_storage_zip_from_scan, load_domain, load_files_from_sharepoint_source, load_crawled_files
+
 
 router = APIRouter()
 
@@ -76,7 +77,8 @@ async def crawler_root():
   <h4>Available Endpoints</h4>
   <ul>
     <li><a href="/crawler/localstorage">/crawler/localstorage</a> - Local Storage Inventory (<a href="/crawler/localstorage?format=html">HTML</a> + <a href="/crawler/localstorage?format=json">JSON</a> + <a href="/crawler/localstorage?format=zip">ZIP</a> + <a href="/crawler/localstorage?format=zip&exceptfolder=crawler">ZIP except 'crawler' folder</a>)</li>
-    <li><a href="/crawler/loadsharepointfiles">/crawler/loadsharepointfiles</a> - Load SharePoint Files (<a href="/crawler/loadsharepointfiles?domain_id=HOIT&source_id=source01&format=html">Example HTML</a> + <a href="/crawler/loadsharepointfiles?domain_id=HOIT&source_id=source01&format=json">Example JSON</a>)</li>
+    <li><a href="/crawler/loadsharepointfiles">/crawler/loadsharepointfiles</a> - Load SharePoint Files (<a href="/crawler/loadsharepointfiles?domain_id=ExampleDomain01&source_id=source01&format=html&includeattributes=sharepoint_listitem_id,sharepoint_unique_file_id,raw_url,filename,file_size,last_modified_utc">Example HTML</a> + <a href="/crawler/loadsharepointfiles?domain_id=ExampleDomain01&source_id=source01&format=json">Example JSON</a>)</li>
+    <li><a href="/crawler/loadlocalfiles">/crawler/loadlocalfiles</a> - Load Local Embedded Files (<a href="/crawler/loadlocalfiles?domain_id=ExampleDomain01&source_id=source01&format=html&includeattributes=file_path,raw_url,file_size,last_modified_utc">Example HTML</a> + <a href="/crawler/loadlocalfiles?domain_id=ExampleDomain01&source_id=source01&format=json">Example JSON</a>)</li>
     <li><a href="/crawler/updatemaps">/crawler/updatemaps</a> - Update Maps for Domain (<a href="/crawler/updatemaps?domain_id=example&logfile=log.txt">Example</a>)</li>
     <li><a href="/crawler/getlogfile">/crawler/getlogfile</a> - Retrieve Logfile (<a href="/crawler/getlogfile?logfile=log.txt">Example</a>)</li>
   </ul>
@@ -304,14 +306,15 @@ async def load_sharepoint_files(request: Request):
   - domain_id: The ID of the domain to load files for (required)
   - source_id: The ID of the file source within the domain (required)
   - format: Response format - 'html' or 'json' (default: 'html')
+  - includeattributes: Comma-separated list of attributes to include in response (takes precedence over excludeattributes)
+  - excludeattributes: Comma-separated list of attributes to exclude from response (ignored if includeattributes is set)
   
   Examples:
   /loadsharepointfiles?domain_id=ExampleDomain01&source_id=source01&format=json
   /loadsharepointfiles?domain_id=ExampleDomain01&source_id=source01&format=html
+  /loadsharepointfiles?domain_id=ExampleDomain01&source_id=source01&format=json&includeattributes=filename,file_size,last_modified_utc
+  /loadsharepointfiles?domain_id=ExampleDomain01&source_id=source01&format=json&excludeattributes=file_id,file_path
   """
-  from common_crawler_functions import load_domain
-  from common_sharepoint_functions import connect_to_site_using_client_id, try_get_document_library, get_document_library_files
-  from dataclasses import asdict
   
   function_name = 'load_sharepoint_files()'
   request_data = log_function_header(function_name)
@@ -330,6 +333,153 @@ async def load_sharepoint_files(request: Request):
   domain_id = request_params.get('domain_id')
   source_id = request_params.get('source_id')
   format = request_params.get('format', 'html').lower()
+  include_attributes = request_params.get('includeattributes')
+  exclude_attributes = request_params.get('excludeattributes')
+  
+  # Validate required parameters
+  if not domain_id:
+    error_message = "ERROR: Missing required parameter 'domain_id'"
+    log_function_output(request_data, error_message)
+    await log_function_footer(request_data)
+    if format == 'json':
+      return JSONResponse({"error": error_message}, status_code=400)
+    return HTMLResponse(content=error_message, status_code=400, media_type='text/plain; charset=utf-8')
+  
+  if not source_id:
+    error_message = "ERROR: Missing required parameter 'source_id'"
+    log_function_output(request_data, error_message)
+    await log_function_footer(request_data)
+    if format == 'json':
+      return JSONResponse({"error": error_message}, status_code=400)
+    return HTMLResponse(content=error_message, status_code=400, media_type='text/plain; charset=utf-8')
+  
+  try:
+    # Validate system configuration
+    if not hasattr(request.app.state, 'system_info') or not request.app.state.system_info:
+      error_message = "ERROR: System configuration not available"
+      log_function_output(request_data, error_message)
+      await log_function_footer(request_data)
+      if format == 'json':
+        return JSONResponse({"error": error_message}, status_code=500)
+      return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
+    
+    system_info = request.app.state.system_info
+    
+    # Load files using the refactored function
+    try:
+      files = load_files_from_sharepoint_source(system_info, domain_id, source_id, request_data, config)
+    except ValueError as e:
+      error_message = f"ERROR: {str(e)}"
+      log_function_output(request_data, error_message)
+      await log_function_footer(request_data)
+      if format == 'json':
+        return JSONResponse({"error": error_message}, status_code=500)
+      return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
+    except FileNotFoundError as e:
+      error_message = f"ERROR: {str(e)}"
+      log_function_output(request_data, error_message)
+      await log_function_footer(request_data)
+      if format == 'json':
+        return JSONResponse({"error": error_message}, status_code=404)
+      return HTMLResponse(content=error_message, status_code=404, media_type='text/plain; charset=utf-8')
+    
+    # Reload domain config for response metadata
+    domain_config = load_domain(system_info.PERSISTENT_STORAGE_PATH, domain_id, request_data)
+    file_source = next((src for src in domain_config.file_sources if src.source_id == source_id), None)
+    
+    # Apply include/exclude filters
+    filtered_files = include_exclude_attributes(files, include_attributes, exclude_attributes)
+    
+    # Return in requested format
+    if format == 'json':
+      response_data = {
+        "domain_id": domain_id,
+        "source_id": source_id,
+        "site_url": file_source.site_url,
+        "sharepoint_url_part": file_source.sharepoint_url_part,
+        "filter": file_source.filter,
+        "total_files": len(filtered_files),
+        "files": filtered_files
+      }
+      await log_function_footer(request_data)
+      return JSONResponse(response_data)
+    else:
+      # HTML format
+      title = f"SharePoint Files - {domain_config.name} ({source_id})"
+      
+      table_html = convert_to_flat_html_table(filtered_files)
+      
+      html_content = f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
+  <title>{title}</title>
+  <link rel='stylesheet' href='/static/css/styles.css'>
+  <script src='/static/js/htmx.js'></script>
+</head>
+<body>
+  <h1>{title}</h1>
+  <p><strong>Domain:</strong> {domain_config.name} ({domain_id})</p>
+  <p><strong>Source:</strong> {source_id}</p>
+  <p><strong>Site URL:</strong> {file_source.site_url}</p>
+  <p><strong>Library:</strong> {file_source.sharepoint_url_part}</p>
+  <p><strong>Filter:</strong> {file_source.filter or '(none)'}</p>
+  <p><strong>Total Files:</strong> {len(files)}</p>
+  <hr>
+  {table_html}
+  <p><a href="/crawler">← Back to Crawler</a></p>
+</body>
+</html>"""
+      
+      await log_function_footer(request_data)
+      return HTMLResponse(html_content)
+      
+  except Exception as e:
+    error_message = f"ERROR: Unexpected error: {str(e)}"
+    log_function_output(request_data, error_message)
+    await log_function_footer(request_data)
+    if format == 'json':
+      return JSONResponse({"error": error_message}, status_code=500)
+    return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
+
+@router.get('/loadlocalfiles')
+async def load_local_files(request: Request):
+  """
+  Endpoint to load local embedded files from the crawler storage for a specific domain source.
+  
+  This endpoint scans the local embedded files directory and returns a list of files
+  with their metadata (filename, relative path, last modified date, file size).
+  
+  Parameters:
+  - domain_id: The ID of the domain to load files for (required)
+  - source_id: The ID of the file source within the domain (required)
+  - format: Response format - 'html' or 'json' (default: 'html')
+  - includeattributes: Comma-separated list of attributes to include in response (takes precedence over excludeattributes)
+  - excludeattributes: Comma-separated list of attributes to exclude from response (ignored if includeattributes is set)
+  
+  Examples:
+  /loadlocalfiles?domain_id=ExampleDomain01&source_id=source01&format=json
+  /loadlocalfiles?domain_id=ExampleDomain01&source_id=source01&format=html
+  /loadlocalfiles?domain_id=ExampleDomain01&source_id=source01&format=json&includeattributes=filename,file_size,last_modified_utc
+  /loadlocalfiles?domain_id=ExampleDomain01&source_id=source01&format=json&excludeattributes=file_id,file_path
+  """
+  
+  function_name = 'load_local_files()'
+  request_data = log_function_header(function_name)
+  request_params = dict(request.query_params)
+  
+  endpoint = '/' + function_name.replace('()','')  
+  endpoint_documentation = load_local_files.__doc__
+  documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
+  
+  # Display documentation if no params are provided
+  if len(request_params) == 0:
+    await log_function_footer(request_data)
+    return HTMLResponse(documentation_HTML)
+  
+  # Get parameters
+  domain_id = request_params.get('domain_id')
+  source_id = request_params.get('source_id')
+  format = request_params.get('format', 'html').lower()
+  include_attributes = request_params.get('includeattributes')
+  exclude_attributes = request_params.get('excludeattributes')
   
   # Validate required parameters
   if not domain_id:
@@ -369,97 +519,44 @@ async def load_sharepoint_files(request: Request):
         return JSONResponse({"error": error_message}, status_code=500)
       return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
     
-    # Validate crawler credentials from config
-    if not config or not config.CRAWLER_CLIENT_ID or not config.CRAWLER_CLIENT_CERTIFICATE_PFX_FILE or not config.CRAWLER_CLIENT_CERTIFICATE_PASSWORD or not config.CRAWLER_TENANT_ID:
-      error_message = "ERROR: Crawler credentials (CRAWLER_CLIENT_ID, CRAWLER_CLIENT_CERTIFICATE_PFX_FILE, CRAWLER_CLIENT_CERTIFICATE_PASSWORD, CRAWLER_TENANT_ID) not configured"
-      log_function_output(request_data, error_message)
-      await log_function_footer(request_data)
-      if format == 'json':
-        return JSONResponse({"error": error_message}, status_code=500)
-      return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
-    
-    storage_path = system_info.PERSISTENT_STORAGE_PATH
-    
-    # Load domain configuration
-    log_function_output(request_data, f"Loading domain: '{domain_id}'")
+    # Load local embedded files
     try:
-      domain_config = load_domain(storage_path, domain_id, request_data)
+      files = load_crawled_files(system_info.PERSISTENT_STORAGE_PATH, domain_id, source_id, request_data)
     except FileNotFoundError as e:
-      error_message = f"ERROR: Domain '{domain_id}' not found: {str(e)}"
+      error_message = f"ERROR: {str(e)}"
       log_function_output(request_data, error_message)
       await log_function_footer(request_data)
       if format == 'json':
         return JSONResponse({"error": error_message}, status_code=404)
       return HTMLResponse(content=error_message, status_code=404, media_type='text/plain; charset=utf-8')
     
-    # Find the file source with matching source_id
-    file_source = next((src for src in domain_config.file_sources if src.source_id == source_id), None)
+    # Load domain config for response metadata
+    try:
+      domain_config = load_domain(system_info.PERSISTENT_STORAGE_PATH, domain_id, request_data)
+      file_source = next((src for src in domain_config.file_sources if src.source_id == source_id), None)
+    except FileNotFoundError:
+      # Domain config not found, use minimal metadata
+      domain_config = None
+      file_source = None
     
-    if not file_source:
-      error_message = f"ERROR: File source '{source_id}' not found in domain '{domain_id}'"
-      log_function_output(request_data, error_message)
-      await log_function_footer(request_data)
-      if format == 'json':
-        return JSONResponse({"error": error_message}, status_code=404)
-      return HTMLResponse(content=error_message, status_code=404, media_type='text/plain; charset=utf-8')
-    
-    log_function_output(request_data, f"Found file source: '{file_source.site_url}{file_source.sharepoint_url_part}'")
-    
-    # Connect to SharePoint
-    log_function_output(request_data, f"Connecting to SharePoint: '{file_source.site_url}'")
-    
-    # Get certificate path from persistent storage
-    cert_path = os.path.join(system_info.PERSISTENT_STORAGE_PATH, config.CRAWLER_CLIENT_CERTIFICATE_PFX_FILE)
-    
-    ctx = connect_to_site_using_client_id(
-      file_source.site_url,
-      config.CRAWLER_CLIENT_ID,
-      config.CRAWLER_TENANT_ID,
-      cert_path,
-      config.CRAWLER_CLIENT_CERTIFICATE_PASSWORD
-    )
-    
-    # Get document library
-    log_function_output(request_data, f"Getting document library: '{file_source.sharepoint_url_part}'")
-    document_library, library_error = try_get_document_library(ctx, file_source.site_url, file_source.sharepoint_url_part)
-    
-    if not document_library:
-      error_message = f"ERROR: {library_error}"
-      log_function_output(request_data, error_message)
-      await log_function_footer(request_data)
-      if format == 'json':
-        return JSONResponse({"error": error_message}, status_code=500)
-      return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
-    
-    # Get all files from the library
-    log_function_output(request_data, f"Loading files with filter: '{file_source.filter or '(none)'}'")
-    files = get_document_library_files(ctx, document_library, file_source.filter, request_data)
-    
-    log_function_output(request_data, f"Successfully loaded {len(files)} files")
+    # Apply include/exclude filters
+    filtered_files = include_exclude_attributes(files, include_attributes, exclude_attributes)
     
     # Return in requested format
     if format == 'json':
-      # Convert SharePointFile dataclasses to dictionaries
-      files_dict = [asdict(file) for file in files]
       response_data = {
         "domain_id": domain_id,
         "source_id": source_id,
-        "site_url": file_source.site_url,
-        "sharepoint_url_part": file_source.sharepoint_url_part,
-        "filter": file_source.filter,
-        "total_files": len(files),
-        "files": files_dict
+        "total_files": len(filtered_files),
+        "files": filtered_files
       }
       await log_function_footer(request_data)
       return JSONResponse(response_data)
     else:
       # HTML format
-      title = f"SharePoint Files - {domain_config.name} ({source_id})"
+      title = f"Local Embedded Files - {domain_config.name if domain_config else domain_id} ({source_id})"
       
-      # Convert files to list of dicts for table
-      files_data = [asdict(file) for file in files]
-      
-      table_html = convert_to_flat_html_table(files_data)
+      table_html = convert_to_flat_html_table(filtered_files)
       
       html_content = f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
   <title>{title}</title>
@@ -468,11 +565,16 @@ async def load_sharepoint_files(request: Request):
 </head>
 <body>
   <h1>{title}</h1>
-  <p><strong>Domain:</strong> {domain_config.name} ({domain_id})</p>
-  <p><strong>Source:</strong> {source_id}</p>
+  <p><strong>Domain:</strong> {domain_config.name if domain_config else domain_id} ({domain_id})</p>
+  <p><strong>Source:</strong> {source_id}</p>"""
+      
+      if file_source:
+        html_content += f"""
   <p><strong>Site URL:</strong> {file_source.site_url}</p>
   <p><strong>Library:</strong> {file_source.sharepoint_url_part}</p>
-  <p><strong>Filter:</strong> {file_source.filter or '(none)'}</p>
+  <p><strong>Filter:</strong> {file_source.filter or '(none)'}</p>"""
+      
+      html_content += f"""
   <p><strong>Total Files:</strong> {len(files)}</p>
   <hr>
   {table_html}

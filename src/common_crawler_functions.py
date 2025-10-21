@@ -1,10 +1,11 @@
 # Common functions and dataclasses for SharePoint crawler
-import json, os, zipfile
+import json, os, zipfile, datetime
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from utils import log_function_output
+from common_sharepoint_functions import connect_to_site_using_client_id_and_certificate, try_get_document_library, get_document_library_files
 
 @dataclass
 class FileSource:
@@ -41,6 +42,29 @@ class DomainConfig:
     file_sources: List[FileSource]
     sitepage_sources: List[SitePageSource]
     list_sources: List[ListSource]
+
+@dataclass
+class CrawledFile:
+  openai_file_id: str # Open AI file id (e.g. 'assistant-17ak9Sdidc5bGXnq8mRDDf')
+  sharepoint_listitem_id: int # SharePoint list item id (e.g. 1, 2, 123456, ...)
+  sharepoint_unique_file_id: str # SharePoint unique file id that stays the same even if file is moved (e.g. '12345678-1234-1234-1234-123456789012')
+  file_path: str # path to file before embedding (e.g. 'c:\Dev\Storage\crawler\ExampleDomain01\01_files\source01\02_embedded\Folder\document.pptx')
+  file_relative_path: str # path to file relative to 'crawler' subfolder (e.g. 'ExampleDomain01\01_files\source01\02_embedded\Folder\document.pptx')
+  url: str # URL-encoded URL to original file (e.g. 'https://contoso.sharepoint.com/sites/SiteName/Shared%20Documents/Folder/document.pptx')
+  raw_url: str # Unencoded URL to original file (e.g. 'https://contoso.sharepoint.com/sites/SiteName/Shared Documents/Folder/document.pptx')
+  server_relative_url: str # Unencoded server-relative URL to original file (e.g. '/sites/SiteName/Shared Documents/Folder/document.pptx')
+  filename: str # original filename (e.g. 'document.pptx')
+  file_type: str # original file type lowercase (e.g. 'pptx')
+  file_size: int # file size in bytes
+  last_modified_utc: str # last modified date UTC (e.g. '2025-01-27T12:34:56.789Z')
+  last_modified_timestamp: int # last modified timestamp (e.g. 1604509082)
+
+@dataclass
+class CrawledVectorStore:
+  vector_store: any
+  vector_store_id: str
+  files: List[CrawledFile]
+  failed_files: List[CrawledFile]
 
 def load_domain(storage_path: str, domain_id: str, log_data: Dict[str, Any] = None) -> DomainConfig:
   """
@@ -349,3 +373,237 @@ def delete_domain_folder(storage_path: str, domain_id: str, log_data: Dict[str, 
   
   if log_data:
     log_function_output(log_data, f"Domain deleted successfully: {domain_id}")
+
+def load_files_from_sharepoint_source( system_info, domain_id: str, source_id: str, request_data: Dict[str, Any], config ) -> List[CrawledFile]:
+  """
+  Load files from a SharePoint document library for a specific domain source.
+  
+  This function handles all the validation, connection, and file retrieval logic.
+  All logging is performed using the provided request_data dictionary.
+  
+  Args:
+    system_info: System configuration object with PERSISTENT_STORAGE_PATH
+    domain_id: The ID of the domain to load files for
+    source_id: The ID of the file source within the domain
+    request_data: Dictionary for logging output
+    config: Configuration object with crawler credentials
+    
+  Returns:
+    List of CrawledFile objects
+    
+  Raises:
+    ValueError: If validation fails or required configuration is missing
+    FileNotFoundError: If domain or source is not found
+    Exception: For any other errors during file loading
+  """
+  # Validate PERSISTENT_STORAGE_PATH
+  if not system_info.PERSISTENT_STORAGE_PATH:
+    raise ValueError("PERSISTENT_STORAGE_PATH not configured")
+  
+  # Validate crawler credentials from config
+  if not config or not config.CRAWLER_CLIENT_ID or not config.CRAWLER_CLIENT_CERTIFICATE_PFX_FILE or not config.CRAWLER_CLIENT_CERTIFICATE_PASSWORD or not config.CRAWLER_TENANT_ID:
+    raise ValueError("Crawler credentials (CRAWLER_CLIENT_ID, CRAWLER_CLIENT_CERTIFICATE_PFX_FILE, CRAWLER_CLIENT_CERTIFICATE_PASSWORD, CRAWLER_TENANT_ID) not configured")
+  
+  storage_path = system_info.PERSISTENT_STORAGE_PATH
+  
+  # Load domain configuration
+  log_function_output(request_data, f"Loading domain: '{domain_id}'")
+  domain_config = load_domain(storage_path, domain_id, request_data)
+  
+  # Find the file source with matching source_id
+  file_source = next((src for src in domain_config.file_sources if src.source_id == source_id), None)
+  
+  if not file_source:
+    raise FileNotFoundError(f"File source '{source_id}' not found in domain '{domain_id}'")
+  
+  log_function_output(request_data, f"Found file source: '{file_source.site_url}{file_source.sharepoint_url_part}'")
+  
+  # Connect to SharePoint
+  log_function_output(request_data, f"Connecting to SharePoint: '{file_source.site_url}'")
+  
+  # Get certificate path from persistent storage
+  cert_path = os.path.join(system_info.PERSISTENT_STORAGE_PATH, config.CRAWLER_CLIENT_CERTIFICATE_PFX_FILE)
+  
+  ctx = connect_to_site_using_client_id_and_certificate(
+    file_source.site_url,
+    config.CRAWLER_CLIENT_ID,
+    config.CRAWLER_TENANT_ID,
+    cert_path,
+    config.CRAWLER_CLIENT_CERTIFICATE_PASSWORD
+  )
+  
+  # Get document library
+  log_function_output(request_data, f"Getting document library: '{file_source.sharepoint_url_part}'")
+  document_library, library_error = try_get_document_library(ctx, file_source.site_url, file_source.sharepoint_url_part)
+  
+  if not document_library:
+    raise Exception(library_error)
+  
+  # Get all files from the library
+  log_function_output(request_data, f"Loading files with filter: '{file_source.filter or '(none)'}'")
+  sharepoint_files = get_document_library_files(ctx, document_library, file_source.filter, request_data)
+  
+  log_function_output(request_data, f"Successfully loaded {len(sharepoint_files)} files from SharePoint")
+  
+  # Convert SharePointFile objects to CrawledFile objects
+  from urllib.parse import quote, urlparse
+  crawled_files = []
+  
+  for sp_file in sharepoint_files:
+    # Get file extension
+    file_extension = os.path.splitext(sp_file.filename)[1].lstrip('.').lower()
+    
+    # Extract site path from site_url
+    parsed_url = urlparse(file_source.site_url)
+    site_path = parsed_url.path
+    
+    # Construct raw URL from site_url and server_relative_url
+    raw_url = f"{file_source.site_url}{sp_file.server_relative_url.replace(site_path, '')}"
+    
+    # URL-encoded source URL
+    source_url = quote(raw_url, safe=':/')
+    
+    # Create CrawledFile (without local file system paths)
+    crawled_file = CrawledFile(
+      openai_file_id="",  # Not available from SharePoint API
+      sharepoint_unique_file_id=sp_file.unique_id,
+      sharepoint_listitem_id=int(sp_file.id) if sp_file.id else 0,
+      file_path="",  # Not available from SharePoint API
+      file_relative_path="",  # Not available from SharePoint API
+      url=source_url,
+      raw_url=raw_url,
+      server_relative_url=sp_file.server_relative_url,
+      filename=sp_file.filename,
+      file_type=file_extension,
+      file_size=sp_file.file_size,
+      last_modified_utc=sp_file.last_modified_utc,
+      last_modified_timestamp=sp_file.last_modified_timestamp
+    )
+    
+    crawled_files.append(crawled_file)
+  
+  log_function_output(request_data, f"Converted {len(crawled_files)} files to CrawledFile objects")
+  
+  return crawled_files
+
+def load_crawled_files(storage_path: str, domain_id: str, source_id: str, log_data: Dict[str, Any] = None) -> List[CrawledFile]:
+  """
+  Scan local embedded files directory and return a list of CrawledFile objects.
+  
+  Args:
+    storage_path: Base persistent storage path
+    domain_id: The ID of the domain
+    source_id: The ID of the file source within the domain
+    log_data: Optional logging context
+    
+  Returns:
+    List of CrawledFile objects
+    
+  Raises:
+    FileNotFoundError: If the embedded directory doesn't exist
+  """
+  from urllib.parse import quote
+  
+  # Load domain configuration to get source settings
+  domain_config = load_domain(storage_path, domain_id, log_data)
+  
+  # Find the file source with matching source_id
+  file_source = next((src for src in domain_config.file_sources if src.source_id == source_id), None)
+  
+  if not file_source:
+    error_message = f"File source '{source_id}' not found in domain '{domain_id}'"
+    if log_data:
+      log_function_output(log_data, f"ERROR: {error_message}")
+    raise FileNotFoundError(error_message)
+  
+  # Build the path to the embedded files directory
+  # Example: C:\Storage\crawler\DOMAIN01\01_files\source01\02_embedded
+  embedded_dir = os.path.join(
+    storage_path,
+    CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_CRAWLER_SUBFOLDER,
+    domain_id,
+    CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOCUMENTS_FOLDER,
+    source_id,
+    CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_EMBEDDED_SUBFOLDER
+  )
+  
+  if log_data:
+    log_function_output(log_data, f"Scanning embedded files directory: {embedded_dir}")
+  
+  # Check if directory exists
+  if not os.path.exists(embedded_dir):
+    error_message = f"Embedded files directory not found: {embedded_dir}"
+    if log_data:
+      log_function_output(log_data, f"ERROR: {error_message}")
+    raise FileNotFoundError(error_message)
+  
+  # Scan directory recursively
+  crawled_files = []
+  
+  for root, dirs, files in os.walk(embedded_dir):
+    for filename in files:
+      file_path = os.path.join(root, filename)
+      
+      # Get file stats
+      file_stat = os.stat(file_path)
+      file_size = file_stat.st_size
+      file_mtime = int(file_stat.st_mtime)  # Convert to int to remove decimals
+      
+      # Convert timestamp to UTC ISO format with microseconds
+      file_mtime_utc = datetime.datetime.fromtimestamp(file_mtime, tz=datetime.timezone.utc)
+      file_mtime_utc_str = file_mtime_utc.strftime('%Y-%m-%dT%H:%M:%S.%f') + 'Z'
+      
+      # Get last modified date in ISO format (date only)
+      file_mtime_date = file_mtime_utc.strftime('%Y-%m-%d')
+      
+      # Get file extension
+      file_extension = os.path.splitext(filename)[1].lstrip('.').lower()
+      
+      # Build relative path from crawler subfolder
+      # Remove the storage_path and crawler subfolder prefix
+      crawler_base = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_CRAWLER_SUBFOLDER)
+      relative_path = os.path.relpath(file_path, crawler_base)
+      
+      # Build relative path from embedded_dir to construct SharePoint URL
+      relative_from_embedded = os.path.relpath(file_path, embedded_dir)
+      # Convert Windows path separators to forward slashes for URLs
+      relative_from_embedded_url = relative_from_embedded.replace('\\', '/')
+      
+      # Extract site path from site_url (e.g., /sites/SiteName from https://domain.sharepoint.com/sites/SiteName)
+      from urllib.parse import urlparse
+      parsed_url = urlparse(file_source.site_url)
+      site_path = parsed_url.path  # e.g., /sites/AiSearchTest01
+      
+      # Construct SharePoint URLs based on file source settings
+      # Raw URL: site_url + sharepoint_url_part + relative_path
+      raw_url = f"{file_source.site_url}{file_source.sharepoint_url_part}/{relative_from_embedded_url}"
+      
+      # URL-encoded source URL
+      source_url = quote(raw_url, safe=':/')
+      
+      # Server-relative URL: site_path + sharepoint_url_part + relative_path
+      server_relative_url = f"{site_path}{file_source.sharepoint_url_part}/{relative_from_embedded_url}"
+      
+      # Create CrawledFile with empty openai_file_id and SharePoint IDs
+      crawled_file = CrawledFile(
+        openai_file_id="",  # Not available from local file system
+        sharepoint_unique_file_id="",  # Not available from local file system
+        sharepoint_listitem_id=0,  # Not available from local file system
+        file_path=file_path,
+        file_relative_path=relative_path,
+        url=source_url,
+        raw_url=raw_url,
+        server_relative_url=server_relative_url,
+        filename=filename,
+        file_type=file_extension,
+        file_size=file_size,
+        last_modified_utc=file_mtime_utc_str,
+        last_modified_timestamp=file_mtime
+      )
+      
+      crawled_files.append(crawled_file)
+  
+  if log_data:
+    log_function_output(log_data, f"Found {len(crawled_files)} embedded files")
+  
+  return crawled_files

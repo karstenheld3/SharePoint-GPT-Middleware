@@ -1,7 +1,8 @@
 import dataclasses, datetime, glob, html, logging, os, shutil, sys, tempfile, time, zipfile
 from contextlib import contextmanager
+from dataclasses import asdict, is_dataclass
 from enum import Enum
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Union
 
 # Configure logging for multi-worker environment
 logging.basicConfig(
@@ -12,6 +13,66 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+def include_exclude_attributes(data: Union[List[Dict], Dict, List[Any], Any], include_attributes: Optional[str] = None, exclude_attributes: Optional[str] = None) -> Union[List[Dict], Dict]:
+  """
+  Filter attributes in data objects based on include/exclude parameters.
+  Supports dicts, dataclasses, and lists of either.
+  
+  Args:
+    data: Single dict/dataclass or list of dicts/dataclasses to filter
+    include_attributes: Comma-separated list of attributes to include (takes precedence)
+    exclude_attributes: Comma-separated list of attributes to exclude (ignored if include_attributes is set)
+    
+  Returns:
+    Filtered data with only specified attributes (always returns dicts, not dataclasses)
+  """
+  if not include_attributes and not exclude_attributes: 
+    # Convert dataclasses to dicts if no filtering
+    if is_dataclass(data) and not isinstance(data, type):
+      return asdict(data)
+    if isinstance(data, list) and len(data) > 0 and is_dataclass(data[0]) and not isinstance(data[0], type):
+      return [asdict(item) for item in data]
+    return data
+  
+  # Handle single object (dict or dataclass)
+  if is_dataclass(data) and not isinstance(data, type):
+    return _filter_single_object(asdict(data), include_attributes, exclude_attributes)
+  if isinstance(data, dict):
+    return _filter_single_object(data, include_attributes, exclude_attributes)
+  
+  # Handle list of objects
+  if isinstance(data, list):
+    result = []
+    for item in data:
+      if is_dataclass(item) and not isinstance(item, type):
+        result.append(_filter_single_object(asdict(item), include_attributes, exclude_attributes))
+      elif isinstance(item, dict):
+        result.append(_filter_single_object(item, include_attributes, exclude_attributes))
+      else:
+        result.append(item)
+    return result
+  
+  return data
+
+def _filter_single_object(obj: Dict, include_attributes: Optional[str], exclude_attributes: Optional[str]) -> Dict:
+  """
+  Filter a single object based on include/exclude attributes. If includes are given, excludes are ignored.
+  """
+  if not isinstance(obj, dict): 
+    return obj
+  
+  # If include_attributes is specified, only include those attributes
+  if include_attributes:
+    include_list = [attr.strip() for attr in include_attributes.split(',') if attr.strip()]
+    return {key: value for key, value in obj.items() if key in include_list}
+  
+  # If exclude_attributes is specified, exclude those attributes
+  if exclude_attributes:
+    exclude_list = [attr.strip() for attr in exclude_attributes.split(',') if attr.strip()]
+    return {key: value for key, value in obj.items() if key not in exclude_list}
+  
+  return obj
 
 class ZipExtractionMode(Enum):
   DO_NOT_OVERWRITE = "do_not_overwrite"

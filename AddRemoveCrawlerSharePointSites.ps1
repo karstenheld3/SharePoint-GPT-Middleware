@@ -94,8 +94,14 @@ function Get-SitesWithAppPermissions {
   $sitesWithPermissions = @()
   
   try {
-    # Get all site collections
+    # Get all site collections (without detailed properties for speed)
+    Write-Host "  Retrieving site list from tenant (this may take a moment)..." -ForegroundColor Gray
     $allSites = Get-PnPTenantSite -ErrorAction Stop
+    
+    if ($null -eq $allSites -or $allSites.Count -eq 0) {
+      Write-Host "  No sites found in tenant" -ForegroundColor Yellow
+      return @()
+    }
     
     Write-Host "  Found $($allSites.Count) sites in tenant, checking permissions..." -ForegroundColor Gray
     
@@ -129,7 +135,8 @@ function Get-SitesWithAppPermissions {
     }
   }
   catch {
-    Write-Host "    Warning: Could not retrieve sites - $($_.Exception.Message)"
+    Write-Host "    Warning: Could not retrieve sites - $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host "    Error details: $($_.Exception.GetType().FullName)" -ForegroundColor DarkGray
   }
   
   return $sitesWithPermissions

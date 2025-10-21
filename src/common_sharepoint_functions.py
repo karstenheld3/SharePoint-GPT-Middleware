@@ -1,5 +1,8 @@
 # Common functions for SharePoint operations using Office365-REST-Python-Client
 # https://pypi.org/project/Office365-REST-Python-Client/#Working-with-SharePoint-API
+import os
+from cryptography import x509
+from datetime import datetime
 from typing import Optional
 from urllib.parse import urlparse
 from dataclasses import asdict, dataclass
@@ -7,19 +10,66 @@ from office365.sharepoint.client_context import ClientContext
 from office365.sharepoint.lists.list import List as DocumentLibrary
 from cryptography.hazmat.primitives.serialization import pkcs12, Encoding, PrivateFormat, NoEncryption
 from cryptography.hazmat.backends import default_backend
+from utils import log_function_output
+
 
 @dataclass
 class SharePointFile:
     id: str
     unique_id: str
     filename: str
-    file_leaf_ref: str
     server_relative_url: str
     file_size: int
     last_modified_utc: str
     last_modified_timestamp: int
 
-def connect_to_site_using_client_id(site_url: str, client_id: str, tenant_id: str, cert_path: str, cert_password: str) -> ClientContext:
+def get_or_create_pem_from_pfx(cert_path: str, cert_password: str) -> tuple[str, str]:
+  """
+  Convert a PFX certificate to PEM format.
+  Only recreates the PEM file if it doesn't exist or has a different timestamp than the PFX file.
+  
+  Args:
+    cert_path: Path to the PFX certificate file
+    cert_password: Password for the PFX certificate
+    
+  Returns:
+    tuple: (pem_file_path, certificate_thumbprint)
+  """
+  
+  pem_file = cert_path.replace('.pfx', '.pem')
+  
+  # Get PFX file modification time
+  pfx_mtime = os.path.getmtime(cert_path)
+  
+  # Check if PEM file exists and has the same timestamp as PFX
+  needs_conversion = True
+  if os.path.exists(pem_file):
+    pem_mtime = os.path.getmtime(pem_file)
+    if pem_mtime == pfx_mtime: needs_conversion = False
+  
+  # Load and convert PFX to PEM format (required by with_client_certificate)
+  with open(cert_path, 'rb') as f: pfx_data = f.read()
+  
+  # Extract private key and certificate from PFX
+  private_key, certificate, _ = pkcs12.load_key_and_certificates( pfx_data, cert_password.encode() if cert_password else None, backend=default_backend() )
+  
+  # Create or update PEM file if needed
+  if needs_conversion:
+    with open(pem_file, 'wb') as f:
+      # Write private key
+      f.write( private_key.private_bytes(encoding=Encoding.PEM, format=PrivateFormat.PKCS8,encryption_algorithm=NoEncryption()) )
+      # Write certificate
+      f.write(certificate.public_bytes(Encoding.PEM))
+    
+    # Set PEM file timestamp to match PFX file
+    os.utime(pem_file, (pfx_mtime, pfx_mtime))
+  
+  # Get certificate thumbprint
+  thumbprint = certificate.fingerprint(certificate.signature_hash_algorithm).hex().upper()
+  
+  return pem_file, thumbprint
+
+def connect_to_site_using_client_id_and_certificate(site_url: str, client_id: str, tenant_id: str, cert_path: str, cert_password: str) -> ClientContext:
   """
   Connect to a SharePoint site using certificate-based authentication (App-Only authentication).
   This method uses MSAL with certificate credentials to authenticate with SharePoint Online, which supports Sites.Selected permissions.
@@ -35,40 +85,11 @@ def connect_to_site_using_client_id(site_url: str, client_id: str, tenant_id: st
     ClientContext: An authenticated SharePoint client context object
   """
   
-  # Load and convert PFX to PEM format (required by with_client_certificate)
-  with open(cert_path, 'rb') as f:
-    pfx_data = f.read()
+  # Get or create PEM file from PFX certificate
+  pem_file, thumbprint = get_or_create_pem_from_pfx(cert_path, cert_password)
   
-  # Extract private key and certificate from PFX
-  private_key, certificate, _ = pkcs12.load_key_and_certificates(
-    pfx_data,
-    cert_password.encode() if cert_password else None,
-    backend=default_backend()
-  )
-  
-  # Create temporary PEM file
-  pem_file = cert_path.replace('.pfx', '_temp.pem')
-  with open(pem_file, 'wb') as f:
-    # Write private key
-    f.write(private_key.private_bytes(
-      encoding=Encoding.PEM,
-      format=PrivateFormat.PKCS8,
-      encryption_algorithm=NoEncryption()
-    ))
-    # Write certificate
-    f.write(certificate.public_bytes(Encoding.PEM))
-  
-  # Get certificate thumbprint
-  thumbprint = certificate.fingerprint(certificate.signature_hash_algorithm).hex().upper()
-  
-  # Connect using certificate-based authentication
-  # The library handles MSAL token acquisition internally
-  ctx = ClientContext(site_url).with_client_certificate(
-    tenant=tenant_id,
-    client_id=client_id,
-    thumbprint=thumbprint,
-    cert_path=pem_file
-  )
+  # Connect using certificate-based authentication; the library handles MSAL token acquisition internally
+  ctx = ClientContext(site_url).with_client_certificate( tenant=tenant_id, client_id=client_id, thumbprint=thumbprint, cert_path=pem_file )
   return ctx
 
 def try_get_document_library(ctx: ClientContext, site_url: str, library_url_part: str) -> tuple[Optional[DocumentLibrary], Optional[str]]:
@@ -97,16 +118,14 @@ def try_get_document_library(ctx: ClientContext, site_url: str, library_url_part
       # Failed, error contains the message
   """
   
-  # Extract the site path from the site URL
-  # e.g., 'https://contoso.sharepoint.com/sites/demosite' -> '/sites/demosite'
+  # Extract the site path from the site URL; e.g., 'https://contoso.sharepoint.com/sites/demosite' -> '/sites/demosite'
   parsed_url = urlparse(site_url)
   site_path = parsed_url.path.rstrip('/')
   
   # Ensure the library URL part starts with a forward slash
   if not library_url_part.startswith('/'): library_url_part = '/' + library_url_part
   
-  # Construct the full server-relative URL
-  # e.g., '/sites/demosite' + '/Shared Documents' = '/sites/demosite/Shared Documents'
+  # Construct the full server-relative URL; e.g., '/sites/demosite' + '/Shared Documents' = '/sites/demosite/Shared Documents'
   site_relative_url = site_path + library_url_part
   
   # Get the list (document library) by its server-relative URL
@@ -138,8 +157,6 @@ def get_document_library_files(ctx: ClientContext, document_library: DocumentLib
     filter = "FileLeafRef eq 'document.pdf'"  # Optional filter
     files = get_document_library_files(ctx, library, filter, request_data)
   """
-  from utils import log_function_output
-  from datetime import datetime
   
   try:
     log_function_output(request_data, f"Starting to retrieve files from document library: {document_library.properties.get('Title', 'Unknown')}")
@@ -150,16 +167,16 @@ def get_document_library_files(ctx: ClientContext, document_library: DocumentLib
       log_function_output(request_data, f"Retrieved {len(items)} items so far...")
     
     # Build the query with optional filter
-    # Select only file items (FileSystemObjectType = 0 means file, 1 means folder)
+    # Use FSObjType to filter: 0 = file, 1 = folder
     items_query = document_library.items.select([
       "Id",
       "UniqueId", 
       "FileLeafRef",
       "FileRef",
-      "File_x0020_Size",
+      "File/Length",
       "Modified",
-      "FileSystemObjectType"
-    ]).filter("FileSystemObjectType eq 0")  # Only files, not folders
+      "FSObjType"
+    ]).expand(["File"]).filter("FSObjType eq 0")  # Only files, not folders
     
     # Apply additional filter if provided
     if filter and filter.strip():
@@ -168,7 +185,7 @@ def get_document_library_files(ctx: ClientContext, document_library: DocumentLib
     
     # Use get_all() to retrieve all items with pagination (page size: 1000)
     # This method automatically handles the 5000 item limit by paginating
-    page_size = 1000
+    page_size = 5000
     all_items = items_query.get_all(page_size, print_progress).execute_query()
     
     log_function_output(request_data, f"Total files retrieved: {len(all_items)}")
@@ -182,7 +199,19 @@ def get_document_library_files(ctx: ClientContext, document_library: DocumentLib
         unique_id = str(item.properties.get('UniqueId', ''))
         file_leaf_ref = item.properties.get('FileLeafRef', '')
         file_ref = item.properties.get('FileRef', '')
-        file_size = int(item.properties.get('File_x0020_Size', 0))
+        # Get file size from expanded File property
+        file_size = 0
+        if 'File' in item.properties and item.properties['File']:
+          file_obj = item.properties['File']
+          # File is a ClientObject, access properties directly
+          if hasattr(file_obj, 'properties') and 'Length' in file_obj.properties:
+            file_size = int(file_obj.properties['Length'])
+          elif hasattr(file_obj, 'Length'):
+            file_size = int(file_obj.Length)
+        
+        # Fallback: try direct property access
+        if file_size == 0 and 'Length' in item.properties:
+          file_size = int(item.properties.get('Length', 0))
         modified = item.properties.get('Modified', '')
         
         # Parse and format the modified date
@@ -204,7 +233,6 @@ def get_document_library_files(ctx: ClientContext, document_library: DocumentLib
           id=item_id,
           unique_id=unique_id,
           filename=file_leaf_ref,
-          file_leaf_ref=file_leaf_ref,
           server_relative_url=file_ref,
           file_size=file_size,
           last_modified_utc=last_modified_utc,

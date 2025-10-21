@@ -63,6 +63,7 @@ print(f"{'='*80}\n")
 print("Step 1: Connecting to SharePoint...")
 try:
     # Load and convert PFX to PEM format (required by with_client_certificate)
+    print(f"  Loading certificate from: {cert_file}")
     with open(cert_file, 'rb') as f:
         pfx_data = f.read()
     
@@ -73,8 +74,14 @@ try:
         backend=default_backend()
     )
     
+    print(f"  Certificate loaded successfully")
+    print(f"  Subject: {certificate.subject.rfc4514_string()}")
+    print(f"  Issuer: {certificate.issuer.rfc4514_string()}")
+    print(f"  Valid from: {certificate.not_valid_before}")
+    print(f"  Valid until: {certificate.not_valid_after}")
+    
     # Create temporary PEM file
-    pem_file = cert_file.replace('.pfx', '_temp.pem')
+    pem_file = cert_file.replace('.pfx', '.pem')
     with open(pem_file, 'wb') as f:
         # Write private key
         f.write(private_key.private_bytes(
@@ -85,17 +92,59 @@ try:
         # Write certificate
         f.write(certificate.public_bytes(Encoding.PEM))
     
+    print(f"  PEM file created: {pem_file}")
+    
     # Get certificate thumbprint
     thumbprint = certificate.fingerprint(certificate.signature_hash_algorithm).hex().upper()
     
     # Connect using certificate-based authentication
     # The library handles MSAL token acquisition internally
+    print(f"  Client ID: {client_id}")
+    print(f"  Tenant ID: {tenant_id}")
+    print(f"  Certificate Thumbprint: {thumbprint}")
+    
+    # First, test token acquisition using MSAL directly
+    print(f"  Testing token acquisition with MSAL...")
+    try:
+        from msal import ConfidentialClientApplication
+        
+        authority = f"https://login.microsoftonline.com/{tenant_id}"
+        scopes = ["https://graph.microsoft.com/.default"]
+        
+        app = ConfidentialClientApplication(
+            client_id=client_id,
+            authority=authority,
+            client_credential={
+                "thumbprint": thumbprint,
+                "private_key": open(pem_file, 'r').read()
+            }
+        )
+        
+        result = app.acquire_token_for_client(scopes=scopes)
+        
+        if "access_token" in result:
+            print(f"  ✓ Token acquired successfully")
+            print(f"    Token type: {result.get('token_type', 'N/A')}")
+            print(f"    Expires in: {result.get('expires_in', 'N/A')} seconds")
+        else:
+            print(f"  ✗ Token acquisition failed:")
+            print(f"    Error: {result.get('error', 'Unknown')}")
+            print(f"    Description: {result.get('error_description', 'N/A')}")
+            raise Exception(f"Token acquisition failed: {result.get('error_description', 'Unknown error')}")
+    except Exception as token_error:
+        print(f"  ✗ MSAL token test failed: {str(token_error)}")
+        raise
+    
+    print(f"  Attempting SharePoint connection...")
+    
     ctx = ClientContext(sharepoint_root_url).with_client_certificate(
         tenant=tenant_id,
         client_id=client_id,
         thumbprint=thumbprint,
         cert_path=pem_file
     )
+    
+    print(f"  Context created, executing query...")
     
     # Test connection by getting web properties
     web = ctx.web.get().execute_query()
@@ -104,8 +153,23 @@ try:
     print(f"  Site Title: {web.properties.get('Title', 'N/A')}")
     print(f"  Site URL: {web.properties.get('Url', 'N/A')}")
     print(f"  Description: {web.properties.get('Description', 'N/A')}")
+except ConnectionResetError as e:
+    print(f"❌ Connection reset by remote host")
+    print(f"  This usually indicates:")
+    print(f"    1. The app doesn't have permission to access this site")
+    print(f"    2. Sites.Selected permission requires explicit site-level grants")
+    print(f"    3. Certificate authentication may not be properly configured")
+    print(f"\n  Error details: {str(e)}")
+    print(f"\n  To fix:")
+    print(f"    - Run AddRemoveCrawlerSharePointSites.ps1 to grant access to this site")
+    print(f"    - Or ensure the app has Sites.Read.All/Sites.ReadWrite.All permissions")
+    exit(1)
 except Exception as e:
     print(f"❌ Connection failed: {str(e)}")
+    print(f"  Exception type: {type(e).__name__}")
+    import traceback
+    print(f"\n  Full traceback:")
+    traceback.print_exc()
     exit(1)
 
 # Step 2: Access the document library

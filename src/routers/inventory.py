@@ -5,7 +5,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from common_openai_functions import get_all_vector_stores, get_all_files, get_all_assistants, convert_openai_timestamps_to_utc
-from utils import convert_to_flat_html_table, log_function_footer, log_function_header, log_function_output
+from utils import convert_to_flat_html_table, log_function_footer, log_function_header, log_function_output, include_exclude_attributes
 
 router = APIRouter()
 
@@ -16,40 +16,6 @@ def set_config(app_config):
   """Set the configuration for Inventory management."""
   global config
   config = app_config
-
-def include_exclude_attributes(data: Union[List[Dict], Dict], include_attributes: Optional[str] = None, exclude_attributes: Optional[str] = None) -> Union[List[Dict], Dict]:
-  """
-  Filter attributes in data objects based on include/exclude parameters.
-  
-  Args:
-    data: Single dict or list of dicts to filter
-    include_attributes: Comma-separated list of attributes to include (takes precedence)
-    exclude_attributes: Comma-separated list of attributes to exclude (ignored if include_attributes is set)
-    
-  Returns:
-    Filtered data with only specified attributes
-  """
-  if not include_attributes and not exclude_attributes: return data    
-  # Handle single dict
-  if isinstance(data, dict): return _filter_single_object(data, include_attributes, exclude_attributes)    
-  # Handle list of dicts
-  if isinstance(data, list): return [_filter_single_object(item, include_attributes, exclude_attributes) for item in data]
-  return data
-
-def _filter_single_object(obj: Dict, include_attributes: Optional[str], exclude_attributes: Optional[str]) -> Dict:
-  """
-  Filter a single object based on include/exclude attributes. If includes are given, excludes ar ignored.
-  """
-  if not isinstance(obj, dict): return obj    
-  # If include_attributes is specified, only include those attributes
-  if include_attributes:
-    include_list = [attr.strip() for attr in include_attributes.split(',') if attr.strip()]
-    return {key: value for key, value in obj.items() if key in include_list}
-  # If exclude_attributes is specified, exclude those attributes
-  if exclude_attributes:
-    exclude_list = [attr.strip() for attr in exclude_attributes.split(',') if attr.strip()]
-    return {key: value for key, value in obj.items() if key not in exclude_list}
-  return obj
 
 def _generate_html_response_from_object_list(title: str, count: int, objects: List[Dict]) -> str:
   """

@@ -7,3 +7,4 @@ trigger: manual
 - if less than 200 chars, put on single line
 - imports always on single line
 - dont use emojis, exceptions: ✅=OK, ❌=FAIL
+- all imports at the top of the file; all members of a library in a single row
