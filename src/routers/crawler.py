@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from utils import convert_to_flat_html_table, convert_to_nested_html_table, log_function_footer, log_function_header, log_function_output, create_logfile, append_to_logfile, include_exclude_attributes
-from common_crawler_functions import DomainConfig, load_all_domains, domain_config_to_dict, scan_directory_recursive, create_storage_zip_from_scan, load_domain, load_files_from_sharepoint_source, load_crawled_files, load_vector_store_files_as_crawled_files
+from common_crawler_functions import DomainConfig, load_all_domains, domain_config_to_dict, scan_directory_recursive, create_storage_zip_from_scan, load_domain, load_files_from_sharepoint_source, load_crawled_files, load_vector_store_files_as_crawled_files, is_files_metadata_v2_format, is_files_metadata_v3_format, convert_file_metadata_item_from_v2_to_v3
 from common_openai_functions import OPENAI_DATETIME_ATTRIBUTES
 
 
@@ -81,7 +81,6 @@ async def crawler_root():
     <li><a href="/crawler/loadsharepointfiles">/crawler/loadsharepointfiles</a> - Load SharePoint Files (<a href="/crawler/loadsharepointfiles?domain_id=ExampleDomain01&source_id=source01&format=html&includeattributes=sharepoint_listitem_id,sharepoint_unique_file_id,raw_url,filename,file_size,last_modified_utc">Example HTML</a> + <a href="/crawler/loadsharepointfiles?domain_id=ExampleDomain01&source_id=source01&format=json">Example JSON</a>)</li>
     <li><a href="/crawler/loadlocalfiles">/crawler/loadlocalfiles</a> - Load Local Embedded Files (<a href="/crawler/loadlocalfiles?domain_id=ExampleDomain01&source_id=source01&format=html&includeattributes=file_path,raw_url,file_size,last_modified_utc">Example HTML</a> + <a href="/crawler/loadlocalfiles?domain_id=ExampleDomain01&source_id=source01&format=json">Example JSON</a>)</li>
     <li><a href="/crawler/loadvectorstorefiles">/crawler/loadvectorstorefiles</a> - Load Vector Store Files (<a href="/crawler/loadvectorstorefiles?domain_id=ExampleDomain01&format=html">Example HTML</a> + <a href="/crawler/loadvectorstorefiles?domain_id=ExampleDomain01&format=json">Example JSON</a>)</li>
-    <li><a href="/crawler/updatemaps">/crawler/updatemaps</a> - Update Maps for Domain (<a href="/crawler/updatemaps?domain_id=example&logfile=log.txt">Example</a>)</li>
     <li><a href="/crawler/migratefromv2tov3">/crawler/migratefromv2tov3</a> - Migrate files_metadata.json from v2 to v3 format (<a href="/crawler/migratefromv2tov3?format=html">HTML</a> + <a href="/crawler/migratefromv2tov3?format=json">JSON</a>)</li>
     <li><a href="/crawler/getlogfile">/crawler/getlogfile</a> - Retrieve Logfile (<a href="/crawler/getlogfile?logfile=log.txt">Example</a>)</li>
   </ul>
@@ -153,61 +152,6 @@ async def getlogfile(request: Request):
     log_function_output(request_data, error_message)
     await log_function_footer(request_data)
     return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
-
-@router.get('/updatemaps')
-async def updatemaps(request: Request):
-  """
-  Endpoint to update maps for a specific domain.
-  
-  Parameters:
-  - domain_id: The ID of the domain to update maps for
-  - logfile: The logfile parameter
-    
-  Examples:
-  /updatemaps?domain_id=example&logfile=log.txt
-  """
-  function_name = 'updatemaps()'
-  request_data = log_function_header(function_name)
-  request_params = dict(request.query_params)
-  
-  endpoint = '/' + function_name.replace('()','')  
-  endpoint_documentation = updatemaps.__doc__
-  documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
-  # Display documentation if no params are provided
-  if len(request_params) == 0: await log_function_footer(request_data); return HTMLResponse(documentation_HTML)
-
-  domain_id = request_params.get('domain_id', None)
-  logfile = request_params.get('logfile', None)
-  
-  # Validate required parameters
-  if not logfile:
-    error_message = "ERROR: Missing required parameter 'logfile'"
-    log_function_output(request_data, error_message)
-    await log_function_footer(request_data)
-    return HTMLResponse(content=error_message, status_code=400, media_type='text/plain; charset=utf-8')
-  
-  # Validate PERSISTENT_STORAGE_PATH is configured
-  if not hasattr(request.app.state, 'system_info') or not request.app.state.system_info or not request.app.state.system_info.PERSISTENT_STORAGE_PATH:
-    error_message = "ERROR: PERSISTENT_STORAGE_PATH not configured or is empty"
-    log_function_output(request_data, error_message)
-    await log_function_footer(request_data)
-    return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
-  
-  # Build the logs directory path
-  storage_path = request.app.state.system_info.PERSISTENT_STORAGE_PATH
-  logs_folder = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_LOGS_SUBFOLDER)
-  logfile_path = os.path.join(logs_folder, logfile)
-  
-  # Create the logfile with initial content
-  logfile_content = f"Log file created at {datetime.datetime.now().isoformat()}\n"
-  logfile_content += f"Domain ID: {domain_id}\n"
-  logfile_content += f"Logfile: {logfile}\n"
-  
-  # Use utility function to create the logfile
-  logfile_content = create_logfile(logfile_path, logfile_content, request_data)
-  
-  await log_function_footer(request_data)
-  return HTMLResponse(content=logfile_content, media_type='text/plain; charset=utf-8')
 
 
 @router.get('/localstorage')
@@ -827,13 +771,9 @@ async def migrate_from_v2_to_v3(request: Request):
       
       # Detect v2 format
       first_item = metadata[0]
-      is_v2_format = (
-        'embedded_file_relative_path' in first_item and
-        'file_metadata' in first_item and
-        isinstance(first_item.get('file_metadata'), dict)
-      )
+      is_v2 = is_files_metadata_v2_format(first_item)
       
-      if not is_v2_format:
+      if not is_v2:
         log_function_output(request_data, f"  Already in v3 format or unknown format, skipping")
         migration_results.append({
           "domain_id": domain_id,
@@ -852,28 +792,7 @@ async def migrate_from_v2_to_v3(request: Request):
       
       # Convert to v3 format
       log_function_output(request_data, f"  Converting to v3 format...")
-      v3_metadata = []
-      
-      for item in metadata:
-        file_metadata = item.get('file_metadata', {})
-        
-        # Build v3 item
-        v3_item = {
-          "sharepoint_listitem_id": file_metadata.get('sharepoint_listitem_id', 0),
-          "sharepoint_unique_file_id": file_metadata.get('sharepoint_unique_file_id', ''),
-          "openai_file_id": item.get('file_id', ''),
-          "file_relative_path": item.get('embedded_file_relative_path', ''),
-          "url": file_metadata.get('source', ''),
-          "raw_url": file_metadata.get('raw_url', ''),
-          "server_relative_url": file_metadata.get('server_relative_url', ''),
-          "filename": file_metadata.get('filename', ''),
-          "file_type": file_metadata.get('file_type', ''),
-          "file_size": file_metadata.get('file_size', 0),
-          "last_modified_utc": item.get('embedded_file_last_modified_utc', ''),
-          "last_modified_timestamp": file_metadata.get('last_modified_timestamp', 0)
-        }
-        
-        v3_metadata.append(v3_item)
+      v3_metadata = [convert_file_metadata_item_from_v2_to_v3(item) for item in metadata]
       
       # Write v3 format
       log_function_output(request_data, f"  Writing v3 format to: {metadata_file_path}")

@@ -1,9 +1,10 @@
-import json, logging, os
+import json, logging, os, re
 from typing import Any, Dict, List, Optional, Tuple
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from common_openai_functions import CoaiSearchParams, get_search_results_using_responses_api, get_search_results_using_search_api, try_get_vector_store_by_id
+from common_crawler_functions import is_files_metadata_v2_format, convert_file_metadata_item_from_v2_to_v3
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from utils import convert_to_nested_html_table, log_function_footer, log_function_header, log_function_output, log_function_footer_sync, remove_linebreaks, sanitize_queries_and_responses, truncate_string
 
@@ -126,23 +127,32 @@ def build_domains_and_metadata_cache(config, system_info, initialization_errors)
             initialization_errors.append({"component": "SharePoint Data Loading", "error": error_msg})
             continue
           
+          # Clean invalid control characters (tabs, etc.) from JSON string values
+          # This handles cases where openai_file_id or other fields have embedded tabs
+          file_content = re.sub(r':\s*"([^"]*)\t([^"]*)"', r': "\1\2"', file_content)
+          
           files_metadata = json.loads(file_content)
-          files_added = 0
-          for file_data in files_metadata:
-            # Handle both v2 format (file_id + nested file_metadata) and v3 format (openai_file_id + flat)
-            if 'file_metadata' in file_data:
-              # V2 format - nested structure
-              file_id = file_data.get('file_id', '')
-              if file_id:
-                metadata_cache[file_id] = file_data['file_metadata']
-                files_added += 1
-            elif 'openai_file_id' in file_data:
-              # V3 format - flat structure
-              file_id = file_data.get('openai_file_id', '')
+          
+          # Detect format using first item and convert if needed
+          if files_metadata and len(files_metadata) > 0:
+            first_item = files_metadata[0]
+            is_v2 = is_files_metadata_v2_format(first_item)
+            
+            if is_v2:
+              log_function_output(log_data, f"Detected V2 format for {domain_folder_name}, converting to V3...")
+              files_metadata = [convert_file_metadata_item_from_v2_to_v3(item) for item in files_metadata]
+            
+            # Add all items to cache (now all in V3 format)
+            files_added = 0
+            for file_data in files_metadata:
+              file_id = file_data.get('openai_file_id', '').strip()
               if file_id:
                 metadata_cache[file_id] = file_data
                 files_added += 1
-          log_function_output(log_data, f"Added {files_added} file metadata entries from {domain_folder_name}")
+            
+            log_function_output(log_data, f"Added {files_added} file metadata entries from {domain_folder_name}")
+          else:
+            log_function_output(log_data, f"No file metadata entries found in {domain_folder_name}")
         except json.JSONDecodeError as e:
           error_msg = f"Invalid JSON in files_metadata.json for {domain_folder_name}: {str(e)} (file size: {os.path.getsize(files_metadata_json_path)} bytes, first 100 chars: {file_content[:100]!r})"
           log_function_output(log_data, f"ERROR: {error_msg}")
@@ -170,10 +180,11 @@ def build_data_object(query, search_results, response, metadata_cache):
     file_id = result.file_id
     metadata = metadata_cache.get(file_id)
     if metadata : metadata = metadata.copy()
-    # remove 'source' from metadata because this will be added as the 'source' field separately
+    # Get URL from V3 format metadata and remove it before adding to metadata dict
+    # V3 format uses 'url' field, which maps to the output 'source' field
     if metadata:
-      source_url = metadata.get('source', f'{result.filename}')
-      metadata.pop('source', None)
+      source_url = metadata.get('url', f'{result.filename}')
+      metadata.pop('url', None)
     else:
       source_url = f'[NO_METADATA_FOR_THIS_VECTOR_STORE]'
     source = {

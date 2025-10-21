@@ -123,8 +123,8 @@ def is_running_on_azure_app_service() -> bool:
   return os.path.exists("/home/site/wwwroot") or os.path.exists("/opt/startup") or os.path.exists("/home/site")
 
 def test_directory_writable(directory_path: str) -> bool:
-  """Test if a directory is writable by creating and deleting a temporary file."""
-  if not os.path.exists(directory_path) or not os.path.isdir(directory_path):
+  """Test if a directory is writable by creating a temporary file."""
+  if not os.path.exists(directory_path):
     return False
   
   try:
@@ -138,6 +138,73 @@ def test_directory_writable(directory_path: str) -> bool:
     return True
   except (OSError, PermissionError, IOError):
     return False
+
+def verify_system_info(system_info: SystemInfo) -> list[dict]:
+  """
+  Verify system information and create a list with verification results.
+  
+  Args:
+    system_info: SystemInfo dataclass instance
+    
+  Returns:
+    List of dicts with Field, Value, and Display Value / Verification
+  """
+  system_info_list = []
+  for field in system_info.__dataclass_fields__:
+    value = getattr(system_info, field)
+    key = field
+    # Create verification column
+    verification = ""
+    if (key.endswith('MEMORY_BYTES') or key.endswith('SPACE_BYTES')) and isinstance(value, int):
+      verification = format_filesize(value)
+    elif key.endswith('PATH') and isinstance(value, str) and value != "N/A":
+      exists = os.path.exists(value)
+      writable = test_directory_writable(value) if exists else False
+      if exists and writable: verification = "✅ Exists, ✅ Writable"
+      elif exists: verification = "✅ Exists, ❌ Not writable"
+      else: verification = "❌ Not found"
+    
+    system_info_list.append({"Field": key, "Value": value, "Display Value / Verification": verification})
+  
+  return system_info_list
+
+def verify_config(config: Config, system_info: SystemInfo) -> list[dict]:
+  """
+  Verify configuration and create a list with verification results.
+  
+  Args:
+    config: Config dataclass instance
+    system_info: SystemInfo dataclass instance (for PERSISTENT_STORAGE_PATH)
+    
+  Returns:
+    List of dicts with Field, Value, and Display Value / Verification
+  """
+  config_list = []
+  formatted_config = format_config_for_displaying(config)
+  
+  for field, value in formatted_config.items():
+    verification = ""
+    
+    # Verify CRAWLER_CLIENT_CERTIFICATE_PFX_FILE exists in PERSISTENT_STORAGE_PATH
+    if field == "CRAWLER_CLIENT_CERTIFICATE_PFX_FILE" and value and not value.startswith("⚠️"):
+      # Extract the actual filename from the formatted value (remove "✅ " prefix)
+      filename = value.replace("✅ ", "").strip()
+      cert_path = os.path.join(system_info.PERSISTENT_STORAGE_PATH, filename)
+      if os.path.exists(cert_path): verification = f"✅ Found"
+      else: verification = f"❌ Not found"
+    
+    # Verify AZURE_OPENAI_ENDPOINT - check if OpenAI client was created successfully
+    elif field == "AZURE_OPENAI_ENDPOINT" and value and not value.startswith("⚠️"):
+      try:
+        openai_client = app.state.openai_client
+        if openai_client is not None: verification = "✅ Client created successfully"
+        else: verification = "❌ Client creation failed"
+      except AttributeError:
+        verification = "⚠️ App state not available"
+    
+    config_list.append({"Field": field, "Value": value, "Display Value / Verification": verification})
+  
+  return config_list
 
 def create_system_info() -> SystemInfo:
   """Create system information."""
@@ -441,25 +508,10 @@ async def ignore_default_doc():
 def root() -> str:
   errors_html = f'<div class="section"><h4>Errors</h4>{convert_to_flat_html_table(initialization_errors)}</div>' if initialization_errors else ""
   system_info = app.state.system_info
-  system_info_list = []
-  for field in system_info.__dataclass_fields__:
-    value = getattr(system_info, field)
-    key = field
-    # Create verification column
-    verification = ""
-    if (key.endswith('MEMORY_BYTES') or key.endswith('SPACE_BYTES')) and isinstance(value, int):
-      verification = format_filesize(value)
-    elif key.endswith('PATH') and isinstance(value, str) and value != "N/A":
-      exists = os.path.exists(value)
-      writable = test_directory_writable(value) if exists else False
-      if exists and writable:
-        verification = "✅ Exists, ✅ Writable"
-      elif exists:
-        verification = "✅ Exists, ❌ Not writable"
-      else:
-        verification = "❌ Not found"
-    
-    system_info_list.append({"Field": key, "Value": value, "Display Value / Verification": verification})
+  
+  # Use verification functions
+  system_info_list = verify_system_info(system_info)
+  config_list = verify_config(app.state.config, system_info)
   
   return f"""
 <!doctype html><html lang="en">
@@ -492,7 +544,7 @@ def root() -> str:
 
   <div class="section">
     <h4>Configuration</h4>
-    {convert_to_flat_html_table(format_config_for_displaying(app.state.config))}
+    {convert_to_flat_html_table(config_list)}
   </div>
 
   <div class="section">

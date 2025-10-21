@@ -102,7 +102,64 @@ Each domain has a `domain.json` file with the following structure:
 
 ### Files Metadata JSON File Format (`files_metadata.json`)
 
-Contains metadata for all files that have been uploaded to the OpenAI vector store:
+Contains metadata for all files that have been uploaded to the OpenAI vector store.
+
+**Migration**: Use the `/crawler/migratefromv2tov3` endpoint to automatically migrate from v2 to v3 format. This endpoint creates a backup of the v2 file before conversion.
+
+#### V3 Format (Current)
+
+The v3 format uses a flat structure matching the `CrawledFile` dataclass:
+
+```json
+[
+  {
+    "sharepoint_listitem_id": 123,
+    "sharepoint_unique_file_id": "b!abc123...",
+    "openai_file_id": "assistant-BuQoNyXQnoedPjTySDTFU1",
+    "file_relative_path": "DOMAIN01\\01_files\\source01\\02_embedded\\Document.docx",
+    "url": "https://contoso.sharepoint.com/sites/Example/Shared%20Documents/Document.docx",
+    "raw_url": "https://contoso.sharepoint.com/sites/Example/Shared Documents/Document.docx",
+    "server_relative_url": "/sites/Example/Shared Documents/Document.docx",
+    "filename": "Document.docx",
+    "file_type": "docx",
+    "file_size": 864368,
+    "last_modified_utc": "2024-01-15T10:30:00.000000Z",
+    "last_modified_timestamp": 1705319400
+  },
+  {
+    "sharepoint_listitem_id": 124,
+    "sharepoint_unique_file_id": "b!def456...",
+    "openai_file_id": "assistant-1TZS6Y9z4V6oYuStT8qLUr",
+    "file_relative_path": "DOMAIN01\\01_files\\source01\\02_embedded\\SubFolder\\AnotherDocument.pdf",
+    "url": "https://contoso.sharepoint.com/sites/Example/Shared%20Documents/SubFolder/AnotherDocument.pdf",
+    "raw_url": "https://contoso.sharepoint.com/sites/Example/Shared Documents/SubFolder/AnotherDocument.pdf",
+    "server_relative_url": "/sites/Example/Shared Documents/SubFolder/AnotherDocument.pdf",
+    "filename": "AnotherDocument.pdf",
+    "file_type": "pdf",
+    "file_size": 1234567,
+    "last_modified_utc": "2024-01-10T14:22:15.000000Z",
+    "last_modified_timestamp": 1704896535
+  }
+]
+```
+
+**V3 Key Fields**:
+- `sharepoint_listitem_id`: SharePoint list item ID
+- `sharepoint_unique_file_id`: SharePoint unique file identifier
+- `openai_file_id`: OpenAI file ID (format: `assistant-...`)
+- `file_relative_path`: Relative path to the embedded file in the crawler storage structure (format: `DOMAIN\\01_files\\source_id\\02_embedded\\filename.ext`)
+- `url`: URL-encoded SharePoint source URL
+- `raw_url`: Raw SharePoint URL (not encoded)
+- `server_relative_url`: Server-relative URL path
+- `filename`: Original filename
+- `file_type`: File extension (docx, pdf, xlsx, etc.)
+- `file_size`: File size in bytes
+- `last_modified_utc`: UTC timestamp of when the file was last modified in ISO 8601 format with microseconds (format: `YYYY-MM-DDTHH:MM:SS.ffffffZ`)
+- `last_modified_timestamp`: Unix timestamp of last modification
+
+#### V2 Format (Legacy)
+
+The v2 format uses a nested structure with a `file_metadata` object:
 
 ```json
 [
@@ -118,34 +175,21 @@ Contains metadata for all files that have been uploaded to the OpenAI vector sto
       "last_modified": "2024-01-15",
       "raw_url": "https://contoso.sharepoint.com/sites/Example/Shared Documents/Document.docx"
     }
-  },
-  {
-    "file_id": "assistant-1TZS6Y9z4V6oYuStT8qLUr",
-    "embedded_file_relative_path": "DOMAIN01\\01_files\\source01\\02_embedded\\SubFolder\\AnotherDocument.pdf",
-    "embedded_file_last_modified_utc": "2024-01-10T14:22:15.000000Z",
-    "file_metadata": {
-      "source": "https://contoso.sharepoint.com/sites/Example/Shared%20Documents/SubFolder/AnotherDocument.pdf",
-      "filename": "AnotherDocument.pdf",
-      "file_type": "pdf",
-      "file_size": 1234567,
-      "last_modified": "2024-01-10",
-      "raw_url": "https://contoso.sharepoint.com/sites/Example/Shared Documents/SubFolder/AnotherDocument.pdf"
-    }
   }
 ]
 ```
 
-**Key Fields**:
+**V2 Key Fields** (deprecated):
 - `file_id`: OpenAI file ID (format: `assistant-...`)
-- `embedded_file_relative_path`: Relative path to the embedded file in the crawler storage structure (format: `DOMAIN\\01_files\\source_id\\02_embedded\\filename.ext`)
-- `embedded_file_last_modified_utc`: UTC timestamp of when the file was last modified in ISO 8601 format with microseconds (format: `YYYY-MM-DDTHH:MM:SS.ffffffZ`)
-- `file_metadata`: Object containing all metadata about the file
+- `embedded_file_relative_path`: Relative path to the embedded file
+- `embedded_file_last_modified_utc`: UTC timestamp of last modification
+- `file_metadata`: Nested object containing file metadata
   - `source`: URL-encoded SharePoint source URL
   - `filename`: Original filename
-  - `file_type`: File extension (docx, pdf, xlsx, etc.)
+  - `file_type`: File extension
   - `file_size`: File size in bytes
   - `last_modified`: Last modification date (YYYY-MM-DD)
-  - `raw_url`: Raw SharePoint URL (not encoded)
+  - `raw_url`: Raw SharePoint URL
 
 ## 2. Crawler Subfolder
 

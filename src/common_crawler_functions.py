@@ -697,3 +697,77 @@ async def load_vector_store_files_as_crawled_files(openai_client, storage_path: 
     log_function_output(log_data, f"Converted {len(crawled_files)} vector store files to CrawledFile objects")
   
   return crawled_files
+
+def is_files_metadata_v2_format(first_item: Dict[str, Any]) -> bool:
+  """
+  Detect if a files_metadata.json item is in V2 format.
+  
+  V2 format has:
+  - embedded_file_relative_path
+  - file_metadata (nested object)
+  - file_id
+  
+  Args:
+    first_item: First item from the files_metadata.json array
+    
+  Returns:
+    True if V2 format, False otherwise
+  """
+  return (
+    'embedded_file_relative_path' in first_item and
+    'file_metadata' in first_item and
+    isinstance(first_item.get('file_metadata'), dict)
+  )
+
+def is_files_metadata_v3_format(first_item: Dict[str, Any]) -> bool:
+  """
+  Detect if a files_metadata.json item is in V3 format.
+  
+  V3 format has:
+  - openai_file_id (flat structure)
+  - file_relative_path
+  - No nested file_metadata object
+  
+  Args:
+    first_item: First item from the files_metadata.json array
+    
+  Returns:
+    True if V3 format, False otherwise
+  """
+  return (
+    'openai_file_id' in first_item and
+    'file_relative_path' in first_item and
+    'file_metadata' not in first_item
+  )
+
+def convert_file_metadata_item_from_v2_to_v3(v2_item: Dict[str, Any]) -> Dict[str, Any]:
+  """
+  Convert a single files_metadata.json item from V2 to V3 format.
+  
+  V2 format has nested structure with file_metadata object.
+  V3 format has flat structure matching CrawledFile dataclass.
+  
+  Args:
+    v2_item: Single item in V2 format
+    
+  Returns:
+    Item converted to V3 format
+  """
+  file_metadata = v2_item.get('file_metadata', {})
+  
+  v3_item = {
+    "sharepoint_listitem_id": file_metadata.get('sharepoint_listitem_id', 0),
+    "sharepoint_unique_file_id": file_metadata.get('sharepoint_unique_file_id', '').strip() if isinstance(file_metadata.get('sharepoint_unique_file_id'), str) else '',
+    "openai_file_id": v2_item.get('file_id', '').strip() if isinstance(v2_item.get('file_id'), str) else '',
+    "file_relative_path": v2_item.get('embedded_file_relative_path', '').strip() if isinstance(v2_item.get('embedded_file_relative_path'), str) else '',
+    "url": file_metadata.get('source', '').strip() if isinstance(file_metadata.get('source'), str) else '',
+    "raw_url": file_metadata.get('raw_url', '').strip() if isinstance(file_metadata.get('raw_url'), str) else '',
+    "server_relative_url": file_metadata.get('server_relative_url', '').strip() if isinstance(file_metadata.get('server_relative_url'), str) else '',
+    "filename": file_metadata.get('filename', '').strip() if isinstance(file_metadata.get('filename'), str) else '',
+    "file_type": file_metadata.get('file_type', '').strip() if isinstance(file_metadata.get('file_type'), str) else '',
+    "file_size": file_metadata.get('file_size', 0),
+    "last_modified_utc": v2_item.get('embedded_file_last_modified_utc', '').strip() if isinstance(v2_item.get('embedded_file_last_modified_utc'), str) else '',
+    "last_modified_timestamp": file_metadata.get('last_modified_timestamp', 0)
+  }
+  
+  return v3_item
