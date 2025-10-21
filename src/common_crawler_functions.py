@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from utils import log_function_output
 from common_sharepoint_functions import connect_to_site_using_client_id_and_certificate, try_get_document_library, get_document_library_files
+from common_openai_functions import get_vector_store_files_with_filenames_as_dict
 
 @dataclass
 class FileSource:
@@ -45,10 +46,9 @@ class DomainConfig:
 
 @dataclass
 class CrawledFile:
-  openai_file_id: str # Open AI file id (e.g. 'assistant-17ak9Sdidc5bGXnq8mRDDf')
   sharepoint_listitem_id: int # SharePoint list item id (e.g. 1, 2, 123456, ...)
   sharepoint_unique_file_id: str # SharePoint unique file id that stays the same even if file is moved (e.g. '12345678-1234-1234-1234-123456789012')
-  file_path: str # path to file before embedding (e.g. 'c:\Dev\Storage\crawler\ExampleDomain01\01_files\source01\02_embedded\Folder\document.pptx')
+  openai_file_id: str # Open AI file id (e.g. 'assistant-17ak9Sdidc5bGXnq8mRDDf')
   file_relative_path: str # path to file relative to 'crawler' subfolder (e.g. 'ExampleDomain01\01_files\source01\02_embedded\Folder\document.pptx')
   url: str # URL-encoded URL to original file (e.g. 'https://contoso.sharepoint.com/sites/SiteName/Shared%20Documents/Folder/document.pptx')
   raw_url: str # Unencoded URL to original file (e.g. 'https://contoso.sharepoint.com/sites/SiteName/Shared Documents/Folder/document.pptx')
@@ -463,13 +463,23 @@ def load_files_from_sharepoint_source( system_info, domain_id: str, source_id: s
     # URL-encoded source URL
     source_url = quote(raw_url, safe=':/')
     
+    # Construct file_relative_path: domain_id/01_files/source_id/02_embedded/relative_path
+    # Extract relative path from server_relative_url by removing the site path and sharepoint_url_part
+    relative_from_library = sp_file.server_relative_url.replace(site_path, '').replace(file_source.sharepoint_url_part, '').lstrip('/')
+    file_relative_path = os.path.join(
+      domain_id,
+      CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOCUMENTS_FOLDER,
+      source_id,
+      CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_EMBEDDED_SUBFOLDER,
+      relative_from_library
+    )
+    
     # Create CrawledFile (without local file system paths)
     crawled_file = CrawledFile(
-      openai_file_id="",  # Not available from SharePoint API
-      sharepoint_unique_file_id=sp_file.unique_id,
       sharepoint_listitem_id=int(sp_file.id) if sp_file.id else 0,
-      file_path="",  # Not available from SharePoint API
-      file_relative_path="",  # Not available from SharePoint API
+      sharepoint_unique_file_id=sp_file.unique_id,
+      openai_file_id="",  # Not available from SharePoint API
+      file_relative_path=file_relative_path,
       url=source_url,
       raw_url=raw_url,
       server_relative_url=sp_file.server_relative_url,
@@ -586,10 +596,9 @@ def load_crawled_files(storage_path: str, domain_id: str, source_id: str, log_da
       
       # Create CrawledFile with empty openai_file_id and SharePoint IDs
       crawled_file = CrawledFile(
-        openai_file_id="",  # Not available from local file system
-        sharepoint_unique_file_id="",  # Not available from local file system
         sharepoint_listitem_id=0,  # Not available from local file system
-        file_path=file_path,
+        sharepoint_unique_file_id="",  # Not available from local file system
+        openai_file_id="",  # Not available from local file system
         file_relative_path=relative_path,
         url=source_url,
         raw_url=raw_url,
@@ -605,5 +614,86 @@ def load_crawled_files(storage_path: str, domain_id: str, source_id: str, log_da
   
   if log_data:
     log_function_output(log_data, f"Found {len(crawled_files)} embedded files")
+  
+  return crawled_files
+
+async def load_vector_store_files_as_crawled_files(openai_client, storage_path: str, domain_id: str, log_data: Dict[str, Any] = None) -> List[CrawledFile]:
+  """
+  Load files from OpenAI vector store for a specific domain and convert to CrawledFile objects.
+  
+  Args:
+    openai_client: AsyncAzureOpenAI or AsyncOpenAI client
+    storage_path: Base persistent storage path
+    domain_id: The ID of the domain to load files for
+    log_data: Optional logging data dictionary
+    
+  Returns:
+    List of CrawledFile objects with OpenAI and local file metadata
+  """
+  # Load domain configuration
+  domain_config = load_domain(storage_path, domain_id, log_data)
+  vector_store_id = domain_config.vector_store_id
+  
+  if not vector_store_id:
+    if log_data:
+      log_function_output(log_data, f"ERROR: Domain '{domain_id}' does not have a vector_store_id configured")
+    return []
+  
+  if log_data:
+    log_function_output(log_data, f"Loading files from vector store '{vector_store_id}' for domain '{domain_id}'...")
+  
+  # Get files from vector store with enriched metadata
+  vs_files_dict = await get_vector_store_files_with_filenames_as_dict(openai_client, vector_store_id)
+  
+  if log_data:
+    log_function_output(log_data, f"Retrieved {len(vs_files_dict)} files from vector store")
+  
+  # Load files metadata from domain folder
+  domain_folder = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER, domain_id)
+  files_metadata_path = os.path.join(domain_folder, "files_metadata.json")
+  
+  files_metadata_dict = {}
+  if os.path.exists(files_metadata_path):
+    with open(files_metadata_path, 'r', encoding='utf-8') as f:
+      files_metadata_list = json.load(f)
+      # Convert to dictionary with openai_file_id as key (v3) or file_id (v2)
+      files_metadata_dict = {item.get('openai_file_id', item.get('file_id', '')): item for item in files_metadata_list}
+  
+  # Convert to CrawledFile objects
+  crawled_files = []
+  for file_id, vs_file in vs_files_dict.items():
+    # Get metadata from files_metadata.json if available
+    # After v3 migration, metadata is flat (not nested under file_metadata)
+    file_metadata = files_metadata_dict.get(file_id, {})
+    
+    # Check if this is v2 format (nested) or v3 format (flat)
+    if 'file_metadata' in file_metadata:
+      # V2 format - nested structure
+      file_meta_info = file_metadata.get('file_metadata', {})
+      embedded_file_relative_path = file_metadata.get('embedded_file_relative_path', '')
+    else:
+      # V3 format - flat structure
+      file_meta_info = file_metadata
+      embedded_file_relative_path = file_metadata.get('file_relative_path', '')
+    
+    crawled_file = CrawledFile(
+      sharepoint_listitem_id=file_meta_info.get('sharepoint_listitem_id', 0),
+      sharepoint_unique_file_id=file_meta_info.get('sharepoint_unique_file_id', ''),
+      openai_file_id=file_id,
+      file_relative_path=embedded_file_relative_path,
+      url=file_meta_info.get('url', file_meta_info.get('source', '')),
+      raw_url=file_meta_info.get('raw_url', ''),
+      server_relative_url=file_meta_info.get('server_relative_url', ''),
+      filename=vs_file.filename,
+      file_type=file_meta_info.get('file_type', ''),
+      file_size=file_meta_info.get('file_size', 0),
+      last_modified_utc=file_meta_info.get('last_modified_utc', file_meta_info.get('last_modified', '')),
+      last_modified_timestamp=file_meta_info.get('last_modified_timestamp', 0)
+    )
+    
+    crawled_files.append(crawled_file)
+  
+  if log_data:
+    log_function_output(log_data, f"Converted {len(crawled_files)} vector store files to CrawledFile objects")
   
   return crawled_files

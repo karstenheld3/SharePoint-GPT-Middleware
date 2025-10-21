@@ -1,7 +1,7 @@
 # Common Open AI functions (COAI)
 # Copyright 2025, Karsten Held (MIT License)
 
-import datetime, os, time
+import datetime, os, time, asyncio
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Literal, Optional, Union
 
@@ -129,6 +129,33 @@ class CoaiFile:
   expires_at: Optional[int] = None
   status_details: Optional[str] = None
 
+# Replicate OpenAI Vector Store File types
+# https://github.com/openai/openai-python/blob/main/src/openai/types/vector_stores/vector_store_file.py
+@dataclass
+class CoaiLastError:
+  code: Literal["server_error", "unsupported_file", "invalid_file"]
+  message: str
+
+# Replicate OpenAI Vector Store File types
+# https://github.com/openai/openai-python/blob/main/src/openai/types/vector_stores/vector_store_file.py
+@dataclass
+class CoaiVectorStoreFile:
+  id: str
+  created_at: int
+  status: Literal["in_progress", "completed", "cancelled", "failed"]
+  usage_bytes: int
+  vector_store_id: str
+  # added from CoaiFile
+  filename: str
+  purpose: Literal["assistants", "assistants_output", "batch", "batch_output", "fine-tune", "fine-tune-results", "vision", "user_data"]
+  global_status: Literal["uploaded", "processed", "error"]
+  last_error: Optional[CoaiLastError] = None
+  attributes: Optional[Dict[str, Union[str, float, bool]]] = None
+  chunking_strategy: Optional[Dict[str, any]] = None
+  expires_at: Optional[int] = None
+  status_details: Optional[str] = None
+
+
 # Replicate OpenAI Assistant types
 # https://github.com/openai/openai-python/blob/main/src/openai/types/beta/assistant.py
 @dataclass
@@ -160,12 +187,12 @@ class CoaiAssistant:
   # Set of 16 key-value pairs that can be attached to an object.
   metadata: Optional[Dict[str, Union[str, float, bool]]] = None
 
-def create_async_openai_client(api_key):
+def create_async_openai_client(api_key) -> AsyncOpenAI:
   if not api_key:raise ValueError("OPENAI_API_KEY is required when OPENAI_SERVICE_TYPE is set to 'openai'")
   return AsyncOpenAI(api_key=api_key)
 
 # Create an async Azure OpenAI client using API key authentication
-def create_async_azure_openai_client_with_api_key(endpoint, api_version, api_key):
+def create_async_azure_openai_client_with_api_key(endpoint, api_version, api_key) -> AsyncAzureOpenAI:
   if not endpoint or not api_key:
     raise ValueError("AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY are required for Azure OpenAI key authentication")
   return AsyncAzureOpenAI(api_version=api_version, azure_endpoint=endpoint, api_key=api_key)
@@ -173,7 +200,7 @@ def create_async_azure_openai_client_with_api_key(endpoint, api_version, api_key
 # Create an async Azure OpenAI client with any AsyncTokenCredential
 # ClientSecretCredential(tenant_id=tenant_id, client_id=client_id, client_secret=client_secret)
 # DefaultAzureCredential(managed_identity_client_id=managed_identity_client_id)
-def create_async_azure_openai_client_with_credential(endpoint, api_version, credential: AsyncTokenCredential):
+def create_async_azure_openai_client_with_credential(endpoint, api_version, credential: AsyncTokenCredential) -> AsyncAzureOpenAI:
   if not endpoint:
     raise ValueError("AZURE_OPENAI_ENDPOINT is required for Azure OpenAI credential authentication")
   token_provider = get_bearer_token_provider(credential, "https://cognitiveservices.azure.com/.default")
@@ -295,15 +322,16 @@ async def get_search_results_using_search_api(openai_client, search_params: Coai
   return search_results, compatible_response
 
 # Tries to get the vector store by id and returns None if it fails
-async def try_get_vector_store_by_id(client, vsid):
+async def try_get_vector_store_by_id(client, vsid) -> Optional[CoaiVectorStore]:
   try:
-    return await client.vector_stores.retrieve(vsid)
+    vector_store = await client.vector_stores.retrieve(vsid)
+    return _convert_to_coai_vector_store(vector_store)
   except Exception as e:
     return None
 
 # Utility function to remove temperature parameter for reasoning models that don't support it
 # When reasoning model is used, it will add the reasoning effort if specified
-def remove_temperature_from_request_params_for_reasoning_models(request_params, model_name, reasoning_effort=None):
+def remove_temperature_from_request_params_for_reasoning_models(request_params, model_name, reasoning_effort=None) -> None:
   if (model_name.startswith('o') or model_name.startswith('gpt-5')) and 'temperature' in request_params:
     del request_params['temperature']
   
@@ -316,87 +344,182 @@ def remove_temperature_from_request_params_for_reasoning_models(request_params, 
 
 # ----------------------------------------------------- START: Vector stores --------------------------------------------------
 
-async def get_all_vector_stores(client):
+def _convert_to_coai_vector_store(vector_store) -> CoaiVectorStore:
+  """Convert OpenAI VectorStore to CoaiVectorStore dataclass."""
+  return CoaiVectorStore(
+    id=vector_store.id,
+    created_at=vector_store.created_at,
+    file_counts=CoaiFileCounts(
+      cancelled=vector_store.file_counts.cancelled,
+      completed=vector_store.file_counts.completed,
+      failed=vector_store.file_counts.failed,
+      in_progress=vector_store.file_counts.in_progress,
+      total=vector_store.file_counts.total
+    ),
+    name=vector_store.name,
+    status=vector_store.status,
+    usage_bytes=vector_store.usage_bytes,
+    last_active_at=vector_store.last_active_at,
+    metadata=vector_store.metadata,
+    expires_after=CoaiExpiresAfter(anchor=vector_store.expires_after.anchor, days=vector_store.expires_after.days) if vector_store.expires_after else None,
+    expires_at=vector_store.expires_at
+  )
+
+def _convert_to_coai_file(file) -> CoaiFile:
+  """Convert OpenAI File to CoaiFile dataclass."""
+  return CoaiFile(
+    id=file.id,
+    bytes=file.bytes,
+    created_at=file.created_at,
+    filename=file.filename,
+    purpose=file.purpose,
+    status=file.status,
+    expires_at=file.expires_at,
+    status_details=file.status_details
+  )
+
+def _convert_to_coai_vector_store_file(vs_file, global_file: Optional[CoaiFile] = None) -> CoaiVectorStoreFile:
+  """Convert OpenAI VectorStoreFile to CoaiVectorStoreFile dataclass with optional global file metadata."""
+  # Convert last_error if present
+  last_error = None
+  if hasattr(vs_file, 'last_error') and vs_file.last_error:
+    last_error = CoaiLastError(
+      code=vs_file.last_error.code,
+      message=vs_file.last_error.message
+    )
+  
+  return CoaiVectorStoreFile(
+    id=vs_file.id,
+    created_at=vs_file.created_at,
+    status=vs_file.status,
+    usage_bytes=vs_file.usage_bytes,
+    vector_store_id=vs_file.vector_store_id,
+    last_error=last_error,
+    attributes=getattr(vs_file, 'attributes', None),
+    chunking_strategy=getattr(vs_file, 'chunking_strategy', None),
+    # Add global file metadata
+    filename=global_file.filename if global_file else '',
+    purpose=global_file.purpose if global_file else 'assistants',
+    global_status=global_file.status if global_file else 'uploaded',
+    expires_at=global_file.expires_at if global_file else None,
+    status_details=global_file.status_details if global_file else None
+  )
+
+def _convert_to_coai_assistant(assistant) -> CoaiAssistant:
+  """Convert OpenAI Assistant to CoaiAssistant dataclass."""
+  # Convert tool_resources if present
+  tool_resources = None
+  if assistant.tool_resources:
+    code_interpreter = None
+    if assistant.tool_resources.code_interpreter:
+      code_interpreter = CoaiToolResourcesCodeInterpreter(file_ids=assistant.tool_resources.code_interpreter.file_ids)
+    
+    file_search = None
+    if assistant.tool_resources.file_search:
+      file_search = CoaiToolResourcesFileSearch(vector_store_ids=assistant.tool_resources.file_search.vector_store_ids)
+    
+    tool_resources = CoaiToolResources(code_interpreter=code_interpreter, file_search=file_search)
+  
+  # Convert tools to dict format
+  tools_list = None
+  if assistant.tools:
+    tools_list = []
+    for tool in assistant.tools:
+      if hasattr(tool, 'model_dump'):
+        tools_list.append(tool.model_dump())
+      elif hasattr(tool, '__dict__'):
+        tools_list.append(tool.__dict__)
+      else:
+        tools_list.append({"type": str(tool)})
+  
+  # Convert response_format to dict format
+  response_format_dict = None
+  if assistant.response_format:
+    if hasattr(assistant.response_format, 'model_dump'):
+      response_format_dict = assistant.response_format.model_dump()
+    elif hasattr(assistant.response_format, '__dict__'):
+      response_format_dict = assistant.response_format.__dict__
+    else:
+      response_format_dict = {"format": str(assistant.response_format)}
+  
+  return CoaiAssistant(
+    id=assistant.id,
+    created_at=assistant.created_at,
+    model=assistant.model,
+    name=assistant.name,
+    description=assistant.description,
+    instructions=assistant.instructions,
+    tools=tools_list,
+    tool_resources=tool_resources,
+    temperature=assistant.temperature,
+    top_p=assistant.top_p,
+    response_format=response_format_dict,
+    metadata=assistant.metadata
+  )
+
+async def get_all_vector_stores(client) -> List[CoaiVectorStore]:
   all_vector_stores = []
   # Use async iteration to get all vector stores
   async for vector_store in client.vector_stores.list():
-    coai_vector_store = CoaiVectorStore(
-      id=vector_store.id,
-      created_at=vector_store.created_at,
-      file_counts=CoaiFileCounts(cancelled=vector_store.file_counts.cancelled, completed=vector_store.file_counts.completed, failed=vector_store.file_counts.failed, in_progress=vector_store.file_counts.in_progress, total=vector_store.file_counts.total),
-      name=vector_store.name,
-      status=vector_store.status,
-      usage_bytes=vector_store.usage_bytes,
-      last_active_at=vector_store.last_active_at,
-      metadata=vector_store.metadata,
-      expires_after=CoaiExpiresAfter(anchor=vector_store.expires_after.anchor, days=vector_store.expires_after.days) if vector_store.expires_after else None,
-      expires_at=vector_store.expires_at
-    )
-    all_vector_stores.append(coai_vector_store)
+    all_vector_stores.append(_convert_to_coai_vector_store(vector_store))
   return all_vector_stores
 
-async def get_all_files(client):
+async def get_all_files(client) -> List[CoaiFile]:
   all_files = []
   # Use async iteration to get all files
   async for file in client.files.list():
-    coai_file = CoaiFile(id=file.id, bytes=file.bytes, created_at=file.created_at, filename=file.filename, purpose=file.purpose, status=file.status, expires_at=file.expires_at, status_details=file.status_details)
-    all_files.append(coai_file)
+    all_files.append(_convert_to_coai_file(file))
   return all_files
 
-async def get_all_assistants(client):
+async def get_all_files_as_dict(client) -> Dict[str, CoaiFile]:
+  """Get all files as a dictionary with file_id as key."""
+  all_files_dict = {}
+  # Use async iteration to get all files
+  async for file in client.files.list():
+    coai_file = _convert_to_coai_file(file)
+    all_files_dict[coai_file.id] = coai_file
+  return all_files_dict
+
+async def get_all_assistants(client) -> List[CoaiAssistant]:
   all_assistants = []
   # Use async iteration to get all assistants
   async for assistant in client.beta.assistants.list():
-    # Convert tool_resources if present
-    tool_resources = None
-    if assistant.tool_resources:
-      code_interpreter = None
-      if assistant.tool_resources.code_interpreter:
-        code_interpreter = CoaiToolResourcesCodeInterpreter(file_ids=assistant.tool_resources.code_interpreter.file_ids)
-      
-      file_search = None
-      if assistant.tool_resources.file_search:
-        file_search = CoaiToolResourcesFileSearch(vector_store_ids=assistant.tool_resources.file_search.vector_store_ids)
-      
-      tool_resources = CoaiToolResources(code_interpreter=code_interpreter, file_search=file_search)
-    
-    # Convert tools to dict format
-    tools_list = None
-    if assistant.tools:
-      tools_list = []
-      for tool in assistant.tools:
-        if hasattr(tool, 'model_dump'):
-          tools_list.append(tool.model_dump())
-        elif hasattr(tool, '__dict__'):
-          tools_list.append(tool.__dict__)
-        else:
-          tools_list.append({"type": str(tool)})
-    
-    # Convert response_format to dict format
-    response_format_dict = None
-    if assistant.response_format:
-      if hasattr(assistant.response_format, 'model_dump'):
-        response_format_dict = assistant.response_format.model_dump()
-      elif hasattr(assistant.response_format, '__dict__'):
-        response_format_dict = assistant.response_format.__dict__
-      else:
-        response_format_dict = {"format": str(assistant.response_format)}
-    
-    coai_assistant = CoaiAssistant(
-      id=assistant.id,
-      created_at=assistant.created_at,
-      model=assistant.model,
-      name=assistant.name,
-      description=assistant.description,
-      instructions=assistant.instructions,
-      tools=tools_list,
-      tool_resources=tool_resources,
-      temperature=assistant.temperature,
-      top_p=assistant.top_p,
-      response_format=response_format_dict,
-      metadata=assistant.metadata
-    )
-    all_assistants.append(coai_assistant)
+    all_assistants.append(_convert_to_coai_assistant(assistant))
   return all_assistants
+
+async def get_vector_store_files_with_filenames_as_dict(client, vector_store_id: str) -> Dict[str, CoaiVectorStoreFile]:
+  """
+  Get all files from a vector store and add attributes from the global files list.
+  
+  This async function retrieves all files in a vector store and enriches them with
+  metadata (filename, bytes, purpose, created_at) from the global files list.
+  
+  Args:
+    client: AsyncAzureOpenAI or AsyncOpenAI client
+    vector_store_id: ID of the vector store to retrieve files from
+    
+  Returns:
+    Dictionary with file_id as key and CoaiVectorStoreFile objects as values
+  """
+  # Get vector store files and global files in parallel for better performance
+  async def get_vs_files_dict():
+    vs_files_dict = {}
+    async for file in client.vector_stores.files.list(vector_store_id=vector_store_id):
+      file_id = getattr(file, 'id', None)
+      if file_id:
+        vs_files_dict[file_id] = file
+    return vs_files_dict
+  
+  vector_store_files_dict, global_files_dict = await asyncio.gather( get_vs_files_dict(), get_all_files_as_dict(client) )
+  
+  # Enrich vector store files with global file metadata and create dictionary
+  files_with_filenames_dict = {}
+  for file_id, vs_file in vector_store_files_dict.items():
+    # Get global file metadata if available
+    global_file = global_files_dict.get(file_id)
+    # Convert using helper function and add to dictionary
+    files_with_filenames_dict[file_id] = _convert_to_coai_vector_store_file(vs_file, global_file)
+  
+  return files_with_filenames_dict
   
 # ----------------------------------------------------- END: Vector stores ----------------------------------------------------

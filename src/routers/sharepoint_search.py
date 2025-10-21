@@ -129,9 +129,19 @@ def build_domains_and_metadata_cache(config, system_info, initialization_errors)
           files_metadata = json.loads(file_content)
           files_added = 0
           for file_data in files_metadata:
-            if 'file_id' in file_data and 'file_metadata' in file_data:
-              metadata_cache[file_data['file_id']] = file_data['file_metadata']
-              files_added += 1
+            # Handle both v2 format (file_id + nested file_metadata) and v3 format (openai_file_id + flat)
+            if 'file_metadata' in file_data:
+              # V2 format - nested structure
+              file_id = file_data.get('file_id', '')
+              if file_id:
+                metadata_cache[file_id] = file_data['file_metadata']
+                files_added += 1
+            elif 'openai_file_id' in file_data:
+              # V3 format - flat structure
+              file_id = file_data.get('openai_file_id', '')
+              if file_id:
+                metadata_cache[file_id] = file_data
+                files_added += 1
           log_function_output(log_data, f"Added {files_added} file metadata entries from {domain_folder_name}")
         except json.JSONDecodeError as e:
           error_msg = f"Invalid JSON in files_metadata.json for {domain_folder_name}: {str(e)} (file size: {os.path.getsize(files_metadata_json_path)} bytes, first 100 chars: {file_content[:100]!r})"
