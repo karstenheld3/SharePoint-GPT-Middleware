@@ -12,6 +12,12 @@ A FastAPI-based middleware application that bridges SharePoint content with Open
 - **Flexible Authentication**: Support for Azure OpenAI (key, managed identity, service principal) and OpenAI API
 - **Persistent Storage**: Organized file structure for crawled content and metadata (see [PERSISTENT_STORAGE_STRUCTURE.md](PERSISTENT_STORAGE_STRUCTURE.md))
 
+## Documentation
+
+- **[PERSISTENT_STORAGE_STRUCTURE.md](PERSISTENT_STORAGE_STRUCTURE.md)** - Detailed folder structure and file formats
+- **[DATA_SOURCES.md](DATA_SOURCES.md)** - Data flow between SharePoint, local files, and vector stores
+- **[SECURE_AZURE_APP_SERVICE.md](SECURE_AZURE_APP_SERVICE.md)** - Azure App Service security configuration
+
 ## Architecture
 
 ### Application Structure
@@ -22,6 +28,7 @@ src/
 ├── hardcoded_config.py             # Configuration constants
 ├── common_openai_functions.py      # OpenAI client utilities
 ├── common_crawler_functions.py     # SharePoint crawler utilities
+├── common_sharepoint_functions.py  # SharePoint access utilities
 ├── utils.py                        # Helper functions
 └── routers/
     ├── openai_proxy.py             # OpenAI API proxy endpoints
@@ -351,4 +358,5 @@ See [LICENSE](LICENSE) file for details.
 ## Related Documentation
 
 - **[PERSISTENT_STORAGE_STRUCTURE.md](PERSISTENT_STORAGE_STRUCTURE.md)** - Detailed storage structure documentation
+- **[DATA_SOURCES.md](DATA_SOURCES.md)** - Data flow between SharePoint, local files, and vector stores
 - **[SecureAzureAppService.md](SecureAzureAppService.md)** - Azure App Service security configuration
