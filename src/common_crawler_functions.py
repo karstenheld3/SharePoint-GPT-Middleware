@@ -1,12 +1,12 @@
 # Common functions and dataclasses for SharePoint crawler
-import json, os, zipfile, datetime, csv, shutil
+import asyncio, csv, datetime, json, os, shutil, zipfile
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from utils import log_function_output, normalize_long_path
 from common_sharepoint_functions import connect_to_site_using_client_id_and_certificate, try_get_document_library, get_document_library_files
-from common_openai_functions import get_vector_store_files_with_filenames_as_dict
+from common_openai_functions import get_vector_store_files_with_filenames_as_dict, create_vector_store, try_get_vector_store_by_id, replicate_vector_store_content
 
 @dataclass
 class FileSource:
@@ -466,6 +466,8 @@ def load_files_from_sharepoint_source( system_info, domain_id: str, source_id: s
     # Construct file_relative_path: domain_id/01_files/source_id/02_embedded/relative_path
     # Extract relative path from server_relative_url by removing the site path and sharepoint_url_part
     relative_from_library = sp_file.server_relative_url.replace(site_path, '').replace(file_source.sharepoint_url_part, '').lstrip('/')
+    # Convert forward slashes to backslashes for Windows file paths
+    relative_from_library = relative_from_library.replace('/', '\\')
     file_relative_path = os.path.join(
       domain_id,
       CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOCUMENTS_FOLDER,
@@ -650,7 +652,7 @@ async def load_vector_store_files_as_crawled_files(openai_client, storage_path: 
   
   # Load files metadata from domain folder
   domain_folder = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER, domain_id)
-  files_metadata_path = os.path.join(domain_folder, "files_metadata.json")
+  files_metadata_path = os.path.join(domain_folder, CRAWLER_HARDCODED_CONFIG.FILE_METADATA_JSON)
   
   files_metadata_dict = {}
   if os.path.exists(files_metadata_path):
@@ -832,9 +834,9 @@ def download_files_from_sharepoint(system_info, domain_id: str, source_id: str, 
   os.makedirs(files_base_path, exist_ok=True)
   
   # CSV file paths
-  sharepoint_map_path = os.path.join(files_base_path, "sharepoint_map.csv")
+  sharepoint_map_path = os.path.join(files_base_path, CRAWLER_HARDCODED_CONFIG.SHAREPOINT_MAP_CSV)
   files_map_path = os.path.join(files_base_path, "files_map.csv")
-  sharepoint_error_map_path = os.path.join(files_base_path, "sharepoint_error_map.csv")
+  sharepoint_error_map_path = os.path.join(files_base_path, CRAWLER_HARDCODED_CONFIG.SHAREPOINT_ERROR_MAP_CSV)
   
   # Define CSV file configurations (path, header)
   map_file_headers = [
@@ -1085,5 +1087,278 @@ def download_files_from_sharepoint(system_info, domain_id: str, source_id: str, 
   log_function_output(request_data, f"Total files in SharePoint (unsupported): {results['total_files_in_sharepoint_unsupported']}")
   log_function_output(request_data, f"Total files downloaded: {results['total_files_downloaded']}")
   log_function_output(request_data, f"Total files failed: {results['total_files_failed']}")
+  
+  return results
+
+
+async def update_vector_store(system_info, openai_client, domain_id: str, temp_vs_only: bool, request_data: Dict[str, Any] = None) -> Dict[str, Any]:
+  """
+  Update vector store with files from local storage.
+  
+  Args:
+    system_info: System information containing PERSISTENT_STORAGE_PATH
+    openai_client: Async OpenAI client
+    domain_id: The ID of the domain to process
+    temp_vs_only: If False, replicate temp VS to domain VS
+    request_data: Optional logging context
+    
+  Returns:
+    Dictionary with results
+  """
+  storage_path = system_info.PERSISTENT_STORAGE_PATH
+  results = {'domain_id': domain_id, 'temp_vs_only': temp_vs_only, 'files_uploaded': 0, 'files_failed': 0, 'failed_files': []}
+  
+  # Load domain configuration
+  log_function_output(request_data, f"Loading domain '{domain_id}'...")
+  domain = load_domain(storage_path, domain_id, request_data)
+  
+  # Check if domain vector store exists, create if needed
+  log_function_output(request_data, f"Checking domain vector store...")
+  domain_vs = None
+  if domain.vector_store_id:
+    domain_vs = await try_get_vector_store_by_id(openai_client, domain.vector_store_id)
+  
+  if not domain_vs:
+    log_function_output(request_data, f"Domain vector store not found, creating new one...")
+    domain_vs = await create_vector_store(openai_client, domain.vector_store_name)
+    domain.vector_store_id = domain_vs.id
+    # Update domain.json with new vector_store_id
+    domain_json_path = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER, domain_id, "domain.json")
+    with open(domain_json_path, 'r', encoding='utf-8') as f:
+      domain_data = json.load(f)
+    domain_data['vector_store_id'] = domain_vs.id
+    with open(domain_json_path, 'w', encoding='utf-8') as f:
+      json.dump(domain_data, f, indent=2, ensure_ascii=False)
+    log_function_output(request_data, f"Created domain vector store: {domain_vs.id}")
+  else:
+    log_function_output(request_data, f"Domain vector store found: {domain_vs.id}")
+  
+  results['domain_vector_store_id'] = domain_vs.id
+  
+  # Create temporary vector store
+  now = datetime.datetime.now()
+  temp_vs_name = f"{domain.vector_store_name}_{now.strftime('%Y-%m-%d_%H:%M')}"
+  log_function_output(request_data, f"Creating temporary vector store '{temp_vs_name}'...")
+  temp_vs = await create_vector_store(openai_client, temp_vs_name)
+  log_function_output(request_data, f"Created temporary vector store: {temp_vs.id}")
+  
+  results['temporary_vector_store_id'] = temp_vs.id
+  results['temporary_vector_store_name'] = temp_vs_name
+  
+  # Collect files from embedded folders
+  crawler_path = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_CRAWLER_SUBFOLDER, domain_id)
+  
+  # Define content type folders
+  content_folders = [(CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOCUMENTS_FOLDER, "files"), (CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_LISTS_FOLDER, "lists"), (CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_SITEPAGES_FOLDER, "sitepages")]
+  
+  # Prepare CSV file paths
+  domains_path = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER, domain_id)
+  vectorstore_map_csv = os.path.join(domains_path, CRAWLER_HARDCODED_CONFIG.VECTOR_STORE_MAP_CSV)
+  files_map_csv = os.path.join(domains_path, CRAWLER_HARDCODED_CONFIG.FILE_MAP_CSV)
+  files_failed_map_csv = os.path.join(domains_path, CRAWLER_HARDCODED_CONFIG.FILE_FAILED_MAP_CSV)
+  
+  # Delete existing vectorstore_map.csv
+  if os.path.exists(vectorstore_map_csv):
+    os.remove(vectorstore_map_csv)
+    log_function_output(request_data, f"Deleted existing vectorstore_map.csv")
+  
+  # Create new vectorstore_map.csv with headers
+  with open(vectorstore_map_csv, 'w', newline='', encoding='utf-8') as f:
+    writer = csv.writer(f)
+    writer.writerow(['openai_file_id', 'file_relative_path', 'file_size', 'last_modified_utc', 'last_modified_timestamp'])
+  
+  # Load existing files_map.csv if exists
+  files_to_keep = []
+  if os.path.exists(files_map_csv):
+    with open(files_map_csv, 'r', encoding='utf-8') as f:
+      reader = csv.DictReader(f)
+      files_to_keep = list(reader)
+  
+  # Upload files and track results
+  total_uploaded = 0
+  total_failed = 0
+  failed_files_list = []
+  
+  for content_folder, content_type in content_folders:
+    content_path = os.path.join(crawler_path, content_folder)
+    if not os.path.exists(content_path): continue
+    
+    # Get all source_id folders
+    for source_id in os.listdir(content_path):
+      source_path = os.path.join(content_path, source_id)
+      if not os.path.isdir(source_path): continue
+      
+      embedded_path = os.path.join(source_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_EMBEDDED_SUBFOLDER)
+      if not os.path.exists(embedded_path): continue
+      
+      log_function_output(request_data, f"Processing {content_type}/{source_id}...")
+      
+      # Walk through all files in embedded folder
+      for root, dirs, files in os.walk(embedded_path):
+        for filename in files:
+          file_path = os.path.join(root, filename)
+          
+          # Check if file type is supported
+          file_ext = os.path.splitext(filename)[1].lstrip('.').lower()
+          if file_ext not in CRAWLER_HARDCODED_CONFIG.DEFAULT_FILETYPES_ACCEPTED_BY_VECTOR_STORES: continue
+          
+          # Get file metadata
+          file_size = os.path.getsize(file_path)
+          mod_timestamp = os.path.getmtime(file_path)
+          mod_datetime = datetime.datetime.fromtimestamp(mod_timestamp)
+          last_modified_utc = mod_datetime.astimezone(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+          last_modified_timestamp = int(mod_timestamp)
+          
+          # Calculate relative path
+          file_relative_path = os.path.relpath(file_path, os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_CRAWLER_SUBFOLDER))
+          
+          try:
+            # Upload file to OpenAI
+            with open(file_path, 'rb') as f:
+              uploaded_file = await openai_client.files.create(file=f, purpose="assistants")
+            
+            # Add file to vector store
+            await openai_client.vector_stores.files.create(vector_store_id=temp_vs.id, file_id=uploaded_file.id)
+            
+            # Add to vectorstore_map.csv
+            with open(vectorstore_map_csv, 'a', newline='', encoding='utf-8') as f:
+              writer = csv.writer(f)
+              writer.writerow([uploaded_file.id, file_relative_path, file_size, last_modified_utc, last_modified_timestamp])
+            
+            total_uploaded += 1
+            log_function_output(request_data, f"  OK: Uploaded file ID={uploaded_file.id} '{filename}'")
+            
+          except Exception as e:
+            total_failed += 1
+            failed_files_list.append({'file_path': file_path, 'file_relative_path': file_relative_path, 'error': str(e)})
+            log_function_output(request_data, f"  FAIL: Upload '{filename}' - {str(e)}")
+            
+            # Move failed file to 03_failed folder
+            failed_folder = os.path.join(source_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_FAILED_SUBFOLDER)
+            os.makedirs(failed_folder, exist_ok=True)
+            relative_to_embedded = os.path.relpath(file_path, embedded_path)
+            failed_file_path = os.path.join(failed_folder, relative_to_embedded)
+            os.makedirs(os.path.dirname(failed_file_path), exist_ok=True)
+            if os.path.exists(failed_file_path): os.remove(failed_file_path)
+            os.rename(file_path, failed_file_path)
+  
+  log_function_output(request_data, f"Upload complete: {total_uploaded} uploaded, {total_failed} failed")
+  
+  # Wait for files to process and check for additional failures
+  log_function_output(request_data, f"Waiting for vector store processing...")
+  max_wait_time = 300  # 5 minutes
+  wait_interval = 10
+  elapsed_time = 0
+  
+  while elapsed_time < max_wait_time:
+    temp_vs_refreshed = await openai_client.vector_stores.retrieve(temp_vs.id)
+    in_progress = temp_vs_refreshed.file_counts.in_progress
+    if in_progress == 0: break
+    log_function_output(request_data, f"  {in_progress} files still processing...")
+    await asyncio.sleep(wait_interval)
+    elapsed_time += wait_interval
+  
+  # Check for failed files in vector store
+  log_function_output(request_data, f"Checking for failed files in vector store...")
+  vs_failed_files = []
+  async for vs_file in openai_client.vector_stores.files.list(vector_store_id=temp_vs.id):
+    if getattr(vs_file, 'status', None) == 'failed':
+      vs_failed_files.append(vs_file)
+  
+  if vs_failed_files:
+    log_function_output(request_data, f"Found {len(vs_failed_files)} failed files in vector store")
+    
+    # Load vectorstore_map to find file paths
+    vectorstore_map = {}
+    with open(vectorstore_map_csv, 'r', encoding='utf-8') as f:
+      reader = csv.DictReader(f)
+      for row in reader:
+        vectorstore_map[row['openai_file_id']] = row
+    
+    for vs_file in vs_failed_files:
+      file_id = vs_file.id
+      
+      # Delete from vector store and global storage
+      try: await openai_client.vector_stores.files.delete(vector_store_id=temp_vs.id, file_id=file_id)
+      except: pass
+      try: await openai_client.files.delete(file_id=file_id)
+      except: pass
+      
+      # Find file path from vectorstore_map
+      if file_id in vectorstore_map:
+        file_relative_path = vectorstore_map[file_id]['file_relative_path']
+        file_path = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_CRAWLER_SUBFOLDER, file_relative_path)
+        
+        # Move to failed folder
+        if os.path.exists(file_path):
+          path_parts = file_relative_path.split(os.sep)
+          content_folder = path_parts[1]  # e.g., "01_files"
+          source_id = path_parts[2]  # e.g., "source01"
+          relative_file = os.sep.join(path_parts[4:])  # After "02_embedded"
+          
+          failed_folder = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_CRAWLER_SUBFOLDER, path_parts[0], content_folder, source_id, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_FAILED_SUBFOLDER)
+          os.makedirs(failed_folder, exist_ok=True)
+          failed_file_path = os.path.join(failed_folder, relative_file)
+          os.makedirs(os.path.dirname(failed_file_path), exist_ok=True)
+          if os.path.exists(failed_file_path): os.remove(failed_file_path)
+          os.rename(file_path, failed_file_path)
+        
+        # Remove from vectorstore_map.csv (will be rewritten without this entry)
+        del vectorstore_map[file_id]
+        
+        # Remove from files_map.csv (use file_relative_path as key)
+        files_to_keep = [f for f in files_to_keep if f.get('file_relative_path') != file_relative_path]
+        
+        # Add to files_failed_map.csv (only if not already present, use file_relative_path as key)
+        # Check if file already exists in failed map
+        file_already_in_failed_map = False
+        if os.path.exists(files_failed_map_csv):
+          with open(files_failed_map_csv, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+              if row.get('file_relative_path') == file_relative_path:
+                file_already_in_failed_map = True
+                break
+        
+        if not file_already_in_failed_map:
+          # Create file with headers if it doesn't exist (replicate columns from files_map.csv if it exists)
+          if not os.path.exists(files_failed_map_csv):
+            with open(files_failed_map_csv, 'w', newline='', encoding='utf-8') as f:
+              writer = csv.writer(f)
+              # Use standard columns that match the data we have available
+              writer.writerow(['file_relative_path', 'filename', 'file_size', 'last_modified_utc', 'error'])
+          
+          # Add failed file entry
+          with open(files_failed_map_csv, 'a', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            error_msg = getattr(vs_file.last_error, 'message', 'Unknown error') if vs_file.last_error else 'Unknown error'
+            writer.writerow([file_relative_path, os.path.basename(file_path), vectorstore_map[file_id]['file_size'], vectorstore_map[file_id]['last_modified_utc'], error_msg])
+    
+    # Rewrite vectorstore_map.csv without failed files
+    with open(vectorstore_map_csv, 'w', newline='', encoding='utf-8') as f:
+      writer = csv.writer(f)
+      writer.writerow(['openai_file_id', 'file_relative_path', 'file_size', 'last_modified_utc', 'last_modified_timestamp'])
+      for file_id, row in vectorstore_map.items():
+        writer.writerow([file_id, row['file_relative_path'], row['file_size'], row['last_modified_utc'], row['last_modified_timestamp']])
+    
+    # Save updated files_map.csv
+    if files_to_keep:
+      with open(files_map_csv, 'w', newline='', encoding='utf-8') as f:
+        # Get column names from first item
+        fieldnames = files_to_keep[0].keys()
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(files_to_keep)
+  
+  results['files_uploaded'] = total_uploaded
+  results['files_failed'] = total_failed + len(vs_failed_files)
+  results['failed_files'] = failed_files_list + [{'file_id': f.id, 'error': getattr(f.last_error, 'message', 'Unknown') if f.last_error else 'Unknown'} for f in vs_failed_files]
+  
+  # Replicate to domain vector store if temp_vs_only is False
+  if not temp_vs_only:
+    log_function_output(request_data, f"Replicating temporary vector store to domain vector store...")
+    added_files, removed_files, errors = await replicate_vector_store_content(openai_client, temp_vs.id, domain_vs.id, remove_target_files_not_in_source=True)
+    log_function_output(request_data, f"Replication complete: {len(added_files)} added, {len(removed_files)} removed, {len(errors)} errors")
+    results['replication'] = {'added': len(added_files), 'removed': len(removed_files), 'errors': len(errors)}
   
   return results

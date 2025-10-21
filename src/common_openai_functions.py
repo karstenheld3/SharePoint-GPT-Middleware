@@ -521,5 +521,114 @@ async def get_vector_store_files_with_filenames_as_dict(client, vector_store_id:
     files_with_filenames_dict[file_id] = _convert_to_coai_vector_store_file(vs_file, global_file)
   
   return files_with_filenames_dict
+
+async def create_vector_store(client: AsyncAzureOpenAI | AsyncOpenAI, vector_store_name: str, chunk_size: int = 4096, chunk_overlap: int = 2048) -> CoaiVectorStore:
+  """Create a new vector store with specified chunking strategy (async).
+  
+  Args:
+    client: Async OpenAI client
+    vector_store_name: Name of the vector store to create
+    chunk_size: Maximum chunk size in tokens (default: 4096)
+    chunk_overlap: Chunk overlap in tokens (default: 2048)
+  
+  Returns:
+    CoaiVectorStore object
+  """
+  chunking_strategy = {"type": "static", "static": {"max_chunk_size_tokens": chunk_size, "chunk_overlap_tokens": chunk_overlap}}
+  vector_store = await client.vector_stores.create(name=vector_store_name, chunking_strategy=chunking_strategy)
+  return _convert_to_coai_vector_store(vector_store)
+
+async def try_get_vector_store_by_id(client: AsyncAzureOpenAI | AsyncOpenAI, vector_store_id: str) -> Optional[CoaiVectorStore]:
+  """Try to get a vector store by ID (async). Returns None if not found.
+  
+  Args:
+    client: Async OpenAI client
+    vector_store_id: ID of the vector store
+  
+  Returns:
+    CoaiVectorStore object or None if not found
+  """
+  if not vector_store_id: return None
+  try:
+    vector_store = await client.vector_stores.retrieve(vector_store_id)
+    return _convert_to_coai_vector_store(vector_store)
+  except Exception as e:
+    return None
+
+async def replicate_vector_store_content(client: AsyncAzureOpenAI | AsyncOpenAI, source_vector_store_ids: str | list[str], target_vector_store_ids: str | list[str], remove_target_files_not_in_sources: bool = False) -> tuple[list, list, list]:
+  """Replicate files from source to target vector stores (async).
+  
+  Args:
+    client: Async OpenAI client
+    source_vector_store_ids: Source vector store ID(s) - string or list of strings
+    target_vector_store_ids: Target vector store ID(s) - string or list of strings
+    remove_target_files_not_in_sources: If True, remove files from target that don't exist in sources
+  
+  Returns:
+    Tuple of (added_file_ids, removed_file_ids, errors) where:
+      - added_file_ids: List of lists of file IDs successfully added to each target store
+      - removed_file_ids: List of lists of file IDs removed from each target store
+      - errors: List of lists of (file_id, error_message) tuples for failed operations
+  """
+  # Check if source_vector_store_ids or target_vector_store_ids is string and if yes, create list with single entry
+  if isinstance(source_vector_store_ids, str): source_vector_store_ids = [source_vector_store_ids]
+  if isinstance(target_vector_store_ids, str): target_vector_store_ids = [target_vector_store_ids]
+  
+  collected_file_ids_and_source_vector_stores = []; added_file_ids = []; removed_file_ids = []; errors = []
+  
+  # Collect files from all source vector stores
+  for source_vs_id in source_vector_store_ids:
+    source_vs = await try_get_vector_store_by_id(client, source_vs_id)
+    if not source_vs: continue
+    source_vs_name = getattr(source_vs, 'name', source_vs_id)
+    
+    # Get source files
+    source_file_ids = []
+    async for file in client.vector_stores.files.list(vector_store_id=source_vs_id):
+      if getattr(file, 'id', None): source_file_ids.append(file.id)
+    
+    collected_file_ids_and_source_vector_stores.extend([(file_id, source_vs) for file_id in source_file_ids])
+  
+  # Process each target vector store
+  for i, target_vs_id in enumerate(target_vector_store_ids):
+    target_vs = await try_get_vector_store_by_id(client, target_vs_id)
+    if not target_vs: continue
+    target_vs_name = getattr(target_vs, 'name', target_vs_id)
+    
+    # Get target files
+    target_file_ids = []
+    async for file in client.vector_stores.files.list(vector_store_id=target_vs_id):
+      if getattr(file, 'id', None): target_file_ids.append(file.id)
+    
+    # Find out which files are not in target
+    file_ids_missing_in_target_vs = [(file_id, source_vs) for (file_id, source_vs) in collected_file_ids_and_source_vector_stores if file_id not in target_file_ids]
+    file_ids_in_target_but_not_in_collected_files = [file_id for file_id in target_file_ids if file_id not in [f[0] for f in collected_file_ids_and_source_vector_stores]]
+    
+    added_target_file_ids = []; removed_target_file_ids = []; target_errors = []
+    
+    # Add files to target
+    for j, (file_id, source_vs) in enumerate(file_ids_missing_in_target_vs):
+      source_vs_name = getattr(source_vs, 'name', source_vs.id)
+      try:
+        await client.vector_stores.files.create(vector_store_id=target_vs_id, file_id=file_id)
+        added_target_file_ids.append((file_id, source_vs))
+      except Exception as e:
+        target_errors.append((file_id, f"FAILED: Add file ID='{file_id}' from '{source_vs_name}' to vector store '{target_vs_name}': {str(e)}"))
+    
+    # Remove files not in source
+    if remove_target_files_not_in_sources and len(file_ids_in_target_but_not_in_collected_files) > 0:
+      for j, file_id in enumerate(file_ids_in_target_but_not_in_collected_files):
+        try:
+          await client.vector_stores.files.delete(vector_store_id=target_vs_id, file_id=file_id)
+          removed_target_file_ids.append(file_id)
+        except Exception as e:
+          target_errors.append((file_id, f"FAILED: Remove file ID='{file_id}' from vector store '{target_vs_name}': {str(e)}"))
+    
+    # Add to return values
+    added_file_ids.append(added_target_file_ids)
+    removed_file_ids.append(removed_target_file_ids)
+    errors.append(target_errors)
+  
+  return (added_file_ids, removed_file_ids, errors)
   
 # ----------------------------------------------------- END: Vector stores ----------------------------------------------------
