@@ -60,7 +60,7 @@ def build_domains_and_metadata_cache(config, system_info, initialization_errors)
       log_function_output(log_data, f"Processing domain folder: {domain_folder_name}")
       
       # Load domain.json
-      domain_json_path = os.path.join(domain_folder_path, "domain.json")
+      domain_json_path = os.path.join(domain_folder_path, CRAWLER_HARDCODED_CONFIG.DOMAIN_JSON)
       if os.path.exists(domain_json_path):
         file_content = None
         try:
@@ -103,7 +103,7 @@ def build_domains_and_metadata_cache(config, system_info, initialization_errors)
           initialization_errors.append({"component": "SharePoint Data Loading", "error": error_msg})
       
       # Load files_metadata.json
-      files_metadata_json_path = os.path.join(domain_folder_path, CRAWLER_HARDCODED_CONFIG.FILE_METADATA_JSON)
+      files_metadata_json_path = os.path.join(domain_folder_path, CRAWLER_HARDCODED_CONFIG.FILES_METADATA_JSON)
       if os.path.exists(files_metadata_json_path):
         file_content = None
         try:

@@ -83,7 +83,7 @@ def load_domain(storage_path: str, domain_id: str, log_data: Dict[str, Any] = No
     ValueError: If domain data is invalid
   """
   domains_path = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER)
-  domain_json_path = os.path.join(domains_path, domain_id, "domain.json")
+  domain_json_path = os.path.join(domains_path, domain_id, CRAWLER_HARDCODED_CONFIG.DOMAIN_JSON)
   
   if log_data:
     log_function_output(log_data, f"Loading domain '{domain_id}' from: {domain_json_path}")
@@ -324,7 +324,7 @@ def save_domain_to_file(storage_path: str, domain_config: DomainConfig, log_data
   """
   domains_path = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER)
   domain_folder = os.path.join(domains_path, domain_config.domain_id)
-  domain_json_path = os.path.join(domain_folder, "domain.json")
+  domain_json_path = os.path.join(domain_folder, CRAWLER_HARDCODED_CONFIG.DOMAIN_JSON)
   
   # Create domain folder if it doesn't exist
   os.makedirs(domain_folder, exist_ok=True)
@@ -652,7 +652,7 @@ async def load_vector_store_files_as_crawled_files(openai_client, storage_path: 
   
   # Load files metadata from domain folder
   domain_folder = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER, domain_id)
-  files_metadata_path = os.path.join(domain_folder, CRAWLER_HARDCODED_CONFIG.FILE_METADATA_JSON)
+  files_metadata_path = os.path.join(domain_folder, CRAWLER_HARDCODED_CONFIG.FILES_METADATA_JSON)
   
   files_metadata_dict = {}
   if os.path.exists(files_metadata_path):
@@ -869,13 +869,13 @@ def download_files_from_sharepoint(system_info, domain_id: str, source_id: str, 
           writer.writerow(header)
           writer.writerows(rows_to_keep)
         
-        log_function_output(request_data, f"Removed entries for source_id='{source_id}' from {os.path.basename(csv_path)}")
+        log_function_output(request_data, f"  Removed entries for source_id='{source_id}' from '{os.path.basename(csv_path)}'")
       else:
         # Create new file with header
         with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
           writer = csv.writer(csvfile)
           writer.writerow(header)
-        log_function_output(request_data, f"Created: {csv_path}")
+        log_function_output(request_data, f"  Created: '{csv_path}'")
   else:
     # If no source_id specified, delete all CSV files
     log_function_output(request_data, "Deleting all existing CSV files...")
@@ -883,13 +883,13 @@ def download_files_from_sharepoint(system_info, domain_id: str, source_id: str, 
     for csv_path, header in map_file_headers:
       if os.path.exists(csv_path):
         os.remove(csv_path)
-        log_function_output(request_data, f"Deleted: {os.path.basename(csv_path)}")
+        log_function_output(request_data, f"  Deleted: {os.path.basename(csv_path)}")
       
       # Create new file with header
       with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(header)
-      log_function_output(request_data, f"Created: {csv_path}")
+      log_function_output(request_data, f"  Created: {csv_path}")
   
   # Initialize results
   results = {
@@ -924,37 +924,32 @@ def download_files_from_sharepoint(system_info, domain_id: str, source_id: str, 
     
     # Clean the download folders before downloading
     if os.path.exists(local_embedded_path):
-      log_function_output(request_data, f"Cleaning embedded folder: {local_embedded_path}")
+      log_function_output(request_data, f"  Cleaning embedded folder: {local_embedded_path}")
       shutil.rmtree(local_embedded_path)
-      log_function_output(request_data, f"Cleaned embedded folder")
     
     if os.path.exists(local_failed_path):
-      log_function_output(request_data, f"Cleaning failed folder: {local_failed_path}")
+      log_function_output(request_data, f"  Cleaning failed folder: {local_failed_path}")
       shutil.rmtree(local_failed_path)
-      log_function_output(request_data, f"Cleaned failed folder")
     
     # Create fresh download folders
     os.makedirs(local_embedded_path, exist_ok=True)
-    log_function_output(request_data, f"Created embedded folder: {local_embedded_path}")
+    log_function_output(request_data, f"  Created embedded folder: '{local_embedded_path}'")
     
     os.makedirs(local_failed_path, exist_ok=True)
-    log_function_output(request_data, f"Created failed folder: {local_failed_path}")
+    log_function_output(request_data, f"  Created failed folder: '{local_failed_path}'")
     
     # Load files from SharePoint
-    log_function_output(request_data, "Loading files from SharePoint...")
+    log_function_output(request_data, "  Loading files from SharePoint...")
     sharepoint_files = load_files_from_sharepoint_source(system_info, domain_id, file_source.source_id, request_data, config)
-    log_function_output(request_data, f"Loaded {len(sharepoint_files)} files from SharePoint")
+    log_function_output(request_data, f"  {len(sharepoint_files)} files loaded")
     
     # Filter files by accepted file types
     supported_files = [f for f in sharepoint_files if f.file_type.lower() in CRAWLER_HARDCODED_CONFIG.DEFAULT_FILETYPES_ACCEPTED_BY_VECTOR_STORES]
     unsupported_count = len(sharepoint_files) - len(supported_files)
     
-    log_function_output(request_data, f"Total files in SharePoint: {len(sharepoint_files)}")
-    
-    if unsupported_count > 0:
-      log_function_output(request_data, f"Filtered out {unsupported_count} unsupported file type(s)")
-    
-    log_function_output(request_data, f"Files with supported types: {len(supported_files)}")
+    log_function_output(request_data, f"  {len(sharepoint_files)} files in SharePoint")
+    if unsupported_count > 0: log_function_output(request_data, f"  {unsupported_count} unsupported files")
+    log_function_output(request_data, f"  {len(supported_files)} supported files")
     
     source_result['files_in_sharepoint'] = len(sharepoint_files)
     source_result['files_in_sharepoint_unsupported'] = unsupported_count
@@ -962,7 +957,7 @@ def download_files_from_sharepoint(system_info, domain_id: str, source_id: str, 
     results['total_files_in_sharepoint_unsupported'] += unsupported_count
     
     # Write to sharepoint_map.csv
-    log_function_output(request_data, "Writing to sharepoint_map.csv...")
+    log_function_output(request_data, f"  Writing to '{CRAWLER_HARDCODED_CONFIG.SHAREPOINT_MAP_CSV}'...")
     with open(sharepoint_map_path, 'a', newline='', encoding='utf-8') as csvfile:
       writer = csv.writer(csvfile)
       for sp_file in supported_files:
@@ -977,10 +972,10 @@ def download_files_from_sharepoint(system_info, domain_id: str, source_id: str, 
           sp_file.last_modified_timestamp
         ])
     
-    log_function_output(request_data, f"Wrote {len(supported_files)} entries to sharepoint_map.csv")
+    log_function_output(request_data, f"  {len(supported_files)} entries written to '{CRAWLER_HARDCODED_CONFIG.SHAREPOINT_MAP_CSV}'")
     
     # Connect to SharePoint for downloading
-    log_function_output(request_data, "Connecting to SharePoint for file downloads...")
+    log_function_output(request_data, "  Connecting to '{file_source.site_url}'...")
     cert_path = os.path.join(storage_path, config.CRAWLER_CLIENT_CERTIFICATE_PFX_FILE)
     ctx = connect_to_site_using_client_id_and_certificate(
       file_source.site_url,
@@ -991,7 +986,7 @@ def download_files_from_sharepoint(system_info, domain_id: str, source_id: str, 
     )
     
     # Download files
-    log_function_output(request_data, f"Downloading {len(supported_files)} files...")
+    log_function_output(request_data, f"  Downloading {len(supported_files)} files...")
     downloaded_count = 0
     failed_count = 0
     
@@ -1050,7 +1045,7 @@ def download_files_from_sharepoint(system_info, domain_id: str, source_id: str, 
         
         # Log progress every 10 files
         if downloaded_count % 10 == 0 or downloaded_count == len(supported_files):
-          log_function_output(request_data, f"Downloaded [ {downloaded_count} / {len(supported_files)} ] files...")
+          log_function_output(request_data, f"    [ {downloaded_count} / {len(supported_files)} ] files downloaded...")
         
       except Exception as e:
         failed_count += 1
@@ -1067,11 +1062,11 @@ def download_files_from_sharepoint(system_info, domain_id: str, source_id: str, 
             error_message
           ])
         
-        log_function_output(request_data, f"ERROR downloading file {file_idx}/{len(supported_files)}: {sp_file.filename} - {error_message}")
+        log_function_output(request_data, f"    ERROR: Failed to download file [ {file_idx} / {len(supported_files)} ]: {sp_file.filename} - {error_message}")
     
-    log_function_output(request_data, f"Downloaded {downloaded_count} files successfully")
+    log_function_output(request_data, f"  Downloaded {downloaded_count} files successfully")
     if failed_count > 0:
-      log_function_output(request_data, f"Failed to download {failed_count} files (see sharepoint_error_map.csv)")
+      log_function_output(request_data, f"  Failed to download {failed_count} files (see sharepoint_error_map.csv)")
     
     source_result['files_downloaded'] = downloaded_count
     source_result['files_failed'] = failed_count
@@ -1119,28 +1114,28 @@ async def update_vector_store(system_info, openai_client, domain_id: str, temp_v
     domain_vs = await try_get_vector_store_by_id(openai_client, domain.vector_store_id)
   
   if not domain_vs:
-    log_function_output(request_data, f"Domain vector store not found, creating new one...")
+    log_function_output(request_data, f"  Domain vector store not found, creating new one...")
     domain_vs = await create_vector_store(openai_client, domain.vector_store_name)
     domain.vector_store_id = domain_vs.id
     # Update domain.json with new vector_store_id
-    domain_json_path = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER, domain_id, "domain.json")
+    domain_json_path = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER, domain_id, CRAWLER_HARDCODED_CONFIG.DOMAIN_JSON)
     with open(domain_json_path, 'r', encoding='utf-8') as f:
       domain_data = json.load(f)
     domain_data['vector_store_id'] = domain_vs.id
     with open(domain_json_path, 'w', encoding='utf-8') as f:
       json.dump(domain_data, f, indent=2, ensure_ascii=False)
-    log_function_output(request_data, f"Created domain vector store: {domain_vs.id}")
+    log_function_output(request_data, f"  Created domain vector store: '{domain_vs.id}'")
   else:
-    log_function_output(request_data, f"Domain vector store found: {domain_vs.id}")
+    log_function_output(request_data, f"  Domain vector store found: '{domain_vs.id}'")
   
   results['domain_vector_store_id'] = domain_vs.id
   
   # Create temporary vector store
   now = datetime.datetime.now()
-  temp_vs_name = f"{domain.vector_store_name}_{now.strftime('%Y-%m-%d_%H:%M')}"
+  temp_vs_name = f"{domain.vector_store_name}_{now.strftime('%Y-%m-%d_%H-%M')}"
   log_function_output(request_data, f"Creating temporary vector store '{temp_vs_name}'...")
   temp_vs = await create_vector_store(openai_client, temp_vs_name)
-  log_function_output(request_data, f"Created temporary vector store: {temp_vs.id}")
+  log_function_output(request_data, f"  Created temporary vector store: '{temp_vs.id}'")
   
   results['temporary_vector_store_id'] = temp_vs.id
   results['temporary_vector_store_name'] = temp_vs_name
@@ -1153,14 +1148,13 @@ async def update_vector_store(system_info, openai_client, domain_id: str, temp_v
   
   # Prepare CSV file paths
   domains_path = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER, domain_id)
-  vectorstore_map_csv = os.path.join(domains_path, CRAWLER_HARDCODED_CONFIG.VECTOR_STORE_MAP_CSV)
+  vectorstore_map_csv = os.path.join(crawler_path, CRAWLER_HARDCODED_CONFIG.VECTOR_STORE_MAP_CSV)
   files_map_csv = os.path.join(domains_path, CRAWLER_HARDCODED_CONFIG.FILE_MAP_CSV)
-  files_failed_map_csv = os.path.join(domains_path, CRAWLER_HARDCODED_CONFIG.FILE_FAILED_MAP_CSV)
   
   # Delete existing vectorstore_map.csv
   if os.path.exists(vectorstore_map_csv):
     os.remove(vectorstore_map_csv)
-    log_function_output(request_data, f"Deleted existing vectorstore_map.csv")
+    log_function_output(request_data, f"  Deleted existing '{CRAWLER_HARDCODED_CONFIG.VECTOR_STORE_MAP_CSV}'.")
   
   # Create new vectorstore_map.csv with headers
   with open(vectorstore_map_csv, 'w', newline='', encoding='utf-8') as f:
@@ -1191,7 +1185,7 @@ async def update_vector_store(system_info, openai_client, domain_id: str, temp_v
       embedded_path = os.path.join(source_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_EMBEDDED_SUBFOLDER)
       if not os.path.exists(embedded_path): continue
       
-      log_function_output(request_data, f"Processing {content_type}/{source_id}...")
+      log_function_output(request_data, f"  Processing {content_type}/{source_id}...")
       
       # Walk through all files in embedded folder
       for root, dirs, files in os.walk(embedded_path):
@@ -1226,12 +1220,12 @@ async def update_vector_store(system_info, openai_client, domain_id: str, temp_v
               writer.writerow([uploaded_file.id, file_relative_path, file_size, last_modified_utc, last_modified_timestamp])
             
             total_uploaded += 1
-            log_function_output(request_data, f"  OK: Uploaded file ID={uploaded_file.id} '{filename}'")
+            log_function_output(request_data, f"    OK: Uploaded file ID={uploaded_file.id} '{filename}'")
             
           except Exception as e:
             total_failed += 1
             failed_files_list.append({'file_path': file_path, 'file_relative_path': file_relative_path, 'error': str(e)})
-            log_function_output(request_data, f"  FAIL: Upload '{filename}' - {str(e)}")
+            log_function_output(request_data, f"    FAIL: Upload '{filename}' - {str(e)}")
             
             # Move failed file to 03_failed folder
             failed_folder = os.path.join(source_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_FAILED_SUBFOLDER)
@@ -1266,7 +1260,7 @@ async def update_vector_store(system_info, openai_client, domain_id: str, temp_v
       vs_failed_files.append(vs_file)
   
   if vs_failed_files:
-    log_function_output(request_data, f"Found {len(vs_failed_files)} failed files in vector store")
+    log_function_output(request_data, f"  Found {len(vs_failed_files)} failed files in vector store")
     
     # Load vectorstore_map to find file paths
     vectorstore_map = {}
@@ -1287,6 +1281,8 @@ async def update_vector_store(system_info, openai_client, domain_id: str, temp_v
       # Find file path from vectorstore_map
       if file_id in vectorstore_map:
         file_relative_path = vectorstore_map[file_id]['file_relative_path']
+        file_size = vectorstore_map[file_id]['file_size']
+        last_modified_utc = vectorstore_map[file_id]['last_modified_utc']
         file_path = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_CRAWLER_SUBFOLDER, file_relative_path)
         
         # Move to failed folder
@@ -1309,7 +1305,13 @@ async def update_vector_store(system_info, openai_client, domain_id: str, temp_v
         # Remove from files_map.csv (use file_relative_path as key)
         files_to_keep = [f for f in files_to_keep if f.get('file_relative_path') != file_relative_path]
         
-        # Add to files_failed_map.csv (only if not already present, use file_relative_path as key)
+        # Add to files_failed_map.csv in the appropriate content folder
+        # Determine the content folder path from file_relative_path
+        path_parts = file_relative_path.split(os.sep)
+        content_folder = path_parts[1]  # e.g., "01_files"
+        content_folder_path = os.path.join(crawler_path, content_folder)
+        files_failed_map_csv = os.path.join(content_folder_path, CRAWLER_HARDCODED_CONFIG.FILE_FAILED_MAP_CSV)
+        
         # Check if file already exists in failed map
         file_already_in_failed_map = False
         if os.path.exists(files_failed_map_csv):
@@ -1321,8 +1323,9 @@ async def update_vector_store(system_info, openai_client, domain_id: str, temp_v
                 break
         
         if not file_already_in_failed_map:
-          # Create file with headers if it doesn't exist (replicate columns from files_map.csv if it exists)
+          # Create file with headers if it doesn't exist
           if not os.path.exists(files_failed_map_csv):
+            os.makedirs(content_folder_path, exist_ok=True)
             with open(files_failed_map_csv, 'w', newline='', encoding='utf-8') as f:
               writer = csv.writer(f)
               # Use standard columns that match the data we have available
@@ -1332,7 +1335,7 @@ async def update_vector_store(system_info, openai_client, domain_id: str, temp_v
           with open(files_failed_map_csv, 'a', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             error_msg = getattr(vs_file.last_error, 'message', 'Unknown error') if vs_file.last_error else 'Unknown error'
-            writer.writerow([file_relative_path, os.path.basename(file_path), vectorstore_map[file_id]['file_size'], vectorstore_map[file_id]['last_modified_utc'], error_msg])
+            writer.writerow([file_relative_path, os.path.basename(file_path), file_size, last_modified_utc, error_msg])
     
     # Rewrite vectorstore_map.csv without failed files
     with open(vectorstore_map_csv, 'w', newline='', encoding='utf-8') as f:
@@ -1357,8 +1360,8 @@ async def update_vector_store(system_info, openai_client, domain_id: str, temp_v
   # Replicate to domain vector store if temp_vs_only is False
   if not temp_vs_only:
     log_function_output(request_data, f"Replicating temporary vector store to domain vector store...")
-    added_files, removed_files, errors = await replicate_vector_store_content(openai_client, temp_vs.id, domain_vs.id, remove_target_files_not_in_source=True)
-    log_function_output(request_data, f"Replication complete: {len(added_files)} added, {len(removed_files)} removed, {len(errors)} errors")
+    added_files, removed_files, errors = await replicate_vector_store_content(openai_client, temp_vs.id, domain_vs.id, remove_target_files_not_in_sources=True)
+    log_function_output(request_data, f"  Replication complete: {len(added_files)} added, {len(removed_files)} removed, {len(errors)} errors")
     results['replication'] = {'added': len(added_files), 'removed': len(removed_files), 'errors': len(errors)}
   
   return results

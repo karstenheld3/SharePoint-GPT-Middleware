@@ -678,7 +678,7 @@ async def migrate_from_v2_to_v3(request: Request):
         system_info.PERSISTENT_STORAGE_PATH,
         CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER,
         domain_id,
-        CRAWLER_HARDCODED_CONFIG.FILE_METADATA_JSON
+        CRAWLER_HARDCODED_CONFIG.FILES_METADATA_JSON
       )
       
       # Check if files_metadata.json exists

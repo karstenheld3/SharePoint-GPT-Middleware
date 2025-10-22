@@ -630,5 +630,60 @@ async def replicate_vector_store_content(client: AsyncAzureOpenAI | AsyncOpenAI,
     errors.append(target_errors)
   
   return (added_file_ids, removed_file_ids, errors)
+
+async def delete_vector_store_by_id(client: AsyncAzureOpenAI | AsyncOpenAI, vector_store_id: str, delete_files: bool = False, request_data: Dict = None) -> tuple[bool, str]:
+  """Delete a vector store by ID with optional file deletion (async).
+  
+  Args:
+    client: Async OpenAI client
+    vector_store_id: ID of the vector store to delete
+    delete_files: If True, also delete all files from global storage
+    request_data: Optional logging context
+    
+  Returns:
+    Tuple of (success: bool, message: str)
+  """
+  try:
+    # Get the vector store first
+    vector_store = await try_get_vector_store_by_id(client, vector_store_id)
+    if not vector_store:
+      return (False, f"Vector store ID='{vector_store_id}' not found")
+    
+    vs_name = vector_store.name
+    log_function_output(request_data, f"Deleting vector store '{vs_name}' (ID={vector_store_id})...")
+    
+    if delete_files:
+      # Get all files in the vector store
+      file_ids = []
+      async for file in client.vector_stores.files.list(vector_store_id=vector_store_id):
+        if getattr(file, 'id', None):
+          file_ids.append(file.id)
+      
+      log_function_output(request_data, f"Deleting {len(file_ids)} files from global storage...")
+      
+      # Delete each file from global storage
+      deleted_count = 0
+      failed_count = 0
+      for i, file_id in enumerate(file_ids):
+        try:
+          await client.files.delete(file_id=file_id)
+          deleted_count += 1
+          log_function_output(request_data, f"  [ {i+1} / {len(file_ids)} ] Deleted file ID={file_id}")
+        except Exception as e:
+          failed_count += 1
+          log_function_output(request_data, f"  [ {i+1} / {len(file_ids)} ] WARNING: Failed to delete file ID={file_id}: {str(e)}")
+      
+      log_function_output(request_data, f"File deletion complete: {deleted_count} deleted, {failed_count} failed")
+    
+    # Delete the vector store
+    await client.vector_stores.delete(vector_store_id)
+    log_function_output(request_data, f"Vector store '{vs_name}' deleted successfully")
+    
+    return (True, f"Vector store '{vs_name}' deleted successfully")
+    
+  except Exception as e:
+    error_msg = f"Failed to delete vector store: {str(e)}"
+    log_function_output(request_data, f"ERROR: {error_msg}")
+    return (False, error_msg)
   
 # ----------------------------------------------------- END: Vector stores ----------------------------------------------------

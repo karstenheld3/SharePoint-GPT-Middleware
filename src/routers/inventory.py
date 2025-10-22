@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Union
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from common_openai_functions import get_all_vector_stores, get_all_files, get_all_assistants, convert_openai_timestamps_to_utc
+from common_openai_functions import get_all_vector_stores, get_all_files, get_all_assistants, convert_openai_timestamps_to_utc, delete_vector_store_by_id
 from utils import convert_to_flat_html_table, log_function_footer, log_function_header, log_function_output, include_exclude_attributes
 
 router = APIRouter()
@@ -41,6 +41,79 @@ def _generate_html_response_from_object_list(title: str, count: int, objects: Li
 </body>
 </html>"""
 
+def _generate_ui_response_for_vector_stores(title: str, count: int, vector_stores: List[Dict]) -> str:
+  """
+  Generate UI HTML response with delete buttons for vector stores.
+  
+  Args:
+    title: Page title
+    count: Number of vector stores
+    vector_stores: List of vector store dictionaries
+    
+  Returns:
+    Complete HTMX page with interactive UI
+  """
+  rows_html = ""
+  for vs in vector_stores:
+    vs_id = vs.get('id', 'N/A')
+    vs_name = vs.get('name', 'N/A')
+    created_at = vs.get('created_at', 'N/A')
+    file_counts = vs.get('file_counts', {})
+    total_files = file_counts.get('total', 0) if isinstance(file_counts, dict) else 0
+    
+    rows_html += f"""
+    <tr id="vectorstore-{vs_id}">
+      <td>{vs_name}</td>
+      <td>{vs_id}</td>
+      <td>{created_at}</td>
+      <td>{total_files}</td>
+      <td class="actions">
+        <button class="btn-small btn-delete" 
+                hx-delete="/inventory/vectorstores/delete?vector_store_id={vs_id}&delete_files=false" 
+                hx-confirm="Delete vector store '{vs_name}'? (Files will remain in storage)"
+                hx-target="#vectorstore-{vs_id}"
+                hx-swap="outerHTML">
+          Delete
+        </button>
+        <button class="btn-small" 
+                hx-delete="/inventory/vectorstores/delete?vector_store_id={vs_id}&delete_files=true" 
+                hx-confirm="Delete vector store '{vs_name}' AND all {total_files} files? This cannot be undone!"
+                hx-target="#vectorstore-{vs_id}"
+                hx-swap="outerHTML"
+                style="background-color: #dc3545; color: white;">
+          Delete with Files
+        </button>
+      </td>
+    </tr>
+    """
+  
+  return f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
+  <title>{title}</title>
+  <link rel='stylesheet' href='/static/css/styles.css'>
+  <script src='/static/js/htmx.js'></script>
+</head>
+<body>
+  <div class="container">
+    <h1>{title} ({count})</h1>
+    
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>ID</th>
+          <th>Created At</th>
+          <th>Files</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows_html if rows_html else '<tr><td colspan="5">No vector stores found</td></tr>'}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>"""
+
 
 @router.get('/vectorstores')
 async def vectorstores(request: Request):
@@ -48,13 +121,14 @@ async def vectorstores(request: Request):
   Endpoint to retrieve all vector stores from Azure OpenAI.
   
   Parameters:
-  - format: The response format (json or html)
+  - format: The response format (json, html, or ui)
   - includeattributes: Comma-separated list of attributes to include in response (takes precedence over excludeattributes)
   - excludeattributes: Comma-separated list of attributes to exclude from response (ignored if includeattributes is set)
     
   Examples:
   /vectorstores
   /vectorstores?format=json
+  /vectorstores?format=ui (interactive UI with delete buttons)
   /vectorstores?format=json&includeattributes=id,name,created_at
   /vectorstores?format=html&excludeattributes=file_counts,metadata
   """
@@ -84,6 +158,11 @@ async def vectorstores(request: Request):
     if format == 'json':
       await log_function_footer(request_data)
       return JSONResponse({"data": vector_stores_list})
+    elif format == 'ui':
+      # UI format with delete buttons
+      html_content = _generate_ui_response_for_vector_stores('Vector Stores', len(vector_stores), vector_stores_list)
+      await log_function_footer(request_data)
+      return HTMLResponse(html_content)
     else:
       # HTML format with minimal HTMX
       html_content = _generate_html_response_from_object_list('Vector Stores', len(vector_stores), vector_stores_list)
@@ -100,6 +179,78 @@ async def vectorstores(request: Request):
     else:
       error_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Error</title></head><body><h1>Error</h1><p>{error_message}</p></body></html>"
       return HTMLResponse(error_html, status_code=500)
+
+@router.delete('/vectorstores/delete')
+async def delete_vectorstore(request: Request):
+  """
+  Delete a vector store configuration.
+  
+  Parameters:
+  - vector_store_id: ID of vector store to delete
+  - delete_files: Whether to delete files from global storage (true/false, default: false)
+  - format: Response format (json or html, default: html)
+  
+  Examples:
+  DELETE /vectorstores/delete?vector_store_id=vs_123
+  DELETE /vectorstores/delete?vector_store_id=vs_123&delete_files=true
+  DELETE /vectorstores/delete?vector_store_id=vs_123&format=json
+  """
+  function_name = 'delete_vectorstore()'
+  request_data = log_function_header(function_name)
+  request_params = dict(request.query_params)
+  
+  format = request_params.get('format', 'html')
+  vector_store_id = request_params.get('vector_store_id')
+  delete_files = request_params.get('delete_files', 'false').lower() == 'true'
+  
+  if not vector_store_id:
+    await log_function_footer(request_data)
+    error_msg = "Missing vector_store_id parameter"
+    if format == 'json':
+      return JSONResponse({"error": error_msg}, status_code=400)
+    else:
+      return HTMLResponse(f"<tr><td colspan='5' class='error'>{error_msg}</td></tr>", status_code=400)
+  
+  try:
+    if not hasattr(request.app.state, 'openai_client') or not request.app.state.openai_client:
+      error_message = "OpenAI client not configured"
+      log_function_output(request_data, f"ERROR: {error_message}")
+      await log_function_footer(request_data)
+      if format == 'json':
+        return JSONResponse({"error": error_message}, status_code=500)
+      else:
+        return HTMLResponse(f"<tr><td colspan='5' class='error'>{error_message}</td></tr>", status_code=500)
+    
+    client = request.app.state.openai_client
+    
+    # Delete vector store
+    success, message = await delete_vector_store_by_id(client, vector_store_id, delete_files, request_data)
+    
+    if not success:
+      log_function_output(request_data, f"ERROR: {message}")
+      await log_function_footer(request_data)
+      if format == 'json':
+        return JSONResponse({"error": message}, status_code=404 if "not found" in message.lower() else 500)
+      else:
+        return HTMLResponse(f"<tr><td colspan='5' class='error'>{message}</td></tr>", status_code=404 if "not found" in message.lower() else 500)
+    
+    log_function_output(request_data, message)
+    await log_function_footer(request_data)
+    
+    if format == 'json':
+      return JSONResponse({"message": message})
+    else:
+      # Return empty response to remove the row from UI
+      return HTMLResponse("", status_code=200)
+    
+  except Exception as e:
+    error_message = f"Error deleting vector store: {str(e)}"
+    log_function_output(request_data, f"ERROR: {error_message}")
+    await log_function_footer(request_data)
+    if format == 'json':
+      return JSONResponse({"error": error_message}, status_code=500)
+    else:
+      return HTMLResponse(f"<tr><td colspan='5' class='error'>{error_message}</td></tr>", status_code=500)
 
 @router.get('/files')
 async def files(request: Request):
