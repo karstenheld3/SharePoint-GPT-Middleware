@@ -1361,7 +1361,13 @@ async def update_vector_store(system_info, openai_client, domain_id: str, temp_v
   if not temp_vs_only:
     log_function_output(request_data, f"Replicating temporary vector store to domain vector store...")
     added_files, removed_files, errors = await replicate_vector_store_content(openai_client, temp_vs.id, domain_vs.id, remove_target_files_not_in_sources=True)
-    log_function_output(request_data, f"  Replication complete: {len(added_files)} added, {len(removed_files)} removed, {len(errors)} errors")
-    results['replication'] = {'added': len(added_files), 'removed': len(removed_files), 'errors': len(errors)}
+    
+    # The function returns lists of lists (one per target store), so we need to flatten them
+    total_added = sum(len(files) for files in added_files)
+    total_removed = sum(len(files) for files in removed_files)
+    total_errors = sum(len(errs) for errs in errors)
+    
+    log_function_output(request_data, f"  Replication complete: {total_added} added, {total_removed} removed, {total_errors} errors")
+    results['replication'] = {'added': total_added, 'removed': total_removed, 'errors': total_errors}
   
   return results

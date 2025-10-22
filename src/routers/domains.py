@@ -125,6 +125,7 @@ async def list_domains(request: Request):
 <body>
   <div class="container">
   <h1>Domains ({len(domains_list)})</h1>
+  <p><a href="/">← Back to Main Page</a></p>
   
   <div class="toolbar">
     <button class="btn-primary" 

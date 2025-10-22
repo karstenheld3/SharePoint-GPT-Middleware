@@ -104,7 +104,7 @@ Each domain has a `domain.json` file with the following structure:
 
 Contains metadata for all files that have been uploaded to the OpenAI vector store.
 
-**Migration**: Use the `/crawler/migratefromv2tov3` endpoint to automatically migrate from v2 to v3 format. This endpoint creates a backup of the v2 file before conversion.
+**Migration**: Use the `/crawler/migrate_from_v2_to_v3` endpoint to automatically migrate from v2 to v3 format. This endpoint creates a backup of the v2 file before conversion.
 
 #### V3 Format (Current)
 

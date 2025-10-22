@@ -685,5 +685,99 @@ async def delete_vector_store_by_id(client: AsyncAzureOpenAI | AsyncOpenAI, vect
     error_msg = f"Failed to delete vector store: {str(e)}"
     log_function_output(request_data, f"ERROR: {error_msg}")
     return (False, error_msg)
+
+async def remove_file_from_vector_store(client: AsyncAzureOpenAI | AsyncOpenAI, vector_store_id: str, file_id: str, request_data: Dict = None) -> tuple[bool, str]:
+  """Remove a file from a vector store (file remains in global storage).
+  
+  Args:
+    client: Async OpenAI client
+    vector_store_id: ID of the vector store
+    file_id: ID of the file to remove
+    request_data: Optional logging context
+    
+  Returns:
+    Tuple of (success: bool, message: str)
+  """
+  try:
+    await client.vector_stores.files.delete(vector_store_id=vector_store_id, file_id=file_id)
+    message = f"File {file_id} removed from vector store {vector_store_id}"
+    log_function_output(request_data, message)
+    return (True, message)
+  except Exception as e:
+    error_msg = f"Failed to remove file from vector store: {str(e)}"
+    log_function_output(request_data, f"ERROR: {error_msg}")
+    return (False, error_msg)
+
+async def delete_file_from_vector_store_and_storage(client: AsyncAzureOpenAI | AsyncOpenAI, vector_store_id: str, file_id: str, request_data: Dict = None) -> tuple[bool, str]:
+  """Delete a file from a vector store AND from global storage.
+  
+  Args:
+    client: Async OpenAI client
+    vector_store_id: ID of the vector store
+    file_id: ID of the file to delete
+    request_data: Optional logging context
+    
+  Returns:
+    Tuple of (success: bool, message: str)
+  """
+  try:
+    # Remove file from vector store first
+    try:
+      await client.vector_stores.files.delete(vector_store_id=vector_store_id, file_id=file_id)
+      log_function_output(request_data, f"File {file_id} removed from vector store {vector_store_id}")
+    except Exception as e:
+      log_function_output(request_data, f"WARNING: Could not remove file from vector store: {str(e)}")
+    
+    # Delete file from global storage
+    await client.files.delete(file_id=file_id)
+    message = f"File {file_id} deleted from vector store and global storage"
+    log_function_output(request_data, message)
+    return (True, message)
+  except Exception as e:
+    error_msg = f"Failed to delete file: {str(e)}"
+    log_function_output(request_data, f"ERROR: {error_msg}")
+    return (False, error_msg)
+
+async def delete_file_by_id(client: AsyncAzureOpenAI | AsyncOpenAI, file_id: str, request_data: Dict = None) -> tuple[bool, str]:
+  """Delete a file from global storage by ID.
+  
+  Args:
+    client: Async OpenAI client
+    file_id: ID of the file to delete
+    request_data: Optional logging context
+    
+  Returns:
+    Tuple of (success: bool, message: str)
+  """
+  try:
+    await client.files.delete(file_id=file_id)
+    message = f"File {file_id} deleted from global storage"
+    log_function_output(request_data, message)
+    return (True, message)
+  except Exception as e:
+    error_msg = f"Failed to delete file: {str(e)}"
+    log_function_output(request_data, f"ERROR: {error_msg}")
+    return (False, error_msg)
+
+async def delete_assistant_by_id(client: AsyncAzureOpenAI | AsyncOpenAI, assistant_id: str, request_data: Dict = None) -> tuple[bool, str]:
+  """Delete an assistant by ID.
+  
+  Args:
+    client: Async OpenAI client
+    assistant_id: ID of the assistant to delete
+    request_data: Optional logging context
+    
+  Returns:
+    Tuple of (success: bool, message: str)
+  """
+  try:
+    await client.beta.assistants.delete(assistant_id=assistant_id)
+    message = f"Assistant {assistant_id} deleted successfully"
+    log_function_output(request_data, message)
+    return (True, message)
+  except Exception as e:
+    error_msg = f"Failed to delete assistant: {str(e)}"
+    log_function_output(request_data, f"ERROR: {error_msg}")
+    return (False, error_msg)
   
 # ----------------------------------------------------- END: Vector stores ----------------------------------------------------

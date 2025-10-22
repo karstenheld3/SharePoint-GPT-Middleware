@@ -535,6 +535,7 @@ def root() -> str:
     <li><a href="/describe2">/describe2</a> - SharePoint Search Description (<a href="/describe2?format=html">HTML</a> + <a href="/describe2?format=json">JSON</a>)</li>
     <li><a href="/query">/query</a> - SharePoint Search Query (JSON)</li>
     <li><a href="/query2">/query2</a> - SharePoint Search Query (<a href="/query2?query=List+all+documents&results=50">HTML</a> +  JSON)</li>
+    <li><a href="/inventory">/inventory</a> - Inventory Endpoints (Vector Stores, Files, Assistants)</li>
     <li><a href="/inventory/vectorstores">/inventory/vectorstores</a> - Vector Stores Inventory (<a href="/inventory/vectorstores?format=html&excludeattributes=metadata">HTML</a> + <a href="/inventory/vectorstores?format=json">JSON</a> + <a href="/inventory/vectorstores?format=ui">UI</a>)</li>
     <li><a href="/inventory/files">/inventory/files</a> - Files Inventory (<a href="/inventory/files?format=html&excludeattributes=purpose,status_details">HTML</a> + <a href="/inventory/files?format=json">JSON</a>)</li>
     <li><a href="/inventory/assistants">/inventory/assistants</a> - Assistants Inventory (<a href="/inventory/assistants?format=html&excludeattributes=description,instructions,tools,tool_resources">HTML</a> + <a href="/inventory/assistants?format=json">JSON</a>)</li>

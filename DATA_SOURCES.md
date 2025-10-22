@@ -75,7 +75,7 @@ The `files_metadata.json` file serves as the central mapping that connects files
 }
 ```
 
-**Endpoint**: `/crawler/loadsharepointfiles`
+**Endpoint**: `/crawler/list_sharepoint_files`
 - Connects to SharePoint using client credentials
 - Retrieves file metadata and content
 - Returns list of files with SharePoint metadata
@@ -127,7 +127,7 @@ crawler/DOMAIN_ID/
 }
 ```
 
-**Endpoint**: `/crawler/loadlocalfiles`
+**Endpoint**: `/crawler/list_local_files`
 - Scans local `02_embedded/` folders
 - Returns list of files with local file system metadata
 - Does NOT include SharePoint metadata (only file path, size, modified date)
@@ -158,7 +158,7 @@ crawler/DOMAIN_ID/
 }
 ```
 
-**Endpoint**: `/crawler/loadvectorstorefiles`
+**Endpoint**: `/crawler/list_vectorstore_files`
 - Queries OpenAI API for files in a vector store
 - Returns list of files with OpenAI metadata
 - Does NOT include SharePoint or local file path information
@@ -328,9 +328,9 @@ When a user searches using the `/query` endpoint:
 
 | Endpoint | Data Source | Returns | Use Case |
 |----------|-------------|---------|----------|
-| `/crawler/loadsharepointfiles` | SharePoint API | SharePoint metadata + file list | Check what's in SharePoint |
-| `/crawler/loadlocalfiles` | Local file system | File paths + basic metadata | Check what's downloaded |
-| `/crawler/loadvectorstorefiles` | OpenAI API | OpenAI file IDs + status | Check what's embedded |
+| `/crawler/list_sharepoint_files` | SharePoint API | SharePoint metadata + file list | Check what's in SharePoint |
+| `/crawler/list_local_files` | Local file system | File paths + basic metadata | Check what's downloaded |
+| `/crawler/list_vectorstore_files` | OpenAI API | OpenAI file IDs + status | Check what's embedded |
 | `/query` or `/query2` | All three (via files_metadata.json) | Complete enriched results | Search with full context |
 
 ## Data Consistency
@@ -360,7 +360,7 @@ When a user searches using the `/query` endpoint:
 
 ### Migration from V2 to V3
 
-**Endpoint**: `/crawler/migratefromv2tov3`
+**Endpoint**: `/crawler/migrate_from_v2_to_v3`
 
 **Purpose**: Convert old nested format to new flat format
 
