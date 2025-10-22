@@ -525,6 +525,18 @@ def root() -> str:
 <body>
   <h1>SharePoint-GPT-Middleware</h1>
   <p>This middleware provides OpenAI proxy endpoints, SharePoint search functionality, and inventory management for vector stores.</p>
+  
+  <div class="toolbar">
+    <a href="/domains?format=ui" class="btn-primary">
+      Domains
+    </a>
+    <a href="/crawler/?format=ui" class="btn-primary">
+      Crawler
+    </a>
+    <a href="/inventory/vectorstores?format=ui" class="btn-primary">
+      Vector Stores
+    </a>
+  </div>
 
   <h4>Available Links</h4>
   <ul>

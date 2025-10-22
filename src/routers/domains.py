@@ -113,6 +113,9 @@ async def list_domains(request: Request):
           hx-swap="outerHTML">
         Delete
       </button>
+      <a href="/query2?vsid={domain.vector_store_id}&query=List all files&results=50">
+        Query
+      </a>
       </td>
     </tr>
     """

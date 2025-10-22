@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from utils import convert_to_flat_html_table, convert_to_nested_html_table, log_function_footer, log_function_header, log_function_output, include_exclude_attributes
-from common_crawler_functions import DomainConfig, load_all_domains, domain_config_to_dict, scan_directory_recursive, create_storage_zip_from_scan, load_domain, load_files_from_sharepoint_source, load_crawled_files, load_vector_store_files_as_crawled_files, is_files_metadata_v2_format, is_files_metadata_v3_format, convert_file_metadata_item_from_v2_to_v3, download_files_from_sharepoint, update_vector_store as update_vector_store_impl
+from common_crawler_functions import DomainConfig, load_all_domains, domain_config_to_dict, scan_directory_recursive, create_storage_zip_from_scan, load_domain, load_files_from_sharepoint_source, load_crawled_files, load_vector_store_files_as_crawled_files, is_files_metadata_v2_format, is_files_metadata_v3_format, convert_file_metadata_item_from_v2_to_v3, download_files_from_sharepoint, update_vector_store as update_vector_store_impl, replicate_domain_vector_stores_to_global_vector_store
 from common_openai_functions import OPENAI_DATETIME_ATTRIBUTES
 
 
@@ -52,16 +52,114 @@ def _generate_html_response_from_nested_data(title: str, data: Any) -> str:
 </head>
 <body>
   <h1>{title}</h1>
+  <p><a href="/crawler?format=ui">← Back to Crawler</a></p>
   {table_html}
 </body>
 </html>"""
 
 
 @router.get('/', response_class=HTMLResponse)
-async def crawler_root():
+async def crawler_root(request: Request):
   """
   Crawler endpoints documentation and overview.
+  
+  Parameters:
+  - format: The response format (default documentation or ui)
+  
+  Examples:
+  /crawler/
+  /crawler/?format=ui
   """
+  function_name = 'crawler_root()'
+  request_data = log_function_header(function_name)
+  request_params = dict(request.query_params)
+  
+  format = request_params.get('format', 'default')
+  
+  # UI format - show domain list with crawler actions
+  if format == 'ui':
+    try:
+      if not hasattr(request.app.state, 'system_info') or not request.app.state.system_info or not request.app.state.system_info.PERSISTENT_STORAGE_PATH:
+        error_message = "PERSISTENT_STORAGE_PATH not configured or is empty"
+        log_function_output(request_data, f"ERROR: {error_message}")
+        await log_function_footer(request_data)
+        error_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Error</title></head><body><h1>Error</h1><p>{error_message}</p></body></html>"
+        return HTMLResponse(error_html, status_code=500)
+      
+      storage_path = request.app.state.system_info.PERSISTENT_STORAGE_PATH
+      
+      # Load all domains
+      domains_list = load_all_domains(storage_path, request_data)
+      
+      # Create table rows with action buttons
+      table_rows = ""
+      for domain in domains_list:
+        table_rows += f"""
+    <tr id="domain-{domain.domain_id}">
+      <td>{domain.domain_id}</td>
+      <td>{domain.name}</td>
+      <td>{domain.vector_store_name}</td>
+      <td>{domain.vector_store_id}</td>
+      <td>
+        <a href="/crawler/list_vectorstore_files?domain_id={domain.domain_id}">Vector Store Files</a><br>
+        <a href="/crawler/list_sharepoint_files?domain_id={domain.domain_id}">SharePoint Files</a>
+      </td>
+      <td>
+        <a href="/crawler/download_files?domain_id={domain.domain_id}">Download Files</a><br>
+        <a href="/crawler/update_vector_store?domain_id={domain.domain_id}">Update Vector Store</a>
+      </td>
+    </tr>
+    """
+      
+      html_content = f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
+  <title>Crawler - Domains ({len(domains_list)})</title>
+  <link rel='stylesheet' href='/static/css/styles.css'>
+  <script src='/static/js/htmx.js'></script>
+</head>
+<body>
+  <div class="container">
+  <h1>Crawler - Domains ({len(domains_list)})</h1>
+  <p><a href="/">← Back to Main Page</a></p>
+  
+  <div class="toolbar">
+    <a href="/crawler/replicate_to_global?format=html" class="btn-primary">
+      Replicate to Global Vector Store
+    </a>
+  </div>
+  
+  <table>
+    <thead>
+    <tr>
+      <th>Domain ID</th>
+      <th>Name</th>
+      <th>Vector Store Name</th>
+      <th>Vector Store ID</th>
+      <th>List</th>
+      <th>Crawl</th>
+    </tr>
+    </thead>
+    <tbody>
+    {table_rows if table_rows else '<tr><td colspan="6">No domains found</td></tr>'}
+    </tbody>
+  </table>
+  
+  <div id="result-container"></div>
+  </div>
+</body>
+</html>"""
+      
+      await log_function_footer(request_data)
+      return HTMLResponse(html_content)
+      
+    except Exception as e:
+      error_message = f"Error loading domains: {str(e)}"
+      log_function_output(request_data, f"ERROR: {error_message}")
+      await log_function_footer(request_data)
+      error_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Error</title></head><body><h1>Error</h1><p>{error_message}</p></body></html>"
+      return HTMLResponse(error_html, status_code=500)
+  
+  # Default format - show documentation
+  await log_function_footer(request_data)
   return f"""
 <!doctype html><html lang="en">
 <head>
@@ -77,8 +175,10 @@ async def crawler_root():
 
   <h4>Available Endpoints</h4>
   <ul>
+    <li><a href="/crawler/?format=ui">/crawler/?format=ui</a> - Crawler UI (Domain List with Actions)</li>
     <li><a href="/crawler/download_files">/crawler/download_files</a> - Download SharePoint Files (<a href="/crawler/download_files?domain_id=ExampleDomain01&source_id=source01&format=html">Example HTML</a> + <a href="/crawler/download_files?domain_id=ExampleDomain01&format=json">Example JSON</a>)</li>
     <li><a href="/crawler/update_vector_store">/crawler/update_vector_store</a> - Update Vector Store (<a href="/crawler/update_vector_store?domain_id=ExampleDomain01&format=html">Example HTML</a> + <a href="/crawler/update_vector_store?domain_id=ExampleDomain01&temp_vs_only=true&format=json">Example JSON</a>)</li>
+    <li><a href="/crawler/replicate_to_global">/crawler/replicate_to_global</a> - Replicate All Domain Vector Stores to Global Vector Store (<a href="/crawler/replicate_to_global?format=html">HTML</a> + <a href="/crawler/replicate_to_global?format=json">JSON</a>)</li>
     <li><a href="/crawler/localstorage">/crawler/localstorage</a> - Local Storage Inventory (<a href="/crawler/localstorage?format=html">HTML</a> + <a href="/crawler/localstorage?format=json">JSON</a> + <a href="/crawler/localstorage?format=zip">ZIP</a> + <a href="/crawler/localstorage?format=zip&exceptfolder=crawler">ZIP except 'crawler' folder</a>)</li>
     <li><a href="/crawler/list_sharepoint_files">/crawler/list_sharepoint_files</a> - List SharePoint Files (<a href="/crawler/list_sharepoint_files?domain_id=ExampleDomain01&source_id=source01&format=html&includeattributes=sharepoint_listitem_id,sharepoint_unique_file_id,raw_url,filename,file_size,last_modified_utc">Example HTML</a> + <a href="/crawler/list_sharepoint_files?domain_id=ExampleDomain01&source_id=source01&format=json">Example JSON</a>)</li>
     <li><a href="/crawler/list_local_files">/crawler/list_local_files</a> - List Local Embedded Files (<a href="/crawler/list_local_files?domain_id=ExampleDomain01&format=html&includeattributes=file_path,raw_url,file_size,last_modified_utc">Example HTML</a> + <a href="/crawler/list_local_files?domain_id=ExampleDomain01&source_id=source01&format=json">Example JSON</a>)</li>
@@ -188,12 +288,13 @@ async def list_sharepoint_files(request: Request):
   
   Parameters:
   - domain_id: The ID of the domain to list files for (required)
-  - source_id: The ID of the file source within the domain (required)
+  - source_id: The ID of the file source within the domain (optional - if not provided, lists all sources)
   - format: Response format - 'html' or 'json' (default: 'html')
   - includeattributes: Comma-separated list of attributes to include in response (takes precedence over excludeattributes)
   - excludeattributes: Comma-separated list of attributes to exclude from response (ignored if includeattributes is set)
   
   Examples:
+  /list_sharepoint_files?domain_id=ExampleDomain01&format=json
   /list_sharepoint_files?domain_id=ExampleDomain01&source_id=source01&format=json
   /list_sharepoint_files?domain_id=ExampleDomain01&source_id=source01&format=html
   /list_sharepoint_files?domain_id=ExampleDomain01&source_id=source01&format=json&includeattributes=filename,file_size,last_modified_utc
@@ -223,14 +324,6 @@ async def list_sharepoint_files(request: Request):
   # Validate required parameters
   if not domain_id:
     error_message = "ERROR: Missing required parameter 'domain_id'"
-    log_function_output(request_data, error_message)
-    await log_function_footer(request_data)
-    if format == 'json':
-      return JSONResponse({"error": error_message}, status_code=400)
-    return HTMLResponse(content=error_message, status_code=400, media_type='text/plain; charset=utf-8')
-  
-  if not source_id:
-    error_message = "ERROR: Missing required parameter 'source_id'"
     log_function_output(request_data, error_message)
     await log_function_footer(request_data)
     if format == 'json':
@@ -269,7 +362,15 @@ async def list_sharepoint_files(request: Request):
     
     # Reload domain config for response metadata
     domain_config = load_domain(system_info.PERSISTENT_STORAGE_PATH, domain_id, request_data)
-    file_source = next((src for src in domain_config.file_sources if src.source_id == source_id), None)
+    file_source = None
+    if source_id:
+      file_source = next((src for src in domain_config.file_sources if src.source_id == source_id), None)
+    
+    # Get list of sources that were processed (for display when showing all sources)
+    sources_processed = []
+    if not source_id and domain_config:
+      # Extract unique source_ids from the files
+      sources_processed = list(set([f.file_relative_path.split('\\')[2] if '\\' in f.file_relative_path else f.file_relative_path.split('/')[2] for f in files if f.file_relative_path]))
     
     # Apply include/exclude filters
     filtered_files = include_exclude_attributes(files, include_attributes, exclude_attributes)
@@ -279,17 +380,21 @@ async def list_sharepoint_files(request: Request):
       response_data = {
         "domain_id": domain_id,
         "source_id": source_id,
-        "site_url": file_source.site_url,
-        "sharepoint_url_part": file_source.sharepoint_url_part,
-        "filter": file_source.filter,
         "total_files": len(filtered_files),
         "files": filtered_files
       }
+      if file_source:
+        response_data["site_url"] = file_source.site_url
+        response_data["sharepoint_url_part"] = file_source.sharepoint_url_part
+        response_data["filter"] = file_source.filter
       await log_function_footer(request_data)
       return JSONResponse(response_data)
     else:
       # HTML format
-      title = f"SharePoint Files - {domain_config.name} ({source_id})"
+      if source_id:
+        title = f"SharePoint Files - {domain_config.name} ({source_id})"
+      else:
+        title = f"SharePoint Files - {domain_config.name} (All Sources)"
       
       table_html = convert_to_flat_html_table(filtered_files)
       
@@ -300,15 +405,26 @@ async def list_sharepoint_files(request: Request):
 </head>
 <body>
   <h1>{title}</h1>
-  <p><strong>Domain:</strong> {domain_config.name} ({domain_id})</p>
-  <p><strong>Source:</strong> {source_id}</p>
+  <p><strong>Domain:</strong> {domain_config.name} ({domain_id})</p>"""
+      
+      if source_id:
+        html_content += f"""
+  <p><strong>Source:</strong> {source_id}</p>"""
+      else:
+        html_content += f"""
+  <p><strong>Sources:</strong> {', '.join(sources_processed) if sources_processed else 'None found'}</p>"""
+      
+      if file_source:
+        html_content += f"""
   <p><strong>Site URL:</strong> {file_source.site_url}</p>
   <p><strong>Library:</strong> {file_source.sharepoint_url_part}</p>
-  <p><strong>Filter:</strong> {file_source.filter or '(none)'}</p>
+  <p><strong>Filter:</strong> {file_source.filter or '(none)'}</p>"""
+      
+      html_content += f"""
   <p><strong>Total Files:</strong> {len(files)}</p>
   <hr>
   {table_html}
-  <p><a href="/crawler">← Back to Crawler</a></p>
+  <p><a href="/crawler?format=ui">← Back to Crawler</a></p>
 </body>
 </html>"""
       
@@ -333,12 +449,13 @@ async def list_local_files(request: Request):
   
   Parameters:
   - domain_id: The ID of the domain to list files for (required)
-  - source_id: The ID of the file source within the domain (required)
+  - source_id: The ID of the file source within the domain (optional - if not provided, lists all sources)
   - format: Response format - 'html' or 'json' (default: 'html')
   - includeattributes: Comma-separated list of attributes to include in response (takes precedence over excludeattributes)
   - excludeattributes: Comma-separated list of attributes to exclude from response (ignored if includeattributes is set)
   
   Examples:
+  /list_local_files?domain_id=ExampleDomain01&format=json
   /list_local_files?domain_id=ExampleDomain01&source_id=source01&format=json
   /list_local_files?domain_id=ExampleDomain01&source_id=source01&format=html
   /list_local_files?domain_id=ExampleDomain01&source_id=source01&format=json&includeattributes=filename,file_size,last_modified_utc
@@ -374,14 +491,6 @@ async def list_local_files(request: Request):
       return JSONResponse({"error": error_message}, status_code=400)
     return HTMLResponse(content=error_message, status_code=400, media_type='text/plain; charset=utf-8')
   
-  if not source_id:
-    error_message = "ERROR: Missing required parameter 'source_id'"
-    log_function_output(request_data, error_message)
-    await log_function_footer(request_data)
-    if format == 'json':
-      return JSONResponse({"error": error_message}, status_code=400)
-    return HTMLResponse(content=error_message, status_code=400, media_type='text/plain; charset=utf-8')
-  
   try:
     # Validate system configuration
     if not hasattr(request.app.state, 'system_info') or not request.app.state.system_info:
@@ -403,7 +512,7 @@ async def list_local_files(request: Request):
         return JSONResponse({"error": error_message}, status_code=500)
       return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
     
-    # Load local embedded files
+    # Load local embedded files (handles both single source and all sources)
     try:
       files = load_crawled_files(system_info.PERSISTENT_STORAGE_PATH, domain_id, source_id, request_data)
     except FileNotFoundError as e:
@@ -417,11 +526,19 @@ async def list_local_files(request: Request):
     # Load domain config for response metadata
     try:
       domain_config = load_domain(system_info.PERSISTENT_STORAGE_PATH, domain_id, request_data)
-      file_source = next((src for src in domain_config.file_sources if src.source_id == source_id), None)
     except FileNotFoundError:
-      # Domain config not found, use minimal metadata
       domain_config = None
-      file_source = None
+    
+    # Determine file_source for metadata display
+    file_source = None
+    if source_id and domain_config:
+      file_source = next((src for src in domain_config.file_sources if src.source_id == source_id), None)
+    
+    # Get list of sources that were processed (for display when showing all sources)
+    sources_processed = []
+    if not source_id and domain_config:
+      # Extract unique source_ids from the files
+      sources_processed = list(set([f.file_relative_path.split('\\')[1] if '\\' in f.file_relative_path else f.file_relative_path.split('/')[1] for f in files if f.file_relative_path]))
     
     # Apply include/exclude filters
     filtered_files = include_exclude_attributes(files, include_attributes, exclude_attributes)
@@ -438,7 +555,10 @@ async def list_local_files(request: Request):
       return JSONResponse(response_data)
     else:
       # HTML format
-      title = f"Local Embedded Files - {domain_config.name if domain_config else domain_id} ({source_id})"
+      if source_id:
+        title = f"Local Embedded Files - {domain_config.name if domain_config else domain_id} ({source_id})"
+      else:
+        title = f"Local Embedded Files - {domain_config.name if domain_config else domain_id} (All Sources)"
       
       table_html = convert_to_flat_html_table(filtered_files)
       
@@ -449,8 +569,14 @@ async def list_local_files(request: Request):
 </head>
 <body>
   <h1>{title}</h1>
-  <p><strong>Domain:</strong> {domain_config.name if domain_config else domain_id} ({domain_id})</p>
+  <p><strong>Domain:</strong> {domain_config.name if domain_config else domain_id} ({domain_id})</p>"""
+      
+      if source_id:
+        html_content += f"""
   <p><strong>Source:</strong> {source_id}</p>"""
+      else:
+        html_content += f"""
+  <p><strong>Sources:</strong> {', '.join(sources_processed) if sources_processed else 'None found'}</p>"""
       
       if file_source:
         html_content += f"""
@@ -462,7 +588,7 @@ async def list_local_files(request: Request):
   <p><strong>Total Files:</strong> {len(files)}</p>
   <hr>
   {table_html}
-  <p><a href="/crawler">← Back to Crawler</a></p>
+  <p><a href="/crawler?format=ui">← Back to Crawler</a></p>
 </body>
 </html>"""
       
@@ -987,6 +1113,107 @@ async def update_vector_store(request: Request):
     return HTMLResponse(content=error_message, status_code=400, media_type='text/plain; charset=utf-8')
   except Exception as e:
     error_message = f"ERROR: Failed to update vector store: {str(e)}"
+    log_function_output(request_data, error_message)
+    await log_function_footer(request_data)
+    return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
+
+@router.get('/replicate_to_global')
+async def replicate_to_global(request: Request):
+  """
+  Endpoint to replicate all domain vector stores to the global vector store.
+  
+  This endpoint replicates files from all domain vector stores to the global vector store
+  defined in SEARCH_DEFAULT_GLOBAL_VECTOR_STORE_ID configuration.
+  
+  Parameters:
+  - format: Response format - 'html' or 'json' (default: 'html')
+  
+  Examples:
+  /crawler/replicate_to_global?format=html
+  /crawler/replicate_to_global?format=json
+  """
+  
+  function_name = 'replicate_to_global()'
+  request_data = log_function_header(function_name)
+  request_params = dict(request.query_params)
+  
+  endpoint = '/' + function_name.replace('()','')  
+  endpoint_documentation = replicate_to_global.__doc__
+  documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
+  
+  # Display documentation if no params are provided
+  if len(request_params) == 0:
+    await log_function_footer(request_data)
+    return HTMLResponse(documentation_HTML)
+  
+  # Get parameters
+  format = request_params.get('format', 'html').lower()
+  
+  try:
+    # Validate system configuration
+    if not hasattr(request.app.state, 'system_info') or not request.app.state.system_info:
+      error_message = "ERROR: System configuration not available"
+      log_function_output(request_data, error_message)
+      await log_function_footer(request_data)
+      if format == 'json':
+        return JSONResponse({"error": error_message}, status_code=500)
+      return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
+    
+    # Validate OpenAI client
+    if not hasattr(request.app.state, 'openai_client') or not request.app.state.openai_client:
+      error_message = "ERROR: OpenAI client not available"
+      log_function_output(request_data, error_message)
+      await log_function_footer(request_data)
+      if format == 'json':
+        return JSONResponse({"error": error_message}, status_code=500)
+      return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
+    
+    # Validate global vector store ID from config
+    if not config or not config.SEARCH_DEFAULT_GLOBAL_VECTOR_STORE_ID:
+      error_message = "ERROR: SEARCH_DEFAULT_GLOBAL_VECTOR_STORE_ID not configured"
+      log_function_output(request_data, error_message)
+      await log_function_footer(request_data)
+      if format == 'json':
+        return JSONResponse({"error": error_message}, status_code=500)
+      return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
+    
+    global_vs_id = config.SEARCH_DEFAULT_GLOBAL_VECTOR_STORE_ID
+    log_function_output(request_data, f"Starting replication to global vector store: {global_vs_id}")
+    
+    # Call the replication function
+    results = await replicate_domain_vector_stores_to_global_vector_store(
+      system_info=request.app.state.system_info,
+      openai_client=request.app.state.openai_client,
+      global_vector_store_id=global_vs_id,
+      request_data=request_data
+    )
+    
+    log_function_output(request_data, "Replication completed successfully")
+    await log_function_footer(request_data)
+    
+    # Return response based on format
+    if format == 'json':
+      return JSONResponse(content=results)
+    else:
+      # Generate HTML response
+      html_response = _generate_html_response_from_nested_data(
+        title=f"Replicate to Global Vector Store",
+        data=results
+      )
+      return HTMLResponse(content=html_response)
+      
+  except FileNotFoundError as e:
+    error_message = f"ERROR: {str(e)}"
+    log_function_output(request_data, error_message)
+    await log_function_footer(request_data)
+    return HTMLResponse(content=error_message, status_code=404, media_type='text/plain; charset=utf-8')
+  except ValueError as e:
+    error_message = f"ERROR: {str(e)}"
+    log_function_output(request_data, error_message)
+    await log_function_footer(request_data)
+    return HTMLResponse(content=error_message, status_code=400, media_type='text/plain; charset=utf-8')
+  except Exception as e:
+    error_message = f"ERROR: Failed to replicate to global vector store: {str(e)}"
     log_function_output(request_data, error_message)
     await log_function_footer(request_data)
     return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
