@@ -579,7 +579,8 @@ async def replicate_vector_store_content(client: AsyncAzureOpenAI | AsyncOpenAI,
   # Collect files from all source vector stores
   for source_vs_id in source_vector_store_ids:
     source_vs = await try_get_vector_store_by_id(client, source_vs_id)
-    if not source_vs: continue
+    if not source_vs:
+      raise ValueError(f"Source vector store ID='{source_vs_id}' not found")
     source_vs_name = getattr(source_vs, 'name', source_vs_id)
     
     # Get source files
@@ -592,7 +593,8 @@ async def replicate_vector_store_content(client: AsyncAzureOpenAI | AsyncOpenAI,
   # Process each target vector store
   for i, target_vs_id in enumerate(target_vector_store_ids):
     target_vs = await try_get_vector_store_by_id(client, target_vs_id)
-    if not target_vs: continue
+    if not target_vs:
+      raise ValueError(f"Target vector store ID='{target_vs_id}' not found")
     target_vs_name = getattr(target_vs, 'name', target_vs_id)
     
     # Get target files

@@ -7,7 +7,6 @@ from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from utils import log_function_output, normalize_long_path
 from common_sharepoint_functions import connect_to_site_using_client_id_and_certificate, try_get_document_library, get_document_library_files
 from common_openai_functions import get_vector_store_files_with_filenames_as_dict, create_vector_store, try_get_vector_store_by_id, replicate_vector_store_content
-
 @dataclass
 class FileSource:
     """Represents a SharePoint document library source."""
@@ -1459,7 +1458,6 @@ async def replicate_domain_vector_stores_to_global_vector_store(system_info, ope
   log_function_output(request_data, f"Replicating {len(domain_vs_ids)} domain vector stores to global vector store...")
   
   # Replicate all domain vector stores to global vector store
-  from common_openai_functions import replicate_vector_store_content
   added_files, removed_files, errors = await replicate_vector_store_content(
     openai_client, 
     domain_vs_ids, 

@@ -6,8 +6,8 @@ A FastAPI-based middleware application that bridges SharePoint content with Open
 
 - **SharePoint Crawler**: Automated crawling of SharePoint document libraries, lists, and site pages
 - **OpenAI Proxy**: Full proxy for OpenAI APIs (Files, Vector Stores, Responses)
-- **Intelligent Search**: AI-powered search across SharePoint content using OpenAI's file search
-- **Domain Management**: Multi-domain support with isolated vector stores per SharePoint site
+- **Semantic Search**: AI-powered search across SharePoint content using OpenAI's file search
+- **Knowledge Domains**: Combine documents, lists, site pages from any SharePoint site or location into unified "domains" based on SharePoint filters
 - **Inventory Management**: Track and manage vector stores, files, and assistants
 - **Flexible Authentication**: Support for Azure OpenAI (key, managed identity, service principal) and OpenAI API
 - **Persistent Storage**: Organized file structure for crawled content and metadata (see [PERSISTENT_STORAGE_STRUCTURE.md](PERSISTENT_STORAGE_STRUCTURE.md))
@@ -359,4 +359,4 @@ See [LICENSE](LICENSE) file for details.
 
 - **[PERSISTENT_STORAGE_STRUCTURE.md](PERSISTENT_STORAGE_STRUCTURE.md)** - Detailed storage structure documentation
 - **[DATA_SOURCES.md](DATA_SOURCES.md)** - Data flow between SharePoint, local files, and vector stores
-- **[SecureAzureAppService.md](SecureAzureAppService.md)** - Azure App Service security configuration
+- ###### **[SecureAzureAppService.md](SecureAzureAppService.md)** - Azure App Service security configuration
