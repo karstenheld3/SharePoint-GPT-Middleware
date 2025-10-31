@@ -133,6 +133,7 @@ def load_domain(storage_path: str, domain_id: str, log_data: Dict[str, Any] = No
 def load_all_domains(storage_path: str, log_data: Dict[str, Any] = None) -> List[DomainConfig]:
   """
   Load all domain configurations from the domains folder.
+  Creates the domains folder if it doesn't exist.
   
   Args:
     storage_path: Base persistent storage path
@@ -140,21 +141,17 @@ def load_all_domains(storage_path: str, log_data: Dict[str, Any] = None) -> List
     
   Returns:
     List of DomainConfig dataclasses
-    
-  Raises:
-    FileNotFoundError: If domains folder doesn't exist
   """
   domains_path = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER)
   
   if log_data:
     log_function_output(log_data, f"Scanning domains path: {domains_path}")
   
-  # Check if domains folder exists
+  # Create domains folder if it doesn't exist
   if not os.path.exists(domains_path):
-    error_message = f"Domains folder not found: {domains_path}"
+    os.makedirs(domains_path, exist_ok=True)
     if log_data:
-      log_function_output(log_data, f"ERROR: {error_message}")
-    raise FileNotFoundError(error_message)
+      log_function_output(log_data, f"Created domains folder: {domains_path}")
   
   # Get all domain folders
   domain_folders = [d for d in os.listdir(domains_path) if os.path.isdir(os.path.join(domains_path, d))]

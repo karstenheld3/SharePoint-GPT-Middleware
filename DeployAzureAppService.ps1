@@ -128,9 +128,8 @@ if ($envVarsToSet.Count -gt 0) {
 
     # Verify the settings were set
     Write-Host "Verifying environment variables in Azure App Service:"
-    $currentSettings = az webapp config appsettings list `
-        --name $config.AZURE_APP_SERVICE_NAME `
-        --resource-group $config.AZURE_RESOURCE_GROUP | ConvertFrom-Json 
+    $webAppSettings = Get-AzWebApp -ResourceGroupName $config.AZURE_RESOURCE_GROUP -Name $config.AZURE_APP_SERVICE_NAME
+    $currentSettings = $webAppSettings.SiteConfig.AppSettings
         
     # Convert $envVarsToSet into a hashtable for easier lookup
     $expectedVars = @{}
@@ -144,12 +143,12 @@ if ($envVarsToSet.Count -gt 0) {
     }
 
     foreach ($name in $expectedVars.Keys) {
-        $setting = $currentSettings | Where-Object { $_.name -eq $name }
+        $setting = $currentSettings | Where-Object { $_.Name -eq $name }
         if ($setting) {
-            if ($setting.value -eq $expectedVars[$name]) {
-                Write-Host "  ✓ $name = $($setting.value)" -ForegroundColor Green
+            if ($setting.Value -eq $expectedVars[$name]) {
+                Write-Host "  ✓ $name = $($setting.Value)" -ForegroundColor Green
             } else {
-                Write-Host "  ⚠ $name has different value. Expected: '$($expectedVars[$name])', Actual: '$($setting.value)'" -ForegroundColor Yellow
+                Write-Host "  ⚠ $name has different value. Expected: '$($expectedVars[$name])', Actual: '$($setting.Value)'" -ForegroundColor Yellow
             }
         } else {
             Write-Host "  ✗ $name is missing from Azure" -ForegroundColor Red
