@@ -128,14 +128,19 @@ async def proxy_request(request: Request, target_path: str, method: str = "POST"
       msg = f"Proxied {method} {target_path} -> {response.status_code} [{service_type} {auth_type}]"
       log_function_output(log_data, msg)
       
+      # Strip compression headers to prevent double-compression by Azure App Service
+      response_headers = dict(response.headers)
+      for header in ["content-encoding", "content-length", "transfer-encoding"]:
+        response_headers.pop(header, None)
+      
       # Handle streaming responses
       if response.headers.get("content-type", "").startswith("text/event-stream"):
-        retVal = StreamingResponse(content=response.aiter_bytes(), status_code=response.status_code, headers=dict(response.headers), media_type="text/event-stream")
+        retVal = StreamingResponse(content=response.aiter_bytes(), status_code=response.status_code, headers=response_headers, media_type="text/event-stream")
         return (retVal, _elapsed_milliseconds)
       
       # Pass through raw bytes for non-streaming
       media_type = response.headers.get("content-type")
-      retVal = Response(content=response.content, status_code=response.status_code, headers=dict(response.headers), media_type=media_type)
+      retVal = Response(content=response.content, status_code=response.status_code, headers=response_headers, media_type=media_type)
       return (retVal, _elapsed_milliseconds)
       
   except httpx.RequestError as e:
