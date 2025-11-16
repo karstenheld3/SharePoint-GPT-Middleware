@@ -33,6 +33,7 @@ AZURE_MANAGED_IDENTITY_CLIENT_ID=<your_azure_managed_identity_client_id>
 # Azure Open AI Service Configuration
 AZURE_OPENAI_ENDPOINT=https://<your_azure_openai_endpoint>.openai.azure.com/
 AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME=gpt-4o-mini
+# https://learn.microsoft.com/en-us/azure/ai-foundry/openai/reference
 AZURE_OPENAI_API_VERSION=2025-04-01-preview
 
 # ------------------------- END: Azure Open AI Service (if OPENAI_SERVICE_TYPE=azure_openai) --------------------------

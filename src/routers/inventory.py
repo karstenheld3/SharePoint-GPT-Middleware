@@ -220,7 +220,7 @@ def _generate_ui_response_for_files(title: str, count: int, files: List[Dict]) -
 <body hx-on::after-swap="updateCount()">
   <div class="container">
     <h1>{title} (<span id="item-count">{count}</span>)</h1>
-    <p><a href="/inventory">← Back to Inventory</a></p>
+    <p><a href="/">← Back to Main Page</a></p>
     
     <table>
       <thead>
@@ -298,7 +298,7 @@ def _generate_ui_response_for_assistants(title: str, count: int, assistants: Lis
 <body hx-on::after-swap="updateCount()">
   <div class="container">
     <h1>{title} (<span id="item-count">{count}</span>)</h1>
-    <p><a href="/inventory">← Back to Inventory</a></p>
+    <p><a href="/">← Back to Main Page</a></p>
     
     <table>
       <thead>
@@ -387,7 +387,7 @@ def _generate_ui_response_for_vector_stores(title: str, count: int, vector_store
 <body hx-on::after-swap="updateCount()">
   <div class="container">
     <h1>{title} (<span id="item-count">{count}</span>)</h1>
-    <p><a href="/inventory">← Back to Inventory</a></p>
+    <p><a href="/">← Back to Main Page</a></p>
     
     <table>
       <thead>
@@ -539,8 +539,8 @@ async def delete_vectorstore(request: Request):
     if format == 'json':
       return JSONResponse({"message": message})
     else:
-      # Use HX-Refresh header to trigger page reload and update count
-      return HTMLResponse("", headers={"HX-Refresh": "true"})
+      # Return empty response to remove the row from UI
+      return HTMLResponse("")
     
   except Exception as e:
     error_message = f"Error deleting vector store: {str(e)}"
@@ -706,8 +706,8 @@ async def remove_file_from_vectorstore(request: Request):
     if format == 'json':
       return JSONResponse({"message": message})
     else:
-      # Use HX-Refresh header to trigger page reload and update count
-      return HTMLResponse("", headers={"HX-Refresh": "true"})
+      # Return empty response to remove the row from UI
+      return HTMLResponse("")
     
   except Exception as e:
     error_message = f"Error removing file from vector store: {str(e)}"
@@ -771,8 +771,8 @@ async def delete_file_from_vectorstore(request: Request):
     if format == 'json':
       return JSONResponse({"message": message})
     else:
-      # Use HX-Refresh header to trigger page reload and update count
-      return HTMLResponse("", headers={"HX-Refresh": "true"})
+      # Return empty response to remove the row from UI
+      return HTMLResponse("")
     
   except Exception as e:
     error_message = f"Error deleting file: {str(e)}"
@@ -900,8 +900,8 @@ async def delete_file(request: Request):
     if format == 'json':
       return JSONResponse({"message": message})
     else:
-      # Use HX-Refresh header to trigger page reload and update count
-      return HTMLResponse("", headers={"HX-Refresh": "true"})
+      # Return empty response to remove the row from UI
+      return HTMLResponse("")
     
   except Exception as e:
     error_message = f"Error deleting file: {str(e)}"
@@ -1029,8 +1029,8 @@ async def delete_assistant(request: Request):
     if format == 'json':
       return JSONResponse({"message": message})
     else:
-      # Use HX-Refresh header to trigger page reload and update count
-      return HTMLResponse("", headers={"HX-Refresh": "true"})
+      # Return empty response to remove the row from UI
+      return HTMLResponse("")
     
   except Exception as e:
     error_message = f"Error deleting assistant: {str(e)}"
