@@ -83,7 +83,7 @@ multidict==6.6.4
     #   yarl
 office365-rest-python-client==2.6.2
     # via sharepoint-gpt-middleware (src/pyproject.toml)
-openai==1.101.0
+openai==2.8.0
     # via sharepoint-gpt-middleware (src/pyproject.toml)
 propcache==0.3.2
     # via

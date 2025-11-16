@@ -82,7 +82,18 @@ async def proxy_request(request: Request, target_path: str, method: str = "POST"
       separator = "&" if "?" in target_url else "?"
       target_url += f"{separator}api-version={config.AZURE_OPENAI_API_VERSION}"
   else:
-    target_url = f"https://api.openai.com/v1/{target_path.lstrip('/')}"
+    # For OpenAI, strip api-version parameter as it's not used
+    clean_path = target_path
+    if "?" in target_path:
+      path_parts = target_path.split("?", 1)
+      query_params = path_parts[1].split("&")
+      # Remove api-version parameter
+      filtered_params = [p for p in query_params if not p.startswith("api-version=")]
+      if filtered_params:
+        clean_path = f"{path_parts[0]}?{'&'.join(filtered_params)}"
+      else:
+        clean_path = path_parts[0]
+    target_url = f"https://api.openai.com/v1/{clean_path.lstrip('/')}"
   
   # Prepare headers
   headers: Dict[str, str] = {}
@@ -102,17 +113,36 @@ async def proxy_request(request: Request, target_path: str, method: str = "POST"
     headers["OpenAI-Beta"] = "assistants=v2"
   
   # Copy incoming headers except hop-by-hop and auth; let our auth override
-  hop_by_hop = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers", "transfer-encoding", "upgrade", "host", "content-length", "authorization"}
+  hop_by_hop = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers", "transfer-encoding", "upgrade", "host", "content-length", "authorization", "accept-encoding"}
   for header_name, header_value in request.headers.items():
     lname = header_name.lower()
     if lname not in hop_by_hop and lname not in ["api-key"]:
-      # do not overwrite our auth headers
-      if lname not in {"authorization", "openai-organization"}:
+      # do not overwrite our auth headers and openai-beta (we set our own)
+      if lname not in {"authorization", "openai-organization", "openai-beta"}:
         headers[header_name] = header_value
   
   try:
     # Pre-request diagnostic logging
     log_function_output(log_data, f"Proxying {method} -> {target_url}")
+    if config.OPENAI_SERVICE_TYPE != "azure_openai" and "api-version" in target_path:
+      log_function_output(log_data, f"Stripped api-version from path: {target_path} -> {target_url}")
+    
+    # Debug: Log request headers and body for POST/PUT/PATCH to diagnose issues
+    if method in ["POST", "PUT", "PATCH"] and not files:
+      try:
+        # Log outgoing headers to diagnose issues
+        log_function_output(log_data, f"Outgoing headers: {dict(headers)}")
+        
+        body_preview = (request_body if request_body is not None else await request.body())
+        if len(body_preview) > 0:
+          body_text = body_preview.decode('utf-8', errors='replace')
+          if len(body_text) > 1000:
+            log_function_output(log_data, f"Request body (first 1000 chars): {body_text[:1000]}... [total: {len(body_preview)} bytes]")
+          else:
+            log_function_output(log_data, f"Request body: {body_text}")
+      except:
+        pass
+    # Configure client to automatically decompress responses (default behavior)
     async with httpx.AsyncClient(timeout=http_timeout) as client:
       _start = log_data.get("start_time", datetime.datetime.now())
       if files:
@@ -128,7 +158,27 @@ async def proxy_request(request: Request, target_path: str, method: str = "POST"
       msg = f"Proxied {method} {target_path} -> {response.status_code} [{service_type} {auth_type}]"
       log_function_output(log_data, msg)
       
-      # Strip compression headers to prevent double-compression by Azure App Service
+      # Log error details for failed requests
+      if response.status_code >= 400:
+        try:
+          error_body = response.text  # Full error body
+          log_function_output(log_data, f"ERROR response body: {error_body}")
+          # Log response headers for additional error context
+          log_function_output(log_data, f"ERROR response headers: {dict(response.headers)}")
+          # For messages endpoint errors, log the full request body
+          if "messages" in target_path and not files:
+            try:
+              full_body = (request_body if request_body is not None else body)
+              if full_body:
+                full_body_text = full_body.decode('utf-8', errors='replace') if isinstance(full_body, bytes) else str(full_body)
+                log_function_output(log_data, f"FULL request body that caused error: {full_body_text}")
+            except:
+              pass          
+        except:
+          pass
+      
+      # Strip compression headers to prevent Azure App Service from double-compressing
+      # Since we don't send Accept-Encoding, upstream won't compress, so we get clean content
       response_headers = dict(response.headers)
       for header in ["content-encoding", "content-length", "transfer-encoding"]:
         response_headers.pop(header, None)
@@ -138,7 +188,7 @@ async def proxy_request(request: Request, target_path: str, method: str = "POST"
         retVal = StreamingResponse(content=response.aiter_bytes(), status_code=response.status_code, headers=response_headers, media_type="text/event-stream")
         return (retVal, _elapsed_milliseconds)
       
-      # Pass through raw bytes for non-streaming
+      # Pass through uncompressed content for non-streaming
       media_type = response.headers.get("content-type")
       retVal = Response(content=response.content, status_code=response.status_code, headers=response_headers, media_type=media_type)
       return (retVal, _elapsed_milliseconds)
@@ -372,6 +422,17 @@ async def get_vector_store_file(vector_store_id: str, file_id: str, request: Req
   try:
     target_path = f"vector_stores/{vector_store_id}/files/{file_id}?api-version={api_version}"
     retVal, _milliseconds = await proxy_request(request, target_path, "GET")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+@router.post("/vector_stores/{vector_store_id}/files/{file_id}")
+async def update_vector_store_file_attributes(vector_store_id: str, file_id: str, request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Vector Stores API - Update Vector Store File Attributes. Mirrors: POST /vector_stores/{vector_store_id}/files/{file_id}"""
+  log_data = log_function_header("update_vector_store_file_attributes")
+  try:
+    target_path = f"vector_stores/{vector_store_id}/files/{file_id}?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "POST")
     return retVal
   finally:
     await log_function_footer(log_data)
@@ -873,7 +934,7 @@ async def self_test(request: Request):
   
   # List vector stores
   try:
-    list_vs_resp, _milliseconds = await proxy_request(request, build_openai_endpoint_path("vector_stores"), "GET", timeout_seconds=timeout_seconds)
+    list_vs_resp, _milliseconds = await proxy_request(DummyRequest(), build_openai_endpoint_path("vector_stores"), "GET", timeout_seconds=timeout_seconds)
     try:
       list_vs_data = json.loads(list_vs_resp.body.decode("utf-8", errors="replace")) if list_vs_resp.body else {}
       vs_count = len(list_vs_data.get("data", [])) if isinstance(list_vs_data, dict) else 0
@@ -1407,18 +1468,20 @@ async def self_test(request: Request):
   except Exception as e:
     results["/vector_stores/{id} (GET with attributes)"] = {"Result": f"Error: {str(e)}", "Details": ""}
 
+  # Define file test attributes (outside try block so it's always available)
+  file_long_text_512 = "B" * 512  # Different 512 character text for files
+  file_test_attributes = {
+    "file_short_text": "file_test_value",
+    "file_long_text_512": file_long_text_512,
+    "file_integer_number": 99,
+    "file_float_number": 2.71828,
+    "file_date_iso": "2024-02-20T14:45:30Z",
+    "is_test": True
+  }
+  
   # Add file to vector store with attributes
   try:
     if vector_store_with_attrs_id and uploaded_file_id:
-      file_long_text_512 = "B" * 512  # Different 512 character text for files
-      file_test_attributes = {
-        "file_short_text": "file_test_value",
-        "file_long_text_512": file_long_text_512,
-        "file_integer_number": 99,
-        "file_float_number": 2.71828,
-        "file_date_iso": "2024-02-20T14:45:30Z",
-        "is_test": True
-      }
       file_attrs_req = DummyRequestJson({"file_id": uploaded_file_id, "attributes": file_test_attributes})
       add_file_attrs_resp, _milliseconds = await proxy_request(file_attrs_req, build_openai_endpoint_path(f"vector_stores/{vector_store_with_attrs_id}/files"), "POST", timeout_seconds=timeout_seconds)
       try:
@@ -1442,41 +1505,181 @@ async def self_test(request: Request):
   except Exception as e:
     results["/vector_stores/{id}/files (POST with attributes)"] = {"Result": f"Error: {str(e)}", "Details": ""}
 
+  # Helper function to wait for file completion
+  async def wait_for_file_completion(test_name: str, vector_store_id: str, file_id: str, max_wait_seconds: int = 10, wait_interval: int = 2):
+    """Wait for a vector store file to reach completed, failed, or cancelled status.
+    
+    Reason: After the introduction of the Python SDK Version 2.0.0 (2025-09-30), the attributes are not immediately available.
+      They are only returned with the file after the file has been processed.
+    """
+    import time
+    start_time = time.time()
+    final_status = "unknown"
+    success = False
+    
+    for attempt in range(max_wait_seconds // wait_interval):
+      try:
+        status_resp, _ms = await proxy_request(DummyRequest(), build_openai_endpoint_path(f"vector_stores/{vector_store_id}/files/{file_id}"), "GET", timeout_seconds=5)
+        if status_resp.status_code < 400:
+          try:
+            status_data = json.loads(status_resp.body.decode("utf-8", errors="replace")) if status_resp.body else {}
+          except (UnicodeDecodeError, json.JSONDecodeError):
+            status_data = {}
+          file_status = status_data.get("status", "unknown")
+          final_status = file_status
+          if file_status == "completed":
+            success = True
+            break
+          elif file_status in ["failed", "cancelled"]:
+            break
+      except Exception:
+        pass
+      await asyncio.sleep(wait_interval)
+    
+    elapsed_ms = int((time.time() - start_time) * 1000)
+    emoji = "✅" if success else "❌"
+    main = ("OK" if success else f"Status: {final_status}") + f" ({format_milliseconds(elapsed_ms)})"
+    details = f"[Waiting for file status='completed'] vector_store_id: '{format_for_display(vector_store_id)}' file_id: '{format_for_display(file_id)}'"
+    results[test_name] = {"Result": f"{emoji} {main}", "Details": details}
+
+  # Wait for file with attributes to be processed
+  if vector_store_with_attrs_id and file_with_attrs_id:
+    await wait_for_file_completion("/vector_stores/{id}/files/{file_id} (GET wait for completion)", vector_store_with_attrs_id, file_with_attrs_id)
+
+  # Helper function to validate file attributes
+  def validate_file_attributes(attributes: Dict, expected_attributes: Dict) -> bool:
+    """Validate all file attribute types match expected values."""
+    return all([
+      attributes.get("file_short_text") == expected_attributes["file_short_text"],
+      attributes.get("file_long_text_512") == expected_attributes["file_long_text_512"],
+      attributes.get("file_integer_number") == expected_attributes["file_integer_number"],
+      attributes.get("file_float_number") == expected_attributes["file_float_number"],
+      attributes.get("file_date_iso") == expected_attributes["file_date_iso"],
+      attributes.get("is_test") == expected_attributes["is_test"]
+    ])
+  
+  # Helper function to test GET file with attributes
+  async def test_get_file_with_attributes(test_name: str, expected_attributes: Dict):
+    """Test GET /vector_stores/{id}/files/{file_id} with attribute validation."""
+    try:
+      if vector_store_with_attrs_id and file_with_attrs_id:
+        get_file_attrs_resp, _milliseconds = await proxy_request(DummyRequest(), build_openai_endpoint_path(f"vector_stores/{vector_store_with_attrs_id}/files/{file_with_attrs_id}"), "GET", timeout_seconds=timeout_seconds)
+        try:
+          get_file_attrs_data = json.loads(get_file_attrs_resp.body.decode("utf-8", errors="replace")) if get_file_attrs_resp.body else {}
+          has_decode_error = False
+        except (UnicodeDecodeError, json.JSONDecodeError):
+          get_file_attrs_data = {}
+          has_decode_error = True
+        ok = get_file_attrs_resp.status_code < 400
+        if ok:
+          attributes = get_file_attrs_data.get("attributes", {})
+          all_file_attrs_match = validate_file_attributes(attributes, expected_attributes)
+          test_success = ok and len(attributes) > 0 and all_file_attrs_match
+          emoji = "✅" if test_success else "❌"
+          main = ("OK" if ok else f"HTTP {get_file_attrs_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+          details = f"vector_store_id: '{format_for_display(vector_store_with_attrs_id)}' file_id: '{format_for_display(file_with_attrs_id)}' attrs_count: {len(attributes)}; all_match: {all_file_attrs_match}"
+        else:
+          emoji = "⚠️" if has_decode_error else "❌"
+          main = f"HTTP {get_file_attrs_resp.status_code}" + f" ({format_milliseconds(_milliseconds)})"
+          details = get_error_details(get_file_attrs_resp, get_file_attrs_data)
+        results[test_name] = {"Result": f"{emoji} {main}", "Details": details}
+      else:
+        results[test_name] = {"Result": "Skipped (missing ids)", "Details": ""}
+    except Exception as e:
+      results[test_name] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
+  # Helper function to test LIST files with attributes
+  async def test_list_files_with_attributes(test_name: str, expected_attributes: Dict):
+    """Test GET /vector_stores/{id}/files with attribute validation."""
+    try:
+      if vector_store_with_attrs_id and file_with_attrs_id:
+        list_files_resp, _milliseconds = await proxy_request(DummyRequest(), build_openai_endpoint_path(f"vector_stores/{vector_store_with_attrs_id}/files?include=attributes"), "GET", timeout_seconds=timeout_seconds)
+        try:
+          list_files_data = json.loads(list_files_resp.body.decode("utf-8", errors="replace")) if list_files_resp.body else {}
+          has_decode_error = False
+        except (UnicodeDecodeError, json.JSONDecodeError):
+          list_files_data = {}
+          has_decode_error = True
+        ok = list_files_resp.status_code < 400
+        if ok:
+          files_list = list_files_data.get("data", [])
+          # Find the file with attributes in the list
+          found_file = None
+          for file_item in files_list:
+            if file_item.get("id") == file_with_attrs_id:
+              found_file = file_item
+              break
+          
+          if found_file:
+            attributes = found_file.get("attributes", {})
+            all_file_attrs_match = validate_file_attributes(attributes, expected_attributes)
+            test_success = ok and len(attributes) > 0 and all_file_attrs_match
+            emoji = "✅" if test_success else "❌"
+            main = ("OK" if ok else f"HTTP {list_files_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
+            details = f"vector_store_id: '{format_for_display(vector_store_with_attrs_id)}' files_count: {len(files_list)}; file_found: True; attrs_count: {len(attributes)}; all_match: {all_file_attrs_match}"
+          else:
+            emoji = "❌"
+            main = f"OK ({format_milliseconds(_milliseconds)})"
+            details = f"vector_store_id: '{format_for_display(vector_store_with_attrs_id)}' files_count: {len(files_list)}; file_found: False; file_id: '{format_for_display(file_with_attrs_id)}'"
+        else:
+          emoji = "⚠️" if has_decode_error else "❌"
+          main = f"HTTP {list_files_resp.status_code}" + f" ({format_milliseconds(_milliseconds)})"
+          details = get_error_details(list_files_resp, list_files_data)
+        results[test_name] = {"Result": f"{emoji} {main}", "Details": details}
+      else:
+        results[test_name] = {"Result": "Skipped (missing ids)", "Details": ""}
+    except Exception as e:
+      results[test_name] = {"Result": f"Error: {str(e)}", "Details": ""}
+  
   # Get file from vector store with attributes
+  await test_get_file_with_attributes("/vector_stores/{id}/files/{file_id} (GET with attributes)", file_test_attributes)
+
+  # List vector store files with attributes
+  await test_list_files_with_attributes("/vector_stores/{id}/files (GET list with attributes)", file_test_attributes)
+
+  # Update file attributes using POST endpoint
   try:
     if vector_store_with_attrs_id and file_with_attrs_id:
-      get_file_attrs_resp, _milliseconds = await proxy_request(DummyRequest(), build_openai_endpoint_path(f"vector_stores/{vector_store_with_attrs_id}/files/{file_with_attrs_id}"), "GET", timeout_seconds=timeout_seconds)
+      # Define updated attributes (different from original)
+      updated_file_attributes = {
+        "file_short_text": "updated_value",
+        "file_long_text_512": "U" * 512,  # Different 512 character text
+        "file_integer_number": 42,
+        "file_float_number": 3.14159,
+        "file_date_iso": "2025-12-31T23:59:59Z",
+        "is_test": False
+      }
+      update_attrs_req = DummyRequestJson({"attributes": updated_file_attributes})
+      update_attrs_resp, _milliseconds = await proxy_request(update_attrs_req, build_openai_endpoint_path(f"vector_stores/{vector_store_with_attrs_id}/files/{file_with_attrs_id}"), "POST", timeout_seconds=timeout_seconds)
       try:
-        get_file_attrs_data = json.loads(get_file_attrs_resp.body.decode("utf-8", errors="replace")) if get_file_attrs_resp.body else {}
+        update_attrs_data = json.loads(update_attrs_resp.body.decode("utf-8", errors="replace")) if update_attrs_resp.body else {}
         has_decode_error = False
       except (UnicodeDecodeError, json.JSONDecodeError):
-        get_file_attrs_data = {}
+        update_attrs_data = {}
         has_decode_error = True
-      ok = get_file_attrs_resp.status_code < 400
+      ok = update_attrs_resp.status_code < 400
+      emoji = "✅" if ok else ("⚠️" if has_decode_error else "❌")
+      main = ("OK" if ok else f"HTTP {update_attrs_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
       if ok:
-        attributes = get_file_attrs_data.get("attributes", {})
-        # Validate all file attribute types
-        file_short_text_match = attributes.get("file_short_text") == file_test_attributes["file_short_text"]
-        file_long_text_match = attributes.get("file_long_text_512") == file_test_attributes["file_long_text_512"]
-        file_integer_match = attributes.get("file_integer_number") == file_test_attributes["file_integer_number"]
-        file_float_match = attributes.get("file_float_number") == file_test_attributes["file_float_number"]
-        file_date_match = attributes.get("file_date_iso") == file_test_attributes["file_date_iso"]
-        file_boolean_match = attributes.get("is_test") == file_test_attributes["is_test"]
-        all_file_attrs_match = all([file_short_text_match, file_long_text_match, file_integer_match, file_float_match, file_date_match, file_boolean_match])
-        # Test passes only if HTTP OK AND attributes are correctly preserved
-        test_success = ok and len(attributes) > 0 and all_file_attrs_match
-        emoji = "✅" if test_success else "❌"
-        main = ("OK" if ok else f"HTTP {get_file_attrs_resp.status_code}") + f" ({format_milliseconds(_milliseconds)})"
-        details = f"vector_store_id: '{format_for_display(vector_store_with_attrs_id)}' file_id: '{format_for_display(file_with_attrs_id)}' attrs_count: {len(attributes)}; all_match: {all_file_attrs_match}"
+        attributes = update_attrs_data.get("attributes", {})
+        details = f"vector_store_id: '{format_for_display(vector_store_with_attrs_id)}' file_id: '{format_for_display(file_with_attrs_id)}' attrs_count: {len(attributes)}"
       else:
-        emoji = "⚠️" if has_decode_error else "❌"
-        main = f"HTTP {get_file_attrs_resp.status_code}" + f" ({format_milliseconds(_milliseconds)})"
-        details = get_error_details(get_file_attrs_resp, get_file_attrs_data)
-      results["/vector_stores/{id}/files/{file_id} (GET with attributes)"] = {"Result": f"{emoji} {main}", "Details": details}
+        details = get_error_details(update_attrs_resp, update_attrs_data)
+      results["/vector_stores/{id}/files/{file_id} (POST update attributes)"] = {"Result": f"{emoji} {main}", "Details": details}
     else:
-      results["/vector_stores/{id}/files/{file_id} (GET with attributes)"] = {"Result": "Skipped (missing ids)", "Details": ""}
+      results["/vector_stores/{id}/files/{file_id} (POST update attributes)"] = {"Result": "Skipped (missing ids)", "Details": ""}
   except Exception as e:
-    results["/vector_stores/{id}/files/{file_id} (GET with attributes)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+    results["/vector_stores/{id}/files/{file_id} (POST update attributes)"] = {"Result": f"Error: {str(e)}", "Details": ""}
+
+  # Wait for file to be processed after attribute update
+  if vector_store_with_attrs_id and file_with_attrs_id:
+    await wait_for_file_completion("/vector_stores/{id}/files/{file_id} (GET wait after update)", vector_store_with_attrs_id, file_with_attrs_id)
+
+  # Re-test: Get file from vector store to verify updated attributes
+  await test_get_file_with_attributes("/vector_stores/{id}/files/{file_id} (GET after update)", updated_file_attributes)
+
+  # Re-test: List vector store files to verify updated attributes
+  await test_list_files_with_attributes("/vector_stores/{id}/files (GET list after update)", updated_file_attributes)
 
   # Remove file from vector store
   try:
