@@ -261,13 +261,17 @@ def _generate_ui_response_for_assistants(title: str, count: int, assistants: Lis
     model = assistant.get('model', 'N/A')
     description = assistant.get('description', '')
     
+    # Handle None description
+    description_text = description if description else ''
+    description_display = description_text[:50] + '...' if len(description_text) > 50 else description_text
+    
     rows_html += f"""
     <tr id="assistant-{assistant_id}">
       <td>{name}</td>
       <td>{assistant_id}</td>
       <td>{created_at}</td>
       <td>{model}</td>
-      <td>{description[:50] + '...' if len(description) > 50 else description}</td>
+      <td>{description_display}</td>
       <td class="actions">
         <button class="btn-small btn-delete" 
                 hx-delete="/inventory/assistants/delete?assistant_id={assistant_id}" 

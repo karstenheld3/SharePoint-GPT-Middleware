@@ -412,11 +412,13 @@ def _convert_to_coai_assistant(assistant) -> CoaiAssistant:
   if assistant.tool_resources:
     code_interpreter = None
     if assistant.tool_resources.code_interpreter:
-      code_interpreter = CoaiToolResourcesCodeInterpreter(file_ids=assistant.tool_resources.code_interpreter.file_ids)
+      file_ids = getattr(assistant.tool_resources.code_interpreter, 'file_ids', None) or []
+      code_interpreter = CoaiToolResourcesCodeInterpreter(file_ids=file_ids)
     
     file_search = None
     if assistant.tool_resources.file_search:
-      file_search = CoaiToolResourcesFileSearch(vector_store_ids=assistant.tool_resources.file_search.vector_store_ids)
+      vector_store_ids = getattr(assistant.tool_resources.file_search, 'vector_store_ids', None) or []
+      file_search = CoaiToolResourcesFileSearch(vector_store_ids=vector_store_ids)
     
     tool_resources = CoaiToolResources(code_interpreter=code_interpreter, file_search=file_search)
   
