@@ -13,6 +13,7 @@ description: Apply to Python code
 - standard / core libraries first (top), only then 3rd party libraries
 
 ## Code generation
+- *Never change existing names*: The existing code base is holy. Only change stuff if you have been asked to do so.
 - *Principle Of Least Surprise*: Write simple, idiomatic code. Things should work exactly as a standard programmer would assume them to work.
 - *Use Minimal Explicit Consistent Terminology*: Use clear, fully written-out names over abbreviations. Stick to the naming patterns of the existing code base. Avoid ambiguous, generic, shortened names.
 - *Write readable code*: Optimize for maintainability, not performance
@@ -52,7 +53,8 @@ if not vector_store_id: raise ValueError(f"Expected a non-empty value for 'vecto
 - `OK` = action succeeded. `ERROR` = intermediate or final error occurred. `FAIL` = action failed even after error mitigation. `WARNING` = intermediate error that will be mitigated
 - Put file paths, names and IDs in single quotes
 - Log action / subaction description before executing action
-- For iterations, ùse `[ x / n ]` format at the beginning of a line. x = current item number, n = total items.
+- For iterations, ùse `[ x / n ]` format at the beginning of a line where x = current item number, n = total items.
+- For retries use `( x / n )` inline where x = current retry, n = max retries.
 
 *BAD*:
 ```
@@ -68,7 +70,7 @@ ERROR: BlockingIOError: [Errno 11] Resource temporarily unavailable
   OK.
 [ 2 / 2 ] Uploading file 'C:\Test.docx' to vector store ID='vs_62573645276345'...
   WARNING: File could not be opened. Maybe it's locked. -> BlockingIOError: [Errno 11] Resource temporarily unavailable
-  [ 1 / 2 ] Waiting 5 secs for retry...
+  Waiting 5 seconds ( 1 / 2 ) for retry...
   Uploading file...
   Verifying uploaded file ID='file_238756235'...
   OK.

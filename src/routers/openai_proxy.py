@@ -28,6 +28,30 @@ def set_config(app_config):
       # Note: No log_data available in set_config, error will be caught during first request
       token_provider = None
 
+def sanitize_headers_for_logging(headers: Dict[str, str]) -> Dict[str, str]:
+  """Sanitize sensitive header values for logging by showing only first 12 and last 5 characters."""
+  sanitized = {}
+  sensitive_headers = {"authorization", "api-key"}
+  
+  for key, value in headers.items():
+    if key.lower() in sensitive_headers and len(value) > 17:
+      # Extract prefix (e.g., "Bearer " or empty)
+      prefix = ""
+      token = value
+      if " " in value:
+        prefix, token = value.split(" ", 1)
+        prefix = prefix + " "
+      
+      # Sanitize token: show first 12 and last 5 chars
+      if len(token) > 17:
+        sanitized[key] = f"{prefix}{token[:12]}...{token[-5:]}"
+      else:
+        sanitized[key] = f"{prefix}***"
+    else:
+      sanitized[key] = value
+  
+  return sanitized
+
 async def proxy_request(request: Request, target_path: str, method: str = "POST", files: Optional[Dict[str, Any]] = None, timeout_seconds: Optional[float] = None) -> Any:
   """Proxy requests to OpenAI/Azure OpenAI Service while maintaining 1:1 API compatibility."""
   log_data = log_function_header("proxy_request")
@@ -130,8 +154,8 @@ async def proxy_request(request: Request, target_path: str, method: str = "POST"
     # Debug: Log request headers and body for POST/PUT/PATCH to diagnose issues
     if method in ["POST", "PUT", "PATCH"] and not files:
       try:
-        # Log outgoing headers to diagnose issues
-        log_function_output(log_data, f"Outgoing headers: {dict(headers)}")
+        # Log outgoing headers to diagnose issues (sanitize sensitive values)
+        log_function_output(log_data, f"Outgoing headers: {sanitize_headers_for_logging(headers)}")
         
         body_preview = (request_body if request_body is not None else await request.body())
         if len(body_preview) > 0:
@@ -154,8 +178,11 @@ async def proxy_request(request: Request, target_path: str, method: str = "POST"
         response = await client.request(method=method, url=target_url, content=body, headers=headers)
       _elapsed_milliseconds = int((datetime.datetime.now() - _start).total_seconds() * 1000)
       service_type = "Azure OpenAI" if config.OPENAI_SERVICE_TYPE == "azure_openai" else "OpenAI"
-      auth_type = "Key" if config.AZURE_OPENAI_USE_KEY_AUTHENTICATION else "Token"
-      msg = f"Proxied {method} {target_path} -> {response.status_code} [{service_type} {auth_type}]"
+      if config.OPENAI_SERVICE_TYPE == "azure_openai":
+        auth_type = "Key" if config.AZURE_OPENAI_USE_KEY_AUTHENTICATION else "Token"
+      else:
+        auth_type = "Key"  # OpenAI always uses API key
+      msg = f"Proxied {method} {target_path} -> {response.status_code} [ServiceType={service_type}, AuthType={auth_type}]"
       log_function_output(log_data, msg)
       
       # Log error details for failed requests
@@ -444,6 +471,17 @@ async def delete_vector_store_file(vector_store_id: str, file_id: str, request: 
   try:
     target_path = f"vector_stores/{vector_store_id}/files/{file_id}?api-version={api_version}"
     retVal, _milliseconds = await proxy_request(request, target_path, "DELETE")
+    return retVal
+  finally:
+    await log_function_footer(log_data)
+
+@router.get("/vector_stores/{vector_store_id}/files/{file_id}/content")
+async def get_vector_store_file_content(vector_store_id: str, file_id: str, request: Request, api_version: str = "2025-04-01-preview"):
+  """Proxy for OpenAI Vector Stores API - Retrieve Vector Store File Content. Mirrors: GET /vector_stores/{vector_store_id}/files/{file_id}/content"""
+  log_data = log_function_header("get_vector_store_file_content")
+  try:
+    target_path = f"vector_stores/{vector_store_id}/files/{file_id}/content?api-version={api_version}"
+    retVal, _milliseconds = await proxy_request(request, target_path, "GET")
     return retVal
   finally:
     await log_function_footer(log_data)
@@ -1636,6 +1674,61 @@ async def self_test(request: Request):
 
   # List vector store files with attributes
   await test_list_files_with_attributes("/vector_stores/{id}/files (GET list with attributes)", file_test_attributes)
+
+  # Retrieve vector store file content (chunks)
+  try:
+    if vector_store_with_attrs_id and file_with_attrs_id:
+      content_resp, _milliseconds = await proxy_request(DummyRequest(), build_openai_endpoint_path(f"vector_stores/{vector_store_with_attrs_id}/files/{file_with_attrs_id}/content"), "GET", timeout_seconds=timeout_seconds)
+      try:
+        content_data = json.loads(content_resp.body.decode("utf-8", errors="replace")) if content_resp.body else {}
+        has_decode_error = False
+      except (UnicodeDecodeError, json.JSONDecodeError):
+        content_data = {}
+        has_decode_error = True
+      ok = content_resp.status_code < 400
+      if ok:
+        file_id = content_data.get("file_id", "")
+        filename = content_data.get("filename", "")
+        
+        # Check if 'content' key exists, otherwise use 'data' as fallback
+        if "content" in content_data:
+          # Primary format: content array contains chunks
+          content_chunks = content_data.get("content", [])
+          used_fallback = False
+        else:
+          # Fallback format: data array contains chunks (paginated response)
+          content_chunks = content_data.get("data", [])
+          used_fallback = True
+        
+        chunk_count = len(content_chunks)
+        # Validate that we got meaningful data
+        has_file_id = bool(file_id)
+        has_filename = bool(filename)
+        has_chunks = chunk_count > 0
+        test_success = ok and has_file_id and has_filename and has_chunks and not used_fallback
+        emoji = "✅" if test_success else "⚠️"
+        status_msg = "OK"
+        if not test_success:
+          if used_fallback:
+            status_msg = "OK (undocumented chunks-only format)"
+          else:
+            status_msg = "OK (incomplete data)"
+        main = status_msg + f" ({format_milliseconds(_milliseconds)})"
+        # Get first chunk preview if available
+        first_chunk_preview = ""
+        if chunk_count > 0 and isinstance(content_chunks[0], dict):
+          chunk_text = content_chunks[0].get("text", "")
+          first_chunk_preview = f"; first_chunk: '{truncate_string(chunk_text, 50)}'"
+        details = f"vector_store_id: '{format_for_display(vector_store_with_attrs_id)}' file_id: '{format_for_display(file_id)}' filename: '{filename}' chunks_count: {chunk_count}{first_chunk_preview}"
+      else:
+        emoji = "⚠️" if has_decode_error else "❌"
+        main = f"HTTP {content_resp.status_code}" + f" ({format_milliseconds(_milliseconds)})"
+        details = get_error_details(content_resp, content_data)
+      results["/vector_stores/{id}/files/{file_id}/content (GET)"] = {"Result": f"{emoji} {main}", "Details": details}
+    else:
+      results["/vector_stores/{id}/files/{file_id}/content (GET)"] = {"Result": "Skipped (missing ids)", "Details": ""}
+  except Exception as e:
+    results["/vector_stores/{id}/files/{file_id}/content (GET)"] = {"Result": f"Error: {str(e)}", "Details": ""}
 
   # Update file attributes using POST endpoint
   try:
