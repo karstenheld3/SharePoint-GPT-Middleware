@@ -7,6 +7,7 @@ from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
+from common_ui_functions import generate_html_head, generate_table_page, generate_table_with_headers, generate_error_html, generate_error_response, generate_success_response, generate_toolbar_button, generate_nested_data_page, generate_documentation_page
 from utils import convert_to_flat_html_table, convert_to_nested_html_table, log_function_footer, log_function_header, log_function_output
 from common_crawler_functions import ( DomainConfig, FileSource, SitePageSource, ListSource, load_all_domains, domain_config_to_dict, save_domain_to_file, delete_domain_folder, validate_domain_config )
 
@@ -20,25 +21,6 @@ def set_config(app_config):
   global config
   config = app_config
 
-def _generate_error_response(error_message: str, format: str, status_code: int = 400):
-  """Generate error response in requested format."""
-  if format == 'json':
-    return JSONResponse({"error": error_message}, status_code=status_code)
-  else:
-    return HTMLResponse(
-      f"<div class='error' style='padding: 15px; margin: 10px 0; background-color: #fee; border: 1px solid #fcc; border-radius: 4px; color: #c00;'><strong>Error:</strong> {error_message}</div>",
-      status_code=status_code
-    )
-
-def _generate_success_response(message: str, format: str, data: Dict[str, Any] = None):
-  """Generate success response in requested format."""
-  if format == 'json':
-    response = {"message": message}
-    if data:
-      response["data"] = data
-    return JSONResponse(response)
-  else:
-    return HTMLResponse(f"<div class='success'>{message}</div>")
 
 @router.get('/domains')
 async def list_domains(request: Request):
@@ -58,13 +40,10 @@ async def list_domains(request: Request):
   request_data = log_function_header(function_name)
   request_params = dict(request.query_params)
   
-  endpoint = '/domains'
-  endpoint_documentation = list_domains.__doc__
-  documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
   # Display documentation if no params are provided
   if len(request_params) == 0:
     await log_function_footer(request_data)
-    return HTMLResponse(documentation_HTML)
+    return HTMLResponse(generate_documentation_page('/domains', list_domains.__doc__))
 
   format = request_params.get('format', 'html')
   
@@ -76,8 +55,7 @@ async def list_domains(request: Request):
       if format == 'json':
         return JSONResponse({"error": error_message}, status_code=500)
       else:
-        error_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Error</title></head><body><h1>Error</h1><p>{error_message}</p></body></html>"
-        return HTMLResponse(error_html, status_code=500)
+        return HTMLResponse(generate_error_html(error_message), status_code=500)
     
     storage_path = request.app.state.system_info.PERSISTENT_STORAGE_PATH
     
@@ -120,45 +98,8 @@ async def list_domains(request: Request):
     </tr>
     """
       
-      html_content = f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
-  <title>Domains ({len(domains_list)})</title>
-  <link rel='stylesheet' href='/static/css/styles.css'>
-  <script src='/static/js/htmx.js'></script>
-</head>
-<body>
-  <div class="container">
-  <h1>Domains ({len(domains_list)})</h1>
-  <p><a href="/">← Back to Main Page</a></p>
-  
-  <div class="toolbar">
-    <button class="btn-primary" 
-        hx-get="/domains/create?format=ui"
-        hx-target="#form-container"
-        hx-swap="innerHTML">
-    + Add New Domain
-    </button>
-  </div>
-  
-  <table>
-    <thead>
-    <tr>
-      <th>Domain ID</th>
-      <th>Name</th>
-      <th>Vector Store Name</th>
-      <th>Vector Store ID</th>
-      <th>Actions</th>
-    </tr>
-    </thead>
-    <tbody>
-    {table_rows if table_rows else '<tr><td colspan="5">No domains found</td></tr>'}
-    </tbody>
-  </table>
-  
-  <div id="form-container"></div>
-  </div>
-  
-  <script>
-  // Store existing domain IDs for client-side validation
+      # JavaScript for domain validation and JSON example dialog
+      additional_scripts = f"""  // Store existing domain IDs for client-side validation
   const existingDomainIds = {json.dumps([d.domain_id for d in domains_list])};
   
   function validateDomainId(domainIdInput) {{
@@ -228,8 +169,27 @@ async def list_domains(request: Request):
       </div>
     `;
     document.body.appendChild(modal);
-  }}
-  </script>
+  }}"""
+      
+      toolbar_html = f"""<div class="toolbar">
+    {generate_toolbar_button('+ Add New Domain', '/domains/create?format=ui', '#form-container')}
+  </div>"""
+      
+      headers = ['Domain ID', 'Name', 'Vector Store Name', 'Vector Store ID', 'Actions']
+      table_html = generate_table_with_headers(headers, table_rows, "No domains found")
+      additional_content = '<div id="form-container"></div>'
+      
+      # Generate page using common UI function
+      head = generate_html_head("Domains", additional_scripts)
+      html_content = f"""{head}
+<body>
+  <div class="container">
+  <h1>Domains ({len(domains_list)})</h1>
+  <p><a href="/">← Back to Main Page</a></p>
+  {toolbar_html}
+  {table_html}
+  {additional_content}
+  </div>
 </body>
 </html>"""
       await log_function_footer(request_data)
@@ -237,10 +197,7 @@ async def list_domains(request: Request):
     else:
       # HTML format with full domain data (using nested table for complex structures)
       domains_dict_list = [domain_config_to_dict(domain) for domain in domains_list]
-      html_content = _generate_html_response_from_nested_data(
-        f"Domains ({len(domains_dict_list)})",
-        domains_dict_list
-      )
+      html_content = generate_nested_data_page(f"Domains ({len(domains_dict_list)})", domains_dict_list)
       await log_function_footer(request_data)
       return HTMLResponse(html_content)
       
@@ -250,8 +207,7 @@ async def list_domains(request: Request):
     if format == 'json':
       return JSONResponse({"error": error_message}, status_code=404)
     else:
-      error_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Error</title></head><body><h1>Error</h1><p>{error_message}</p></body></html>"
-      return HTMLResponse(error_html, status_code=404)
+      return HTMLResponse(generate_error_html(error_message), status_code=404)
   except Exception as e:
     error_message = f"Error retrieving domains: {str(e)}"
     log_function_output(request_data, f"ERROR: {error_message}")
@@ -260,31 +216,8 @@ async def list_domains(request: Request):
     if format == 'json':
       return JSONResponse({"error": error_message}, status_code=500)
     else:
-      error_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Error</title></head><body><h1>Error</h1><p>{error_message}</p></body></html>"
-      return HTMLResponse(error_html, status_code=500)
+      return HTMLResponse(generate_error_html(error_message), status_code=500)
 
-def _generate_html_response_from_nested_data(title: str, data: Any) -> str:
-  """
-  Generate HTML response with nested table for complex data structures.
-  
-  Args:
-    title: Page title
-    data: Complex data structure to convert to nested HTML table
-    
-  Returns:
-    Complete HTML page with nested table
-  """
-  table_html = convert_to_nested_html_table(data)
-  return f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
-  <title>{title}</title>
-  <link rel='stylesheet' href='/static/css/styles.css'>
-  <script src='/static/js/htmx.js'></script>
-</head>
-<body>
-  <h1>{title}</h1>
-  {table_html}
-</body>
-</html>"""
 
 @router.get('/domains/create')
 async def get_create_form(request: Request):
@@ -393,7 +326,7 @@ async def create_domain(
       error_message = "PERSISTENT_STORAGE_PATH not configured"
       log_function_output(request_data, f"ERROR: {error_message}")
       await log_function_footer(request_data)
-      return _generate_error_response(error_message, format, 500)
+      return generate_error_response(error_message, format, 500)
     
     storage_path = request.app.state.system_info.PERSISTENT_STORAGE_PATH
     
@@ -413,12 +346,12 @@ async def create_domain(
         error_msg = f"Invalid JSON in sources_json: {str(e)}"
         log_function_output(request_data, f"ERROR: {error_msg}")
         await log_function_footer(request_data)
-        return _generate_error_response(error_msg, format, 400)
+        return generate_error_response(error_msg, format, 400)
       except Exception as e:
         error_msg = f"Error parsing sources: {str(e)}"
         log_function_output(request_data, f"ERROR: {error_msg}")
         await log_function_footer(request_data)
-        return _generate_error_response(error_msg, format, 400)
+        return generate_error_response(error_msg, format, 400)
     
     # Prepare domain data
     domain_data = {
@@ -437,7 +370,7 @@ async def create_domain(
     if not is_valid:
       log_function_output(request_data, f"Validation error: {error_msg}")
       await log_function_footer(request_data)
-      return _generate_error_response(error_msg, format, 400)
+      return generate_error_response(error_msg, format, 400)
     
     # Check if domain already exists
     try:
@@ -446,7 +379,7 @@ async def create_domain(
         error_msg = f"Domain with ID '{domain_id}' already exists"
         log_function_output(request_data, f"ERROR: {error_msg}")
         await log_function_footer(request_data)
-        return _generate_error_response(error_msg, format, 409)
+        return generate_error_response(error_msg, format, 409)
     except FileNotFoundError:
       # Domains folder doesn't exist yet, that's fine
       pass
@@ -470,17 +403,7 @@ async def create_domain(
     await log_function_footer(request_data)
     
     success_msg = f"Domain '{name}' created successfully!"
-    if format == 'json':
-      return JSONResponse({
-        "message": success_msg,
-        "data": domain_config_to_dict(domain_config)
-      })
-    else:
-      # Use HX-Refresh header to trigger page reload
-      return HTMLResponse(
-        f"<div class='success'>{success_msg} Reloading...</div>",
-        headers={"HX-Refresh": "true"}
-      )
+    return generate_success_response(success_msg, format, data=domain_config_to_dict(domain_config), refresh=(format != 'json'))
     
   except Exception as e:
     import traceback
@@ -488,7 +411,7 @@ async def create_domain(
     log_function_output(request_data, f"ERROR: {error_message}")
     log_function_output(request_data, f"TRACEBACK: {traceback.format_exc()}")
     await log_function_footer(request_data)
-    return _generate_error_response(error_message, format, 500)
+    return generate_error_response(error_message, format, 500)
 
 @router.get('/domains/update')
 async def get_update_form(request: Request):
@@ -511,13 +434,13 @@ async def get_update_form(request: Request):
   
   if not domain_id:
     await log_function_footer(request_data)
-    return _generate_error_response("Missing domain_id parameter", format, 400)
+    return generate_error_response("Missing domain_id parameter", format, 400)
   
   try:
     if not hasattr(request.app.state, 'system_info') or not request.app.state.system_info.PERSISTENT_STORAGE_PATH:
       error_message = "PERSISTENT_STORAGE_PATH not configured"
       await log_function_footer(request_data)
-      return _generate_error_response(error_message, format, 500)
+      return generate_error_response(error_message, format, 500)
     
     storage_path = request.app.state.system_info.PERSISTENT_STORAGE_PATH
     
@@ -527,7 +450,7 @@ async def get_update_form(request: Request):
     
     if not domain:
       await log_function_footer(request_data)
-      return _generate_error_response(f"Domain '{domain_id}' not found", format, 404)
+      return generate_error_response(f"Domain '{domain_id}' not found", format, 404)
     
     # Pre-serialize sources to JSON for the textarea
     sources_dict = {
@@ -594,7 +517,7 @@ async def get_update_form(request: Request):
     error_message = f"Error loading domain: {str(e)}"
     log_function_output(request_data, f"ERROR: {error_message}")
     await log_function_footer(request_data)
-    return _generate_error_response(error_message, format, 500)
+    return generate_error_response(error_message, format, 500)
 
 @router.put('/domains/update')
 async def update_domain(
@@ -627,7 +550,7 @@ async def update_domain(
       error_message = "PERSISTENT_STORAGE_PATH not configured"
       log_function_output(request_data, f"ERROR: {error_message}")
       await log_function_footer(request_data)
-      return _generate_error_response(error_message, format, 500)
+      return generate_error_response(error_message, format, 500)
     
     storage_path = request.app.state.system_info.PERSISTENT_STORAGE_PATH
     
@@ -639,7 +562,7 @@ async def update_domain(
       error_msg = f"Domain '{domain_id}' not found"
       log_function_output(request_data, f"ERROR: {error_msg}")
       await log_function_footer(request_data)
-      return _generate_error_response(error_msg, format, 404)
+      return generate_error_response(error_msg, format, 404)
     
     # Parse sources JSON if provided, otherwise keep existing sources
     file_sources_list = existing_domain.file_sources
@@ -657,12 +580,12 @@ async def update_domain(
         error_msg = f"Invalid JSON in sources_json: {str(e)}"
         log_function_output(request_data, f"ERROR: {error_msg}")
         await log_function_footer(request_data)
-        return _generate_error_response(error_msg, format, 400)
+        return generate_error_response(error_msg, format, 400)
       except Exception as e:
         error_msg = f"Error parsing sources: {str(e)}"
         log_function_output(request_data, f"ERROR: {error_msg}")
         await log_function_footer(request_data)
-        return _generate_error_response(error_msg, format, 400)
+        return generate_error_response(error_msg, format, 400)
     
     # Prepare updated domain data
     domain_data = {
@@ -681,7 +604,7 @@ async def update_domain(
     if not is_valid:
       log_function_output(request_data, f"Validation error: {error_msg}")
       await log_function_footer(request_data)
-      return _generate_error_response(error_msg, format, 400)
+      return generate_error_response(error_msg, format, 400)
     
     # Create updated DomainConfig object
     updated_domain = DomainConfig(
@@ -702,23 +625,13 @@ async def update_domain(
     await log_function_footer(request_data)
     
     success_msg = f"Domain '{name}' updated successfully!"
-    if format == 'json':
-      return JSONResponse({
-        "message": success_msg,
-        "data": domain_config_to_dict(updated_domain)
-      })
-    else:
-      # Use HX-Refresh header to trigger page reload
-      return HTMLResponse(
-        f"<div class='success'>{success_msg} Reloading...</div>",
-        headers={"HX-Refresh": "true"}
-      )
+    return generate_success_response(success_msg, format, data=domain_config_to_dict(updated_domain), refresh=(format != 'json'))
     
   except Exception as e:
     error_message = f"Error updating domain: {str(e)}"
     log_function_output(request_data, f"ERROR: {error_message}")
     await log_function_footer(request_data)
-    return _generate_error_response(error_message, format, 500)
+    return generate_error_response(error_message, format, 500)
 
 @router.delete('/domains/delete')
 async def delete_domain(request: Request):
@@ -741,14 +654,14 @@ async def delete_domain(request: Request):
   
   if not domain_id:
     await log_function_footer(request_data)
-    return _generate_error_response("Missing domain_id parameter", format, 400)
+    return generate_error_response("Missing domain_id parameter", format, 400)
   
   try:
     if not hasattr(request.app.state, 'system_info') or not request.app.state.system_info.PERSISTENT_STORAGE_PATH:
       error_message = "PERSISTENT_STORAGE_PATH not configured"
       log_function_output(request_data, f"ERROR: {error_message}")
       await log_function_footer(request_data)
-      return _generate_error_response(error_message, format, 500)
+      return generate_error_response(error_message, format, 500)
     
     storage_path = request.app.state.system_info.PERSISTENT_STORAGE_PATH
     
@@ -759,19 +672,15 @@ async def delete_domain(request: Request):
     await log_function_footer(request_data)
     
     success_msg = f"Domain '{domain_id}' deleted successfully!"
-    if format == 'json':
-      return JSONResponse({"message": success_msg})
-    else:
-      # Use HX-Refresh header to trigger page reload and update count
-      return HTMLResponse("", headers={"HX-Refresh": "true"})
+    return generate_success_response(success_msg, format, refresh=True)
     
   except FileNotFoundError as e:
     error_message = str(e)
     log_function_output(request_data, f"ERROR: {error_message}")
     await log_function_footer(request_data)
-    return _generate_error_response(error_message, format, 404)
+    return generate_error_response(error_message, format, 404)
   except Exception as e:
     error_message = f"Error deleting domain: {str(e)}"
     log_function_output(request_data, f"ERROR: {error_message}")
     await log_function_footer(request_data)
-    return _generate_error_response(error_message, format, 500)
+    return generate_error_response(error_message, format, 500)

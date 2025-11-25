@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from common_openai_functions import get_all_vector_stores, get_all_files, get_all_assistants, convert_openai_timestamps_to_utc, delete_vector_store_by_id, get_vector_store_files_with_filenames_as_dict, try_get_vector_store_by_id, remove_file_from_vector_store, delete_file_from_vector_store_and_storage, delete_file_by_id, delete_assistant_by_id
+from common_ui_functions import generate_html_head, generate_simple_page, generate_table_page, generate_table_with_headers, generate_update_count_script, generate_ui_table_page
 from utils import convert_to_flat_html_table, log_function_footer, log_function_header, log_function_output, include_exclude_attributes
 
 router = APIRouter()
@@ -66,11 +67,8 @@ def _generate_html_response_from_object_list(title: str, count: int, objects: Li
     Complete HTMX page with table
   """
   table_html = convert_to_flat_html_table(objects)
-  return f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
-  <title>{title}</title>
-  <link rel='stylesheet' href='/static/css/styles.css'>
-  <script src='/static/js/htmx.js'></script>
-</head>
+  head = generate_html_head(f"{title} ({count})")
+  return f"""{head}
 <body>
   <h1>{title} ({count})</h1>
   {table_html}
@@ -90,78 +88,24 @@ def _generate_ui_response_for_vector_store_files(title: str, count: int, vector_
   Returns:
     Complete HTMX page with interactive UI
   """
-  rows_html = ""
-  for file in files:
+  def get_file_actions(file):
     file_id = file.get('id', 'N/A')
     filename = file.get('filename', 'N/A')
-    created_at = file.get('created_at', 'N/A')
-    bytes_size = file.get('bytes', 0)
-    status = file.get('status', 'N/A')
-    
-    rows_html += f"""
-    <tr id="file-{file_id}">
-      <td>{filename}</td>
-      <td>{file_id}</td>
-      <td>{created_at}</td>
-      <td>{bytes_size}</td>
-      <td>{status}</td>
-      <td class="actions">
-        <button class="btn-small btn-delete" 
-                hx-delete="/inventory/vectorstore_files/remove?vector_store_id={vector_store_id}&file_id={file_id}" 
-                hx-confirm="Remove file '{filename}' from vector store? (File will remain in global storage)"
-                hx-target="#file-{file_id}"
-                hx-swap="outerHTML">
-          Remove
-        </button>
-        <button class="btn-small" 
-                hx-delete="/inventory/vectorstore_files/delete?vector_store_id={vector_store_id}&file_id={file_id}" 
-                hx-confirm="Delete file '{filename}' from vector store AND global storage? This cannot be undone!"
-                hx-target="#file-{file_id}"
-                hx-swap="outerHTML"
-                style="background-color: #dc3545; color: white;">
-          Delete
-        </button>
-      </td>
-    </tr>
-    """
+    return [
+      {'text': 'Remove', 'hx_method': 'delete', 'hx_endpoint': f'/inventory/vectorstore_files/remove?vector_store_id={vector_store_id}&file_id={file_id}', 'hx_target': f'#file-{file_id}', 'confirm_message': f"Remove file '{filename}' from vector store? (File will remain in global storage)", 'button_class': 'btn-small btn-delete'},
+      {'text': 'Delete', 'hx_method': 'delete', 'hx_endpoint': f'/inventory/vectorstore_files/delete?vector_store_id={vector_store_id}&file_id={file_id}', 'hx_target': f'#file-{file_id}', 'confirm_message': f"Delete file '{filename}' from vector store AND global storage? This cannot be undone!", 'button_class': 'btn-small', 'style': 'background-color: #dc3545; color: white;'}
+    ]
   
-  return f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
-  <title>{title}</title>
-  <link rel='stylesheet' href='/static/css/styles.css'>
-  <script src='/static/js/htmx.js'></script>
-  <script>
-    function updateCount() {{
-      const rows = document.querySelectorAll('tbody tr:not(.empty-row)');
-      const countElement = document.getElementById('item-count');
-      if (countElement) {{
-        countElement.textContent = rows.length;
-      }}
-    }}
-  </script>
-</head>
-<body hx-on::after-swap="updateCount()">
-  <div class="container">
-    <h1>{title} (<span id="item-count">{count}</span>)</h1>
-    <p><a href="/inventory/vectorstores?format=ui">← Back to Vector Stores</a></p>
-    
-    <table>
-      <thead>
-        <tr>
-          <th>Filename</th>
-          <th>ID</th>
-          <th>Created At</th>
-          <th>Size (bytes)</th>
-          <th>Status</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows_html if rows_html else '<tr class="empty-row"><td colspan="6">No files found</td></tr>'}
-      </tbody>
-    </table>
-  </div>
-</body>
-</html>"""
+  columns = [
+    {'field': 'filename', 'header': 'Filename'},
+    {'field': 'id', 'header': 'ID'},
+    {'field': 'created_at', 'header': 'Created At'},
+    {'field': 'bytes', 'header': 'Size (bytes)', 'default': 0},
+    {'field': 'status', 'header': 'Status'},
+    {'field': 'actions', 'header': 'Actions', 'buttons': get_file_actions}
+  ]
+  
+  return generate_ui_table_page(title=title, count=count, data=files, columns=columns, row_id_field='id', row_id_prefix='file', back_link='/inventory/vectorstores?format=ui', back_text='← Back to Vector Stores')
 
 def _generate_ui_response_for_files(title: str, count: int, files: List[Dict]) -> str:
   """
@@ -175,71 +119,21 @@ def _generate_ui_response_for_files(title: str, count: int, files: List[Dict]) -
   Returns:
     Complete HTMX page with interactive UI
   """
-  rows_html = ""
-  for file in files:
+  def get_file_actions(file):
     file_id = file.get('id', 'N/A')
     filename = file.get('filename', 'N/A')
-    created_at = file.get('created_at', 'N/A')
-    bytes_size = file.get('bytes', 0)
-    purpose = file.get('purpose', 'N/A')
-    
-    rows_html += f"""
-    <tr id="file-{file_id}">
-      <td>{filename}</td>
-      <td>{file_id}</td>
-      <td>{created_at}</td>
-      <td>{bytes_size}</td>
-      <td>{purpose}</td>
-      <td class="actions">
-        <button class="btn-small btn-delete" 
-                hx-delete="/inventory/files/delete?file_id={file_id}" 
-                hx-confirm="Delete file '{filename}' from global storage? This cannot be undone!"
-                hx-target="#file-{file_id}"
-                hx-swap="outerHTML"
-                style="background-color: #dc3545; color: white;">
-          Delete
-        </button>
-      </td>
-    </tr>
-    """
+    return [{'text': 'Delete', 'hx_method': 'delete', 'hx_endpoint': f'/inventory/files/delete?file_id={file_id}', 'hx_target': f'#file-{file_id}', 'confirm_message': f"Delete file '{filename}' from global storage? This cannot be undone!", 'button_class': 'btn-small btn-delete', 'style': 'background-color: #dc3545; color: white;'}]
   
-  return f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
-  <title>{title}</title>
-  <link rel='stylesheet' href='/static/css/styles.css'>
-  <script src='/static/js/htmx.js'></script>
-  <script>
-    function updateCount() {{
-      const rows = document.querySelectorAll('tbody tr:not(.empty-row)');
-      const countElement = document.getElementById('item-count');
-      if (countElement) {{
-        countElement.textContent = rows.length;
-      }}
-    }}
-  </script>
-</head>
-<body hx-on::after-swap="updateCount()">
-  <div class="container">
-    <h1>{title} (<span id="item-count">{count}</span>)</h1>
-    <p><a href="/">← Back to Main Page</a></p>
-    
-    <table>
-      <thead>
-        <tr>
-          <th>Filename</th>
-          <th>ID</th>
-          <th>Created At</th>
-          <th>Size (bytes)</th>
-          <th>Purpose</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows_html if rows_html else '<tr class="empty-row"><td colspan="6">No files found</td></tr>'}
-      </tbody>
-    </table>
-  </div>
-</body>
-</html>"""
+  columns = [
+    {'field': 'filename', 'header': 'Filename'},
+    {'field': 'id', 'header': 'ID'},
+    {'field': 'created_at', 'header': 'Created At'},
+    {'field': 'bytes', 'header': 'Size (bytes)', 'default': 0},
+    {'field': 'purpose', 'header': 'Purpose'},
+    {'field': 'actions', 'header': 'Actions', 'buttons': get_file_actions}
+  ]
+  
+  return generate_ui_table_page(title=title, count=count, data=files, columns=columns, row_id_field='id', row_id_prefix='file', back_link='/')
 
 def _generate_ui_response_for_assistants(title: str, count: int, assistants: List[Dict]) -> str:
   """
@@ -253,75 +147,25 @@ def _generate_ui_response_for_assistants(title: str, count: int, assistants: Lis
   Returns:
     Complete HTMX page with interactive UI
   """
-  rows_html = ""
-  for assistant in assistants:
+  def format_description(desc):
+    description_text = desc if desc else ''
+    return description_text[:50] + '...' if len(description_text) > 50 else description_text
+  
+  def get_assistant_actions(assistant):
     assistant_id = assistant.get('id', 'N/A')
     name = assistant.get('name', 'N/A')
-    created_at = assistant.get('created_at', 'N/A')
-    model = assistant.get('model', 'N/A')
-    description = assistant.get('description', '')
-    
-    # Handle None description
-    description_text = description if description else ''
-    description_display = description_text[:50] + '...' if len(description_text) > 50 else description_text
-    
-    rows_html += f"""
-    <tr id="assistant-{assistant_id}">
-      <td>{name}</td>
-      <td>{assistant_id}</td>
-      <td>{created_at}</td>
-      <td>{model}</td>
-      <td>{description_display}</td>
-      <td class="actions">
-        <button class="btn-small btn-delete" 
-                hx-delete="/inventory/assistants/delete?assistant_id={assistant_id}" 
-                hx-confirm="Delete assistant '{name}'? This cannot be undone!"
-                hx-target="#assistant-{assistant_id}"
-                hx-swap="outerHTML"
-                style="background-color: #dc3545; color: white;">
-          Delete
-        </button>
-      </td>
-    </tr>
-    """
+    return [{'text': 'Delete', 'hx_method': 'delete', 'hx_endpoint': f'/inventory/assistants/delete?assistant_id={assistant_id}', 'hx_target': f'#assistant-{assistant_id}', 'confirm_message': f"Delete assistant '{name}'? This cannot be undone!", 'button_class': 'btn-small btn-delete', 'style': 'background-color: #dc3545; color: white;'}]
   
-  return f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
-  <title>{title}</title>
-  <link rel='stylesheet' href='/static/css/styles.css'>
-  <script src='/static/js/htmx.js'></script>
-  <script>
-    function updateCount() {{
-      const rows = document.querySelectorAll('tbody tr:not(.empty-row)');
-      const countElement = document.getElementById('item-count');
-      if (countElement) {{
-        countElement.textContent = rows.length;
-      }}
-    }}
-  </script>
-</head>
-<body hx-on::after-swap="updateCount()">
-  <div class="container">
-    <h1>{title} (<span id="item-count">{count}</span>)</h1>
-    <p><a href="/">← Back to Main Page</a></p>
-    
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>ID</th>
-          <th>Created At</th>
-          <th>Model</th>
-          <th>Description</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows_html if rows_html else '<tr class="empty-row"><td colspan="6">No assistants found</td></tr>'}
-      </tbody>
-    </table>
-  </div>
-</body>
-</html>"""
+  columns = [
+    {'field': 'name', 'header': 'Name'},
+    {'field': 'id', 'header': 'ID'},
+    {'field': 'created_at', 'header': 'Created At'},
+    {'field': 'model', 'header': 'Model'},
+    {'field': 'description', 'header': 'Description', 'format': format_description, 'default': ''},
+    {'field': 'actions', 'header': 'Actions', 'buttons': get_assistant_actions}
+  ]
+  
+  return generate_ui_table_page(title=title, count=count, data=assistants, columns=columns, row_id_field='id', row_id_prefix='assistant', back_link='/')
 
 def _generate_ui_response_for_vector_stores(title: str, count: int, vector_stores: List[Dict]) -> str:
   """
@@ -335,81 +179,29 @@ def _generate_ui_response_for_vector_stores(title: str, count: int, vector_store
   Returns:
     Complete HTMX page with interactive UI
   """
-  rows_html = ""
-  for vs in vector_stores:
+  def format_file_count(file_counts):
+    return file_counts.get('total', 0) if isinstance(file_counts, dict) else 0
+  
+  def get_vectorstore_actions(vs):
     vs_id = vs.get('id', 'N/A')
     vs_name = vs.get('name', 'N/A')
-    created_at = vs.get('created_at', 'N/A')
     file_counts = vs.get('file_counts', {})
     total_files = file_counts.get('total', 0) if isinstance(file_counts, dict) else 0
-    
-    rows_html += f"""
-    <tr id="vectorstore-{vs_id}">
-      <td>{vs_name}</td>
-      <td>{vs_id}</td>
-      <td>{created_at}</td>
-      <td>{total_files}</td>
-      <td class="actions">
-        <button class="btn-small" 
-                onclick="window.location.href='/inventory/vectorstore_files?vector_store_id={vs_id}&format=ui'"
-                style="background-color: #007bff; color: white;">
-          Files
-        </button>
-        <button class="btn-small btn-delete" 
-                hx-delete="/inventory/vectorstores/delete?vector_store_id={vs_id}&delete_files=false" 
-                hx-confirm="Delete vector store '{vs_name}'? (Files will remain in storage)"
-                hx-target="#vectorstore-{vs_id}"
-                hx-swap="outerHTML">
-          Delete
-        </button>
-        <button class="btn-small" 
-                hx-delete="/inventory/vectorstores/delete?vector_store_id={vs_id}&delete_files=true" 
-                hx-confirm="Delete vector store '{vs_name}' AND all {total_files} files? This cannot be undone!"
-                hx-target="#vectorstore-{vs_id}"
-                hx-swap="outerHTML"
-                style="background-color: #dc3545; color: white;">
-          Delete with Files
-        </button>
-      </td>
-    </tr>
-    """
+    return [
+      {'text': 'Files', 'onclick': f"window.location.href='/inventory/vectorstore_files?vector_store_id={vs_id}&format=ui'", 'button_class': 'btn-small', 'style': 'background-color: #007bff; color: white;'},
+      {'text': 'Delete', 'hx_method': 'delete', 'hx_endpoint': f'/inventory/vectorstores/delete?vector_store_id={vs_id}&delete_files=false', 'hx_target': f'#vectorstore-{vs_id}', 'confirm_message': f"Delete vector store '{vs_name}'? (Files will remain in storage)", 'button_class': 'btn-small btn-delete'},
+      {'text': 'Delete with Files', 'hx_method': 'delete', 'hx_endpoint': f'/inventory/vectorstores/delete?vector_store_id={vs_id}&delete_files=true', 'hx_target': f'#vectorstore-{vs_id}', 'confirm_message': f"Delete vector store '{vs_name}' AND all {total_files} files? This cannot be undone!", 'button_class': 'btn-small', 'style': 'background-color: #dc3545; color: white;'}
+    ]
   
-  return f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
-  <title>{title}</title>
-  <link rel='stylesheet' href='/static/css/styles.css'>
-  <script src='/static/js/htmx.js'></script>
-  <script>
-    function updateCount() {{
-      const rows = document.querySelectorAll('tbody tr:not(.empty-row)');
-      const countElement = document.getElementById('item-count');
-      if (countElement) {{
-        countElement.textContent = rows.length;
-      }}
-    }}
-  </script>
-</head>
-<body hx-on::after-swap="updateCount()">
-  <div class="container">
-    <h1>{title} (<span id="item-count">{count}</span>)</h1>
-    <p><a href="/">← Back to Main Page</a></p>
-    
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>ID</th>
-          <th>Created At</th>
-          <th>Files</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows_html if rows_html else '<tr class="empty-row"><td colspan="5">No vector stores found</td></tr>'}
-      </tbody>
-    </table>
-  </div>
-</body>
-</html>"""
+  columns = [
+    {'field': 'name', 'header': 'Name'},
+    {'field': 'id', 'header': 'ID'},
+    {'field': 'created_at', 'header': 'Created At'},
+    {'field': 'file_counts', 'header': 'Files', 'format': format_file_count},
+    {'field': 'actions', 'header': 'Actions', 'buttons': get_vectorstore_actions}
+  ]
+  
+  return generate_ui_table_page(title=title, count=count, data=vector_stores, columns=columns, row_id_field='id', row_id_prefix='vectorstore', back_link='/')
 
 
 @router.get('/vectorstores')

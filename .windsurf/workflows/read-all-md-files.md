@@ -1,6 +1,7 @@
 ---
-description: 
-auto_execution_mode: 1
+description: Read all .md files
+auto_execution_mode: 3
 ---
 
-read all .md files in the workspace but do not summarize them.
+Read all .md files in the workspace but do not summarize them.
+Include all files in the .windsurf folder.

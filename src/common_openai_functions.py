@@ -188,21 +188,19 @@ class CoaiAssistant:
   metadata: Optional[Dict[str, Union[str, float, bool]]] = None
 
 def create_async_openai_client(api_key) -> AsyncOpenAI:
-  if not api_key:raise ValueError("OPENAI_API_KEY is required when OPENAI_SERVICE_TYPE is set to 'openai'")
+  if not api_key: raise ValueError("OPENAI_API_KEY is required when OPENAI_SERVICE_TYPE is set to 'openai'")
   return AsyncOpenAI(api_key=api_key)
 
 # Create an async Azure OpenAI client using API key authentication
 def create_async_azure_openai_client_with_api_key(endpoint, api_version, api_key) -> AsyncAzureOpenAI:
-  if not endpoint or not api_key:
-    raise ValueError("AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY are required for Azure OpenAI key authentication")
+  if not (endpoint and api_key): raise ValueError("AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY are required for Azure OpenAI key authentication")
   return AsyncAzureOpenAI(api_version=api_version, azure_endpoint=endpoint, api_key=api_key)
 
 # Create an async Azure OpenAI client with any AsyncTokenCredential
 # ClientSecretCredential(tenant_id=tenant_id, client_id=client_id, client_secret=client_secret)
 # DefaultAzureCredential(managed_identity_client_id=managed_identity_client_id)
 def create_async_azure_openai_client_with_credential(endpoint, api_version, credential: AsyncTokenCredential) -> AsyncAzureOpenAI:
-  if not endpoint:
-    raise ValueError("AZURE_OPENAI_ENDPOINT is required for Azure OpenAI credential authentication")
+  if not endpoint: raise ValueError("AZURE_OPENAI_ENDPOINT is required for Azure OpenAI credential authentication")
   token_provider = get_bearer_token_provider(credential, "https://cognitiveservices.azure.com/.default")
   return AsyncAzureOpenAI(api_version=api_version, azure_endpoint=endpoint, azure_ad_token_provider=token_provider, max_retries=5)
 
@@ -212,11 +210,8 @@ def retry_on_openai_rate_limit_errors_for_sync_client(fn, function_name="retry_o
     try:
       return fn()
     except Exception as e:
-      # Only retry on rate limit errors
-      if not (hasattr(e, 'type') and e.type == 'rate_limit_error'):
-        raise e
-      if attempt == retries - 1:  # Last attempt
-        raise e
+      if not (hasattr(e, 'type') and e.type == 'rate_limit_error'): raise e
+      if attempt == retries - 1: raise e
       log_function_output(function_name, request_number, f"{' '*indentation}Rate limit reached, retrying in {backoff_seconds} seconds... (attempt {attempt + 2} of {retries})")
       time.sleep(backoff_seconds)
 
@@ -681,7 +676,6 @@ async def delete_vector_store_by_id(client: AsyncAzureOpenAI | AsyncOpenAI, vect
     
     # Delete the vector store
     await client.vector_stores.delete(vector_store_id)
-    log_function_output(request_data, f"Vector store '{vs_name}' deleted successfully")
     
     return (True, f"Vector store '{vs_name}' deleted successfully")
     

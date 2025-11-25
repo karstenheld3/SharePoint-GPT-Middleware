@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from utils import convert_to_flat_html_table, convert_to_nested_html_table, log_function_footer, log_function_header, log_function_output, include_exclude_attributes
+from common_ui_functions import generate_error_html, generate_nested_data_page, generate_documentation_page, generate_ui_table_page, generate_toolbar_button
 from common_crawler_functions import DomainConfig, load_all_domains, domain_config_to_dict, scan_directory_recursive, create_storage_zip_from_scan, load_domain, load_files_from_sharepoint_source, load_crawled_files, load_vector_store_files_as_crawled_files, is_files_metadata_v2_format, is_files_metadata_v3_format, convert_file_metadata_item_from_v2_to_v3, download_files_from_sharepoint, update_vector_store as update_vector_store_impl, replicate_domain_vector_stores_to_global_vector_store
 from common_openai_functions import OPENAI_DATETIME_ATTRIBUTES
 
@@ -16,8 +17,8 @@ router = APIRouter()
 # Configuration will be injected from app.py
 config = None
 
+# Set the configuration for Crawler management. app_config: Config dataclass with openai_client, persistent_storage_path, etc.
 def set_config(app_config):
-  """Set the configuration for Crawler management."""
   global config
   config = app_config
 
@@ -26,36 +27,11 @@ def _delete_zip_file(file_path: str, log_data: Dict[str, Any] = None) -> None:
   try:
     if os.path.exists(file_path):
       os.remove(file_path)
-      if log_data:
-        log_function_output(log_data, f"Deleted zip file: {file_path}")
+      if log_data: log_function_output(log_data, f"Deleted zip file: {file_path}")
   except Exception as e:
     error_msg = f"Failed to delete zip file {file_path}: {str(e)}"
-    if log_data:
-      log_function_output(log_data, f"ERROR: {error_msg}")
+    if log_data: log_function_output(log_data, f"ERROR: {error_msg}")
 
-def _generate_html_response_from_nested_data(title: str, data: Any) -> str:
-  """
-  Generate HTML response with nested table for complex data structures.
-  
-  Args:
-    title: Page title
-    data: Complex data structure to convert to nested HTML table
-    
-  Returns:
-    Complete HTMX page with nested table
-  """
-  table_html = convert_to_nested_html_table(data)
-  return f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
-  <title>{title}</title>
-  <link rel='stylesheet' href='/static/css/styles.css'>
-  <script src='/static/js/htmx.js'></script>
-</head>
-<body>
-  <h1>{title}</h1>
-  <p><a href="/crawler?format=ui">← Back to Crawler</a></p>
-  {table_html}
-</body>
-</html>"""
 
 
 @router.get('/', response_class=HTMLResponse)
@@ -83,70 +59,47 @@ async def crawler_root(request: Request):
         error_message = "PERSISTENT_STORAGE_PATH not configured or is empty"
         log_function_output(request_data, f"ERROR: {error_message}")
         await log_function_footer(request_data)
-        error_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Error</title></head><body><h1>Error</h1><p>{error_message}</p></body></html>"
-        return HTMLResponse(error_html, status_code=500)
+        return HTMLResponse(generate_error_html(error_message), status_code=500)
       
       storage_path = request.app.state.system_info.PERSISTENT_STORAGE_PATH
       
       # Load all domains
       domains_list = load_all_domains(storage_path, request_data)
       
-      # Create table rows with action buttons
-      table_rows = ""
-      for domain in domains_list:
-        table_rows += f"""
-    <tr id="domain-{domain.domain_id}">
-      <td>{domain.domain_id}</td>
-      <td>{domain.name}</td>
-      <td>{domain.vector_store_name}</td>
-      <td>{domain.vector_store_id}</td>
-      <td>
-        <a href="/crawler/list_vectorstore_files?domain_id={domain.domain_id}">Vector Store Files</a><br>
-        <a href="/crawler/list_sharepoint_files?domain_id={domain.domain_id}">SharePoint Files</a>
-      </td>
-      <td>
-        <a href="/crawler/download_files?domain_id={domain.domain_id}">Download Files</a><br>
-        <a href="/crawler/update_vector_store?domain_id={domain.domain_id}">Update Vector Store</a>
-      </td>
-    </tr>
-    """
+      # Convert to list of dicts for UI generation
+      domains_data = [domain_config_to_dict(domain) for domain in domains_list]
       
-      html_content = f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
-  <title>Crawler - Domains ({len(domains_list)})</title>
-  <link rel='stylesheet' href='/static/css/styles.css'>
-  <script src='/static/js/htmx.js'></script>
-</head>
-<body>
-  <div class="container">
-  <h1>Crawler - Domains ({len(domains_list)})</h1>
-  <p><a href="/">← Back to Main Page</a></p>
-  
-  <div class="toolbar">
-    <a href="/crawler/replicate_to_global?format=html" class="btn-primary">
-      Replicate to Global Vector Store
-    </a>
-  </div>
-  
-  <table>
-    <thead>
-    <tr>
-      <th>Domain ID</th>
-      <th>Name</th>
-      <th>Vector Store Name</th>
-      <th>Vector Store ID</th>
-      <th>List</th>
-      <th>Crawl</th>
-    </tr>
-    </thead>
-    <tbody>
-    {table_rows if table_rows else '<tr><td colspan="6">No domains found</td></tr>'}
-    </tbody>
-  </table>
-  
-  <div id="result-container"></div>
-  </div>
-</body>
-</html>"""
+      # Define columns with custom formatting for list and crawl actions
+      def format_list_actions(domain):
+        domain_id = domain.get('domain_id', '')
+        return f'<a href="/crawler/list_vectorstore_files?domain_id={domain_id}">Vector Store Files</a><br><a href="/crawler/list_sharepoint_files?domain_id={domain_id}">SharePoint Files</a>'
+      
+      def format_crawl_actions(domain):
+        domain_id = domain.get('domain_id', '')
+        return f'<a href="/crawler/download_files?domain_id={domain_id}">Download Files</a><br><a href="/crawler/update_vector_store?domain_id={domain_id}">Update Vector Store</a>'
+      
+      columns = [
+        {'field': 'domain_id', 'header': 'Domain ID'},
+        {'field': 'name', 'header': 'Name'},
+        {'field': 'vector_store_name', 'header': 'Vector Store Name'},
+        {'field': 'vector_store_id', 'header': 'Vector Store ID'},
+        {'field': 'list_actions', 'header': 'List', 'format': format_list_actions},
+        {'field': 'crawl_actions', 'header': 'Crawl', 'format': format_crawl_actions}
+      ]
+      
+      toolbar_html = '<div class="toolbar"><a href="/crawler/replicate_to_global?format=html" class="btn-primary">Replicate to Global Vector Store</a></div>'
+      additional_content = '<div id="result-container"></div>'
+      
+      html_content = generate_ui_table_page(
+        title='Crawler - Domains',
+        count=len(domains_list),
+        data=domains_data,
+        columns=columns,
+        row_id_field='domain_id',
+        row_id_prefix='domain',
+        back_link='/',
+        toolbar_html=toolbar_html
+      ) + additional_content + '</div></body></html>'
       
       await log_function_footer(request_data)
       return HTMLResponse(html_content)
@@ -155,8 +108,7 @@ async def crawler_root(request: Request):
       error_message = f"Error loading domains: {str(e)}"
       log_function_output(request_data, f"ERROR: {error_message}")
       await log_function_footer(request_data)
-      error_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Error</title></head><body><h1>Error</h1><p>{error_message}</p></body></html>"
-      return HTMLResponse(error_html, status_code=500)
+      return HTMLResponse(generate_error_html(error_message), status_code=500)
   
   # Default format - show documentation
   await log_function_footer(request_data)
@@ -228,14 +180,11 @@ async def localstorage(request: Request, background_tasks: BackgroundTasks):
       if format == 'json':
         return JSONResponse({"error": error_message}, status_code=500)
       else:
-        error_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Error</title></head><body><h1>Error</h1><p>{error_message}</p></body></html>"
-        return HTMLResponse(error_html, status_code=500)
+        return HTMLResponse(generate_error_html(error_message), status_code=500)
     
     storage_path = request.app.state.system_info.PERSISTENT_STORAGE_PATH
-    if except_folder:
-      log_function_output(request_data, f"Scanning local storage path (excluding {except_folder}): {storage_path}")
-    else:
-      log_function_output(request_data, f"Scanning local storage path: {storage_path}")
+    if except_folder: log_function_output(request_data, f"Scanning local storage path (excluding {except_folder}): {storage_path}")
+    else: log_function_output(request_data, f"Scanning local storage path: {storage_path}")
     
     # Always scan directory structure first (used by all formats)
     storage_contents = scan_directory_recursive(storage_path, request_data, except_folder)
@@ -261,7 +210,7 @@ async def localstorage(request: Request, background_tasks: BackgroundTasks):
     else:
       # HTML format with nested table
       title = f"Local Storage Contents - {storage_path}"
-      html_content = _generate_html_response_from_nested_data(title, storage_contents)
+      html_content = generate_nested_data_page(title, storage_contents, back_link="/crawler?format=ui", back_text="← Back to Crawler")
       await log_function_footer(request_data)
       return HTMLResponse(html_content)
       
@@ -363,8 +312,7 @@ async def list_sharepoint_files(request: Request):
     # Reload domain config for response metadata
     domain_config = load_domain(system_info.PERSISTENT_STORAGE_PATH, domain_id, request_data)
     file_source = None
-    if source_id:
-      file_source = next((src for src in domain_config.file_sources if src.source_id == source_id), None)
+    if source_id: file_source = next((src for src in domain_config.file_sources if src.source_id == source_id), None)
     
     # Get list of sources that were processed (for display when showing all sources)
     sources_processed = []
@@ -391,10 +339,8 @@ async def list_sharepoint_files(request: Request):
       return JSONResponse(response_data)
     else:
       # HTML format
-      if source_id:
-        title = f"SharePoint Files - {domain_config.name} ({source_id})"
-      else:
-        title = f"SharePoint Files - {domain_config.name} (All Sources)"
+      if source_id: title = f"SharePoint Files - {domain_config.name} ({source_id})"
+      else: title = f"SharePoint Files - {domain_config.name} (All Sources)"
       
       table_html = convert_to_flat_html_table(filtered_files)
       
@@ -407,15 +353,12 @@ async def list_sharepoint_files(request: Request):
   <h1>{title}</h1>
   <p><strong>Domain:</strong> {domain_config.name} ({domain_id})</p>"""
       
-      if source_id:
-        html_content += f"""
+      if source_id: html_content += f"""
   <p><strong>Source:</strong> {source_id}</p>"""
-      else:
-        html_content += f"""
+      else: html_content += f"""
   <p><strong>Sources:</strong> {', '.join(sources_processed) if sources_processed else 'None found'}</p>"""
       
-      if file_source:
-        html_content += f"""
+      if file_source: html_content += f"""
   <p><strong>Site URL:</strong> {file_source.site_url}</p>
   <p><strong>Library:</strong> {file_source.sharepoint_url_part}</p>
   <p><strong>Filter:</strong> {file_source.filter or '(none)'}</p>"""
@@ -531,8 +474,7 @@ async def list_local_files(request: Request):
     
     # Determine file_source for metadata display
     file_source = None
-    if source_id and domain_config:
-      file_source = next((src for src in domain_config.file_sources if src.source_id == source_id), None)
+    if source_id and domain_config: file_source = next((src for src in domain_config.file_sources if src.source_id == source_id), None)
     
     # Get list of sources that were processed (for display when showing all sources)
     sources_processed = []
@@ -555,10 +497,8 @@ async def list_local_files(request: Request):
       return JSONResponse(response_data)
     else:
       # HTML format
-      if source_id:
-        title = f"Local Embedded Files - {domain_config.name if domain_config else domain_id} ({source_id})"
-      else:
-        title = f"Local Embedded Files - {domain_config.name if domain_config else domain_id} (All Sources)"
+      if source_id: title = f"Local Embedded Files - {domain_config.name if domain_config else domain_id} ({source_id})"
+      else: title = f"Local Embedded Files - {domain_config.name if domain_config else domain_id} (All Sources)"
       
       table_html = convert_to_flat_html_table(filtered_files)
       
@@ -571,15 +511,12 @@ async def list_local_files(request: Request):
   <h1>{title}</h1>
   <p><strong>Domain:</strong> {domain_config.name if domain_config else domain_id} ({domain_id})</p>"""
       
-      if source_id:
-        html_content += f"""
+      if source_id: html_content += f"""
   <p><strong>Source:</strong> {source_id}</p>"""
-      else:
-        html_content += f"""
+      else: html_content += f"""
   <p><strong>Sources:</strong> {', '.join(sources_processed) if sources_processed else 'None found'}</p>"""
       
-      if file_source:
-        html_content += f"""
+      if file_source: html_content += f"""
   <p><strong>Site URL:</strong> {file_source.site_url}</p>
   <p><strong>Library:</strong> {file_source.sharepoint_url_part}</p>
   <p><strong>Filter:</strong> {file_source.filter or '(none)'}</p>"""
@@ -1002,9 +939,11 @@ async def download_files(request: Request):
       return JSONResponse(content=results)
     else:
       # Generate HTML response
-      html_response = _generate_html_response_from_nested_data(
+      html_response = generate_nested_data_page(
         title=f"Download Files - {domain_id}",
-        data=results
+        data=results,
+        back_link="/crawler?format=ui",
+        back_text="← Back to Crawler"
       )
       return HTMLResponse(content=html_response)
       
@@ -1098,7 +1037,7 @@ async def update_vector_store(request: Request):
     if format == 'json':
       return JSONResponse(content=results)
     else:
-      html_response = _generate_html_response_from_nested_data(title=f"Update Vector Store - {domain_id}", data=results)
+      html_response = generate_nested_data_page(title=f"Update Vector Store - {domain_id}", data=results, back_link="/crawler?format=ui", back_text="← Back to Crawler")
       return HTMLResponse(content=html_response)
       
   except FileNotFoundError as e:
@@ -1196,9 +1135,11 @@ async def replicate_to_global(request: Request):
       return JSONResponse(content=results)
     else:
       # Generate HTML response
-      html_response = _generate_html_response_from_nested_data(
+      html_response = generate_nested_data_page(
         title=f"Replicate to Global Vector Store",
-        data=results
+        data=results,
+        back_link="/crawler?format=ui",
+        back_text="← Back to Crawler"
       )
       return HTMLResponse(content=html_response)
       
