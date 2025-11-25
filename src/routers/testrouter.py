@@ -53,17 +53,17 @@ async def streaming01(request: Request):
   - GET /testrouter/operations - list active operations
   
   Output format:
-  ------------------------- START: HEADER_JSON -------------------------
+  <header_json>
   {"id": "testrouter-streaming01_2025-11-25_17-42-00_p16192_r12", "total": 20}
-  ------------------------- END: HEADER_JSON -------------------------
-  ------------------------- START: LOG -------------------------
+  </header_json>
+  <log>
   [ 1 / 20 ] Processing file 'document_001.pdf'...
     OK.
   ...
-  ------------------------- END: LOG -------------------------
-  ------------------------- START: FOOTER_JSON -------------------------
+  </log>
+  <footer_json>
   {"result": "success", "total": 20, "processed": 18, "failed": 2, ...}
-  ------------------------- END: FOOTER_JSON -------------------------
+  </footer_json>
   """
   function_name = 'streaming01()'
   log_data = log_function_header(function_name)
@@ -79,7 +79,7 @@ async def streaming01(request: Request):
 
   if response_format == 'stream':
     # Get state folder and generate operation ID
-    state_folder = get_streaming_state_folder(config.PERSISTENT_STORAGE_PATH if config else None)
+    state_folder = get_streaming_state_folder(config.LOCAL_PERSISTENT_STORAGE_PATH if config else None)
     operation_id = generate_streaming_operation_id("testrouter-streaming01", log_data)
     
     # Create initial state file
@@ -95,13 +95,13 @@ async def streaming01(request: Request):
       was_cancelled = False
 
       # HEADER_JSON section
-      yield "------------------------- START: HEADER_JSON -------------------------\n"
+      yield "<header_json>\n"
       header_data = {"id": operation_id, "total": len(simulated_files)}
       yield json.dumps(header_data) + "\n"
-      yield "------------------------- END: HEADER_JSON -------------------------\n"
+      yield "</header_json>\n"
 
       # LOG section
-      yield "------------------------- START: LOG -------------------------\n"
+      yield "<log>\n"
 
       for index, filename in enumerate(simulated_files, start=1):
         # Check for cancel request
@@ -156,10 +156,10 @@ async def streaming01(request: Request):
       if state_folder and not was_cancelled:
         delete_streaming_state_file(state_folder, operation_id, "running")
 
-      yield "------------------------- END: LOG -------------------------\n"
+      yield "</log>\n"
 
       # FOOTER_JSON section
-      yield "------------------------- START: FOOTER_JSON -------------------------\n"
+      yield "<footer_json>\n"
 
       if was_cancelled:
         result = "cancelled"
@@ -179,7 +179,7 @@ async def streaming01(request: Request):
       }
       yield json.dumps(result_data, indent=2) + "\n"
 
-      yield "------------------------- END: FOOTER_JSON -------------------------\n"
+      yield "</footer_json>\n"
 
       # Log footer inside generator to capture actual streaming duration
       await log_function_footer(log_data)
@@ -220,7 +220,7 @@ async def control_operation(request: Request):
     await log_function_footer(log_data)
     return JSONResponse({"error": f"Invalid action '{action}'. Must be 'pause', 'resume', or 'cancel'"}, status_code=400)
 
-  state_folder = get_streaming_state_folder(config.PERSISTENT_STORAGE_PATH if config else None)
+  state_folder = get_streaming_state_folder(config.LOCAL_PERSISTENT_STORAGE_PATH if config else None)
   if not state_folder:
     await log_function_footer(log_data)
     return JSONResponse({"error": "State folder not configured"}, status_code=500)
@@ -258,7 +258,7 @@ async def list_active_operations(request: Request):
   log_data = log_function_header(function_name)
   request_params = dict(request.query_params)
 
-  state_folder = get_streaming_state_folder(config.PERSISTENT_STORAGE_PATH if config else None)
+  state_folder = get_streaming_state_folder(config.LOCAL_PERSISTENT_STORAGE_PATH if config else None)
   endpoint_filter = request_params.get('endpoint')
   operations = list_streaming_operations(state_folder, endpoint_filter)
 
