@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from common_openai_functions import create_async_azure_openai_client_with_api_key, create_async_azure_openai_client_with_credential, create_async_openai_client
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
-from routers import crawler, inventory, openai_proxy, sharepoint_search, domains
+from routers import crawler, inventory, openai_proxy, sharepoint_search, domains, testrouter
 from routers.sharepoint_search import build_domains_and_metadata_cache
 from utils import ZipExtractionMode, acquire_startup_lock, convert_to_flat_html_table, extract_zip_files, format_config_for_displaying, format_filesize, log_function_footer, log_function_header, log_function_output, log_function_footer_sync, clear_folder
 
@@ -463,6 +463,14 @@ def create_app() -> FastAPI:
   except Exception as e:
     initialization_errors.append({"component": "Domains Router", "error": str(e)})
   
+  # Include Test router under /testrouter
+  try:
+    app.include_router(testrouter.router, tags=["Test"], prefix="/testrouter")
+    testrouter.set_config(config)
+    log_function_output(log_data, "Test router included at /testrouter")
+  except Exception as e:
+    initialization_errors.append({"component": "Test Router", "error": str(e)})
+  
   # Mount static files directory
   static_path = os.path.join(os.path.dirname(__file__), "static")
   if os.path.exists(static_path):
@@ -549,6 +557,7 @@ def root() -> str:
     <li><a href="/inventory/assistants">/inventory/assistants</a> - Assistants Inventory (<a href="/inventory/assistants?format=html&excludeattributes=description,instructions,tools,tool_resources">HTML</a> + <a href="/inventory/assistants?format=json">JSON</a>)</li>
     <li><a href="/domains">/domains</a> - Domains Management (<a href="/domains?format=html">HTML</a> + <a href="/domains?format=json">JSON</a> + <a href="/domains?format=ui">UI</a> + <a href="/domains/create">Create</a> + <a href="/domains/update">Update</a> + <a href="/domains/delete">Delete</a>)</li>
     <li><a href="/crawler">/crawler</a> - Crawler Endpoints (<a href="/crawler/localstorage">Local Storage</a> + <a href="/crawler/updatemaps">Update Maps</a> + <a href="/crawler/getlogfile">Get Logfile</a>)</li>
+    <li><a href="/testrouter/streaming01">/testrouter/streaming01</a> - Streaming Test (<a href="/testrouter/streaming01?format=stream">Stream</a> + <a href="/testrouter/streaming01?format=html">HTML</a>)</li>
   </ul>
 
   <div class="section">
