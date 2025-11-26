@@ -119,16 +119,26 @@ def generate_streaming_ui_page(title: str, jobs: list) -> str:
   background: #1a1a1a;
   border-top: 1px solid #3c3c3c;
   z-index: 900;
-  max-height: 232px;
-  transition: max-height 0.2s ease;
+  height: 232px;
+  display: flex;
+  flex-direction: column;
 }}
 
-.console-panel.collapsed {{
-  max-height: 32px;
+/* Resize Handle */
+.console-resize-handle {{
+  height: 4px;
+  background: #3c3c3c;
+  cursor: ns-resize;
+  flex-shrink: 0;
+  transition: background 0.2s;
 }}
 
-.console-panel.collapsed .console-output {{
-  display: none;
+.console-resize-handle:hover {{
+  background: #0078d4;
+}}
+
+.console-resize-handle.dragging {{
+  background: #0078d4;
 }}
 
 .console-header {{
@@ -141,6 +151,7 @@ def generate_streaming_ui_page(title: str, jobs: list) -> str:
   font-size: 0.875rem;
   font-weight: 500;
   color: #ffffff;
+  flex-shrink: 0;
 }}
 
 .console-controls {{
@@ -149,7 +160,7 @@ def generate_streaming_ui_page(title: str, jobs: list) -> str:
 }}
 
 .console-output {{
-  height: 200px;
+  flex: 1;
   overflow-y: auto;
   padding: 0.75rem 1rem;
   margin: 0;
@@ -202,12 +213,12 @@ body.console-visible main {{
   </div>
   
   <!-- Console Panel -->
-  <div id="console-panel" class="console-panel collapsed">
+  <div id="console-panel" class="console-panel">
+    <div class="console-resize-handle"></div>
     <div class="console-header">
       <span id="console-title">Console Output</span>
       <div class="console-controls">
         <button onclick="clearConsole()" class="btn-small">Clear</button>
-        <button onclick="toggleConsole()" class="btn-small">_</button>
       </div>
     </div>
     <pre id="console-output" class="console-output"></pre>
@@ -399,11 +410,6 @@ function clearConsole() {{
   setActiveJob(null);
 }}
 
-function toggleConsole() {{
-  const panel = document.getElementById('console-panel');
-  if (panel) panel.classList.toggle('collapsed');
-}}
-
 // ----------------------------------------
 // STREAM PARSER
 // ----------------------------------------
@@ -540,8 +546,6 @@ async function startStreamingRequest(url, options = {{}}) {{
   activeStreamController = new AbortController();
   const parser = new StreamParser();
 
-  appendToConsole('[Connecting...]\\n');
-
   try {{
     const response = await fetch(url, {{
       signal: activeStreamController.signal,
@@ -590,8 +594,6 @@ function streamRequest(button) {{
   
   clearConsole();
   document.body.classList.add('console-visible');
-  const panel = document.getElementById('console-panel');
-  if (panel) panel.classList.remove('collapsed');
   
   startStreamingRequest(url);
 }}
@@ -608,6 +610,60 @@ function streamStart(button) {{
   }}
   streamRequest(button);
 }}
+
+// ----------------------------------------
+// CONSOLE RESIZE FUNCTIONALITY
+// ----------------------------------------
+
+let isResizing = false;
+const MIN_CONSOLE_HEIGHT = 45;
+const MAX_CONSOLE_HEIGHT = window.innerHeight - 30;
+
+function initConsoleResize() {{
+  const handle = document.querySelector('.console-resize-handle');
+  const panel = document.getElementById('console-panel');
+  
+  if (!handle || !panel) return;
+  
+  let startY = 0;
+  let startHeight = 0;
+  
+  handle.addEventListener('mousedown', (e) => {{
+    isResizing = true;
+    startY = e.clientY;
+    startHeight = panel.offsetHeight;
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  }});
+  
+  document.addEventListener('mousemove', (e) => {{
+    if (!isResizing) return;
+    
+    const deltaY = startY - e.clientY;
+    let newHeight = startHeight + deltaY;
+    
+    newHeight = Math.max(MIN_CONSOLE_HEIGHT, Math.min(newHeight, MAX_CONSOLE_HEIGHT));
+    
+    panel.style.height = newHeight + 'px';
+  }});
+  
+  document.addEventListener('mouseup', () => {{
+    if (isResizing) {{
+      isResizing = false;
+      const handle = document.querySelector('.console-resize-handle');
+      if (handle) handle.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }}
+  }});
+}}
+
+// Initialize on page load
+window.addEventListener('DOMContentLoaded', () => {{
+  initConsoleResize();
+}});
 
 // ----------------------------------------
 // UTILITY
