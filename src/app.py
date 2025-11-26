@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from common_openai_functions import create_async_azure_openai_client_with_api_key, create_async_azure_openai_client_with_credential, create_async_openai_client
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
-from routers import crawler, inventory, openai_proxy, sharepoint_search, domains, testrouter, testrouter2
+from routers import crawler, inventory, openai_proxy, sharepoint_search, domains, testrouter, testrouter2, testrouter3
 from routers.sharepoint_search import build_domains_and_metadata_cache
 from utils import ZipExtractionMode, acquire_startup_lock, convert_to_flat_html_table, extract_zip_files, format_config_for_displaying, format_filesize, log_function_footer, log_function_header, log_function_output, log_function_footer_sync, clear_folder
 
@@ -479,6 +479,14 @@ def create_app() -> FastAPI:
   except Exception as e:
     initialization_errors.append({"component": "Test Router V2", "error": str(e)})
   
+  # Include Test router V3 under /testrouter3
+  try:
+    app.include_router(testrouter3.router, tags=["Test V3"], prefix="/testrouter3")
+    testrouter3.set_config(config)
+    log_function_output(log_data, "Test router V3 included at /testrouter3")
+  except Exception as e:
+    initialization_errors.append({"component": "Test Router V3", "error": str(e)})
+  
   # Mount static files directory
   static_path = os.path.join(os.path.dirname(__file__), "static")
   if os.path.exists(static_path):
@@ -567,6 +575,7 @@ def root() -> str:
     <li><a href="/crawler">/crawler</a> - Crawler Endpoints (<a href="/crawler/localstorage">Local Storage</a> + <a href="/crawler/updatemaps">Update Maps</a> + <a href="/crawler/getlogfile">Get Logfile</a>)</li>
     <li><a href="/testrouter/streaming01">/testrouter/streaming01</a> - V1 Streaming Test (<a href="/testrouter/streaming01?format=stream">Stream</a>)</li>
     <li><a href="/testrouter2/streaming01">/testrouter2/streaming01</a> - V2 Streaming Test (<a href="/testrouter2/streaming01?format=stream">Stream</a> + <a href="/testrouter2/jobs?format=html">Jobs</a>)</li>
+    <li><a href="/testrouter3/jobs">/testrouter3/jobs</a> - V3 Streaming Test with UI (<a href="/testrouter3/streaming01?format=stream">Stream</a> + <a href="/testrouter3/jobs?format=ui">Jobs UI</a>)</li>
   </ul>
 
   <div class="section">
