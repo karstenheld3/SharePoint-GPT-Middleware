@@ -116,8 +116,8 @@ def generate_streaming_ui_page(title: str, jobs: list) -> str:
   bottom: 0;
   left: 0;
   right: 0;
-  background: #1a1a1a;
-  border-top: 1px solid #3c3c3c;
+  background: #012456;
+  border-top: none;
   z-index: 900;
   height: 232px;
   display: flex;
@@ -127,18 +127,18 @@ def generate_streaming_ui_page(title: str, jobs: list) -> str:
 /* Resize Handle */
 .console-resize-handle {{
   height: 4px;
-  background: #3c3c3c;
+  background: #aaaaaa;
   cursor: ns-resize;
   flex-shrink: 0;
   transition: background 0.2s;
 }}
 
 .console-resize-handle:hover {{
-  background: #0078d4;
+  background: #4a8ab5;
 }}
 
 .console-resize-handle.dragging {{
-  background: #0078d4;
+  background: #4a8ab5;
 }}
 
 .console-header {{
@@ -146,11 +146,11 @@ def generate_streaming_ui_page(title: str, jobs: list) -> str:
   justify-content: space-between;
   align-items: center;
   padding: 0.5rem 1rem;
-  background: #252525;
-  border-bottom: 1px solid #3c3c3c;
+  background: #FAFAFA;
+  border-bottom: 1px solid #d0d0d0;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #ffffff;
+  color: #333333;
   flex-shrink: 0;
 }}
 
@@ -165,9 +165,9 @@ def generate_streaming_ui_page(title: str, jobs: list) -> str:
   padding: 0.75rem 1rem;
   margin: 0;
   font-family: 'Consolas', 'Monaco', monospace;
-  font-size: 0.8125rem;
-  line-height: 1.4;
-  background: #1e1e1e;
+  font-size: 0.9rem;
+  line-height: 1rem;
+  background: #012456;
   color: #ffffff;
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -337,6 +337,7 @@ renderAllJobs();
 let activeStreamController = null;
 let activeJobId = null;
 let isCurrentlyStreaming = false;
+let suppressToasts = false;
 
 // ----------------------------------------
 // TOAST FUNCTIONS
@@ -369,11 +370,13 @@ function showToast(title, message, type = 'info', autoDismiss = 5000) {{
 }}
 
 function showJobStartToast(jobData) {{
+  if (suppressToasts) return;
   const msg = `ID: ${{jobData.id}} | Total: ${{jobData.total}} items`;
   showToast('Job Started', msg, 'info');
 }}
 
 function showJobEndToast(jobData) {{
+  if (suppressToasts) return;
   const type = jobData.result === 'ok' ? 'success' : 
                jobData.result === 'canceled' ? 'warning' : 'error';
   const msg = `ID: ${{jobData.id}} | Result: ${{jobData.result}}`;
@@ -396,7 +399,7 @@ function appendToConsole(text) {{
   
   output.textContent += text;
   
-  const MAX_LENGTH = 50000;
+  const MAX_LENGTH = 1000000;
   if (output.textContent.length > MAX_LENGTH) {{
     output.textContent = '...[truncated]\\n' + output.textContent.slice(-MAX_LENGTH);
   }}
@@ -418,6 +421,7 @@ class StreamParser {{
   constructor() {{
     this.buffer = '';
     this.state = 'idle';
+    this.foundEndJson = false;
   }}
 
   parse(chunk) {{
@@ -432,6 +436,10 @@ class StreamParser {{
         }} else if (this.buffer.includes('<log>')) {{
           const idx = this.buffer.indexOf('<log>');
           this.buffer = this.buffer.slice(idx + '<log>'.length);
+          // Skip leading newline after <log> tag
+          if (this.buffer.startsWith('\\n')) {{
+            this.buffer = this.buffer.slice(1);
+          }}
           this.state = 'in_log';
         }} else if (this.buffer.includes('<end_json>')) {{
           const idx = this.buffer.indexOf('<end_json>');
@@ -513,6 +521,7 @@ class StreamParser {{
   }}
 
   onEndJson(jsonStr) {{
+    this.foundEndJson = true;
     try {{
       const data = JSON.parse(jsonStr);
       console.log('End JSON received:', data);
@@ -567,6 +576,12 @@ async function startStreamingRequest(url, options = {{}}) {{
       const chunk = decoder.decode(value, {{ stream: true }});
       parser.parse(chunk);
     }}
+    
+    // Stream ended - if monitoring and no end_json found, re-enable toasts
+    if (suppressToasts && !parser.foundEndJson) {{
+      suppressToasts = false;
+      appendToConsole('\\n[Job still running - live updates enabled]\\n');
+    }}
 
   }} catch (e) {{
     if (e.name === 'AbortError') {{
@@ -599,10 +614,15 @@ function streamRequest(button) {{
 }}
 
 function streamMonitor(button) {{
+  // Monitoring existing job - suppress toasts initially
+  suppressToasts = true;
   streamRequest(button);
 }}
 
 function streamStart(button) {{
+  // Starting new job - enable toasts
+  suppressToasts = false;
+  
   // Check if this page is currently streaming a job
   if (isCurrentlyStreaming) {{
     alert('Cannot start a new job. This page is already streaming a job. Please wait for it to complete.');
