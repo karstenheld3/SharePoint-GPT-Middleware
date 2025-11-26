@@ -130,6 +130,8 @@ async def streaming01(request: Request):
     await log_function_footer(log_data)
     return JSONResponse({"error": "Failed to create streaming job after retries"}, status_code=500)
 
+  source_url = f"{request.url.path}?{request.query_params}" if request.query_params else str(request.url.path)
+
   async def generate_stream():
     simulated_files = [f"document_{i:03d}.pdf" for i in range(1, file_count + 1)]
     processed_files = []
@@ -138,6 +140,7 @@ async def streaming01(request: Request):
     # Initialize StreamingJob
     job = StreamingJob(
       sj_id=sj_id,
+      source_url=source_url,
       monitor_url=f"/testrouter2/monitor?sj_id={sj_id}",
       router=ROUTER_NAME,
       endpoint=endpoint_name,

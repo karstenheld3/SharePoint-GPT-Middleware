@@ -10,6 +10,7 @@ from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 @dataclass
 class StreamingJob:
   sj_id: int                                                      # Unique streaming job identifier (1 ... n)
+  source_url: str                                                 # Url to source endpoint that started this job
   monitor_url: str                                                # Url to monitor endpoint
   router: str                                                     # Router name (e.g., 'testrouter2', 'crawler')
   endpoint: str                                                   # Endpoint name (e.g., 'streaming01')
