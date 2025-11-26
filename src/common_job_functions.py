@@ -1,7 +1,4 @@
-import datetime
-import glob
-import os
-import re
+import datetime, glob, json, os, re, typing
 from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
@@ -13,7 +10,7 @@ from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 # Get state folder path for streaming operations, creating if needed
 def get_streaming_state_folder(persistent_storage_path: str) -> str:
   if not persistent_storage_path: return None
-  state_folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_JOBS_SUBFOLDER)
+  state_folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_LOGS_SUBFOLDER)
   os.makedirs(state_folder, exist_ok=True)
   return state_folder
 
@@ -81,34 +78,34 @@ def list_streaming_operations(state_folder: str, endpoint_filter: str = None) ->
 
 # ----------------------------------------- START: V2 Streaming -----------------------------------------
 
+# Type aliases for V2 streaming
+StreamingJobResult = Literal["ok", "partial", "canceled", "fail"] 
+StreamingJobState = Literal["running", "paused", "completed", "canceled"]
+StreamingJobControlState = Literal["pause_requested", "resume_requested", "cancel_requested"]
+
 @dataclass
 class StreamingJob:
   id: int                                                         # Unique streaming job identifier (1 ... n)
   router: str                                                     # Router name (e.g., 'testrouter2', 'crawler')
   endpoint: str                                                   # Endpoint name (e.g., 'streaming01')
-  state: Literal["running", "paused", "completed", "canceled"]    # Current job state
+  state: StreamingJobState                                        # Current job state
   started: datetime.datetime                                      # Timestamp when job started
   finished: datetime.datetime | None                              # Timestamp when job finished (None if active)
   source_url: str = ""                                            # Url to source endpoint that started this job
   monitor_url: str = ""                                           # Url to monitor endpoint
   total: int = 0                                                  # Total number of items to process
   current: int = 0                                                # Current item index (1-based)
-  result: Literal["OK", "PARTIAL", "CANCELED", "FAIL"] | None = None  # Final result (None if still active)
+  result: StreamingJobResult | None = None                        # Final result (None if still active)
   result_data: Any | None = None                                  # Additional result data (e.g., error details, stats)
 
-
-# Type aliases for V2 streaming
-StreamingJobState = Literal["running", "paused", "completed", "canceled"]
-StreamingJobControlState = Literal["pause_requested", "resume_requested", "cancel_requested"]
-AllStates = Literal["running", "paused", "completed", "canceled", "pause_requested", "resume_requested", "cancel_requested"]
-
-VALID_JOB_STATES = {"running", "paused", "completed", "canceled"}
-VALID_CONTROL_STATES = {"pause_requested", "resume_requested", "cancel_requested"}
+# Derive sets from type aliases to avoid duplication
+VALID_JOB_STATES = set(typing.get_args(StreamingJobState))
+VALID_CONTROL_STATES = set(typing.get_args(StreamingJobControlState))
 ALL_VALID_STATES = VALID_JOB_STATES | VALID_CONTROL_STATES
 
 # Generate next streaming job ID by scanning existing files. Returns sequential integer starting at 1.
 def generate_streaming_job_id(persistent_storage_path: str) -> int:
-  jobs_folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_JOBS_SUBFOLDER)
+  jobs_folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_LOGS_SUBFOLDER)
   os.makedirs(jobs_folder, exist_ok=True)
   
   # Get all job files recursively
@@ -137,7 +134,7 @@ def generate_streaming_job_id(persistent_storage_path: str) -> int:
 
 # Get folder path for streaming job files: PERSISTENT_STORAGE_PATH/jobs/[router]/[endpoint]/
 def get_streaming_job_folder(persistent_storage_path: str, router_name: str, endpoint_name: str) -> str:
-  folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_JOBS_SUBFOLDER, router_name, endpoint_name)
+  folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_LOGS_SUBFOLDER, router_name, endpoint_name)
   os.makedirs(folder, exist_ok=True)
   return folder
 
@@ -154,10 +151,7 @@ def create_streaming_job_file(persistent_storage_path: str, router_name: str, en
   
   try:
     with open(file_path, 'x', encoding='utf-8') as f:
-      f.write(f"# Streaming Job {sj_id}\n")
-      f.write(f"# Router: {router_name}\n")
-      f.write(f"# Endpoint: {endpoint_name}\n")
-      f.write(f"# Created: {datetime.datetime.now().isoformat()}\n\n")
+      pass  # Create empty file
     return True, timestamp
   except FileExistsError:
     return False, ""
@@ -225,7 +219,7 @@ def get_streaming_job_current_state(persistent_storage_path: str, router_name: s
 
 # Find streaming job by sj_id across all routers/endpoints. Returns dict with router_name, endpoint_name, state, file_path, timestamp or None.
 def find_streaming_job_by_id(persistent_storage_path: str, sj_id: int) -> Optional[Dict]:
-  jobs_folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_JOBS_SUBFOLDER)
+  jobs_folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_LOGS_SUBFOLDER)
   if not os.path.exists(jobs_folder): return None
   
   for root, dirs, files in os.walk(jobs_folder):
@@ -242,7 +236,7 @@ def find_streaming_job_by_id(persistent_storage_path: str, sj_id: int) -> Option
 
 # List all streaming jobs with optional filters. Returns list of StreamingJob instances.
 def list_streaming_jobs(persistent_storage_path: str, router_filter: Optional[str] = None, endpoint_filter: Optional[str] = None, state_filter: Optional[str] = None) -> List[StreamingJob]:
-  jobs_folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_JOBS_SUBFOLDER)
+  jobs_folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_LOGS_SUBFOLDER)
   if not os.path.exists(jobs_folder): return []
   
   jobs = []
@@ -266,6 +260,24 @@ def list_streaming_jobs(persistent_storage_path: str, router_filter: Optional[st
       started_str = f"{date_part}T{time_part.replace('-', ':')}"
       started = datetime.datetime.fromisoformat(started_str)
       
+      # Read finished timestamp from log file if job is completed/canceled
+      finished = None
+      if state in ['completed', 'canceled']:
+        file_path = os.path.join(root, f)
+        try:
+          with open(file_path, 'r', encoding='utf-8') as log_file:
+            content = log_file.read()
+            # Extract end_json section
+            if '<end_json>' in content and '</end_json>' in content:
+              start_idx = content.index('<end_json>') + len('<end_json>')
+              end_idx = content.index('</end_json>')
+              json_str = content[start_idx:end_idx].strip()
+              end_data = json.loads(json_str)
+              if end_data.get('finished'):
+                finished = datetime.datetime.fromisoformat(end_data['finished'])
+        except Exception:
+          pass  # If parsing fails, leave finished as None
+      
       # Create StreamingJob instance
       job = StreamingJob(
         id=sj_id,
@@ -273,7 +285,7 @@ def list_streaming_jobs(persistent_storage_path: str, router_filter: Optional[st
         endpoint=endpoint_name,
         state=state,
         started=started,
-        finished=None  # Will be populated if job is completed
+        finished=finished
       )
       jobs.append(job)
   

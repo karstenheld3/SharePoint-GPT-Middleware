@@ -230,9 +230,13 @@ initialJobs.forEach(job => {{
 // Render functions
 function renderJobRow(job) {{
   const actions = renderJobActions(job);
-  // Format timestamps consistently (replace T with space, trim to 19 chars)
-  const started = job.started ? job.started.substring(0, 19).replace('T', ' ') : '';
-  const finished = job.finished ? job.finished.substring(0, 19).replace('T', ' ') : '-';
+  // Format timestamps consistently (handle both ISO format with T and space format)
+  const formatTimestamp = (ts) => {{
+    if (!ts) return '';
+    return ts.substring(0, 19).replace('T', ' ');
+  }};
+  const started = formatTimestamp(job.started);
+  const finished = job.finished ? formatTimestamp(job.finished) : '-';
   return `
     <tr id="job-${{job.id}}">
       <td>${{job.id}}</td>
@@ -247,7 +251,7 @@ function renderJobRow(job) {{
 }}
 
 function renderJobActions(job) {{
-  let html = `<button class="btn-small" onclick="streamMonitor(this)" data-stream-url="/testrouter3/monitor?sj_id=${{job.id}}">Monitor</button>`;
+  let html = `<button class="btn-small" onclick="streamMonitor(this)" data-stream-url="/testrouter3/monitor?id=${{job.id}}">Monitor</button>`;
   
   if (job.state === 'running') {{
     html += ` <button class="btn-small" onclick="controlJob(${{job.id}}, 'pause')">Pause</button>`;
@@ -300,7 +304,7 @@ async function controlJob(id, action) {{
   if (action === 'cancel' && !confirm(`Cancel job ${{id}}?`)) return;
   
   try {{
-    const response = await fetch(`/testrouter3/control?sj_id=${{id}}&action=${{action}}`);
+    const response = await fetch(`/testrouter3/control?id=${{id}}&action=${{action}}`);
     const data = await response.json();
     if (data.success) {{
       // Optimistically update state
@@ -354,14 +358,14 @@ function showToast(title, message, type = 'info', autoDismiss = 5000) {{
 }}
 
 function showJobStartToast(jobData) {{
-  const msg = `ID: ${{jobData.sj_id}} | Total: ${{jobData.total}} items`;
+  const msg = `ID: ${{jobData.id}} | Total: ${{jobData.total}} items`;
   showToast('Job Started', msg, 'info');
 }}
 
 function showJobEndToast(jobData) {{
-  const type = jobData.result === 'OK' ? 'success' : 
-               jobData.result === 'CANCELED' ? 'warning' : 'error';
-  const msg = `ID: ${{jobData.sj_id}} | Result: ${{jobData.result}}`;
+  const type = jobData.result === 'ok' ? 'success' : 
+               jobData.result === 'canceled' ? 'warning' : 'error';
+  const msg = `ID: ${{jobData.id}} | Result: ${{jobData.result}}`;
   showToast('Job Finished', msg, type);
 }}
 
@@ -506,14 +510,17 @@ class StreamParser {{
     try {{
       const data = JSON.parse(jsonStr);
       console.log('End JSON received:', data);
+      console.log('Finished timestamp:', data.finished, 'Type:', typeof data.finished);
       showJobEndToast(data);
       
       // Update job state and finished timestamp
-      console.log('Updating job', data.id, 'with finished:', data.finished);
+      const job = jobsState.get(data.id);
+      console.log('Current job before update:', job);
       updateJob(data.id, {{
         state: data.state.toLowerCase(),
         finished: data.finished
       }});
+      console.log('Job after update:', jobsState.get(data.id));
     }} catch (e) {{
       console.error('Failed to parse end_json:', e);
     }}
@@ -657,16 +664,16 @@ async def streaming01(request: Request):
   /testrouter3/streaming01?format=ui (shows job list with console)
   
   Control:
-  - GET /testrouter3/control?sj_id=42&action=pause
-  - GET /testrouter3/control?sj_id=42&action=resume
-  - GET /testrouter3/control?sj_id=42&action=cancel
+  - GET /testrouter3/control?id=42&action=pause
+  - GET /testrouter3/control?id=42&action=resume
+  - GET /testrouter3/control?id=42&action=cancel
   
   Monitor:
-  - GET /testrouter3/monitor?sj_id=42
+  - GET /testrouter3/monitor?id=42
   
   Output format:
   <start_json>
-  {"sj_id": 42, "monitor_url": "/testrouter3/monitor?sj_id=42", "total": 20, ...}
+  {"id": 42, "monitor_url": "/testrouter3/monitor?id=42", "total": 20, ...}
   </start_json>
   <log>
   [ 1 / 20 ] Processing 'document_001.pdf'...
@@ -674,7 +681,7 @@ async def streaming01(request: Request):
   ...
   </log>
   <end_json>
-  {"result": "OK", "state": "COMPLETED", "sj_id": 42, ...}
+  {"result": "ok", "state": "completed", "id": 42, ...}
   </end_json>
   """
   function_name = 'streaming01()'
@@ -748,14 +755,20 @@ async def streaming01(request: Request):
     processed_files = []
     failed_files = []
 
+    # Custom serializer for datetime objects to use ISO format (RFC3339)
+    def datetime_serializer(obj):
+      if isinstance(obj, datetime.datetime):
+        return obj.isoformat()
+      return str(obj)
+
     # Initialize StreamingJob
     job = StreamingJob(
       id=sj_id,
       source_url=source_url,
-      monitor_url=f"/testrouter3/monitor?sj_id={sj_id}",
+      monitor_url=f"/testrouter3/monitor?id={sj_id}",
       router=ROUTER_NAME,
       endpoint=endpoint_name,
-      state="RUNNING",
+      state="running",
       total=file_count,
       current=0,
       started=datetime.datetime.now(),
@@ -765,7 +778,7 @@ async def streaming01(request: Request):
     )
 
     # ----- HEADER SECTION -----
-    header_text = f"<start_json>\n{json.dumps(asdict(job), indent=2, default=str)}\n</start_json>\n"
+    header_text = f"<start_json>\n{json.dumps(asdict(job), indent=2, default=datetime_serializer)}\n</start_json>\n"
     write_streaming_job_log(storage_path, ROUTER_NAME, endpoint_name, sj_id, header_text)
     yield header_text
 
@@ -783,8 +796,8 @@ async def streaming01(request: Request):
         write_streaming_job_log(storage_path, ROUTER_NAME, endpoint_name, sj_id, cancel_msg)
         yield cancel_msg
         delete_streaming_job_file(storage_path, ROUTER_NAME, endpoint_name, sj_id, "cancel_requested")
-        job.state = "CANCELED"
-        job.result = "CANCELED"
+        job.state = "canceled"
+        job.result = "canceled"
         break
 
       # Check for pause request
@@ -804,8 +817,8 @@ async def streaming01(request: Request):
           yield cancel_msg
           delete_streaming_job_file(storage_path, ROUTER_NAME, endpoint_name, sj_id, "cancel_requested")
           delete_streaming_job_file(storage_path, ROUTER_NAME, endpoint_name, sj_id, "paused")
-          job.state = "CANCELED"
-          job.result = "CANCELED"
+          job.state = "canceled"
+          job.result = "canceled"
           break
 
         # Check for resume request
@@ -820,7 +833,7 @@ async def streaming01(request: Request):
         await asyncio.sleep(0.1)
 
       # Check if we were canceled while paused
-      if job.state == "CANCELED": break
+      if job.state == "canceled": break
 
       # Process item
       progress_msg = f"[ {index} / {file_count} ] Processing '{filename}'...\n"
@@ -850,9 +863,9 @@ async def streaming01(request: Request):
     job.current = len(processed_files) + len(failed_files)
     job.finished = datetime.datetime.now()
     
-    if job.result != "CANCELED":
-      job.state = "COMPLETED"
-      job.result = "PARTIAL" if failed_files else "OK"
+    if job.result != "canceled":
+      job.state = "completed"
+      job.result = "partial" if failed_files else "ok"
     
     job.result_data = {
       "processed": len(processed_files),
@@ -861,7 +874,7 @@ async def streaming01(request: Request):
       "failed_files": failed_files
     }
 
-    footer_text = f"<end_json>\n{json.dumps(asdict(job), indent=2, default=str)}\n</end_json>\n"
+    footer_text = f"<end_json>\n{json.dumps(asdict(job), indent=2, default=datetime_serializer)}\n</end_json>\n"
     write_streaming_job_log(storage_path, ROUTER_NAME, endpoint_name, sj_id, footer_text)
     yield footer_text
 
@@ -889,10 +902,10 @@ async def monitor_streaming_job(request: Request):
   Multiple monitors can attach to the same job simultaneously.
   
   Parameters:
-  - sj_id: Streaming job ID to monitor (required)
+  - id: Streaming job ID to monitor (required)
   
   Examples:
-  /testrouter3/monitor?sj_id=42
+  /testrouter3/monitor?id=42
   """
   function_name = 'monitor_streaming_job()'
   log_data = log_function_header(function_name)
@@ -902,12 +915,12 @@ async def monitor_streaming_job(request: Request):
     await log_function_footer(log_data)
     return HTMLResponse(generate_docs_page('/testrouter3/monitor', monitor_streaming_job.__doc__))
 
-  sj_id_str = request_params.get('sj_id')
-  if not sj_id_str:
+  id_str = request_params.get('id')
+  if not id_str:
     await log_function_footer(log_data)
-    return JSONResponse({"error": "Missing 'sj_id' parameter"}, status_code=400)
+    return JSONResponse({"error": "Missing 'id' parameter"}, status_code=400)
 
-  sj_id = int(sj_id_str)
+  sj_id = int(id_str)
 
   if not config or not config.LOCAL_PERSISTENT_STORAGE_PATH:
     await log_function_footer(log_data)
@@ -961,14 +974,14 @@ async def control_streaming_job(request: Request):
   Control a streaming job (pause/resume/cancel).
   
   Parameters:
-  - sj_id: Streaming job ID (required)
+  - id: Streaming job ID (required)
   - action: One of 'pause', 'resume', 'cancel' (required)
   - format: 'json' or 'ui' (default: 'json')
   
   Examples:
-  /testrouter3/control?sj_id=42&action=pause
-  /testrouter3/control?sj_id=42&action=resume&format=ui
-  /testrouter3/control?sj_id=42&action=cancel
+  /testrouter3/control?id=42&action=pause
+  /testrouter3/control?id=42&action=resume&format=ui
+  /testrouter3/control?id=42&action=cancel
   """
   function_name = 'control_streaming_job()'
   log_data = log_function_header(function_name)
@@ -978,14 +991,14 @@ async def control_streaming_job(request: Request):
     await log_function_footer(log_data)
     return HTMLResponse(generate_docs_page('/testrouter3/control', control_streaming_job.__doc__))
 
-  sj_id_str = request_params.get('sj_id')
+  id_str = request_params.get('id')
   action = request_params.get('action')
 
-  if not sj_id_str or not action:
+  if not id_str or not action:
     await log_function_footer(log_data)
-    return JSONResponse({"error": "Missing 'sj_id' or 'action' parameter"}, status_code=400)
+    return JSONResponse({"error": "Missing 'id' or 'action' parameter"}, status_code=400)
 
-  sj_id = int(sj_id_str)
+  sj_id = int(id_str)
   valid_actions = ["pause", "resume", "cancel"]
   if action not in valid_actions:
     await log_function_footer(log_data)
@@ -1021,9 +1034,9 @@ async def control_streaming_job(request: Request):
 
   # Always return JSON - client-side JavaScript handles UI updates
   if success:
-    return JSONResponse({"success": True, "sj_id": sj_id, "action": action, "message": f"{action.capitalize()} requested for job {sj_id}"})
+    return JSONResponse({"success": True, "id": sj_id, "action": action, "message": f"{action.capitalize()} requested for job {sj_id}"})
   else:
-    return JSONResponse({"success": False, "sj_id": sj_id, "action": action, "message": f"{action.capitalize()} already requested for job {sj_id}"})
+    return JSONResponse({"success": False, "id": sj_id, "action": action, "message": f"{action.capitalize()} already requested for job {sj_id}"})
 
 
 # ============================================

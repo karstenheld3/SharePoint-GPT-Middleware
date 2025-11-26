@@ -10,4 +10,4 @@ Read these files.
 
 Then read all .py files in the workspace including those in subfolders.
 
-Return only a single line: "Model: '[Model Name]' read [x] md files, [y] code files, [z]k context tokens"
+Return only a single line: "Read [x] md files, [y] code files, [z]k context tokens"
