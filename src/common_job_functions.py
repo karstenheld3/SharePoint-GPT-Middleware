@@ -7,20 +7,6 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 
-@dataclass
-class StreamingJob:
-  sj_id: int                                                      # Unique streaming job identifier (1 ... n)
-  source_url: str                                                 # Url to source endpoint that started this job
-  monitor_url: str                                                # Url to monitor endpoint
-  router: str                                                     # Router name (e.g., 'testrouter2', 'crawler')
-  endpoint: str                                                   # Endpoint name (e.g., 'streaming01')
-  state: Literal["RUNNING", "CANCELED", "PAUSED", "COMPLETED"]    # Current job state
-  total: int                                                      # Total number of items to process
-  current: int                                                    # Current item index (1-based)
-  started: datetime.datetime                                      # Timestamp when job started
-  finished: datetime.datetime | None                              # Timestamp when job finished (None if active)
-  result: Literal["OK", "PARTIAL", "CANCELED", "FAIL"] | None     # Final result (None if still active)
-  result_data: Any | None                                         # Additional result data (e.g., error details, stats)
 
 # ----------------------------------------- START: V1 Streaming ------------------------------------------
 
@@ -95,9 +81,25 @@ def list_streaming_operations(state_folder: str, endpoint_filter: str = None) ->
 
 # ----------------------------------------- START: V2 Streaming -----------------------------------------
 
+@dataclass
+class StreamingJob:
+  id: int                                                         # Unique streaming job identifier (1 ... n)
+  router: str                                                     # Router name (e.g., 'testrouter2', 'crawler')
+  endpoint: str                                                   # Endpoint name (e.g., 'streaming01')
+  state: Literal["running", "paused", "completed", "canceled"]    # Current job state
+  started: datetime.datetime                                      # Timestamp when job started
+  finished: datetime.datetime | None                              # Timestamp when job finished (None if active)
+  source_url: str = ""                                            # Url to source endpoint that started this job
+  monitor_url: str = ""                                           # Url to monitor endpoint
+  total: int = 0                                                  # Total number of items to process
+  current: int = 0                                                # Current item index (1-based)
+  result: Literal["OK", "PARTIAL", "CANCELED", "FAIL"] | None = None  # Final result (None if still active)
+  result_data: Any | None = None                                  # Additional result data (e.g., error details, stats)
+
+
 # Type aliases for V2 streaming
-JobState = Literal["running", "paused", "completed", "canceled"]
-ControlState = Literal["pause_requested", "resume_requested", "cancel_requested"]
+StreamingJobState = Literal["running", "paused", "completed", "canceled"]
+StreamingJobControlState = Literal["pause_requested", "resume_requested", "cancel_requested"]
 AllStates = Literal["running", "paused", "completed", "canceled", "pause_requested", "resume_requested", "cancel_requested"]
 
 VALID_JOB_STATES = {"running", "paused", "completed", "canceled"}
@@ -238,8 +240,8 @@ def find_streaming_job_by_id(persistent_storage_path: str, sj_id: int) -> Option
             return {"sj_id": sj_id, "router_name": parts[0], "endpoint_name": parts[1], "state": file_state, "timestamp": file_timestamp, "file_path": os.path.join(root, f)}
   return None
 
-# List all streaming jobs with optional filters. Returns list of dicts with sj_id, router, endpoint, state, created.
-def list_streaming_jobs(persistent_storage_path: str, router_filter: Optional[str] = None, endpoint_filter: Optional[str] = None, state_filter: Optional[str] = None) -> List[Dict]:
+# List all streaming jobs with optional filters. Returns list of StreamingJob instances.
+def list_streaming_jobs(persistent_storage_path: str, router_filter: Optional[str] = None, endpoint_filter: Optional[str] = None, state_filter: Optional[str] = None) -> List[StreamingJob]:
   jobs_folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_JOBS_SUBFOLDER)
   if not os.path.exists(jobs_folder): return []
   
@@ -259,11 +261,23 @@ def list_streaming_jobs(persistent_storage_path: str, router_filter: Optional[st
       if endpoint_filter and endpoint_name != endpoint_filter: continue
       if state_filter and state != state_filter: continue
       
+      # Parse timestamp to datetime
       date_part, time_part = file_timestamp.split('_')
-      created = f"{date_part}T{time_part.replace('-', ':')}"
-      jobs.append({"sj_id": sj_id, "router": router_name, "endpoint": endpoint_name, "state": state, "created": created})
+      started_str = f"{date_part}T{time_part.replace('-', ':')}"
+      started = datetime.datetime.fromisoformat(started_str)
+      
+      # Create StreamingJob instance
+      job = StreamingJob(
+        id=sj_id,
+        router=router_name,
+        endpoint=endpoint_name,
+        state=state,
+        started=started,
+        finished=None  # Will be populated if job is completed
+      )
+      jobs.append(job)
   
-  jobs.sort(key=lambda j: j["sj_id"], reverse=True)
+  jobs.sort(key=lambda j: j.id, reverse=True)
   return jobs
 
 # ----------------------------------------- END: V2 Streaming -------------------------------------------

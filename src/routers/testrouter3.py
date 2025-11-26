@@ -28,36 +28,10 @@ def set_config(app_config):
 # ============================================
 
 def generate_streaming_ui_page(title: str, jobs: list) -> str:
-  """Generate complete HTML page with streaming console UI (self-contained, no external dependencies)"""
+  """Generate complete HTML page with streaming console UI (reactive rendering)"""
   
-  # Generate table rows
-  rows_html = ""
-  for job in jobs:
-    sj_id = job['sj_id']
-    state = job['state']
-    
-    # Action buttons based on state
-    actions_html = f'<button class="btn-small" onclick="streamMonitor(this)" data-stream-url="/testrouter3/monitor?sj_id={sj_id}">Monitor</button>'
-    
-    if state == 'running':
-      actions_html += f' <button class="btn-small" hx-get="/testrouter3/control?sj_id={sj_id}&action=pause&format=ui" hx-target="#job-{sj_id}" hx-swap="outerHTML">Pause</button>'
-      actions_html += f' <button class="btn-small btn-delete" hx-get="/testrouter3/control?sj_id={sj_id}&action=cancel&format=ui" hx-target="#job-{sj_id}" hx-swap="outerHTML" hx-confirm="Cancel job {sj_id}?">Cancel</button>'
-    elif state == 'paused':
-      actions_html += f' <button class="btn-small" hx-get="/testrouter3/control?sj_id={sj_id}&action=resume&format=ui" hx-target="#job-{sj_id}" hx-swap="outerHTML">Resume</button>'
-      actions_html += f' <button class="btn-small btn-delete" hx-get="/testrouter3/control?sj_id={sj_id}&action=cancel&format=ui" hx-target="#job-{sj_id}" hx-swap="outerHTML" hx-confirm="Cancel job {sj_id}?">Cancel</button>'
-    
-    rows_html += f'''
-    <tr id="job-{sj_id}">
-      <td>{sj_id}</td>
-      <td>{job['router']}</td>
-      <td>{job['endpoint']}</td>
-      <td>{state}</td>
-      <td>{job['created']}</td>
-      <td>{actions_html}</td>
-    </tr>'''
-  
-  if not jobs:
-    rows_html = '<tr class="empty-row"><td colspan="6">No jobs found</td></tr>'
+  # Convert jobs list to JSON for JavaScript
+  jobs_json = json.dumps(jobs)
   
   return f'''<!DOCTYPE html>
 <html>
@@ -84,23 +58,24 @@ def generate_streaming_ui_page(title: str, jobs: list) -> str:
 }}
 
 .toast {{
-  background: #1e1e1e;
-  border: 1px solid #3c3c3c;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
   border-left: 4px solid #0078d4;
   padding: 0.75rem 1rem;
   border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
   animation: slideIn 0.3s ease-out;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 1rem;
+  color: #212529;
 }}
 
 .toast.toast-info {{ border-left-color: #0078d4; }}
-.toast.toast-success {{ border-left-color: #4caf50; }}
-.toast.toast-error {{ border-left-color: #f44336; }}
-.toast.toast-warning {{ border-left-color: #ff9800; }}
+.toast.toast-success {{ border-left-color: #28a745; }}
+.toast.toast-error {{ border-left-color: #dc3545; }}
+.toast.toast-warning {{ border-left-color: #ffc107; }}
 
 .toast-content {{
   flex: 1;
@@ -110,19 +85,20 @@ def generate_streaming_ui_page(title: str, jobs: list) -> str:
 .toast-title {{
   font-weight: 600;
   margin-bottom: 0.25rem;
+  color: #212529;
 }}
 
 .toast-dismiss {{
   background: none;
   border: none;
-  color: #888;
+  color: #6c757d;
   cursor: pointer;
   padding: 0;
   font-size: 1.25rem;
   line-height: 1;
 }}
 
-.toast-dismiss:hover {{ color: #fff; }}
+.toast-dismiss:hover {{ color: #212529; }}
 
 @keyframes slideIn {{
   from {{ transform: translateX(100%); opacity: 0; }}
@@ -164,6 +140,7 @@ def generate_streaming_ui_page(title: str, jobs: list) -> str:
   border-bottom: 1px solid #3c3c3c;
   font-size: 0.875rem;
   font-weight: 500;
+  color: #ffffff;
 }}
 
 .console-controls {{
@@ -179,7 +156,8 @@ def generate_streaming_ui_page(title: str, jobs: list) -> str:
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 0.8125rem;
   line-height: 1.4;
-  color: #d4d4d4;
+  background: #1e1e1e;
+  color: #ffffff;
   white-space: pre-wrap;
   word-wrap: break-word;
 }}
@@ -195,7 +173,7 @@ body.console-visible main {{
   
   <!-- Main Content -->
   <div class="container">
-    <h1>{title} ({len(jobs)})</h1>
+    <h1>{title} <span id="job-count">({len(jobs)})</span></h1>
     
     <div class="toolbar">
       <button class="btn-primary" onclick="streamStart(this)" data-stream-url="/testrouter3/streaming01?format=stream&files=20">Start New Job (20 files)</button>
@@ -206,16 +184,17 @@ body.console-visible main {{
     <table>
       <thead>
         <tr>
-          <th>SJ_ID</th>
+          <th>ID</th>
           <th>Router</th>
           <th>Endpoint</th>
           <th>State</th>
-          <th>Created</th>
+          <th>Started</th>
+          <th>Finished</th>
           <th>Actions</th>
         </tr>
       </thead>
-      <tbody>
-        {rows_html}
+      <tbody id="jobs-tbody">
+        <!-- Rendered by JavaScript -->
       </tbody>
     </table>
     
@@ -236,11 +215,113 @@ body.console-visible main {{
   
   <script>
 // ============================================
-// STREAMING UI - Console & Toasts (INLINE)
+// REACTIVE JOB STATE MANAGEMENT
+// ============================================
+
+// Initialize jobs from server
+const jobsState = new Map();
+const initialJobs = {jobs_json};
+
+// Load initial jobs into state
+initialJobs.forEach(job => {{
+  jobsState.set(job.id, job);
+}});
+
+// Render functions
+function renderJobRow(job) {{
+  const actions = renderJobActions(job);
+  // Format timestamps consistently (replace T with space, trim to 19 chars)
+  const started = job.started ? job.started.substring(0, 19).replace('T', ' ') : '';
+  const finished = job.finished ? job.finished.substring(0, 19).replace('T', ' ') : '-';
+  return `
+    <tr id="job-${{job.id}}">
+      <td>${{job.id}}</td>
+      <td>${{job.router}}</td>
+      <td>${{job.endpoint}}</td>
+      <td>${{job.state}}</td>
+      <td>${{started}}</td>
+      <td>${{finished}}</td>
+      <td>${{actions}}</td>
+    </tr>
+  `;
+}}
+
+function renderJobActions(job) {{
+  let html = `<button class="btn-small" onclick="streamMonitor(this)" data-stream-url="/testrouter3/monitor?sj_id=${{job.id}}">Monitor</button>`;
+  
+  if (job.state === 'running') {{
+    html += ` <button class="btn-small" onclick="controlJob(${{job.id}}, 'pause')">Pause</button>`;
+    html += ` <button class="btn-small btn-delete" onclick="controlJob(${{job.id}}, 'cancel')">Cancel</button>`;
+  }} else if (job.state === 'paused') {{
+    html += ` <button class="btn-small" onclick="controlJob(${{job.id}}, 'resume')">Resume</button>`;
+    html += ` <button class="btn-small btn-delete" onclick="controlJob(${{job.id}}, 'cancel')">Cancel</button>`;
+  }}
+  
+  return html;
+}}
+
+function renderAllJobs() {{
+  const tbody = document.getElementById('jobs-tbody');
+  if (!tbody) return;
+  
+  const jobs = Array.from(jobsState.values()).sort((a, b) => b.id - a.id);
+  
+  if (jobs.length === 0) {{
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No jobs found</td></tr>';
+  }} else {{
+    tbody.innerHTML = jobs.map(job => renderJobRow(job)).join('');
+  }}
+  
+  // Update count
+  const countEl = document.getElementById('job-count');
+  if (countEl) countEl.textContent = `(${{jobs.length}})`;
+}}
+
+function updateJob(id, updates) {{
+  const job = jobsState.get(id);
+  console.log('updateJob: Looking for job', id, 'Found:', job);
+  if (job) {{
+    console.log('Before update:', JSON.stringify(job));
+    Object.assign(job, updates);
+    console.log('After update:', JSON.stringify(job));
+    renderAllJobs();
+  }} else {{
+    console.error('Job not found in state:', id);
+  }}
+}}
+
+function addJob(job) {{
+  jobsState.set(job.id, job);
+  renderAllJobs();
+}}
+
+// Control job via fetch
+async function controlJob(id, action) {{
+  if (action === 'cancel' && !confirm(`Cancel job ${{id}}?`)) return;
+  
+  try {{
+    const response = await fetch(`/testrouter3/control?sj_id=${{id}}&action=${{action}}`);
+    const data = await response.json();
+    if (data.success) {{
+      // Optimistically update state
+      if (action === 'pause') updateJob(id, {{ state: 'paused' }});
+      if (action === 'cancel') updateJob(id, {{ state: 'canceled' }});
+    }}
+  }} catch (e) {{
+    console.error('Control action failed:', e);
+  }}
+}}
+
+// Initial render
+renderAllJobs();
+
+// ============================================
+// STREAMING UI - Console & Toasts
 // ============================================
 
 let activeStreamController = null;
 let activeJobId = null;
+let isCurrentlyStreaming = false;
 
 // ----------------------------------------
 // TOAST FUNCTIONS
@@ -400,8 +481,18 @@ class StreamParser {{
   onStartJson(jsonStr) {{
     try {{
       const data = JSON.parse(jsonStr);
-      setActiveJob(data.sj_id);
+      setActiveJob(data.id);
       showJobStartToast(data);
+      
+      // Add job to state with started timestamp
+      addJob({{
+        id: data.id,
+        router: data.router,
+        endpoint: data.endpoint,
+        state: data.state.toLowerCase(),
+        started: data.started,
+        finished: null
+      }});
     }} catch (e) {{
       console.error('Failed to parse start_json:', e);
     }}
@@ -414,30 +505,18 @@ class StreamParser {{
   onEndJson(jsonStr) {{
     try {{
       const data = JSON.parse(jsonStr);
+      console.log('End JSON received:', data);
       showJobEndToast(data);
-      updateJobTableRow(data);
+      
+      // Update job state and finished timestamp
+      console.log('Updating job', data.id, 'with finished:', data.finished);
+      updateJob(data.id, {{
+        state: data.state.toLowerCase(),
+        finished: data.finished
+      }});
     }} catch (e) {{
       console.error('Failed to parse end_json:', e);
     }}
-  }}
-}}
-
-// ----------------------------------------
-// TABLE ROW UPDATE
-// ----------------------------------------
-
-function updateJobTableRow(jobData) {{
-  const row = document.getElementById(`job-${{jobData.sj_id}}`);
-  if (!row) return;
-  
-  const stateCell = row.querySelector('td:nth-child(4)');
-  if (stateCell) stateCell.textContent = jobData.state.toLowerCase();
-  
-  const actionsCell = row.querySelector('td:last-child');
-  if (actionsCell) {{
-    const monitorBtn = actionsCell.querySelector('button');
-    actionsCell.innerHTML = '';
-    if (monitorBtn) actionsCell.appendChild(monitorBtn);
   }}
 }}
 
@@ -450,6 +529,7 @@ async function startStreamingRequest(url, options = {{}}) {{
     activeStreamController.abort();
   }}
 
+  isCurrentlyStreaming = true;
   activeStreamController = new AbortController();
   const parser = new StreamParser();
 
@@ -485,6 +565,7 @@ async function startStreamingRequest(url, options = {{}}) {{
       console.error('Streaming error:', e);
     }}
   }} finally {{
+    isCurrentlyStreaming = false;
     activeStreamController = null;
   }}
 }}
@@ -513,6 +594,11 @@ function streamMonitor(button) {{
 }}
 
 function streamStart(button) {{
+  // Check if this page is currently streaming a job
+  if (isCurrentlyStreaming) {{
+    alert('Cannot start a new job. This page is already streaming a job. Please wait for it to complete.');
+    return;
+  }}
   streamRequest(button);
 }}
 
@@ -528,30 +614,6 @@ function escapeHtml(text) {{
   </script>
 </body>
 </html>'''
-
-
-def generate_single_row_html(job: dict) -> str:
-  """Generate single table row HTML for HTMX swap"""
-  sj_id = job['sj_id']
-  state = job['state']
-  
-  actions_html = f'<button class="btn-small" onclick="streamMonitor(this)" data-stream-url="/testrouter3/monitor?sj_id={sj_id}">Monitor</button>'
-  
-  if state == 'running':
-    actions_html += f' <button class="btn-small" hx-get="/testrouter3/control?sj_id={sj_id}&action=pause&format=ui" hx-target="#job-{sj_id}" hx-swap="outerHTML">Pause</button>'
-    actions_html += f' <button class="btn-small btn-delete" hx-get="/testrouter3/control?sj_id={sj_id}&action=cancel&format=ui" hx-target="#job-{sj_id}" hx-swap="outerHTML" hx-confirm="Cancel job {sj_id}?">Cancel</button>'
-  elif state == 'paused':
-    actions_html += f' <button class="btn-small" hx-get="/testrouter3/control?sj_id={sj_id}&action=resume&format=ui" hx-target="#job-{sj_id}" hx-swap="outerHTML">Resume</button>'
-    actions_html += f' <button class="btn-small btn-delete" hx-get="/testrouter3/control?sj_id={sj_id}&action=cancel&format=ui" hx-target="#job-{sj_id}" hx-swap="outerHTML" hx-confirm="Cancel job {sj_id}?">Cancel</button>'
-  
-  return f'''<tr id="job-{sj_id}">
-  <td>{sj_id}</td>
-  <td>{job['router']}</td>
-  <td>{job['endpoint']}</td>
-  <td>{state}</td>
-  <td>{job['created']}</td>
-  <td>{actions_html}</td>
-</tr>'''
 
 
 def generate_docs_page(endpoint: str, docstring: str) -> str:
@@ -634,8 +696,20 @@ async def streaming01(request: Request):
     
     storage_path = config.LOCAL_PERSISTENT_STORAGE_PATH
     jobs = list_streaming_jobs(storage_path, router_filter=ROUTER_NAME)
+    
+    # Convert StreamingJob dataclass instances to dicts for JSON serialization
+    jobs_dicts = []
+    for job in jobs:
+      job_dict = asdict(job)
+      # Convert datetime objects to ISO strings
+      if job_dict['started']:
+        job_dict['started'] = job_dict['started'].isoformat()
+      if job_dict['finished']:
+        job_dict['finished'] = job_dict['finished'].isoformat()
+      jobs_dicts.append(job_dict)
+    
     await log_function_footer(log_data)
-    return HTMLResponse(generate_streaming_ui_page("Streaming Jobs", jobs))
+    return HTMLResponse(generate_streaming_ui_page("Streaming Jobs", jobs_dicts))
 
   file_count = int(request_params.get('files', '20'))
 
@@ -676,7 +750,7 @@ async def streaming01(request: Request):
 
     # Initialize StreamingJob
     job = StreamingJob(
-      sj_id=sj_id,
+      id=sj_id,
       source_url=source_url,
       monitor_url=f"/testrouter3/monitor?sj_id={sj_id}",
       router=ROUTER_NAME,
@@ -945,22 +1019,7 @@ async def control_streaming_job(request: Request):
 
   await log_function_footer(log_data)
 
-  response_format = request_params.get('format', 'json')
-
-  if response_format == 'ui':
-    # Re-fetch job to get updated state
-    updated_job = find_streaming_job_by_id(storage_path, sj_id)
-    if updated_job:
-      job_data = {
-        'sj_id': sj_id,
-        'router': updated_job['router_name'],
-        'endpoint': updated_job['endpoint_name'],
-        'state': updated_job['state'],
-        'created': updated_job['timestamp']
-      }
-      return HTMLResponse(generate_single_row_html(job_data))
-    return HTMLResponse(f'<tr><td colspan="6">Job {sj_id} not found after action</td></tr>')
-
+  # Always return JSON - client-side JavaScript handles UI updates
   if success:
     return JSONResponse({"success": True, "sj_id": sj_id, "action": action, "message": f"{action.capitalize()} requested for job {sj_id}"})
   else:
@@ -1004,10 +1063,21 @@ async def list_jobs(request: Request):
   storage_path = config.LOCAL_PERSISTENT_STORAGE_PATH
   jobs = list_streaming_jobs(storage_path, router_filter=router_filter, endpoint_filter=endpoint_filter, state_filter=state_filter)
 
+  # Convert StreamingJob dataclass instances to dicts for JSON serialization
+  jobs_dicts = []
+  for job in jobs:
+    job_dict = asdict(job)
+    # Convert datetime objects to ISO strings
+    if job_dict['started']:
+      job_dict['started'] = job_dict['started'].isoformat()
+    if job_dict['finished']:
+      job_dict['finished'] = job_dict['finished'].isoformat()
+    jobs_dicts.append(job_dict)
+
   await log_function_footer(log_data)
 
   if response_format == "json":
-    return JSONResponse({"jobs": jobs, "count": len(jobs)})
+    return JSONResponse({"jobs": jobs_dicts, "count": len(jobs_dicts)})
   else:
     # Default to UI with streaming console
-    return HTMLResponse(generate_streaming_ui_page("Streaming Jobs", jobs))
+    return HTMLResponse(generate_streaming_ui_page("Streaming Jobs", jobs_dicts))

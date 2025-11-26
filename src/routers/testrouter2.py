@@ -139,7 +139,7 @@ async def streaming01(request: Request):
 
     # Initialize StreamingJob
     job = StreamingJob(
-      sj_id=sj_id,
+      id=sj_id,
       source_url=source_url,
       monitor_url=f"/testrouter2/monitor?sj_id={sj_id}",
       router=ROUTER_NAME,
@@ -475,10 +475,25 @@ async def list_jobs(request: Request):
   storage_path = config.LOCAL_PERSISTENT_STORAGE_PATH
   jobs = list_streaming_jobs(storage_path, router_filter=router_filter, endpoint_filter=endpoint_filter, state_filter=state_filter)
 
+  # Convert StreamingJob dataclass instances to dicts for compatibility
+  jobs_dicts = []
+  for job in jobs:
+    job_dict = asdict(job)
+    # Rename 'id' to 'sj_id' for frontend compatibility
+    job_dict['sj_id'] = job_dict.pop('id')
+    # Convert datetime objects to ISO strings and rename started to created for backward compatibility
+    if job_dict['started']:
+      job_dict['created'] = job_dict.pop('started').isoformat()
+    else:
+      job_dict['created'] = None
+    if job_dict['finished']:
+      job_dict['finished'] = job_dict['finished'].isoformat()
+    jobs_dicts.append(job_dict)
+
   await log_function_footer(log_data)
 
   if response_format == "json":
-    return JSONResponse({"jobs": jobs, "count": len(jobs)})
+    return JSONResponse({"jobs": jobs_dicts, "count": len(jobs_dicts)})
 
   elif response_format == "ui":
     columns = [
@@ -491,8 +506,8 @@ async def list_jobs(request: Request):
     ]
     return HTMLResponse(generate_ui_table_page(
       title="Streaming Jobs",
-      count=len(jobs),
-      data=jobs,
+      count=len(jobs_dicts),
+      data=jobs_dicts,
       columns=columns,
       row_id_field='sj_id',
       row_id_prefix='job',
@@ -501,10 +516,10 @@ async def list_jobs(request: Request):
 
   elif response_format == "html":
     html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Streaming Jobs</title><link rel='stylesheet' href='/static/css/styles.css'></head><body>"
-    html += f"<h1>Streaming Jobs ({len(jobs)})</h1>"
+    html += f"<h1>Streaming Jobs ({len(jobs_dicts)})</h1>"
     html += "<table border='1'><tr><th>SJ_ID</th><th>Router</th><th>Endpoint</th><th>State</th><th>Created</th><th>Actions</th></tr>"
 
-    for job in jobs:
+    for job in jobs_dicts:
       html += f"<tr>"
       html += f"<td>{job['sj_id']}</td>"
       html += f"<td>{job['router']}</td>"
@@ -528,6 +543,6 @@ async def list_jobs(request: Request):
     return HTMLResponse(html)
 
   else:
-    return JSONResponse({"jobs": jobs, "count": len(jobs)})
+    return JSONResponse({"jobs": jobs_dicts, "count": len(jobs_dicts)})
 
 # --------------------------------------------------- END: List Jobs Endpoint -----------------------------------------------------
