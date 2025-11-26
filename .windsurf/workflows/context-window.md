@@ -1,5 +1,5 @@
 ---
-description: Read all .md files
+description: How much tokens are occupied in the context window?
 auto_execution_mode: 3
 ---
 
@@ -12,8 +12,4 @@ Context window size (find out which model you are to calculate occupied %):
 - Grok Code Fast 1: 256k, xAi Grok-3: 131k
 - Kimi K2: 265k
 
-Make sure you have no duplicates in your read list.
-Find all .md files in the workspace and all subfolders.
-Read these files.
-
-Return "Model: '[Model Name]' read [x] md files, [z]k context tokens (??%) occupied"
+Return only a single line: "Model: '[Model Name]' [z]k context tokens (??%) occupied"

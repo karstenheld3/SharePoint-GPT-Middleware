@@ -6,26 +6,16 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 from common_ui_functions import generate_documentation_page
-from utils import (
-  create_streaming_state_file,
-  delete_streaming_state_file,
-  generate_streaming_operation_id,
-  get_streaming_current_state,
-  get_streaming_state_folder,
-  list_streaming_operations,
-  log_function_footer,
-  log_function_header,
-  rename_streaming_state_file,
-  streaming_state_file_exists,
-)
+from common_job_functions import create_streaming_state_file, delete_streaming_state_file, generate_streaming_operation_id, get_streaming_current_state, get_streaming_state_folder, list_streaming_operations, rename_streaming_state_file, streaming_state_file_exists
+from utils import log_function_footer, log_function_header
 
 router = APIRouter()
 
 # Configuration will be injected from app.py
 config = None
 
+# Set the configuration for test router. app_config: Config dataclass with openai_client, persistent_storage_path, etc.
 def set_config(app_config):
-  """Set the configuration for test router."""
   global config
   config = app_config
 
@@ -161,12 +151,9 @@ async def streaming01(request: Request):
       # FOOTER_JSON section
       yield "<footer_json>\n"
 
-      if was_cancelled:
-        result = "cancelled"
-      elif len(failed_files) == 0:
-        result = "success"
-      else:
-        result = "partial"
+      if was_cancelled: result = "cancelled"
+      elif len(failed_files) == 0: result = "success"
+      else: result = "partial"
 
       result_data = {
         "result": result,
@@ -234,12 +221,7 @@ async def control_operation(request: Request):
   create_streaming_state_file(state_folder, operation_id, f"{action}_requested")
 
   await log_function_footer(log_data)
-  return JSONResponse({
-    "success": True,
-    "id": operation_id,
-    "action": action,
-    "message": f"{action.capitalize()} requested for operation '{operation_id}'"
-  })
+  return JSONResponse({"success": True, "id": operation_id, "action": action, "message": f"{action.capitalize()} requested for operation '{operation_id}'"})
 
 
 @router.get('/operations')
@@ -263,7 +245,4 @@ async def list_active_operations(request: Request):
   operations = list_streaming_operations(state_folder, endpoint_filter)
 
   await log_function_footer(log_data)
-  return JSONResponse({
-    "operations": operations,
-    "count": len(operations)
-  })
+  return JSONResponse({"operations": operations, "count": len(operations)})
