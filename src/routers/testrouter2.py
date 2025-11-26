@@ -1,14 +1,13 @@
 # V2 Streaming Test Router - implements file-based streaming with monitor capability
-import asyncio
-import json
-import random
+import asyncio, datetime, json, random
+from dataclasses import asdict
 from typing import Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
-from common_job_functions import generate_streaming_job_id, create_streaming_job_file, create_streaming_job_control_file, find_streaming_job_file, write_streaming_job_log, rename_streaming_job_file, delete_streaming_job_file, streaming_job_file_exists, get_streaming_job_current_state, find_streaming_job_by_id, list_streaming_jobs
-from common_ui_functions import generate_documentation_page
+from common_job_functions import StreamingJob, generate_streaming_job_id, create_streaming_job_file, create_streaming_job_control_file, find_streaming_job_file, write_streaming_job_log, rename_streaming_job_file, delete_streaming_job_file, streaming_job_file_exists, get_streaming_job_current_state, find_streaming_job_by_id, list_streaming_jobs
+from common_ui_functions import generate_documentation_page, generate_ui_table_page, generate_table_rows_with_actions, generate_error_div
 from utils import log_function_footer, log_function_header
 
 router = APIRouter()
@@ -24,7 +23,35 @@ def set_config(app_config):
   config = app_config
 
 
-# ------------------------------------------------- START: Streaming Endpoint ---------------------------------------------------
+# Helper: Generate action buttons based on job state
+def get_job_action_buttons(job: dict) -> list:
+  sj_id = job['sj_id']
+  buttons = [
+    {'text': 'Monitor', 'onclick': f"window.open('/testrouter2/monitor?sj_id={sj_id}', '_blank')",
+     'button_class': 'btn-small'}
+  ]
+  
+  if job['state'] == 'running':
+    buttons.extend([
+      {'text': 'Pause', 'hx_method': 'get', 'hx_endpoint': f'/testrouter2/control?sj_id={sj_id}&action=pause&format=ui',
+       'hx_target': f'#job-{sj_id}', 'hx_swap': 'outerHTML', 'button_class': 'btn-small'},
+      {'text': 'Cancel', 'hx_method': 'get', 'hx_endpoint': f'/testrouter2/control?sj_id={sj_id}&action=cancel&format=ui',
+       'hx_target': f'#job-{sj_id}', 'hx_swap': 'outerHTML', 'button_class': 'btn-small btn-delete',
+       'confirm_message': f'Cancel job {sj_id}?'}
+    ])
+  elif job['state'] == 'paused':
+    buttons.extend([
+      {'text': 'Resume', 'hx_method': 'get', 'hx_endpoint': f'/testrouter2/control?sj_id={sj_id}&action=resume&format=ui',
+       'hx_target': f'#job-{sj_id}', 'hx_swap': 'outerHTML', 'button_class': 'btn-small'},
+      {'text': 'Cancel', 'hx_method': 'get', 'hx_endpoint': f'/testrouter2/control?sj_id={sj_id}&action=cancel&format=ui',
+       'hx_target': f'#job-{sj_id}', 'hx_swap': 'outerHTML', 'button_class': 'btn-small btn-delete',
+       'confirm_message': f'Cancel job {sj_id}?'}
+    ])
+  
+  return buttons
+
+
+# ---------------------------------------------------- START: Streaming Endpoint --------------------------------------------------
 
 @router.get('/streaming01')
 async def streaming01(request: Request):
@@ -51,17 +78,17 @@ async def streaming01(request: Request):
   - GET /testrouter2/monitor?sj_id=42
   
   Output format:
-  <header_json>
+  <start_json>
   {"sj_id": 42, "monitor_url": "/testrouter2/monitor?sj_id=42", "total": 20}
-  </header_json>
+  </start_json>
   <log>
   [ 1 / 20 ] Processing 'document_001.pdf'...
     OK.
   ...
   </log>
-  <footer_json>
+  <end_json>
   {"result": "success", "state": "completed", "sj_id": 42, ...}
-  </footer_json>
+  </end_json>
   """
   function_name = 'streaming01()'
   log_data = log_function_header(function_name)
@@ -107,12 +134,24 @@ async def streaming01(request: Request):
     simulated_files = [f"document_{i:03d}.pdf" for i in range(1, file_count + 1)]
     processed_files = []
     failed_files = []
-    final_state = "completed"
-    final_result = "success"
+
+    # Initialize StreamingJob
+    job = StreamingJob(
+      sj_id=sj_id,
+      monitor_url=f"/testrouter2/monitor?sj_id={sj_id}",
+      router=ROUTER_NAME,
+      endpoint=endpoint_name,
+      state="RUNNING",
+      total=file_count,
+      current=0,
+      started=datetime.datetime.now(),
+      finished=None,
+      result=None,
+      result_data=None
+    )
 
     # ----- HEADER SECTION -----
-    header = {"sj_id": sj_id, "monitor_url": f"/testrouter2/monitor?sj_id={sj_id}", "total": file_count}
-    header_text = f"<header_json>\n{json.dumps(header, indent=2)}\n</header_json>\n"
+    header_text = f"<start_json>\n{json.dumps(asdict(job), indent=2, default=str)}\n</start_json>\n"
     write_streaming_job_log(storage_path, ROUTER_NAME, endpoint_name, sj_id, header_text)
     yield header_text
 
@@ -130,8 +169,8 @@ async def streaming01(request: Request):
         write_streaming_job_log(storage_path, ROUTER_NAME, endpoint_name, sj_id, cancel_msg)
         yield cancel_msg
         delete_streaming_job_file(storage_path, ROUTER_NAME, endpoint_name, sj_id, "cancel_requested")
-        final_state = "canceled"
-        final_result = "cancelled"
+        job.state = "CANCELED"
+        job.result = "CANCELED"
         break
 
       # Check for pause request
@@ -151,8 +190,8 @@ async def streaming01(request: Request):
           yield cancel_msg
           delete_streaming_job_file(storage_path, ROUTER_NAME, endpoint_name, sj_id, "cancel_requested")
           delete_streaming_job_file(storage_path, ROUTER_NAME, endpoint_name, sj_id, "paused")
-          final_state = "canceled"
-          final_result = "cancelled"
+          job.state = "CANCELED"
+          job.result = "CANCELED"
           break
 
         # Check for resume request
@@ -167,7 +206,7 @@ async def streaming01(request: Request):
         await asyncio.sleep(0.1)
 
       # Check if we were canceled while paused
-      if final_state == "canceled": break
+      if job.state == "CANCELED": break
 
       # Process item
       progress_msg = f"[ {index} / {file_count} ] Processing '{filename}'...\n"
@@ -194,27 +233,38 @@ async def streaming01(request: Request):
     yield log_end
 
     # ----- FOOTER SECTION -----
-    if final_result != "cancelled" and failed_files: final_result = "partial"
+    job.current = len(processed_files) + len(failed_files)
+    job.finished = datetime.datetime.now()
+    
+    if job.result != "CANCELED":
+      job.state = "COMPLETED"
+      job.result = "PARTIAL" if failed_files else "OK"
+    
+    job.result_data = {
+      "processed": len(processed_files),
+      "failed": len(failed_files),
+      "processed_files": processed_files,
+      "failed_files": failed_files
+    }
 
-    footer = {"result": final_result, "state": final_state, "sj_id": sj_id, "total": file_count, "processed": len(processed_files), "failed": len(failed_files), "processed_files": processed_files, "failed_files": failed_files}
-    footer_text = f"<footer_json>\n{json.dumps(footer, indent=2)}\n</footer_json>\n"
+    footer_text = f"<end_json>\n{json.dumps(asdict(job), indent=2, default=str)}\n</end_json>\n"
     write_streaming_job_log(storage_path, ROUTER_NAME, endpoint_name, sj_id, footer_text)
     yield footer_text
 
     # ----- FINALIZE STATE -----
     for current_state in ["running", "paused"]:
       if streaming_job_file_exists(storage_path, ROUTER_NAME, endpoint_name, sj_id, current_state):
-        rename_streaming_job_file(storage_path, ROUTER_NAME, endpoint_name, sj_id, current_state, final_state)
+        rename_streaming_job_file(storage_path, ROUTER_NAME, endpoint_name, sj_id, current_state, job.state)
         break
 
     await log_function_footer(log_data)
 
   return StreamingResponse(generate_stream(), media_type="text/event-stream; charset=utf-8")
 
-# ------------------------------------------------- END: Streaming Endpoint -----------------------------------------------------
+# ---------------------------------------------------- END: Streaming Endpoint ----------------------------------------------------
 
 
-# ------------------------------------------------- START: Monitor Endpoint -----------------------------------------------------
+# ----------------------------------------------------- START: Monitor Endpoint ---------------------------------------------------
 
 @router.get('/monitor')
 async def monitor_streaming_job(request: Request):
@@ -286,10 +336,10 @@ async def monitor_streaming_job(request: Request):
   await log_function_footer(log_data)
   return StreamingResponse(tail_log_file(), media_type="text/event-stream; charset=utf-8")
 
-# ------------------------------------------------- END: Monitor Endpoint -------------------------------------------------------
+# ----------------------------------------------------- END: Monitor Endpoint -----------------------------------------------------
 
 
-# ------------------------------------------------- START: Control Endpoint -----------------------------------------------------
+# ---------------------------------------------------- START: Control Endpoint ----------------------------------------------------
 
 @router.get('/control')
 async def control_streaming_job(request: Request):
@@ -354,15 +404,40 @@ async def control_streaming_job(request: Request):
 
   await log_function_footer(log_data)
 
+  response_format = request_params.get('format', 'json')
+
+  if response_format == 'ui':
+    # Re-fetch job to get updated state
+    updated_job = find_streaming_job_by_id(storage_path, sj_id)
+    if updated_job:
+      job_data = {
+        'sj_id': sj_id,
+        'router': updated_job['router_name'],
+        'endpoint': updated_job['endpoint_name'],
+        'state': updated_job['state'],
+        'created': updated_job['timestamp']
+      }
+      columns = [
+        {'field': 'sj_id', 'header': 'SJ_ID'},
+        {'field': 'router', 'header': 'Router'},
+        {'field': 'endpoint', 'header': 'Endpoint'},
+        {'field': 'state', 'header': 'State'},
+        {'field': 'created', 'header': 'Created'},
+        {'field': 'actions', 'header': 'Actions', 'buttons': get_job_action_buttons}
+      ]
+      row_html = generate_table_rows_with_actions([job_data], columns, 'sj_id', 'job')
+      return HTMLResponse(row_html)
+    return HTMLResponse(generate_error_div(f"Job {sj_id} not found after action"))
+
   if success:
     return JSONResponse({"success": True, "sj_id": sj_id, "action": action, "message": f"{action.capitalize()} requested for job {sj_id}"})
   else:
     return JSONResponse({"success": False, "sj_id": sj_id, "action": action, "message": f"{action.capitalize()} already requested for job {sj_id}"})
 
-# ------------------------------------------------- END: Control Endpoint -------------------------------------------------------
+# ---------------------------------------------------- END: Control Endpoint ------------------------------------------------------
 
 
-# ------------------------------------------------- START: List Jobs Endpoint ---------------------------------------------------
+# --------------------------------------------------- START: List Jobs Endpoint ---------------------------------------------------
 
 @router.get('/jobs')
 async def list_jobs(request: Request):
@@ -402,6 +477,25 @@ async def list_jobs(request: Request):
   if response_format == "json":
     return JSONResponse({"jobs": jobs, "count": len(jobs)})
 
+  elif response_format == "ui":
+    columns = [
+      {'field': 'sj_id', 'header': 'SJ_ID'},
+      {'field': 'router', 'header': 'Router'},
+      {'field': 'endpoint', 'header': 'Endpoint'},
+      {'field': 'state', 'header': 'State'},
+      {'field': 'created', 'header': 'Created'},
+      {'field': 'actions', 'header': 'Actions', 'buttons': get_job_action_buttons}
+    ]
+    return HTMLResponse(generate_ui_table_page(
+      title="Streaming Jobs",
+      count=len(jobs),
+      data=jobs,
+      columns=columns,
+      row_id_field='sj_id',
+      row_id_prefix='job',
+      back_link='/'
+    ))
+
   elif response_format == "html":
     html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Streaming Jobs</title><link rel='stylesheet' href='/static/css/styles.css'></head><body>"
     html += f"<h1>Streaming Jobs ({len(jobs)})</h1>"
@@ -433,4 +527,4 @@ async def list_jobs(request: Request):
   else:
     return JSONResponse({"jobs": jobs, "count": len(jobs)})
 
-# ------------------------------------------------- END: List Jobs Endpoint -----------------------------------------------------
+# --------------------------------------------------- END: List Jobs Endpoint -----------------------------------------------------

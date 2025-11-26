@@ -16,7 +16,7 @@ trigger: manual
 ## Imports
 
 - All imports at the top of the file.
-- One import statement per line (even if longer than MAX_LINE_CHARS).
+- All core imports on a single line (even if longer than MAX_LINE_CHARS).
 - No local imports inside functions.
 - Group imports: standard library first, then third-party libraries, then internal modules.
 - Prefer importing all needed names from a module in a single line.
@@ -242,4 +242,17 @@ def function04():
   ...  
 
 # ----------------------------------------------------- END: Topic B ----------------------------------------------------------
+```
+
+### Imports
+*BAD*:
+```
+import asyncio
+import datetime
+import json
+import random
+```
+*GOOD*:
+```
+import asyncio, datetime, json, random
 ```

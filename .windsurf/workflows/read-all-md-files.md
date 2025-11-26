@@ -3,17 +3,8 @@ description: Read all .md files
 auto_execution_mode: 3
 ---
 
-First ask the user which model is used. Make a list with numbers as options. Add "0. Skip - I don't know" at the top.
-
-Context window size (find out which model you are to calculate occupied %):
-- Claude 3.5, 3.7, 4, 4.5: 200k
-- GPT-5, GPT-5.1: 400k
-- Gemini 3: 1000k
-- Grok Code Fast 1: 256k, xAi Grok-3: 131k
-- Kimi K2: 265k
-
 Make sure you have no duplicates in your read list.
 Find all .md files in the workspace and all subfolders.
 Read these files.
 
-Return "Model: '[Model Name]' read [x] md files, [z]k context tokens (??%) occupied"
+Return "Model: '[Model Name]' read [x] md files, [z]k context tokens occupied"

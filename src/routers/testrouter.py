@@ -43,17 +43,17 @@ async def streaming01(request: Request):
   - GET /testrouter/operations - list active operations
   
   Output format:
-  <header_json>
+  <start_json>
   {"id": "testrouter-streaming01_2025-11-25_17-42-00_p16192_r12", "total": 20}
-  </header_json>
+  </start_json>
   <log>
   [ 1 / 20 ] Processing file 'document_001.pdf'...
     OK.
   ...
   </log>
-  <footer_json>
+  <end_json>
   {"result": "success", "total": 20, "processed": 18, "failed": 2, ...}
-  </footer_json>
+  </end_json>
   """
   function_name = 'streaming01()'
   log_data = log_function_header(function_name)
@@ -85,10 +85,10 @@ async def streaming01(request: Request):
       was_cancelled = False
 
       # HEADER_JSON section
-      yield "<header_json>\n"
+      yield "<start_json>\n"
       header_data = {"id": operation_id, "total": len(simulated_files)}
       yield json.dumps(header_data) + "\n"
-      yield "</header_json>\n"
+      yield "</start_json>\n"
 
       # LOG section
       yield "<log>\n"
@@ -149,7 +149,7 @@ async def streaming01(request: Request):
       yield "</log>\n"
 
       # FOOTER_JSON section
-      yield "<footer_json>\n"
+      yield "<end_json>\n"
 
       if was_cancelled: result = "cancelled"
       elif len(failed_files) == 0: result = "success"
@@ -166,7 +166,7 @@ async def streaming01(request: Request):
       }
       yield json.dumps(result_data, indent=2) + "\n"
 
-      yield "</footer_json>\n"
+      yield "</end_json>\n"
 
       # Log footer inside generator to capture actual streaming duration
       await log_function_footer(log_data)

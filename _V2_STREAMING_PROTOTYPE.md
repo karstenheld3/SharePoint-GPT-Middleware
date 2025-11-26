@@ -98,13 +98,13 @@ PERSISTENT_STORAGE_PATH/jobs/
 # Endpoint: streaming01
 # Created: 2025-11-26T14:20:30.123456
 
-<header_json>
+<start_json>
 {
   "sj_id": 42,
   "monitor_url": "/streaming_jobs/monitor?sj_id=42",
   "total": 20
 }
-</header_json>
+</start_json>
 <log>
 [ 1 / 20 ] Processing 'document_001.pdf'...
   OK.
@@ -113,7 +113,7 @@ PERSISTENT_STORAGE_PATH/jobs/
 [ 3 / 20 ] Processing 'document_003.pdf'...
   OK.
 </log>
-<footer_json>
+<end_json>
 {
   "result": "partial",
   "state": "completed",
@@ -122,7 +122,7 @@ PERSISTENT_STORAGE_PATH/jobs/
   "processed": 18,
   "failed": 2
 }
-</footer_json>
+</end_json>
 ```
 
 ## SJ_ID Generation Algorithm
@@ -956,7 +956,7 @@ async def streaming01(request: Request):
             "monitor_url": f"/streaming_jobs/monitor?sj_id={sj_id}",
             "total": file_count
         }
-        header_text = f"<header_json>\n{json.dumps(header, indent=2)}\n</header_json>\n"
+        header_text = f"<start_json>\n{json.dumps(header, indent=2)}\n</start_json>\n"
         
         write_streaming_job_log(
             config.LOCAL_PERSISTENT_STORAGE_PATH,
@@ -1123,7 +1123,7 @@ async def streaming01(request: Request):
             "processed_files": processed_files,
             "failed_files": failed_files
         }
-        footer_text = f"<footer_json>\n{json.dumps(footer, indent=2)}\n</footer_json>\n"
+        footer_text = f"<end_json>\n{json.dumps(footer, indent=2)}\n</end_json>\n"
         
         write_streaming_job_log(
             config.LOCAL_PERSISTENT_STORAGE_PATH,
@@ -1420,13 +1420,13 @@ curl "http://localhost:8000/testrouter2/streaming01?format=stream&files=10"
 
 **Response (streaming):**
 ```
-<header_json>
+<start_json>
 {
   "sj_id": 42,
   "monitor_url": "/streaming_jobs/monitor?sj_id=42",
   "total": 10
 }
-</header_json>
+</start_json>
 <log>
 [ 1 / 10 ] Processing 'document_001.pdf'...
   OK.
@@ -1434,7 +1434,7 @@ curl "http://localhost:8000/testrouter2/streaming01?format=stream&files=10"
   OK.
 ...
 </log>
-<footer_json>
+<end_json>
 {
   "result": "success",
   "state": "completed",
@@ -1443,7 +1443,7 @@ curl "http://localhost:8000/testrouter2/streaming01?format=stream&files=10"
   "processed": 10,
   "failed": 0
 }
-</footer_json>
+</end_json>
 ```
 
 ### Monitor a Running Job

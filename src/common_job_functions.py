@@ -9,14 +9,17 @@ from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 
 @dataclass
 class StreamingJob:
-  number: int
-  subfolder_path: str
-  name: str
-  status: Literal["running", "canceled", "paused", "completed"]
-  total_items: int
-  current_item: int
-  started: datetime.datetime
-  finished: datetime.datetime | None
+  sj_id: int                                                      # Unique streaming job identifier (1 ... n)
+  monitor_url: str                                                # Url to monitor endpoint
+  router: str                                                     # Router name (e.g., 'testrouter2', 'crawler')
+  endpoint: str                                                   # Endpoint name (e.g., 'streaming01')
+  state: Literal["RUNNING", "CANCELED", "PAUSED", "COMPLETED"]    # Current job state
+  total: int                                                      # Total number of items to process
+  current: int                                                    # Current item index (1-based)
+  started: datetime.datetime                                      # Timestamp when job started
+  finished: datetime.datetime | None                              # Timestamp when job finished (None if active)
+  result: Literal["OK", "PARTIAL", "CANCELED", "FAIL"] | None     # Final result (None if still active)
+  result_data: Any | None                                         # Additional result data (e.g., error details, stats)
 
 # ----------------------------------------- START: V1 Streaming ------------------------------------------
 

@@ -65,15 +65,15 @@ Components:
 The streaming response uses a three-section format with XML-like tags for easy parsing:
 
 ```xml
-<header_json>
+<start_json>
 {JSON metadata}
-</header_json>
+</start_json>
 <log>
 Human-readable log output
 </log>
-<footer_json>
+<end_json>
 {JSON results}
-</footer_json>
+</end_json>
 ```
 
 ### Header Section
@@ -215,14 +215,14 @@ GET /testrouter/operations?endpoint=testrouter-streaming01
 sequenceDiagram
     Client->>+Endpoint: GET /streaming01?format=stream
     Endpoint->>Jobs: Create operation_id.running
-    Endpoint->>Client: <header_json>
+    Endpoint->>Client: <start_json>
     Endpoint->>Client: <log>
     loop Each Item
         Endpoint->>Jobs: Check for control files
         Endpoint->>Client: Progress update
     end
     Endpoint->>Client: </log>
-    Endpoint->>Client: <footer_json>
+    Endpoint->>Client: <end_json>
     Endpoint->>Jobs: Delete operation_id.running
     Endpoint->>-Client: Close stream
 ```
@@ -275,7 +275,7 @@ sequenceDiagram
     Stream->>Jobs: Delete cancel_requested
     Stream->>Jobs: Delete running/paused
     Stream->>Client: "Cancel requested, stopping..."
-    Stream->>Client: <footer_json> with "cancelled"
+    Stream->>Client: <end_json> with "cancelled"
     Stream->>Client: Close stream
 ```
 
@@ -396,8 +396,8 @@ while (true) {
   buffer += decoder.decode(value, {stream: true});
   
   // Parse header
-  if (buffer.includes('</header_json>')) {
-    const headerMatch = buffer.match(/<header_json>\n(.*?)\n<\/header_json>/s);
+  if (buffer.includes('</start_json>')) {
+    const headerMatch = buffer.match(/<start_json>\n(.*?)\n<\/start_json>/s);
     const header = JSON.parse(headerMatch[1]);
     console.log('Operation ID:', header.id);
   }
@@ -409,8 +409,8 @@ while (true) {
   }
   
   // Parse footer when complete
-  if (buffer.includes('</footer_json>')) {
-    const footerMatch = buffer.match(/<footer_json>\n(.*?)\n<\/footer_json>/s);
+  if (buffer.includes('</end_json>')) {
+    const footerMatch = buffer.match(/<end_json>\n(.*?)\n<\/end_json>/s);
     const footer = JSON.parse(footerMatch[1]);
     console.log('Result:', footer);
   }
