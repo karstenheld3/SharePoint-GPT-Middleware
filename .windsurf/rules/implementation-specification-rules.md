@@ -1,0 +1,261 @@
+---
+trigger: always_on
+---
+
+## How to write implementation specifications
+
+The main goal is to keep an accurate description of what's happening in the code. Target audience is humans and AI agents.
+Usage scenarios:
+1. Specify an implementation before it's actually done in the code by the agent
+2. Keep a module or idea documentated after it's implemented
+
+**For the AI agent:**
+
+- Before making too many assumptions, propose 2 or 3 implementation alternatives.
+- List your assumptions at the start of each specification and let the user verify if your assumptions are correct.
+- Optimize for simplicity.
+- Automatically verify if things can be simplified before you propose implementations.
+- By default, re-use as many existing code as possible.
+- If the user asks for a "greenfield" or "self-contained" approach, do not re-use code and create separate files, functions and modules.
+- By default, use the DRY (Don't Repeat Yourself) principle.
+- If the user asks for an "inline" approach, don't create re-usable helper functions and keep all code local to the requested task.
+- Avoid dragging in costly infrastructure (extra databases, network configuration, servers, etc.)
+- Avoid elaborate implementation patterns unless absolutely necessary.
+- Do proper research on the web before you suggest frameworks or API usage. Search for the API documentation that matches the target platform / library version.
+- Rely only on primary sources of information. Random outdated GitHub repos and Stackoverflow do not count if they do not match the target platform / library version.
+- Document user decisions in "Key Mechanisms and Design Decisions" and "Scenario" > "What we don't want"
+- Be exhaustive: Verify if you have listed all domain objects, buttons, functions, design mechanisms, etc.
+- Write as much as necessary, but not more. Spec length: small task: ~500 lines, medium task: ~1000 lines, complex task: ~2500 lines
+- Try to fit single statements / decisions / objects on a single line
+- For documentation or UI output, avoid "typographic quotes" and use typewriter / ASCII "double quotes" or 'single quotes'
+- No emojis in the documentation. Use extended ASCII characters only.
+
+**For the user:**
+- If the implementation idea is not very clear at the beginning, ask the agent for at least 3 implementation options.
+- Clarify object and entity names first. It's costly to rename later.
+- Remain in Chat mode (no code changes) until you get a complete implementation specifications.
+- Review data and action flow. It's costly to let misunderstandings remain undiscovered.
+
+## Structure
+
+Implementation specifications should include these sections when relevant:
+
+1. **Overview**: Brief description of the feature and approach
+2. **Scenario**: Real-world problem being solved
+3. **Domain Object Model**: Core entities, data structures, and their relationships
+4. **User Actions**: All interactive operations the user can perform
+5. **UX Design**: ASCII diagrams showing UI layout with clear component boundaries
+6. **Key Mechanisms and Design Decisions**: Technical patterns and algorithms used
+7. **Action Flow**: Step-by-step event sequences for each user action
+8. **Data Structures**: HTML/DOM structure, API contracts, file formats
+9. **Implementation Details**: Code organization, function signatures, class definitions
+10. **Spec changes**: List of changes in decisions, assumptions and mechanisms
+
+## Examples
+
+### Design the UI and the UI components
+- Add all buttons
+
+**BAD**:
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Jobs Table (Reactive Rendering)                            │
+│  ┌────┬─────────┬──────────┬─────────┬──────────────────┐   │
+│  │ ID │ Router  │ Endpoint │ State   │ Actions          │   │
+│  ├────┼─────────┼──────────┼─────────┼──────────────────┤   │
+│  │ 42 │ crawler │ update   │ running │ [Monitor] [Pause]│   │
+│  │ 41 │ crawler │ update   │ done    │ [Monitor]        │   │
+│  └────┴─────────┴──────────┴─────────┴──────────────────┘   │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │ [Resize Handle - Draggable]                             ││
+│  │ Console Output                                   [Clear]││
+│  │ ─────────────────────────────────────────────────────── ││
+│  │ [ 1 / 20 ] Processing 'document_001.pdf'...             ││
+│  │   OK.                                                   ││
+│  │ [ 2 / 20 ] Processing 'document_002.pdf'...             ││
+│  │   OK.                                                   ││
+│  │ █                                                       ││
+│  └─────────────────────────────────────────────────────────┘│
+│                                                             │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │ Job Started | ID: 42 | Total: 20 items              [×] ││ ← Toast
+│  └─────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────┘
+```
+
+**GOOD**:
+```
+Main HTML:
+┌───────────────────────────────────────────────────────────────────────────────┐
+│  Streaming Jobs (2)                                                           │
+│                                                                               │
+│  [Start Job]  [Refresh]                                 [Toasts appear here]  │
+│                                                                               │
+│  ┌────┬─────────┬──────────┬─────────┬─────────────────────────────────────┐  │
+│  │ ID │ Router  │ Endpoint │ State   │ Actions                             │  │
+│  ├────┼─────────┼──────────┼─────────┼─────────────────────────────────────┤  │
+│  │ 42 │ crawler │ update   │ running │ [Monitor] [Pause / Resume] [Cancel] │  │
+│  │ 41 │ crawler │ update   │ done    │ [Monitor]                           │  │
+│  └────┴─────────┴──────────┴─────────┴─────────────────────────────────────┘  │
+│                                                                               │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ [Resize Handle - Draggable]                                             │  │
+│  │ Console Output                                                  [Clear] │  │
+│  │ ────────────────────────────────────────────────────────────────────────│  │
+│  │ [ 1 / 20 ] Processing 'document_001.pdf'...                             │  │
+│  │   OK.                                                                   │  │
+│  │ [ 2 / 20 ] Processing 'document_002.pdf'...                             │  │
+│  │   OK.                                                                   │  │
+│  │ █                                                                       │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│                                                                               │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+Toast:
+┌───────────────────────────────────────────────┐
+│ Job Started | ID: 42 | Total: 20 items   [×]  │
+└───────────────────────────────────────────────┘
+```
+
+### Summarize styling; avoid too much detail
+
+**BAD:**
+```
+.toast {{
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-left: 4px solid #0078d4;
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  animation: slideIn 0.3s ease-out;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  color: #212529;
+}}
+
+.toast.toast-info {{ border-left-color: #0078d4; }}
+```
+
+**GOOD:**
+```
+.toast { /* Individual toast notification with light theme */ }
+.toast.toast-info { /* Blue left border */ }
+.toast.toast-success { /* Green left border */ }
+```
+
+### Create code outline only
+- Avoid implementation detail. Focus on the completeness of the architecture.
+- Document complete code intention: What should it do and what is it used for?
+
+**BAD:**
+```
+// Render functions
+function renderJobRow(job) {{
+  const actions = renderJobActions(job);
+  // Format timestamps consistently (handle both ISO format with T and space format)
+  const formatTimestamp = (ts) => {{
+    if (!ts) return '';
+    return ts.substring(0, 19).replace('T', ' ');
+  }};
+  const started = formatTimestamp(job.started);
+  const finished = job.finished ? formatTimestamp(job.finished) : '-';
+  return `
+    <tr id="job-${{job.id}}">
+      <td>${{job.id}}</td>
+      <td>${{job.router}}</td>
+      <td>${{job.endpoint}}</td>
+      <td>${{job.state}}</td>
+      <td>${{started}}</td>
+      <td>${{finished}}</td>
+      <td>${{actions}}</td>
+    </tr>
+  `;
+}}
+```
+
+**GOOD:**
+```
+// Generate <tr> HTML for single job
+function renderJobRow(job) { ... }
+```
+
+### Try to fit single statements / decisions / objects on a single line
+
+**BAD:**
+  **Pause Button** (requests job pause):
+  ```html
+  <button class="btn-small" onclick="controlJob(42, 'pause')">
+    Pause
+  </button>
+  ```
+**GOOD:**
+  **Pause Button** (requests job pause):
+  ```html
+  <button class="btn-small" onclick="controlJob(42, 'pause')"> Pause </button>
+  ```
+
+### Provide event flow documentation
+
+**GOOD:**
+```
+User clicks [Pause] or [Resume]
+  └─> controlJob(jobId, 'pause' | 'resume')
+      └─> fetch(`/testrouter3/control?id=${id}&action=${action}`)
+          └─> On success (data.success):
+              └─> Optimistically updateJob(jobId, { state: 'paused' | 'running' })
+                  └─> renderAllJobs()
+                      └─> renderJobActions() # Button changes to Resume/Pause
+```
+
+### Provide examples for data structures (JSON, CSV, etc.)
+
+**GOOD:**
+```
+<start_json>
+{"id": 42, "router": "testrouter3", "endpoint": "streaming01", "state": "running", "total": 3, "started": "2025-11-27T11:30:00"}
+</start_json>
+<log>
+[ 1 / 3 ] Processing 'doc_001.pdf'...
+  OK.
+[ 2 / 3 ] Processing 'doc_002.pdf'...
+  OK.
+[ 3 / 3 ] Processing 'doc_003.pdf'...
+  OK.
+</log>
+<end_json>
+{"id": 42, "state": "completed", "result": "ok", "finished": "2025-11-27T11:30:15"}
+</end_json>
+```
+
+### Provide a 'Spec Changes'
+
+**GOOD:**
+```
+## Spec Changes
+
+[2025-11-27 13:30]
+- Added: Section "Scenario" with problems/solutions structure
+- Added: Section "Domain Object Model" with StreamingJob dataclass, job states, control files, log files
+- Added: Example stream format with <start_json>, <log>, <end_json> tags
+- Added: Event flow diagram (Pause → Resume → Complete) with 6-step sequence
+- Changed: Section "UX Design" - separated into "Main HTML" and "Toast" components with all buttons visible
+- Changed: Added [Start Job], [Refresh] buttons to main toolbar
+- Changed: Added [Pause/Resume], [Cancel] buttons to job actions
+- Moved: Section "Key Mechanisms and Design Decisions" positioned after "UX Design"
+
+[2025-11-27 11:45]
+- Added: Section "User Actions" with 8 distinct operations
+- Added: Resize console functionality to user actions
+- Changed: Console panel now includes draggable resize handle
+- Removed: HTMX Server-Side-Events from consideration (documented in "What we don't want")
+
+[2025-11-27 10:15]
+- Added: Section "Implementation Details" with complete JavaScript function outlines
+- Added: Toast notification system with info/success/error types
+- Changed: Job state management from simple array to JavaScript Map
+- Changed: Rendering approach to full table re-render (reactive pattern)
+```
