@@ -1,76 +1,139 @@
-# V2 Streaming UI Implementation
+# V3 Streaming UI - Implementation Plan
 
 ## Overview
 
-This document describes how to implement a streaming console UI for endpoints that return `<start_json>`, `<log>`, and `<end_json>` tagged output.
+Self-contained streaming console UI with inline CSS/JS in `generate_streaming_ui_page()`. No shared module modifications.
 
-**Approach**: HTMX handles table/button interactions. JavaScript `fetch()` with `ReadableStream` handles streaming responses, parsing chunks and routing to console/toasts.
+**Components**: Reactive job table | Streaming console | Toast notifications | Resize handle
 
 ---
 
-## Architecture
+## Function Map
+
+### Python (testrouter3.py)
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  HTMX Table UI (format=ui)                                  │
-│  ┌─────────┬─────────┬─────────┬─────────────────────────┐  │
-│  │ SJ_ID   │ State   │ Router  │ Actions                 │  │
-│  ├─────────┼─────────┼─────────┼─────────────────────────┤  │
-│  │ 42      │ running │ crawler │ [Monitor] [Pause] [Cancel]│
-│  └─────────┴─────────┴─────────┴─────────────────────────┘  │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────────┐│
-│  │ Console Output                                    [Clear]││
-│  │ ─────────────────────────────────────────────────────── ││
-│  │ [ 1 / 20 ] Processing 'document_001.pdf'...             ││
-│  │   OK.                                                   ││
-│  │ [ 2 / 20 ] Processing 'document_002.pdf'...             ││
-│  │   OK.                                                   ││
-│  │ █                                                       ││
-│  └─────────────────────────────────────────────────────────┘│
-│                                                             │
-│  ┌─────────────────────────────────────────────────────────┐│
-│  │ 🟢 Job 42 started | Total: 20 files           [dismiss] ││ ← Toast
-│  └─────────────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────────┘
+generate_streaming_ui_page(title, jobs)
+  └─> Returns complete HTML with inline CSS/JS
+      └─> Injects jobs as JSON array for JavaScript
+```
+
+### JavaScript State Management
+
+```
+jobsState (Map<id, job>)          # Global job storage
+  ├─> addJob(job)                  # Add new job, trigger render
+  ├─> updateJob(id, updates)       # Update job, trigger render
+  └─> renderAllJobs()              # Re-render entire <tbody>
+      └─> renderJobRow(job)        # Generate <tr> HTML
+          └─> renderJobActions(job) # Generate action buttons HTML
+```
+
+### JavaScript Streaming
+
+```
+streamStart(button) / streamMonitor(button)
+  └─> startStreamingRequest(url)
+      └─> fetch() + ReadableStream
+          └─> StreamParser.parse(chunk)
+              ├─> onStartJson(data)    # Show toast, add job to state
+              ├─> onLog(content)       # Append to console
+              └─> onEndJson(data)      # Show toast, update job state
+```
+
+### JavaScript UI Updates
+
+```
+Toast:
+  showToast(title, msg, type)      # Create toast DOM element
+  ├─> showJobStartToast(data)      # Wrapper for job start
+  └─> showJobEndToast(data)        # Wrapper for job end
+
+Console:
+  appendToConsole(text, autoScroll) # Add text, optionally scroll
+  clearConsole()                    # Clear text, reset title
+  setActiveJob(id)                  # Update console title
+
+Resize:
+  mousedown → mousemove → mouseup   # Drag handle to resize panel
+
+Control:
+  controlJob(id, action)            # POST to /control endpoint
 ```
 
 ---
 
 ## HTML Structure
 
-### Page Template Addition
-
-Add to `generate_ui_table_page()` or as a separate includable component:
+### Complete Page Structure (from `generate_streaming_ui_page()`)
 
 ```html
-<!-- Toast Container (top-right, stacked) -->
-<div id="toast-container"></div>
-
-<!-- Console Panel (bottom of page, collapsible) -->
-<div id="console-panel" class="console-panel">
-  <div class="console-header">
-    <span id="console-title">Console Output</span>
-    <div class="console-controls">
-      <button onclick="clearConsole()" class="btn-small">Clear</button>
-      <button onclick="toggleConsole()" class="btn-small">_</button>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <title>Jobs (5)</title>
+  <link rel='stylesheet' href='/static/css/styles.css'>
+  <script src='/static/js/htmx.js'></script>
+  <style>
+    /* Inline CSS for console and toasts */
+  </style>
+</head>
+<body>
+  <!-- Toast Container (top-right, stacked) -->
+  <div id="toast-container"></div>
+  
+  <!-- Main Content -->
+  <div class="container">
+    <h1>Jobs <span id="job-count">(5)</span></h1>
+    
+    <div class="toolbar">
+      <button class="btn-primary" onclick="streamStart(this)" 
+              data-stream-url="/testrouter3/streaming01?format=stream&files=20">
+        Start New Job (20 files)
+      </button>
+      <button onclick="location.reload()" class="btn-small">Refresh</button>
     </div>
+    
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th><th>Router</th><th>Endpoint</th>
+          <th>State</th><th>Started</th><th>Finished</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="jobs-tbody">
+        <!-- Rendered by JavaScript renderAllJobs() -->
+      </tbody>
+    </table>
   </div>
-  <pre id="console-output" class="console-output"></pre>
-</div>
+  
+  <!-- Console Panel (fixed bottom, resizable) -->
+  <div id="console-panel" class="console-panel">
+    <div class="console-resize-handle"></div>
+    <div class="console-header">
+      <span id="console-title">Console Output</span>
+      <div class="console-controls">
+        <button onclick="clearConsole()" class="btn-small">Clear</button>
+      </div>
+    </div>
+    <pre id="console-output" class="console-output"></pre>
+  </div>
+  
+  <script>
+    /* Inline JavaScript */
+  </script>
+</body>
+</html>
 ```
 
 ---
 
-## CSS Additions
+## CSS (Inline in `generate_streaming_ui_page()`)
 
-Add to `/static/css/styles.css`:
+**Note**: All CSS is embedded inline in the `<style>` tag to keep the implementation self-contained.
 
 ```css
-/* ============================================
-   STREAMING CONSOLE & TOASTS
-   ============================================ */
-
 /* Toast Container */
 #toast-container {
   position: fixed;
@@ -84,23 +147,24 @@ Add to `/static/css/styles.css`:
 }
 
 .toast {
-  background: #1e1e1e;
-  border: 1px solid #3c3c3c;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
   border-left: 4px solid #0078d4;
   padding: 0.75rem 1rem;
   border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
   animation: slideIn 0.3s ease-out;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 1rem;
+  color: #212529;
 }
 
 .toast.toast-info { border-left-color: #0078d4; }
-.toast.toast-success { border-left-color: #4caf50; }
-.toast.toast-error { border-left-color: #f44336; }
-.toast.toast-warning { border-left-color: #ff9800; }
+.toast.toast-success { border-left-color: #28a745; }
+.toast.toast-error { border-left-color: #dc3545; }
+.toast.toast-warning { border-left-color: #ffc107; }
 
 .toast-content {
   flex: 1;
@@ -110,19 +174,20 @@ Add to `/static/css/styles.css`:
 .toast-title {
   font-weight: 600;
   margin-bottom: 0.25rem;
+  color: #212529;
 }
 
 .toast-dismiss {
   background: none;
   border: none;
-  color: #888;
+  color: #6c757d;
   cursor: pointer;
   padding: 0;
   font-size: 1.25rem;
   line-height: 1;
 }
 
-.toast-dismiss:hover { color: #fff; }
+.toast-dismiss:hover { color: #212529; }
 
 @keyframes slideIn {
   from { transform: translateX(100%); opacity: 0; }
@@ -134,25 +199,35 @@ Add to `/static/css/styles.css`:
   to { opacity: 0; }
 }
 
-/* Console Panel */
+/* Console Panel - Fixed height with flexbox */
 .console-panel {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  background: #1a1a1a;
-  border-top: 1px solid #3c3c3c;
+  background: #012456;
+  border-top: none;
   z-index: 900;
-  max-height: 232px;  /* 32px header + 200px content */
-  transition: max-height 0.2s ease;
+  height: 232px;  /* Fixed height */
+  display: flex;
+  flex-direction: column;
 }
 
-.console-panel.collapsed {
-  max-height: 32px;
+/* Resize Handle */
+.console-resize-handle {
+  height: 4px;
+  background: #aaaaaa;
+  cursor: ns-resize;
+  flex-shrink: 0;
+  transition: background 0.2s;
 }
 
-.console-panel.collapsed .console-output {
-  display: none;
+.console-resize-handle:hover {
+  background: #0090F1;
+}
+
+.console-resize-handle.dragging {
+  background: #0090F1;
 }
 
 .console-header {
@@ -160,10 +235,12 @@ Add to `/static/css/styles.css`:
   justify-content: space-between;
   align-items: center;
   padding: 0.5rem 1rem;
-  background: #252525;
-  border-bottom: 1px solid #3c3c3c;
+  background: #FAFAFA;
+  border-bottom: 1px solid #d0d0d0;
   font-size: 0.875rem;
   font-weight: 500;
+  color: #333333;
+  flex-shrink: 0;
 }
 
 .console-controls {
@@ -172,14 +249,15 @@ Add to `/static/css/styles.css`:
 }
 
 .console-output {
-  height: 200px;
+  flex: 1;  /* Takes remaining space */
   overflow-y: auto;
   padding: 0.75rem 1rem;
   margin: 0;
   font-family: 'Consolas', 'Monaco', monospace;
-  font-size: 0.8125rem;
-  line-height: 1.4;
-  color: #d4d4d4;
+  font-size: 0.9rem;
+  line-height: 1rem;
+  background: #012456;
+  color: #ffffff;
   white-space: pre-wrap;
   word-wrap: break-word;
 }
@@ -192,24 +270,103 @@ body.console-visible main {
 
 ---
 
-## JavaScript Implementation
+## JavaScript Implementation (Inline in `generate_streaming_ui_page()`)
 
-Add to `/static/js/streaming.js` (new file) or inline in template:
+**Note**: All JavaScript is embedded inline in the `<script>` tag. The implementation uses:
+- **Reactive state**: `Map` for job storage with `renderAllJobs()` for full re-rendering
+- **Stream parser**: Stateful parser for `<start_json>`, `<log>`, `<end_json>` tags
+- **Console resize**: Drag handle with mouse events
+- **Toast suppression**: Disabled during monitoring to avoid duplicate notifications
 
 ```javascript
 // ============================================
-// STREAMING UI - Console & Toasts
+// REACTIVE JOB STATE MANAGEMENT
 // ============================================
 
-// State
-let activeStreamController = null;
-let activeJobId = null;
+const jobsState = new Map();
+const initialJobs = /* Server injects JSON array */;
+
+// Load initial jobs
+initialJobs.forEach(job => {
+  jobsState.set(job.id, job);
+});
+
+// Render functions
+function renderJobRow(job) {
+  const actions = renderJobActions(job);
+  const formatTimestamp = (ts) => {
+    if (!ts) return '';
+    return ts.substring(0, 19).replace('T', ' ');
+  };
+  const started = formatTimestamp(job.started);
+  const finished = job.finished ? formatTimestamp(job.finished) : '-';
+  return `
+    <tr id="job-${job.id}">
+      <td>${job.id}</td>
+      <td>${job.router}</td>
+      <td>${job.endpoint}</td>
+      <td>${job.state}</td>
+      <td>${started}</td>
+      <td>${finished}</td>
+      <td>${actions}</td>
+    </tr>
+  `;
+}
+
+function renderJobActions(job) {
+  let html = `<button class="btn-small" onclick="streamMonitor(this)" 
+                      data-stream-url="/testrouter3/monitor?id=${job.id}">Monitor</button>`;
+  
+  if (job.state === 'running') {
+    html += ` <button class="btn-small" onclick="controlJob(${job.id}, 'pause')">Pause</button>`;
+    html += ` <button class="btn-small btn-delete" onclick="controlJob(${job.id}, 'cancel')">Cancel</button>`;
+  } else if (job.state === 'paused') {
+    html += ` <button class="btn-small" onclick="controlJob(${job.id}, 'resume')">Resume</button>`;
+    html += ` <button class="btn-small btn-delete" onclick="controlJob(${job.id}, 'cancel')">Cancel</button>`;
+  }
+  
+  return html;
+}
+
+function renderAllJobs() {
+  const tbody = document.getElementById('jobs-tbody');
+  if (!tbody) return;
+  
+  const jobs = Array.from(jobsState.values()).sort((a, b) => b.id - a.id);
+  
+  if (jobs.length === 0) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No jobs found</td></tr>';
+  } else {
+    tbody.innerHTML = jobs.map(job => renderJobRow(job)).join('');
+  }
+  
+  // Update count
+  const countEl = document.getElementById('job-count');
+  if (countEl) countEl.textContent = `(${jobs.length})`;
+}
+
+function updateJob(id, updates) {
+  const job = jobsState.get(id);
+  if (job) {
+    Object.assign(job, updates);
+    renderAllJobs();
+  }
+}
+
+function addJob(job) {
+  jobsState.set(job.id, job);
+  renderAllJobs();
+}
 
 // ----------------------------------------
 // TOAST FUNCTIONS
 // ----------------------------------------
 
+let suppressToasts = false;
+
 function showToast(title, message, type = 'info', autoDismiss = 5000) {
+  if (suppressToasts) return;
+  
   const container = document.getElementById('toast-container');
   if (!container) return;
 
@@ -231,19 +388,17 @@ function showToast(title, message, type = 'info', autoDismiss = 5000) {
       setTimeout(() => toast.remove(), 300);
     }, autoDismiss);
   }
-
-  return toast;
 }
 
 function showJobStartToast(jobData) {
-  const msg = `ID: ${jobData.sj_id} | Total: ${jobData.total} items`;
+  const msg = `ID: ${jobData.id} | Total: ${jobData.total} items`;
   showToast('Job Started', msg, 'info');
 }
 
 function showJobEndToast(jobData) {
-  const type = jobData.result === 'OK' ? 'success' : 
-               jobData.result === 'CANCELED' ? 'warning' : 'error';
-  const msg = `ID: ${jobData.sj_id} | Result: ${jobData.result}`;
+  const type = jobData.state === 'done' ? 'success' : 
+               jobData.state === 'canceled' ? 'warning' : 'error';
+  const msg = `ID: ${jobData.id} | State: ${jobData.state}`;
   showToast('Job Finished', msg, type);
 }
 
@@ -251,25 +406,33 @@ function showJobEndToast(jobData) {
 // CONSOLE FUNCTIONS
 // ----------------------------------------
 
-function setActiveJob(sjId) {
-  activeJobId = sjId;
+let activeJobId = null;
+let isCurrentlyStreaming = false;
+
+function setActiveJob(jobId) {
+  activeJobId = jobId;
   const title = document.getElementById('console-title');
-  if (title) title.textContent = sjId ? `Console Output (Job ${sjId})` : 'Console Output';
+  if (title) {
+    title.textContent = jobId ? `Console Output - Job ${jobId}` : 'Console Output';
+  }
 }
 
-function appendToConsole(text) {
+function appendToConsole(text, autoScroll = true) {
   const output = document.getElementById('console-output');
   if (!output) return;
   
   output.textContent += text;
   
-  // Limit buffer to ~50KB to prevent memory bloat on long jobs
-  const MAX_LENGTH = 50000;
+  // Limit console size (1MB)
+  const MAX_LENGTH = 1000000;
   if (output.textContent.length > MAX_LENGTH) {
     output.textContent = '...[truncated]\n' + output.textContent.slice(-MAX_LENGTH);
   }
   
-  output.scrollTop = output.scrollHeight; // Auto-scroll
+  // Only auto-scroll if explicitly requested (during active streaming)
+  if (autoScroll) {
+    output.scrollTop = output.scrollHeight;
+  }
 }
 
 function clearConsole() {
@@ -278,10 +441,43 @@ function clearConsole() {
   setActiveJob(null);
 }
 
-function toggleConsole() {
+// ----------------------------------------
+// CONSOLE RESIZE HANDLER
+// ----------------------------------------
+
+let isDragging = false;
+let startY = 0;
+let startHeight = 0;
+
+document.addEventListener('DOMContentLoaded', () => {
+  const handle = document.querySelector('.console-resize-handle');
   const panel = document.getElementById('console-panel');
-  if (panel) panel.classList.toggle('collapsed');
-}
+  
+  if (!handle || !panel) return;
+  
+  handle.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    startY = e.clientY;
+    startHeight = panel.offsetHeight;
+    handle.classList.add('dragging');
+    e.preventDefault();
+  });
+  
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    
+    const deltaY = startY - e.clientY;
+    const newHeight = Math.max(100, Math.min(600, startHeight + deltaY));
+    panel.style.height = `${newHeight}px`;
+  });
+  
+  document.addEventListener('mouseup', () => {
+    if (isDragging) {
+      isDragging = false;
+      handle.classList.remove('dragging');
+    }
+  });
+});
 
 // ----------------------------------------
 // STREAM PARSER
@@ -491,119 +687,123 @@ function streamRequest(button) {
 
 // Convenience alias for monitor buttons
 function streamMonitor(button) {
+  suppressToasts = true;  // Disable toasts when monitoring (avoid duplicates)
   streamRequest(button);
 }
 
-// Convenience alias for start job buttons
+// Convenience alias for start buttons
 function streamStart(button) {
+  suppressToasts = false;  // Enable toasts when starting new job
   streamRequest(button);
 }
 
-// ----------------------------------------
-// UTILITY
-// ----------------------------------------
+// Job control (pause/resume/cancel)
+async function controlJob(jobId, action) {
+  try {
+    const response = await fetch(`/testrouter3/control?id=${jobId}&action=${action}`, {
+      method: 'POST'
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      showToast('Control', `Job ${jobId}: ${action}`, 'info', 3000);
+      
+      // Update job state in table
+      updateJob(jobId, { state: data.state });
+    } else {
+      showToast('Error', `Failed to ${action} job ${jobId}`, 'error');
+    }
+  } catch (e) {
+    showToast('Error', e.message, 'error');
+  }
+}
 
+// Helper to escape HTML in toast messages
 function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
 }
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', () => {
+  renderAllJobs();
+  document.body.classList.add('console-visible');
+});
 ```
 
 ---
 
-## Integration with Existing UI
+## Button Configuration Pattern
 
-### Button Pattern: `data-stream-url` Attribute
+Buttons use `data-stream-url` attribute to specify streaming endpoint. JavaScript reads this attribute and initiates the stream.
 
-Server generates full URL in button; JavaScript reads from `data-stream-url` attribute.
-
-**Python - button config in `get_job_action_buttons()`:**
-
-```python
-# Monitor button - streams existing job log
-{'text': 'Monitor', 
- 'onclick': 'streamMonitor(this)',
- 'data_stream_url': f"/testrouter2/monitor?sj_id={sj_id}",
- 'button_class': 'btn-small btn-stream'}
-
-# Start button - starts new streaming job
-{'text': 'Start Job', 
- 'onclick': 'streamStart(this)',
- 'data_stream_url': '/testrouter2/streaming01?format=stream&files=10',
- 'button_class': 'btn-small btn-stream'}
-```
-
-**Update `generate_action_button()` in `common_ui_functions.py`:**
-
-```python
-def generate_action_button(button_config: dict) -> str:
-    # ... existing code ...
-    
-    # Add data-stream-url attribute if present
-    data_stream_url = button_config.get('data_stream_url', '')
-    data_attr = f' data-stream-url="{data_stream_url}"' if data_stream_url else ''
-    
-    return f'<button class="{button_class}"{onclick}{hx_attrs}{data_attr}>{text}</button>'
-```
-
-**Generated HTML:**
+**HTML (generated by `renderJobActions()`):**
 
 ```html
-<button class="btn-small btn-stream" 
+<!-- Monitor button -->
+<button class="btn-small" 
         onclick="streamMonitor(this)" 
-        data-stream-url="/testrouter2/monitor?sj_id=42">Monitor</button>
-```
+        data-stream-url="/testrouter3/monitor?id=42">
+  Monitor
+</button>
 
----
-
-## File Changes Required
-
-1. **`/static/css/styles.css`** - Add console/toast styles (with `.toast-info`, `max-height` transition)
-2. **`/static/js/streaming.js`** (new) - All JS functions above
-3. **`common_ui_functions.py`**:
-   - Update `generate_action_button()` to support `data_stream_url` attribute
-   - Update `generate_ui_table_page()` to include console panel, toast container, and script tag
-4. **`testrouter2.py`** - Update `get_job_action_buttons()` to use `data_stream_url` pattern
-
----
-
-## Usage Examples
-
-### Start a New Streaming Job
-```html
-<button class="btn-stream" 
+<!-- Start button -->
+<button class="btn-primary" 
         onclick="streamStart(this)" 
-        data-stream-url="/testrouter2/streaming01?format=stream&files=20">
-  Start Processing
+        data-stream-url="/testrouter3/streaming01?format=stream&files=20">
+  Start New Job (20 files)
 </button>
-```
 
-### Monitor an Existing Job
-```html
-<button class="btn-stream" 
-        onclick="streamMonitor(this)" 
-        data-stream-url="/testrouter2/monitor?sj_id=42">
-  Monitor Job 42
-</button>
-```
-
-### From HTMX Table Row (generated by Python)
-```html
-<button class="btn-small btn-stream" 
-        onclick="streamMonitor(this)" 
-        data-stream-url="/testrouter2/monitor?sj_id=42">Monitor</button>
+<!-- Control buttons (no streaming) -->
+<button class="btn-small" onclick="controlJob(42, 'pause')">Pause</button>
+<button class="btn-small btn-delete" onclick="controlJob(42, 'cancel')">Cancel</button>
 ```
 
 ---
 
-## Future Enhancements
+## Key Implementation Details
 
-1. **Multiple Console Tabs** - Track multiple jobs in separate tabs
-2. **Console History** - Store last N job outputs in localStorage
-3. **Progress Bar** - Parse `[ X / Y ]` pattern to show visual progress
-4. **Sound Notifications** - Beep on job complete/error
-5. **Keyboard Shortcuts** - Ctrl+K to clear console, Escape to minimize
+### 1. Reactive Rendering
+- **State**: `Map<id, job>` stores all jobs
+- **Rendering**: `renderAllJobs()` re-renders entire `<tbody>` on any state change
+- **Updates**: `updateJob(id, updates)` modifies state and triggers re-render
+
+### 2. Stream Parser
+- **Stateful**: Tracks current parsing state (`idle`, `in_start_json`, `in_log`, `in_end_json`)
+- **Buffering**: Keeps last N chars when waiting for closing tags (handles split chunks)
+- **Streaming logs**: Emits partial `<log>` content before `</log>` arrives
+
+### 3. Toast Suppression
+- **Monitor mode**: `suppressToasts = true` prevents duplicate notifications when viewing historical logs
+- **Start mode**: `suppressToasts = false` shows toasts for new job events
+- **Auto-restore**: Re-enables toasts if stream ends without `<end_json>` (incomplete monitor)
+
+### 4. Console Resize
+- **Drag handle**: 4px bar at top of console panel
+- **Mouse events**: `mousedown` → `mousemove` → `mouseup`
+- **Bounds**: Min 100px, max 600px height
+
+### 5. Auto-scroll Control
+- **Active streaming**: `autoScroll = true` (follows new output)
+- **Historical logs**: `autoScroll = false` (preserves scroll position)
+- **Determined by**: `!suppressToasts` (toasts disabled = historical)
+
+---
+
+## Implementation Approach
+
+**Self-Contained (testrouter3.py)**:
+- ✅ All CSS/JS inline in `generate_streaming_ui_page()`
+- ✅ No modifications to shared modules
+- ✅ Router-specific implementation
+- ✅ Easy to copy/adapt for other routers
+
+**Modular (Future Enhancement)**:
+- Extract to `/static/js/streaming.js`
+- Extract to `/static/css/styles.css`
+- Enhance `common_ui_functions.py` with `generate_streaming_ui_page()`
+- Reuse across multiple routers (crawler, domains, etc.)
 
 ---
 
@@ -612,15 +812,15 @@ def generate_action_button(button_config: dict) -> str:
 - [ ] Toast appears on job start with correct info
 - [ ] Log content streams to console in real-time
 - [ ] Toast appears on job end with correct result type
-- [ ] Console auto-scrolls during streaming
-- [ ] Clear button works (also resets title to "Console Output")
-- [ ] Collapse/expand animates smoothly
-- [ ] Canceling stream (via control endpoint) shows message
+- [ ] Console auto-scrolls during active streaming
+- [ ] Console preserves scroll position when monitoring historical logs
+- [ ] Clear button works (resets title to "Console Output")
+- [ ] Resize handle works (drag up/down to adjust console height)
 - [ ] Multiple rapid job starts don't break parser
 - [ ] Chunked tag boundaries handled correctly (e.g., `</lo` + `g>`)
-- [ ] Console header shows active job ID (e.g., "Console Output (Job 42)")
-- [ ] `[Connecting...]` shows before first chunk arrives
-- [ ] Table row state updates when job completes
-- [ ] Table row action buttons update when job completes (only Monitor remains)
+- [ ] Console header shows active job ID
+- [ ] Table updates reactively when job state changes
+- [ ] Action buttons update when job completes (Pause/Cancel removed)
 - [ ] Long jobs (~1000+ items) don't freeze browser (buffer truncation works)
-- [ ] `data-stream-url` attribute works for buttons from any router
+- [ ] Toast suppression works (no duplicates when monitoring)
+- [ ] Control buttons (Pause/Resume/Cancel) work correctly

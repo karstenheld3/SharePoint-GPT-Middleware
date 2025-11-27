@@ -134,11 +134,11 @@ def generate_streaming_ui_page(title: str, jobs: list) -> str:
 }}
 
 .console-resize-handle:hover {{
-  background: #4a8ab5;
+  background: #0090F1;
 }}
 
 .console-resize-handle.dragging {{
-  background: #4a8ab5;
+  background: #0090F1;
 }}
 
 .console-header {{
@@ -393,7 +393,7 @@ function setActiveJob(sjId) {{
   if (title) title.textContent = sjId ? `Console Output (Job ${{sjId}})` : 'Console Output';
 }}
 
-function appendToConsole(text) {{
+function appendToConsole(text, autoScroll = true) {{
   const output = document.getElementById('console-output');
   if (!output) return;
   
@@ -404,7 +404,10 @@ function appendToConsole(text) {{
     output.textContent = '...[truncated]\\n' + output.textContent.slice(-MAX_LENGTH);
   }}
   
-  output.scrollTop = output.scrollHeight;
+  // Only auto-scroll if explicitly requested (during active streaming)
+  if (autoScroll) {{
+    output.scrollTop = output.scrollHeight;
+  }}
 }}
 
 function clearConsole() {{
@@ -517,7 +520,9 @@ class StreamParser {{
   }}
 
   onLog(content) {{
-    appendToConsole(content);
+    // Only auto-scroll during active streaming, not when loading historical logs
+    const autoScroll = !suppressToasts;
+    appendToConsole(content, autoScroll);
   }}
 
   onEndJson(jsonStr) {{
@@ -580,13 +585,10 @@ async function startStreamingRequest(url, options = {{}}) {{
     // Stream ended - if monitoring and no end_json found, re-enable toasts
     if (suppressToasts && !parser.foundEndJson) {{
       suppressToasts = false;
-      appendToConsole('\\n[Job still running - live updates enabled]\\n');
     }}
 
   }} catch (e) {{
-    if (e.name === 'AbortError') {{
-      appendToConsole('\\n[Stream aborted]\\n');
-    }} else {{
+    if (e.name !== 'AbortError') {{
       showToast('Error', e.message, 'error');
       console.error('Streaming error:', e);
     }}
