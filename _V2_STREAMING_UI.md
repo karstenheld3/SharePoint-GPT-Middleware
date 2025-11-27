@@ -36,7 +36,37 @@ This middleware exposes endpoints that can potentially run for hours. For exampl
 - **Control Files**: Filesystem-based signaling via `pause_requested`, `resume_requested`, `cancel_requested` files
 - **Log Files**: Persistent storage of streaming output with structured tags (`<start_json>`, `<log>`, `<end_json>`)
 
-**Example Stream:**
+### Endpoints Overview
+
+- **`/testrouter3/streaming01?format=stream`** (GET) - Start new streaming job
+  - `files` - number of files to process (default: 20)
+  - Returns: `text/event-stream; charset=utf-8`
+
+- **`/testrouter3/streaming01?format=ui`** (GET) - Show job list page with console UI
+  - Returns: HTML page with jobs table and console
+
+- **`/testrouter3/monitor?id={id}`** (GET) - Monitor/replay existing job logs
+  - `id` - streaming job ID (required)
+  - Returns: `text/event-stream; charset=utf-8`
+
+- **`/testrouter3/control?id={id}&action={action}`** (GET) - Control running job
+  - `id` - job ID (required)
+  - `action` - pause/resume/cancel (required)
+  - Returns: JSON `{"success": true, "id": 42, "action": "pause", "message": "..."}`
+
+- **`/testrouter3/jobs?format=ui`** (GET) - List all jobs with console UI (default)
+  - `router` - filter by router name (optional)
+  - `endpoint` - filter by endpoint name (optional)
+  - `state` - filter by state: running/paused/completed/canceled (optional)
+  - Returns: HTML page with jobs table and console
+
+- **`/testrouter3/jobs?format=json`** (GET) - List all jobs as JSON
+  - `router` - filter by router name (optional)
+  - `endpoint` - filter by endpoint name (optional)
+  - `state` - filter by state: running/paused/completed/canceled (optional)
+  - Returns: JSON `{"jobs": [...], "count": 5}`
+
+### Example Stream
 ```
 <start_json>
 {"id": 42, "router": "testrouter3", "endpoint": "streaming01", "state": "running", "total": 3, "started": "2025-11-27T11:30:00"}
@@ -53,6 +83,8 @@ This middleware exposes endpoints that can potentially run for hours. For exampl
 {"id": 42, "state": "completed", "result": "ok", "finished": "2025-11-27T11:30:15"}
 </end_json>
 ```
+
+
 
 **Event Flow (Pause → Resume → Complete):**
 ```
@@ -524,3 +556,42 @@ async function controlJob(jobId, action) {
   // Update job state in table on success
 }
 ```
+
+---
+
+## Spec Changes
+
+**[2025-11-27 14:41]**
+- Added: Implementation specification rules compliance
+- Verified: All sections match implementation in testrouter3.py
+- Verified: Rules compliance (Python rules, specification rules)
+
+**[2025-11-27 11:14]**
+- Changed: Complete rewrite to match actual implementation in testrouter3.py
+- Added: Reactive rendering with JavaScript Map for job state management
+- Added: Toast suppression mechanism (suppressToasts flag) for monitoring vs starting jobs
+- Added: Auto-scroll control based on streaming mode (active vs historical)
+- Added: Console resize functionality with drag handle
+- Added: StreamParser class with stateful buffering for split chunks
+- Added: Complete action flow diagrams for all user interactions
+- Changed: Job state management from simple table updates to full reactive re-rendering
+- Changed: Stream parser from simple tag detection to stateful multi-phase parser
+- Changed: Button pattern to use data-stream-url attribute
+- Added: Control job function with optimistic state updates
+- Added: Confirmation dialog for cancel action
+- Added: Complete HTML structure section with all components
+- Added: Complete CSS styles section with all classes
+- Added: Complete JavaScript functions section with all handlers
+- Removed: Integration with common_ui_functions.py (self-contained approach)
+- Removed: External streaming.js file (inline JavaScript)
+
+**[2025-11-26 17:42]**
+- Initial design: V2 Streaming UI specification
+- Added: Basic console panel concept with collapse/expand
+- Added: Toast notification system (info/success/error/warning types)
+- Added: Stream parser for <start_json>, <log>, <end_json> tags
+- Added: Button pattern with data-stream-url attribute
+- Added: Table row update function for job completion
+- Added: Basic streaming fetch with AbortController
+- Planned: Integration with common_ui_functions.py (later changed to self-contained)
+- Planned: External /static/js/streaming.js file (later changed to inline)

@@ -23,9 +23,7 @@ def set_config(app_config):
   config = app_config
 
 
-# ============================================
-# SELF-CONTAINED UI GENERATION FUNCTIONS
-# ============================================
+# ----------------------------------------- START: Self-contained UI generation functions -------------------------------------
 
 def generate_streaming_ui_page(title: str, jobs: list) -> str:
   """Generate complete HTML page with streaming console UI (reactive rendering)"""
@@ -700,6 +698,10 @@ function escapeHtml(text) {{
 </body>
 </html>'''
 
+# ----------------------------------------- END: Self-contained UI generation functions ---------------------------------------
+
+
+# ----------------------------------------- START: Documentation page generation ---------------------------------------------------
 
 def generate_docs_page(endpoint: str, docstring: str) -> str:
   """Generate simple documentation page"""
@@ -719,10 +721,10 @@ def generate_docs_page(endpoint: str, docstring: str) -> str:
 </body>
 </html>'''
 
+# ----------------------------------------- END: Documentation page generation -----------------------------------------------------
 
-# ============================================
-# STREAMING ENDPOINT
-# ============================================
+
+# ----------------------------------------- START: /streaming01 endpoint ----------------------------------------------------------
 
 @router.get('/streaming01')
 async def streaming01(request: Request):
@@ -966,10 +968,10 @@ async def streaming01(request: Request):
 
   return StreamingResponse(generate_stream(), media_type="text/event-stream; charset=utf-8")
 
+# ----------------------------------------- END: /streaming01 endpoint ------------------------------------------------------------
 
-# ============================================
-# MONITOR ENDPOINT
-# ============================================
+
+# ----------------------------------------- START: /monitor endpoint --------------------------------------------------------------
 
 @router.get('/monitor')
 async def monitor_streaming_job(request: Request):
@@ -1041,10 +1043,10 @@ async def monitor_streaming_job(request: Request):
   await log_function_footer(log_data)
   return StreamingResponse(tail_log_file(), media_type="text/event-stream; charset=utf-8")
 
+# ----------------------------------------- END: /monitor endpoint ----------------------------------------------------------------
 
-# ============================================
-# CONTROL ENDPOINT
-# ============================================
+
+# ----------------------------------------- START: /control endpoint --------------------------------------------------------------
 
 @router.get('/control')
 async def control_streaming_job(request: Request):
@@ -1116,10 +1118,10 @@ async def control_streaming_job(request: Request):
   else:
     return JSONResponse({"success": False, "id": sj_id, "action": action, "message": f"{action.capitalize()} already requested for job {sj_id}"})
 
+# ----------------------------------------- END: /control endpoint ----------------------------------------------------------------
 
-# ============================================
-# LIST JOBS ENDPOINT
-# ============================================
+
+# ----------------------------------------- START: /jobs endpoint ------------------------------------------------------------------
 
 @router.get('/jobs')
 async def list_jobs(request: Request):
@@ -1172,3 +1174,5 @@ async def list_jobs(request: Request):
   else:
     # Default to UI with streaming console
     return HTMLResponse(generate_streaming_ui_page("Streaming Jobs", jobs_dicts))
+
+# ----------------------------------------- END: /jobs endpoint --------------------------------------------------------------------

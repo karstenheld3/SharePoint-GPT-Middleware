@@ -29,6 +29,7 @@ Usage scenarios:
 - Try to fit single statements / decisions / objects on a single line
 - For documentation or UI output, avoid "typographic quotes" and use typewriter / ASCII "double quotes" or 'single quotes'
 - No emojis in the documentation. Use extended ASCII characters only.
+- Avoid Markdown tables when possible for enumerations use simple unnumberred lists with indented properties
 
 **For the user:**
 - If the implementation idea is not very clear at the beginning, ask the agent for at least 3 implementation options.
@@ -237,7 +238,7 @@ User clicks [Pause] or [Resume]
 ```
 ## Spec Changes
 
-[2025-11-27 13:30]
+**[2025-11-27 13:30]**
 - Added: Section "Scenario" with problems/solutions structure
 - Added: Section "Domain Object Model" with StreamingJob dataclass, job states, control files, log files
 - Added: Example stream format with <start_json>, <log>, <end_json> tags
@@ -247,13 +248,13 @@ User clicks [Pause] or [Resume]
 - Changed: Added [Pause/Resume], [Cancel] buttons to job actions
 - Moved: Section "Key Mechanisms and Design Decisions" positioned after "UX Design"
 
-[2025-11-27 11:45]
+**[2025-11-27 11:45]**
 - Added: Section "User Actions" with 8 distinct operations
 - Added: Resize console functionality to user actions
 - Changed: Console panel now includes draggable resize handle
 - Removed: HTMX Server-Side-Events from consideration (documented in "What we don't want")
 
-[2025-11-27 10:15]
+**[2025-11-27 10:15]**
 - Added: Section "Implementation Details" with complete JavaScript function outlines
 - Added: Toast notification system with info/success/error types
 - Changed: Job state management from simple array to JavaScript Map
