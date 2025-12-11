@@ -20,7 +20,7 @@ def set_config(app_config):
   config = app_config
 
 
-@router.get('/streaming01')
+@router.get('/testrouter/streaming01')
 async def streaming01(request: Request):
   """
   Test endpoint for streaming responses simulating long-running file processing.
@@ -174,7 +174,7 @@ async def streaming01(request: Request):
     return StreamingResponse(generate_stream(), media_type="text/event-stream; charset=utf-8")
 
 
-@router.get('/control')
+@router.get('/testrouter/control')
 async def control_operation(request: Request):
   """
   Control a running streaming operation (pause/resume/cancel).
@@ -224,7 +224,7 @@ async def control_operation(request: Request):
   return JSONResponse({"success": True, "id": operation_id, "action": action, "message": f"{action.capitalize()} requested for operation '{operation_id}'"})
 
 
-@router.get('/operations')
+@router.get('/testrouter/operations')
 async def list_active_operations(request: Request):
   """
   List all active streaming operations (running or paused).

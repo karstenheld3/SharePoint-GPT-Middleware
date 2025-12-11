@@ -726,7 +726,7 @@ def generate_docs_page(endpoint: str, docstring: str) -> str:
 
 # ----------------------------------------- START: /streaming01 endpoint ----------------------------------------------------------
 
-@router.get('/streaming01')
+@router.get('/testrouter3/streaming01')
 async def streaming01(request: Request):
   """
   V3 Streaming Test Endpoint - simulates file processing with streaming console UI.
@@ -973,7 +973,7 @@ async def streaming01(request: Request):
 
 # ----------------------------------------- START: /monitor endpoint --------------------------------------------------------------
 
-@router.get('/monitor')
+@router.get('/testrouter3/monitor')
 async def monitor_streaming_job(request: Request):
   """
   Monitor a streaming job by tailing its log file.
@@ -1048,7 +1048,7 @@ async def monitor_streaming_job(request: Request):
 
 # ----------------------------------------- START: /control endpoint --------------------------------------------------------------
 
-@router.get('/control')
+@router.get('/testrouter3/control')
 async def control_streaming_job(request: Request):
   """
   Control a streaming job (pause/resume/cancel).
@@ -1123,7 +1123,7 @@ async def control_streaming_job(request: Request):
 
 # ----------------------------------------- START: /jobs endpoint ------------------------------------------------------------------
 
-@router.get('/jobs')
+@router.get('/testrouter3/jobs')
 async def list_jobs(request: Request):
   """
   List all streaming jobs with optional filters.

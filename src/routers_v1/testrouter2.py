@@ -53,7 +53,7 @@ def get_job_action_buttons(job: dict) -> list:
 
 # ---------------------------------------------------- START: Streaming Endpoint --------------------------------------------------
 
-@router.get('/streaming01')
+@router.get('/testrouter2/streaming01')
 async def streaming01(request: Request):
   """
   V2 Streaming Test Endpoint - simulates file processing with log persistence.
@@ -269,7 +269,7 @@ async def streaming01(request: Request):
 
 # ----------------------------------------------------- START: Monitor Endpoint ---------------------------------------------------
 
-@router.get('/monitor')
+@router.get('/testrouter2/monitor')
 async def monitor_streaming_job(request: Request):
   """
   Monitor a streaming job by tailing its log file.
@@ -344,7 +344,7 @@ async def monitor_streaming_job(request: Request):
 
 # ---------------------------------------------------- START: Control Endpoint ----------------------------------------------------
 
-@router.get('/control')
+@router.get('/testrouter2/control')
 async def control_streaming_job(request: Request):
   """
   Control a streaming job (pause/resume/cancel).
@@ -442,7 +442,7 @@ async def control_streaming_job(request: Request):
 
 # --------------------------------------------------- START: List Jobs Endpoint ---------------------------------------------------
 
-@router.get('/jobs')
+@router.get('/testrouter2/jobs')
 async def list_jobs(request: Request):
   """
   List all streaming jobs with optional filters.

@@ -465,27 +465,27 @@ def create_app() -> FastAPI:
   
   # Include Test router under /testrouter
   try:
-    app.include_router(testrouter.router, tags=["Test"], prefix="/testrouter")
+    app.include_router(testrouter.router, tags=["Test"], prefix="/v1")
     testrouter.set_config(config)
-    log_function_output(log_data, "Test router included at /testrouter")
+    log_function_output(log_data, "Test router included at /v1")
   except Exception as e:
     initialization_errors.append({"component": "Test Router", "error": str(e)})
   
   # Include Test router V2 under /testrouter2
   try:
-    app.include_router(testrouter2.router, tags=["Test V2"], prefix="/testrouter2")
+    app.include_router(testrouter2.router, tags=["Test V2"], prefix="/v1")
     testrouter2.set_config(config)
-    log_function_output(log_data, "Test router V2 included at /testrouter2")
+    log_function_output(log_data, "Test router V2 included at /v1")
   except Exception as e:
-    initialization_errors.append({"component": "Test Router V2", "error": str(e)})
+    initialization_errors.append({"component": "Test Router 2", "error": str(e)})
   
   # Include Test router V3 under /testrouter3
   try:
-    app.include_router(testrouter3.router, tags=["Test V3"], prefix="/testrouter3")
+    app.include_router(testrouter3.router, tags=["Test V3"], prefix="/v1")
     testrouter3.set_config(config)
-    log_function_output(log_data, "Test router V3 included at /testrouter3")
+    log_function_output(log_data, "Test router V3 included at /v1")
   except Exception as e:
-    initialization_errors.append({"component": "Test Router V3", "error": str(e)})
+    initialization_errors.append({"component": "Test Router 3", "error": str(e)})
   
   # Mount static files directory
   static_path = os.path.join(os.path.dirname(__file__), "static")
@@ -567,15 +567,16 @@ def root() -> str:
     <li><a href="/describe2">/describe2</a> - SharePoint Search Description (<a href="/describe2?format=html">HTML</a> + <a href="/describe2?format=json">JSON</a>)</li>
     <li><a href="/query">/query</a> - SharePoint Search Query (JSON)</li>
     <li><a href="/query2">/query2</a> - SharePoint Search Query (<a href="/query2?query=List+all+documents&results=50">HTML</a> +  JSON)</li>
+    <p>Version 1 Routers</p>
     <li><a href="/v1/inventory">/v1/inventory</a> - Inventory Endpoints (Vector Stores, Files, Assistants)</li>
     <li><a href="/v1/inventory/vectorstores">/v1/inventory/vectorstores</a> - Vector Stores Inventory (<a href="/v1/inventory/vectorstores?format=html&excludeattributes=metadata">HTML</a> + <a href="/v1/inventory/vectorstores?format=json">JSON</a> + <a href="/v1/inventory/vectorstores?format=ui">UI</a>)</li>
     <li><a href="/v1/inventory/files">/v1/inventory/files</a> - Files Inventory (<a href="/v1/inventory/files?format=html&excludeattributes=purpose,status_details">HTML</a> + <a href="/v1/inventory/files?format=json">JSON</a>)</li>
     <li><a href="/v1/inventory/assistants">/v1/inventory/assistants</a> - Assistants Inventory (<a href="/v1/inventory/assistants?format=html&excludeattributes=description,instructions,tools,tool_resources">HTML</a> + <a href="/v1/inventory/assistants?format=json">JSON</a>)</li>
     <li><a href="/v1/domains">/v1/domains</a> - Domains Management (<a href="/v1/domains?format=html">HTML</a> + <a href="/v1/domains?format=json">JSON</a> + <a href="/v1/domains?format=ui">UI</a> + <a href="/v1/domains/create">Create</a> + <a href="/v1/domains/update">Update</a> + <a href="/v1/domains/delete">Delete</a>)</li>
     <li><a href="/v1/crawler">/v1/crawler</a> - Crawler Endpoints (<a href="/v1/crawler/localstorage">Local Storage</a> + <a href="/v1/crawler/updatemaps">Update Maps</a> + <a href="/v1/crawler/getlogfile">Get Logfile</a>)</li>
-    <li><a href="/testrouter/streaming01">/testrouter/streaming01</a> - V1 Streaming Test (<a href="/testrouter/streaming01?format=stream">Stream</a>)</li>
-    <li><a href="/testrouter2/streaming01">/testrouter2/streaming01</a> - V2 Streaming Test (<a href="/testrouter2/streaming01?format=stream">Stream</a> + <a href="/testrouter2/jobs?format=html">Jobs</a>)</li>
-    <li><a href="/testrouter3/jobs">/testrouter3/jobs</a> - V3 Streaming Test with UI (<a href="/testrouter3/streaming01?format=stream">Stream</a> + <a href="/testrouter3/jobs?format=ui">Jobs UI</a>)</li>
+    <li><a href="/v1/testrouter/streaming01">/v1/testrouter/streaming01</a> - V1 Streaming Test (<a href="/v1/testrouter/streaming01?format=stream">Stream</a>)</li>
+    <li><a href="/v1/testrouter2/streaming01">/v1/testrouter2/streaming01</a> - V2 Streaming Test (<a href="/v1/testrouter2/streaming01?format=stream">Stream</a> + <a href="/v1/testrouter2/jobs?format=html">Jobs</a>)</li>
+    <li><a href="/v1/testrouter3/jobs">/v1/testrouter3/jobs</a> - V3 Streaming Test with UI (<a href="/v1/testrouter3/streaming01?format=stream">Stream</a> + <a href="/v1/testrouter3/jobs?format=ui">Jobs UI</a>)</li>
   </ul>
 
   <div class="section">
