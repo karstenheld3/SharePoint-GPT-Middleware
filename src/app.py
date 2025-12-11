@@ -11,8 +11,8 @@ from fastapi.staticfiles import StaticFiles
 
 from common_openai_functions import create_async_azure_openai_client_with_api_key, create_async_azure_openai_client_with_credential, create_async_openai_client
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
-from routers import crawler, inventory, openai_proxy, sharepoint_search, domains, testrouter, testrouter2, testrouter3
-from routers.sharepoint_search import build_domains_and_metadata_cache
+from routers_v1 import crawler, inventory, openai_proxy, sharepoint_search, domains, testrouter, testrouter2, testrouter3
+from routers_v1.sharepoint_search import build_domains_and_metadata_cache
 from utils import ZipExtractionMode, acquire_startup_lock, convert_to_flat_html_table, extract_zip_files, format_config_for_displaying, format_filesize, log_function_footer, log_function_header, log_function_output, log_function_footer_sync, clear_folder
 
 # Load environment variables from a local .env file if present
@@ -439,27 +439,27 @@ def create_app() -> FastAPI:
   except Exception as e:
     initialization_errors.append({"component": "SharePoint Search Router", "error": str(e)})
   
-  # Include Inventory router under /inventory
+  # Include Inventory router under /v1
   try:
-    app.include_router(inventory.router, tags=["Inventory"], prefix="/inventory")
+    app.include_router(inventory.router, tags=["Inventory"], prefix="/v1")
     inventory.set_config(config)
-    log_function_output(log_data, "Inventory router included at /inventory")
+    log_function_output(log_data, "Inventory router included at /v1")
   except Exception as e:
     initialization_errors.append({"component": "Inventory Router", "error": str(e)})
   
-  # Include Crawler router under /crawler
+  # Include Crawler router under /v1
   try:
-    app.include_router(crawler.router, tags=["Crawler"], prefix="/crawler")
+    app.include_router(crawler.router, tags=["Crawler"], prefix="/v1")
     crawler.set_config(config)
-    log_function_output(log_data, "Crawler router included at /crawler")
+    log_function_output(log_data, "Crawler router included at /v1")
   except Exception as e:
     initialization_errors.append({"component": "Crawler Router", "error": str(e)})
   
-  # Include Domains router
+  # Include Domains router under /v1
   try:
-    app.include_router(domains.router, tags=["Domains"])
+    app.include_router(domains.router, tags=["Domains"], prefix="/v1")
     domains.set_config(config)
-    log_function_output(log_data, "Domains router included at /domains")
+    log_function_output(log_data, "Domains router included at /v1")
   except Exception as e:
     initialization_errors.append({"component": "Domains Router", "error": str(e)})
   
@@ -551,11 +551,11 @@ def root() -> str:
   <p>This middleware provides OpenAI proxy endpoints, SharePoint search functionality, and inventory management for vector stores.</p>
   
   <div class="toolbar">
-    <a href="/domains?format=ui" class="btn-primary"> Domains </a>
-    <a href="/crawler/?format=ui" class="btn-primary">  Crawler </a>
-    <a href="/inventory/vectorstores?format=ui" class="btn-primary"> Vector Stores </a>
-    <a href="/inventory/files?format=ui" class="btn-primary"> Files </a>
-    <a href="/inventory/assistants?format=ui" class="btn-primary"> Assistants </a>
+    <a href="/v1/domains?format=ui" class="btn-primary"> Domains </a>
+    <a href="/v1/crawler/?format=ui" class="btn-primary">  Crawler </a>
+    <a href="/v1/inventory/vectorstores?format=ui" class="btn-primary"> Vector Stores </a>
+    <a href="/v1/inventory/files?format=ui" class="btn-primary"> Files </a>
+    <a href="/v1/inventory/assistants?format=ui" class="btn-primary"> Assistants </a>
   </div>
 
   <h4>Available Links</h4>
@@ -567,12 +567,12 @@ def root() -> str:
     <li><a href="/describe2">/describe2</a> - SharePoint Search Description (<a href="/describe2?format=html">HTML</a> + <a href="/describe2?format=json">JSON</a>)</li>
     <li><a href="/query">/query</a> - SharePoint Search Query (JSON)</li>
     <li><a href="/query2">/query2</a> - SharePoint Search Query (<a href="/query2?query=List+all+documents&results=50">HTML</a> +  JSON)</li>
-    <li><a href="/inventory">/inventory</a> - Inventory Endpoints (Vector Stores, Files, Assistants)</li>
-    <li><a href="/inventory/vectorstores">/inventory/vectorstores</a> - Vector Stores Inventory (<a href="/inventory/vectorstores?format=html&excludeattributes=metadata">HTML</a> + <a href="/inventory/vectorstores?format=json">JSON</a> + <a href="/inventory/vectorstores?format=ui">UI</a>)</li>
-    <li><a href="/inventory/files">/inventory/files</a> - Files Inventory (<a href="/inventory/files?format=html&excludeattributes=purpose,status_details">HTML</a> + <a href="/inventory/files?format=json">JSON</a>)</li>
-    <li><a href="/inventory/assistants">/inventory/assistants</a> - Assistants Inventory (<a href="/inventory/assistants?format=html&excludeattributes=description,instructions,tools,tool_resources">HTML</a> + <a href="/inventory/assistants?format=json">JSON</a>)</li>
-    <li><a href="/domains">/domains</a> - Domains Management (<a href="/domains?format=html">HTML</a> + <a href="/domains?format=json">JSON</a> + <a href="/domains?format=ui">UI</a> + <a href="/domains/create">Create</a> + <a href="/domains/update">Update</a> + <a href="/domains/delete">Delete</a>)</li>
-    <li><a href="/crawler">/crawler</a> - Crawler Endpoints (<a href="/crawler/localstorage">Local Storage</a> + <a href="/crawler/updatemaps">Update Maps</a> + <a href="/crawler/getlogfile">Get Logfile</a>)</li>
+    <li><a href="/v1/inventory">/v1/inventory</a> - Inventory Endpoints (Vector Stores, Files, Assistants)</li>
+    <li><a href="/v1/inventory/vectorstores">/v1/inventory/vectorstores</a> - Vector Stores Inventory (<a href="/v1/inventory/vectorstores?format=html&excludeattributes=metadata">HTML</a> + <a href="/v1/inventory/vectorstores?format=json">JSON</a> + <a href="/v1/inventory/vectorstores?format=ui">UI</a>)</li>
+    <li><a href="/v1/inventory/files">/v1/inventory/files</a> - Files Inventory (<a href="/v1/inventory/files?format=html&excludeattributes=purpose,status_details">HTML</a> + <a href="/v1/inventory/files?format=json">JSON</a>)</li>
+    <li><a href="/v1/inventory/assistants">/v1/inventory/assistants</a> - Assistants Inventory (<a href="/v1/inventory/assistants?format=html&excludeattributes=description,instructions,tools,tool_resources">HTML</a> + <a href="/v1/inventory/assistants?format=json">JSON</a>)</li>
+    <li><a href="/v1/domains">/v1/domains</a> - Domains Management (<a href="/v1/domains?format=html">HTML</a> + <a href="/v1/domains?format=json">JSON</a> + <a href="/v1/domains?format=ui">UI</a> + <a href="/v1/domains/create">Create</a> + <a href="/v1/domains/update">Update</a> + <a href="/v1/domains/delete">Delete</a>)</li>
+    <li><a href="/v1/crawler">/v1/crawler</a> - Crawler Endpoints (<a href="/v1/crawler/localstorage">Local Storage</a> + <a href="/v1/crawler/updatemaps">Update Maps</a> + <a href="/v1/crawler/getlogfile">Get Logfile</a>)</li>
     <li><a href="/testrouter/streaming01">/testrouter/streaming01</a> - V1 Streaming Test (<a href="/testrouter/streaming01?format=stream">Stream</a>)</li>
     <li><a href="/testrouter2/streaming01">/testrouter2/streaming01</a> - V2 Streaming Test (<a href="/testrouter2/streaming01?format=stream">Stream</a> + <a href="/testrouter2/jobs?format=html">Jobs</a>)</li>
     <li><a href="/testrouter3/jobs">/testrouter3/jobs</a> - V3 Streaming Test with UI (<a href="/testrouter3/streaming01?format=stream">Stream</a> + <a href="/testrouter3/jobs?format=ui">Jobs UI</a>)</li>

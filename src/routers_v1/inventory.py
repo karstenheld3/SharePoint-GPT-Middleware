@@ -5,7 +5,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from common_openai_functions import get_all_vector_stores, get_all_files, get_all_assistants, convert_openai_timestamps_to_utc, delete_vector_store_by_id, get_vector_store_files_with_filenames_as_dict, try_get_vector_store_by_id, remove_file_from_vector_store, delete_file_from_vector_store_and_storage, delete_file_by_id, delete_assistant_by_id
-from common_ui_functions import generate_html_head, generate_simple_page, generate_table_page, generate_table_with_headers, generate_update_count_script, generate_ui_table_page
+from routers_v1.common_ui_functions import generate_html_head, generate_simple_page, generate_table_page, generate_table_with_headers, generate_update_count_script, generate_ui_table_page
 from utils import convert_to_flat_html_table, log_function_footer, log_function_header, log_function_output, include_exclude_attributes
 
 router = APIRouter()
@@ -18,7 +18,7 @@ def set_config(app_config):
   global config
   config = app_config
 
-@router.get('/', response_class=HTMLResponse)
+@router.get('/inventory', response_class=HTMLResponse)
 async def inventory_root():
   """
   Inventory endpoints documentation and overview.
@@ -38,15 +38,15 @@ async def inventory_root():
 
   <h4>Available Endpoints</h4>
   <ul>
-    <li><a href="/inventory/vectorstores">/inventory/vectorstores</a> - List All Vector Stores (<a href="/inventory/vectorstores?format=html">HTML</a> + <a href="/inventory/vectorstores?format=json">JSON</a> + <a href="/inventory/vectorstores?format=ui">UI</a>)</li>
-    <li><a href="/inventory/vectorstores/delete">/inventory/vectorstores/delete</a> - Delete Vector Store (<a href="/inventory/vectorstores/delete">Docs</a>)</li>
-    <li><a href="/inventory/vectorstore_files">/inventory/vectorstore_files</a> - List Files in Vector Store (<a href="/inventory/vectorstore_files?vector_store_id=vs_abc123&format=html">Example HTML</a> + <a href="/inventory/vectorstore_files?vector_store_id=vs_abc123&format=json">Example JSON</a>)</li>
-    <li><a href="/inventory/vectorstore_files/remove">/inventory/vectorstore_files/remove</a> - Remove File from Vector Store (<a href="/inventory/vectorstore_files/remove">Docs</a>)</li>
-    <li><a href="/inventory/vectorstore_files/delete">/inventory/vectorstore_files/delete</a> - Delete File from Vector Store and Storage (<a href="/inventory/vectorstore_files/delete">Docs</a>)</li>
-    <li><a href="/inventory/files">/inventory/files</a> - List All Files (<a href="/inventory/files?format=html">HTML</a> + <a href="/inventory/files?format=json">JSON</a> + <a href="/inventory/files?format=ui">UI</a>)</li>
-    <li><a href="/inventory/files/delete">/inventory/files/delete</a> - Delete File from Storage (<a href="/inventory/files/delete">Docs</a>)</li>
-    <li><a href="/inventory/assistants">/inventory/assistants</a> - List All Assistants (<a href="/inventory/assistants?format=html">HTML</a> + <a href="/inventory/assistants?format=json">JSON</a> + <a href="/inventory/assistants?format=ui">UI</a>)</li>
-    <li><a href="/inventory/assistants/delete">/inventory/assistants/delete</a> - Delete Assistant (<a href="/inventory/assistants/delete">Docs</a>)</li>
+    <li><a href="/v1/inventory/vectorstores">/v1/inventory/vectorstores</a> - List All Vector Stores (<a href="/v1/inventory/vectorstores?format=html">HTML</a> + <a href="/v1/inventory/vectorstores?format=json">JSON</a> + <a href="/v1/inventory/vectorstores?format=ui">UI</a>)</li>
+    <li><a href="/v1/inventory/vectorstores/delete">/v1/inventory/vectorstores/delete</a> - Delete Vector Store (<a href="/v1/inventory/vectorstores/delete">Docs</a>)</li>
+    <li><a href="/v1/inventory/vectorstore_files">/v1/inventory/vectorstore_files</a> - List Files in Vector Store (<a href="/v1/inventory/vectorstore_files?vector_store_id=vs_abc123&format=html">Example HTML</a> + <a href="/v1/inventory/vectorstore_files?vector_store_id=vs_abc123&format=json">Example JSON</a>)</li>
+    <li><a href="/v1/inventory/vectorstore_files/remove">/v1/inventory/vectorstore_files/remove</a> - Remove File from Vector Store (<a href="/v1/inventory/vectorstore_files/remove">Docs</a>)</li>
+    <li><a href="/v1/inventory/vectorstore_files/delete">/v1/inventory/vectorstore_files/delete</a> - Delete File from Vector Store and Storage (<a href="/v1/inventory/vectorstore_files/delete">Docs</a>)</li>
+    <li><a href="/v1/inventory/files">/v1/inventory/files</a> - List All Files (<a href="/v1/inventory/files?format=html">HTML</a> + <a href="/v1/inventory/files?format=json">JSON</a> + <a href="/v1/inventory/files?format=ui">UI</a>)</li>
+    <li><a href="/v1/inventory/files/delete">/v1/inventory/files/delete</a> - Delete File from Storage (<a href="/v1/inventory/files/delete">Docs</a>)</li>
+    <li><a href="/v1/inventory/assistants">/v1/inventory/assistants</a> - List All Assistants (<a href="/v1/inventory/assistants?format=html">HTML</a> + <a href="/v1/inventory/assistants?format=json">JSON</a> + <a href="/v1/inventory/assistants?format=ui">UI</a>)</li>
+    <li><a href="/v1/inventory/assistants/delete">/v1/inventory/assistants/delete</a> - Delete Assistant (<a href="/v1/inventory/assistants/delete">Docs</a>)</li>
   </ul>
 
   <p><a href="/">← Back to Main Page</a></p>
@@ -92,8 +92,8 @@ def _generate_ui_response_for_vector_store_files(title: str, count: int, vector_
     file_id = file.get('id', 'N/A')
     filename = file.get('filename', 'N/A')
     return [
-      {'text': 'Remove', 'hx_method': 'delete', 'hx_endpoint': f'/inventory/vectorstore_files/remove?vector_store_id={vector_store_id}&file_id={file_id}', 'hx_target': f'#file-{file_id}', 'confirm_message': f"Remove file '{filename}' from vector store? (File will remain in global storage)", 'button_class': 'btn-small btn-delete'},
-      {'text': 'Delete', 'hx_method': 'delete', 'hx_endpoint': f'/inventory/vectorstore_files/delete?vector_store_id={vector_store_id}&file_id={file_id}', 'hx_target': f'#file-{file_id}', 'confirm_message': f"Delete file '{filename}' from vector store AND global storage? This cannot be undone!", 'button_class': 'btn-small', 'style': 'background-color: #dc3545; color: white;'}
+      {'text': 'Remove', 'hx_method': 'delete', 'hx_endpoint': f'/v1/inventory/vectorstore_files/remove?vector_store_id={vector_store_id}&file_id={file_id}', 'hx_target': f'#file-{file_id}', 'confirm_message': f"Remove file '{filename}' from vector store? (File will remain in global storage)", 'button_class': 'btn-small btn-delete'},
+      {'text': 'Delete', 'hx_method': 'delete', 'hx_endpoint': f'/v1/inventory/vectorstore_files/delete?vector_store_id={vector_store_id}&file_id={file_id}', 'hx_target': f'#file-{file_id}', 'confirm_message': f"Delete file '{filename}' from vector store AND global storage? This cannot be undone!", 'button_class': 'btn-small', 'style': 'background-color: #dc3545; color: white;'}
     ]
   
   columns = [
@@ -105,7 +105,7 @@ def _generate_ui_response_for_vector_store_files(title: str, count: int, vector_
     {'field': 'actions', 'header': 'Actions', 'buttons': get_file_actions}
   ]
   
-  return generate_ui_table_page(title=title, count=count, data=files, columns=columns, row_id_field='id', row_id_prefix='file', back_link='/inventory/vectorstores?format=ui', back_text='← Back to Vector Stores')
+  return generate_ui_table_page(title=title, count=count, data=files, columns=columns, row_id_field='id', row_id_prefix='file', back_link='/v1/inventory/vectorstores?format=ui', back_text='← Back to Vector Stores')
 
 def _generate_ui_response_for_files(title: str, count: int, files: List[Dict]) -> str:
   """
@@ -122,7 +122,7 @@ def _generate_ui_response_for_files(title: str, count: int, files: List[Dict]) -
   def get_file_actions(file):
     file_id = file.get('id', 'N/A')
     filename = file.get('filename', 'N/A')
-    return [{'text': 'Delete', 'hx_method': 'delete', 'hx_endpoint': f'/inventory/files/delete?file_id={file_id}', 'hx_target': f'#file-{file_id}', 'confirm_message': f"Delete file '{filename}' from global storage? This cannot be undone!", 'button_class': 'btn-small btn-delete', 'style': 'background-color: #dc3545; color: white;'}]
+    return [{'text': 'Delete', 'hx_method': 'delete', 'hx_endpoint': f'/v1/inventory/files/delete?file_id={file_id}', 'hx_target': f'#file-{file_id}', 'confirm_message': f"Delete file '{filename}' from global storage? This cannot be undone!", 'button_class': 'btn-small btn-delete', 'style': 'background-color: #dc3545; color: white;'}]
   
   columns = [
     {'field': 'filename', 'header': 'Filename'},
@@ -154,7 +154,7 @@ def _generate_ui_response_for_assistants(title: str, count: int, assistants: Lis
   def get_assistant_actions(assistant):
     assistant_id = assistant.get('id', 'N/A')
     name = assistant.get('name', 'N/A')
-    return [{'text': 'Delete', 'hx_method': 'delete', 'hx_endpoint': f'/inventory/assistants/delete?assistant_id={assistant_id}', 'hx_target': f'#assistant-{assistant_id}', 'confirm_message': f"Delete assistant '{name}'? This cannot be undone!", 'button_class': 'btn-small btn-delete', 'style': 'background-color: #dc3545; color: white;'}]
+    return [{'text': 'Delete', 'hx_method': 'delete', 'hx_endpoint': f'/v1/inventory/assistants/delete?assistant_id={assistant_id}', 'hx_target': f'#assistant-{assistant_id}', 'confirm_message': f"Delete assistant '{name}'? This cannot be undone!", 'button_class': 'btn-small btn-delete', 'style': 'background-color: #dc3545; color: white;'}]
   
   columns = [
     {'field': 'name', 'header': 'Name'},
@@ -188,9 +188,9 @@ def _generate_ui_response_for_vector_stores(title: str, count: int, vector_store
     file_counts = vs.get('file_counts', {})
     total_files = file_counts.get('total', 0) if isinstance(file_counts, dict) else 0
     return [
-      {'text': 'Files', 'onclick': f"window.location.href='/inventory/vectorstore_files?vector_store_id={vs_id}&format=ui'", 'button_class': 'btn-small', 'style': 'background-color: #007bff; color: white;'},
-      {'text': 'Delete', 'hx_method': 'delete', 'hx_endpoint': f'/inventory/vectorstores/delete?vector_store_id={vs_id}&delete_files=false', 'hx_target': f'#vectorstore-{vs_id}', 'confirm_message': f"Delete vector store '{vs_name}'? (Files will remain in storage)", 'button_class': 'btn-small btn-delete'},
-      {'text': 'Delete with Files', 'hx_method': 'delete', 'hx_endpoint': f'/inventory/vectorstores/delete?vector_store_id={vs_id}&delete_files=true', 'hx_target': f'#vectorstore-{vs_id}', 'confirm_message': f"Delete vector store '{vs_name}' AND all {total_files} files? This cannot be undone!", 'button_class': 'btn-small', 'style': 'background-color: #dc3545; color: white;'}
+      {'text': 'Files', 'onclick': f"window.location.href='/v1/inventory/vectorstore_files?vector_store_id={vs_id}&format=ui'", 'button_class': 'btn-small', 'style': 'background-color: #007bff; color: white;'},
+      {'text': 'Delete', 'hx_method': 'delete', 'hx_endpoint': f'/v1/inventory/vectorstores/delete?vector_store_id={vs_id}&delete_files=false', 'hx_target': f'#vectorstore-{vs_id}', 'confirm_message': f"Delete vector store '{vs_name}'? (Files will remain in storage)", 'button_class': 'btn-small btn-delete'},
+      {'text': 'Delete with Files', 'hx_method': 'delete', 'hx_endpoint': f'/v1/inventory/vectorstores/delete?vector_store_id={vs_id}&delete_files=true', 'hx_target': f'#vectorstore-{vs_id}', 'confirm_message': f"Delete vector store '{vs_name}' AND all {total_files} files? This cannot be undone!", 'button_class': 'btn-small', 'style': 'background-color: #dc3545; color: white;'}
     ]
   
   columns = [
@@ -204,7 +204,7 @@ def _generate_ui_response_for_vector_stores(title: str, count: int, vector_store
   return generate_ui_table_page(title=title, count=count, data=vector_stores, columns=columns, row_id_field='id', row_id_prefix='vectorstore', back_link='/')
 
 
-@router.get('/vectorstores')
+@router.get('/inventory/vectorstores')
 async def vectorstores(request: Request):
   """
   Endpoint to retrieve all vector stores from Azure OpenAI.
@@ -269,7 +269,7 @@ async def vectorstores(request: Request):
       error_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Error</title></head><body><h1>Error</h1><p>{error_message}</p></body></html>"
       return HTMLResponse(error_html, status_code=500)
 
-@router.api_route('/vectorstores/delete', methods=['GET', 'DELETE'])
+@router.api_route('/inventory/vectorstores/delete', methods=['GET', 'DELETE'])
 async def delete_vectorstore(request: Request):
   """
   Delete a vector store configuration.
@@ -347,7 +347,7 @@ async def delete_vectorstore(request: Request):
     else:
       return HTMLResponse(f"<tr><td colspan='5' class='error'>{error_message}</td></tr>", status_code=500)
 
-@router.get('/vectorstore_files')
+@router.get('/inventory/vectorstore_files')
 async def vectorstore_files(request: Request):
   """
   Endpoint to retrieve all files from a specific vector store.
@@ -449,7 +449,7 @@ async def vectorstore_files(request: Request):
       error_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Error</title></head><body><h1>Error</h1><p>{error_message}</p></body></html>"
       return HTMLResponse(error_html, status_code=500)
 
-@router.api_route('/vectorstore_files/remove', methods=['GET', 'DELETE'])
+@router.api_route('/inventory/vectorstore_files/remove', methods=['GET', 'DELETE'])
 async def remove_file_from_vectorstore(request: Request):
   """
   Remove a file from a vector store (file remains in global storage).
@@ -514,7 +514,7 @@ async def remove_file_from_vectorstore(request: Request):
     else:
       return HTMLResponse(f"<tr><td colspan='6' class='error'>{error_message}</td></tr>", status_code=500)
 
-@router.api_route('/vectorstore_files/delete', methods=['GET', 'DELETE'])
+@router.api_route('/inventory/vectorstore_files/delete', methods=['GET', 'DELETE'])
 async def delete_file_from_vectorstore(request: Request):
   """
   Delete a file from a vector store AND from global storage.
@@ -579,7 +579,7 @@ async def delete_file_from_vectorstore(request: Request):
     else:
       return HTMLResponse(f"<tr><td colspan='6' class='error'>{error_message}</td></tr>", status_code=500)
 
-@router.get('/files')
+@router.get('/inventory/files')
 async def files(request: Request):
   """
   Endpoint to retrieve all files from Azure OpenAI.
@@ -645,7 +645,7 @@ async def files(request: Request):
       error_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Error</title></head><body><h1>Error</h1><p>{error_message}</p></body></html>"
       return HTMLResponse(error_html, status_code=500)
 
-@router.api_route('/files/delete', methods=['GET', 'DELETE'])
+@router.api_route('/inventory/files/delete', methods=['GET', 'DELETE'])
 async def delete_file(request: Request):
   """
   Delete a file from global storage.
@@ -708,7 +708,7 @@ async def delete_file(request: Request):
     else:
       return HTMLResponse(f"<tr><td colspan='6' class='error'>{error_message}</td></tr>", status_code=500)
 
-@router.get('/assistants')
+@router.get('/inventory/assistants')
 async def assistants(request: Request):
   """
   Endpoint to retrieve all assistants from Azure OpenAI.
@@ -774,7 +774,7 @@ async def assistants(request: Request):
       error_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Error</title></head><body><h1>Error</h1><p>{error_message}</p></body></html>"
       return HTMLResponse(error_html, status_code=500)
 
-@router.api_route('/assistants/delete', methods=['GET', 'DELETE'])
+@router.api_route('/inventory/assistants/delete', methods=['GET', 'DELETE'])
 async def delete_assistant(request: Request):
   """
   Delete an assistant.

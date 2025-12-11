@@ -8,7 +8,7 @@
 2. Create router file in `src/routers/` with `router`, `config`, `set_config()`
 3. Add import in `src/app.py`
 4. Add `app.include_router()` in `create_app()`
-5. Implement code sceleton for 1a) or 1b) depending on the users choice
+5. Implement code skeleton for 1a) or 1b) depending on the users choice
 6. Add link to home page in `app.py` > `root()` available links section
 
 ## Adding a New Endpoint

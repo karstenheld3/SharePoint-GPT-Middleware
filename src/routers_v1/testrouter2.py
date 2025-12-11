@@ -6,8 +6,8 @@ from typing import Optional
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
-from common_job_functions import StreamingJob, generate_streaming_job_id, create_streaming_job_file, create_streaming_job_control_file, find_streaming_job_file, write_streaming_job_log, rename_streaming_job_file, delete_streaming_job_file, streaming_job_file_exists, get_streaming_job_current_state, find_streaming_job_by_id, list_streaming_jobs
-from common_ui_functions import generate_documentation_page, generate_ui_table_page, generate_table_rows_with_actions, generate_error_div
+from routers_v1.common_job_functions import StreamingJob, generate_streaming_job_id, create_streaming_job_file, create_streaming_job_control_file, find_streaming_job_file, write_streaming_job_log, rename_streaming_job_file, delete_streaming_job_file, streaming_job_file_exists, get_streaming_job_current_state, find_streaming_job_by_id, list_streaming_jobs
+from routers_v1.common_ui_functions import generate_documentation_page, generate_ui_table_page, generate_table_rows_with_actions, generate_error_div
 from utils import log_function_footer, log_function_header
 
 router = APIRouter()
@@ -172,8 +172,8 @@ async def streaming01(request: Request):
         write_streaming_job_log(storage_path, ROUTER_NAME, endpoint_name, sj_id, cancel_msg)
         yield cancel_msg
         delete_streaming_job_file(storage_path, ROUTER_NAME, endpoint_name, sj_id, "cancel_requested")
-        job.state = "CANCELED"
-        job.result = "CANCELED"
+        job.state = "cancelled"
+        job.result = "cancelled"
         break
 
       # Check for pause request
@@ -193,8 +193,8 @@ async def streaming01(request: Request):
           yield cancel_msg
           delete_streaming_job_file(storage_path, ROUTER_NAME, endpoint_name, sj_id, "cancel_requested")
           delete_streaming_job_file(storage_path, ROUTER_NAME, endpoint_name, sj_id, "paused")
-          job.state = "CANCELED"
-          job.result = "CANCELED"
+          job.state = "cancelled"
+          job.result = "cancelled"
           break
 
         # Check for resume request
@@ -208,8 +208,8 @@ async def streaming01(request: Request):
 
         await asyncio.sleep(0.1)
 
-      # Check if we were canceled while paused
-      if job.state == "CANCELED": break
+      # Check if we were cancelled while paused
+      if job.state == "cancelled": break
 
       # Process item
       progress_msg = f"[ {index} / {file_count} ] Processing '{filename}'...\n"
@@ -239,7 +239,7 @@ async def streaming01(request: Request):
     job.current = len(processed_files) + len(failed_files)
     job.finished = datetime.datetime.now()
     
-    if job.result != "CANCELED":
+    if job.result != "cancelled":
       job.state = "COMPLETED"
       job.result = "PARTIAL" if failed_files else "OK"
     
@@ -274,7 +274,7 @@ async def monitor_streaming_job(request: Request):
   """
   Monitor a streaming job by tailing its log file.
   
-  Can attach to running, completed, or canceled jobs.
+  Can attach to running, completed, or cancelled jobs.
   Multiple monitors can attach to the same job simultaneously.
   
   Parameters:
@@ -330,7 +330,7 @@ async def monitor_streaming_job(request: Request):
             if new_job_info and new_job_info["file_path"] != file_path:
               break  # File was renamed, reopen would be needed
           else:
-            # Job completed/canceled - do final read to catch any remaining content
+            # Job completed/cancelled - do final read to catch any remaining content
             final_chunk = f.read()
             if final_chunk:
               yield final_chunk
@@ -451,7 +451,7 @@ async def list_jobs(request: Request):
   - format: Response format ('json', 'html') - default: 'json'
   - router: Filter by router name
   - endpoint: Filter by endpoint name
-  - state: Filter by state ('running', 'paused', 'completed', 'canceled')
+  - state: Filter by state ('running', 'paused', 'completed', 'cancelled')
   
   Examples:
   /testrouter2/jobs

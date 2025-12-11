@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 
 
-# ----------------------------------------- START: V1 Streaming ------------------------------------------
+# ----------------------------------------- START: V1A Streaming ------------------------------------------
 
 # Get state folder path for streaming operations, creating if needed
 def get_streaming_state_folder(persistent_storage_path: str) -> str:
@@ -73,14 +73,14 @@ def list_streaming_operations(state_folder: str, endpoint_filter: str = None) ->
       operations[operation_id] = state
   return [{"operation_id": op_id, "state": state} for op_id, state in operations.items()]
 
-# ----------------------------------------- END: V1 Streaming ------------------------------------------
+# ----------------------------------------- END: V1A Streaming ------------------------------------------
 
 
-# ----------------------------------------- START: V2 Streaming -----------------------------------------
+# ----------------------------------------- START: V1B Streaming -----------------------------------------
 
 # Type aliases for V2 streaming
-StreamingJobResult = Literal["ok", "partial", "canceled", "fail"] 
-StreamingJobState = Literal["running", "paused", "completed", "canceled"]
+StreamingJobResult = Literal["ok", "partial", "cancelled", "fail"] 
+StreamingJobState = Literal["running", "paused", "completed", "cancelled"]
 StreamingJobControlState = Literal["pause_requested", "resume_requested", "cancel_requested"]
 
 @dataclass
@@ -211,9 +211,9 @@ def delete_streaming_job_file(persistent_storage_path: str, router_name: str, en
 def streaming_job_file_exists(persistent_storage_path: str, router_name: str, endpoint_name: str, sj_id: int, state: str) -> bool:
   return find_streaming_job_file(persistent_storage_path, router_name, endpoint_name, sj_id, state) is not None
 
-# Get current state of streaming job (running, paused, completed, canceled, or None).
+# Get current state of streaming job (running, paused, completed, cancelled, or None).
 def get_streaming_job_current_state(persistent_storage_path: str, router_name: str, endpoint_name: str, sj_id: int) -> Optional[str]:
-  for state in ["running", "paused", "completed", "canceled"]:
+  for state in ["running", "paused", "completed", "cancelled"]:
     if find_streaming_job_file(persistent_storage_path, router_name, endpoint_name, sj_id, state): return state
   return None
 
@@ -242,7 +242,7 @@ def list_streaming_jobs(persistent_storage_path: str, router_filter: Optional[st
   jobs = []
   for root, dirs, files in os.walk(jobs_folder):
     for f in files:
-      match = re.match(r'^(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})_([^_]+)_(\d+)\.(running|paused|completed|canceled)$', f)
+      match = re.match(r'^(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})_([^_]+)_(\d+)\.(running|paused|completed|cancelled)$', f)
       if not match: continue
       
       file_timestamp, file_endpoint, sj_id, state = match.group(1), match.group(2), int(match.group(3)), match.group(4)
@@ -260,9 +260,9 @@ def list_streaming_jobs(persistent_storage_path: str, router_filter: Optional[st
       started_str = f"{date_part}T{time_part.replace('-', ':')}"
       started = datetime.datetime.fromisoformat(started_str)
       
-      # Read finished timestamp from log file if job is completed/canceled
+      # Read finished timestamp from log file if job is completed/cancelled
       finished = None
-      if state in ['completed', 'canceled']:
+      if state in ['completed', 'cancelled']:
         file_path = os.path.join(root, f)
         try:
           with open(file_path, 'r', encoding='utf-8') as log_file:
@@ -292,4 +292,4 @@ def list_streaming_jobs(persistent_storage_path: str, router_filter: Optional[st
   jobs.sort(key=lambda j: j.id, reverse=True)
   return jobs
 
-# ----------------------------------------- END: V2 Streaming -------------------------------------------
+# ----------------------------------------- END: V1B Streaming -------------------------------------------

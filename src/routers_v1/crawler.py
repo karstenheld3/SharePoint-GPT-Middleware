@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from utils import convert_to_flat_html_table, convert_to_nested_html_table, log_function_footer, log_function_header, log_function_output, include_exclude_attributes
-from common_ui_functions import generate_error_html, generate_nested_data_page, generate_documentation_page, generate_ui_table_page, generate_toolbar_button
+from routers_v1.common_ui_functions import generate_error_html, generate_nested_data_page, generate_documentation_page, generate_ui_table_page, generate_toolbar_button
 from common_crawler_functions import DomainConfig, load_all_domains, domain_config_to_dict, scan_directory_recursive, create_storage_zip_from_scan, load_domain, load_files_from_sharepoint_source, load_crawled_files, load_vector_store_files_as_crawled_files, is_files_metadata_v2_format, is_files_metadata_v3_format, convert_file_metadata_item_from_v2_to_v3, download_files_from_sharepoint, update_vector_store as update_vector_store_impl, replicate_domain_vector_stores_to_global_vector_store
 from common_openai_functions import OPENAI_DATETIME_ATTRIBUTES
 
@@ -34,7 +34,7 @@ def _delete_zip_file(file_path: str, log_data: Dict[str, Any] = None) -> None:
 
 
 
-@router.get('/', response_class=HTMLResponse)
+@router.get('/crawler', response_class=HTMLResponse)
 async def crawler_root(request: Request):
   """
   Crawler endpoints documentation and overview.
@@ -43,8 +43,8 @@ async def crawler_root(request: Request):
   - format: The response format (default documentation or ui)
   
   Examples:
-  /crawler/
-  /crawler/?format=ui
+  /v1/crawler/
+  /v1/crawler/?format=ui
   """
   function_name = 'crawler_root()'
   request_data = log_function_header(function_name)
@@ -64,30 +64,32 @@ async def crawler_root(request: Request):
       storage_path = request.app.state.system_info.PERSISTENT_STORAGE_PATH
       
       # Load all domains
-      domains_list = load_all_domains(storage_path, request_data)
+      domains_list = load_all_domains(storage_path, log_data=request_data)
       
-      # Convert to list of dicts for UI generation
-      domains_data = [domain_config_to_dict(domain) for domain in domains_list]
-      
-      # Define columns with custom formatting for list and crawl actions
-      def format_list_actions(domain):
-        domain_id = domain.get('domain_id', '')
-        return f'<a href="/crawler/list_vectorstore_files?domain_id={domain_id}">Vector Store Files</a><br><a href="/crawler/list_sharepoint_files?domain_id={domain_id}">SharePoint Files</a>'
-      
-      def format_crawl_actions(domain):
-        domain_id = domain.get('domain_id', '')
-        return f'<a href="/crawler/download_files?domain_id={domain_id}">Download Files</a><br><a href="/crawler/update_vector_store?domain_id={domain_id}">Update Vector Store</a>'
+      # Convert to list of dicts for UI generation and add action HTML
+      domains_data = []
+      for domain in domains_list:
+        domain_dict = domain_config_to_dict(domain)
+        domain_id = domain_dict.get('domain_id', '')
+        
+        # Add list actions HTML
+        domain_dict['list_actions'] = f'<a href="/v1/crawler/list_vectorstore_files?domain_id={domain_id}">Vector Store Files</a><br><a href="/v1/crawler/list_sharepoint_files?domain_id={domain_id}">SharePoint Files</a>'
+        
+        # Add crawl actions HTML
+        domain_dict['crawl_actions'] = f'<a href="/v1/crawler/download_files?domain_id={domain_id}">Download Files</a><br><a href="/v1/crawler/update_vector_store?domain_id={domain_id}">Update Vector Store</a>'
+        
+        domains_data.append(domain_dict)
       
       columns = [
         {'field': 'domain_id', 'header': 'Domain ID'},
         {'field': 'name', 'header': 'Name'},
         {'field': 'vector_store_name', 'header': 'Vector Store Name'},
         {'field': 'vector_store_id', 'header': 'Vector Store ID'},
-        {'field': 'list_actions', 'header': 'List', 'format': format_list_actions},
-        {'field': 'crawl_actions', 'header': 'Crawl', 'format': format_crawl_actions}
+        {'field': 'list_actions', 'header': 'List'},
+        {'field': 'crawl_actions', 'header': 'Crawl'}
       ]
       
-      toolbar_html = '<div class="toolbar"><a href="/crawler/replicate_to_global?format=html" class="btn-primary">Replicate to Global Vector Store</a></div>'
+      toolbar_html = '<div class="toolbar"><a href="/v1/crawler/replicate_to_global?format=html" class="btn-primary">Replicate to Global Vector Store</a></div>'
       additional_content = '<div id="result-container"></div>'
       
       html_content = generate_ui_table_page(
@@ -127,15 +129,15 @@ async def crawler_root(request: Request):
 
   <h4>Available Endpoints</h4>
   <ul>
-    <li><a href="/crawler/?format=ui">/crawler/?format=ui</a> - Crawler UI (Domain List with Actions)</li>
-    <li><a href="/crawler/download_files">/crawler/download_files</a> - Download SharePoint Files (<a href="/crawler/download_files?domain_id=ExampleDomain01&source_id=source01&format=html">Example HTML</a> + <a href="/crawler/download_files?domain_id=ExampleDomain01&format=json">Example JSON</a>)</li>
-    <li><a href="/crawler/update_vector_store">/crawler/update_vector_store</a> - Update Vector Store (<a href="/crawler/update_vector_store?domain_id=ExampleDomain01&format=html">Example HTML</a> + <a href="/crawler/update_vector_store?domain_id=ExampleDomain01&temp_vs_only=true&format=json">Example JSON</a>)</li>
-    <li><a href="/crawler/replicate_to_global">/crawler/replicate_to_global</a> - Replicate All Domain Vector Stores to Global Vector Store (<a href="/crawler/replicate_to_global?format=html">HTML</a> + <a href="/crawler/replicate_to_global?format=json">JSON</a>)</li>
-    <li><a href="/crawler/localstorage">/crawler/localstorage</a> - Local Storage Inventory (<a href="/crawler/localstorage?format=html">HTML</a> + <a href="/crawler/localstorage?format=json">JSON</a> + <a href="/crawler/localstorage?format=zip">ZIP</a> + <a href="/crawler/localstorage?format=zip&exceptfolder=crawler">ZIP except 'crawler' folder</a>)</li>
-    <li><a href="/crawler/list_sharepoint_files">/crawler/list_sharepoint_files</a> - List SharePoint Files (<a href="/crawler/list_sharepoint_files?domain_id=ExampleDomain01&source_id=source01&format=html&includeattributes=sharepoint_listitem_id,sharepoint_unique_file_id,raw_url,filename,file_size,last_modified_utc">Example HTML</a> + <a href="/crawler/list_sharepoint_files?domain_id=ExampleDomain01&source_id=source01&format=json">Example JSON</a>)</li>
-    <li><a href="/crawler/list_local_files">/crawler/list_local_files</a> - List Local Embedded Files (<a href="/crawler/list_local_files?domain_id=ExampleDomain01&format=html&includeattributes=file_path,raw_url,file_size,last_modified_utc">Example HTML</a> + <a href="/crawler/list_local_files?domain_id=ExampleDomain01&source_id=source01&format=json">Example JSON</a>)</li>
-    <li><a href="/crawler/list_vectorstore_files">/crawler/list_vectorstore_files</a> - List Vector Store Files (<a href="/crawler/list_vectorstore_files?domain_id=ExampleDomain01&format=html">Example HTML</a> + <a href="/crawler/list_vectorstore_files?domain_id=ExampleDomain01&format=json">Example JSON</a>)</li>
-    <li><a href="/crawler/migrate_from_v2_to_v3">/crawler/migrate_from_v2_to_v3</a> - Migrate files_metadata.json from v2 to v3 format (<a href="/crawler/migrate_from_v2_to_v3?format=html">HTML</a> + <a href="/crawler/migrate_from_v2_to_v3?format=json">JSON</a>)</li>
+    <li><a href="/v1/crawler/?format=ui">/v1/crawler/?format=ui</a> - Crawler UI (Domain List with Actions)</li>
+    <li><a href="/v1/crawler/download_files">/v1/crawler/download_files</a> - Download SharePoint Files (<a href="/v1/crawler/download_files?domain_id=ExampleDomain01&source_id=source01&format=html">Example HTML</a> + <a href="/v1/crawler/download_files?domain_id=ExampleDomain01&format=json">Example JSON</a>)</li>
+    <li><a href="/v1/crawler/update_vector_store">/v1/crawler/update_vector_store</a> - Update Vector Store (<a href="/v1/crawler/update_vector_store?domain_id=ExampleDomain01&format=html">Example HTML</a> + <a href="/v1/crawler/update_vector_store?domain_id=ExampleDomain01&temp_vs_only=true&format=json">Example JSON</a>)</li>
+    <li><a href="/v1/crawler/replicate_to_global">/v1/crawler/replicate_to_global</a> - Replicate All Domain Vector Stores to Global Vector Store (<a href="/v1/crawler/replicate_to_global?format=html">HTML</a> + <a href="/v1/crawler/replicate_to_global?format=json">JSON</a>)</li>
+    <li><a href="/v1/crawler/localstorage">/v1/crawler/localstorage</a> - Local Storage Inventory (<a href="/v1/crawler/localstorage?format=html">HTML</a> + <a href="/v1/crawler/localstorage?format=json">JSON</a> + <a href="/v1/crawler/localstorage?format=zip">ZIP</a> + <a href="/v1/crawler/localstorage?format=zip&exceptfolder=crawler">ZIP except 'crawler' folder</a>)</li>
+    <li><a href="/v1/crawler/list_sharepoint_files">/v1/crawler/list_sharepoint_files</a> - List SharePoint Files (<a href="/v1/crawler/list_sharepoint_files?domain_id=ExampleDomain01&source_id=source01&format=html&includeattributes=sharepoint_listitem_id,sharepoint_unique_file_id,raw_url,filename,file_size,last_modified_utc">Example HTML</a> + <a href="/v1/crawler/list_sharepoint_files?domain_id=ExampleDomain01&source_id=source01&format=json">Example JSON</a>)</li>
+    <li><a href="/v1/crawler/list_local_files">/v1/crawler/list_local_files</a> - List Local Embedded Files (<a href="/v1/crawler/list_local_files?domain_id=ExampleDomain01&format=html&includeattributes=file_path,raw_url,file_size,last_modified_utc">Example HTML</a> + <a href="/v1/crawler/list_local_files?domain_id=ExampleDomain01&source_id=source01&format=json">Example JSON</a>)</li>
+    <li><a href="/v1/crawler/list_vectorstore_files">/v1/crawler/list_vectorstore_files</a> - List Vector Store Files (<a href="/v1/crawler/list_vectorstore_files?domain_id=ExampleDomain01&format=html">Example HTML</a> + <a href="/v1/crawler/list_vectorstore_files?domain_id=ExampleDomain01&format=json">Example JSON</a>)</li>
+    <li><a href="/v1/crawler/migrate_from_v2_to_v3">/v1/crawler/migrate_from_v2_to_v3</a> - Migrate files_metadata.json from v2 to v3 format (<a href="/v1/crawler/migrate_from_v2_to_v3?format=html">HTML</a> + <a href="/v1/crawler/migrate_from_v2_to_v3?format=json">JSON</a>)</li>
   </ul>
 
   <p><a href="/">← Back to Main Page</a></p>
@@ -210,7 +212,7 @@ async def localstorage(request: Request, background_tasks: BackgroundTasks):
     else:
       # HTML format with nested table
       title = f"Local Storage Contents - {storage_path}"
-      html_content = generate_nested_data_page(title, storage_contents, back_link="/crawler?format=ui", back_text="← Back to Crawler")
+      html_content = generate_nested_data_page(title, storage_contents, back_link="/v1/crawler?format=ui", back_text="← Back to Crawler")
       await log_function_footer(request_data)
       return HTMLResponse(html_content)
       
@@ -367,7 +369,7 @@ async def list_sharepoint_files(request: Request):
   <p><strong>Total Files:</strong> {len(files)}</p>
   <hr>
   {table_html}
-  <p><a href="/crawler?format=ui">← Back to Crawler</a></p>
+  <p><a href="/v1/crawler?format=ui">← Back to Crawler</a></p>
 </body>
 </html>"""
       
@@ -525,7 +527,7 @@ async def list_local_files(request: Request):
   <p><strong>Total Files:</strong> {len(files)}</p>
   <hr>
   {table_html}
-  <p><a href="/crawler?format=ui">← Back to Crawler</a></p>
+  <p><a href="/v1/crawler?format=ui">← Back to Crawler</a></p>
 </body>
 </html>"""
       
@@ -668,7 +670,7 @@ async def list_vectorstore_files(request: Request):
   <p><strong>Total Files:</strong> {len(files_list)}</p>
   <hr>
   {table_html}
-  <p><a href="/crawler">← Back to Crawler</a></p>
+  <p><a href="/v1/crawler">← Back to Crawler</a></p>
 </body>
 </html>"""
       
@@ -849,7 +851,7 @@ async def migrate_from_v2_to_v3(request: Request):
   <h2>Details</h2>
   {results_html}
   <hr>
-  <p><a href="/crawler">← Back to Crawler</a></p>
+  <p><a href="/v1/crawler">← Back to Crawler</a></p>
 </body>
 </html>"""
       
@@ -942,7 +944,7 @@ async def download_files(request: Request):
       html_response = generate_nested_data_page(
         title=f"Download Files - {domain_id}",
         data=results,
-        back_link="/crawler?format=ui",
+        back_link="/v1/crawler?format=ui",
         back_text="← Back to Crawler"
       )
       return HTMLResponse(content=html_response)
@@ -1037,7 +1039,7 @@ async def update_vector_store(request: Request):
     if format == 'json':
       return JSONResponse(content=results)
     else:
-      html_response = generate_nested_data_page(title=f"Update Vector Store - {domain_id}", data=results, back_link="/crawler?format=ui", back_text="← Back to Crawler")
+      html_response = generate_nested_data_page(title=f"Update Vector Store - {domain_id}", data=results, back_link="/v1/crawler?format=ui", back_text="← Back to Crawler")
       return HTMLResponse(content=html_response)
       
   except FileNotFoundError as e:
@@ -1068,8 +1070,8 @@ async def replicate_to_global(request: Request):
   - format: Response format - 'html' or 'json' (default: 'html')
   
   Examples:
-  /crawler/replicate_to_global?format=html
-  /crawler/replicate_to_global?format=json
+  /v1/crawler/replicate_to_global?format=html
+  /v1/crawler/replicate_to_global?format=json
   """
   
   function_name = 'replicate_to_global()'
@@ -1138,7 +1140,7 @@ async def replicate_to_global(request: Request):
       html_response = generate_nested_data_page(
         title=f"Replicate to Global Vector Store",
         data=results,
-        back_link="/crawler?format=ui",
+        back_link="/v1/crawler?format=ui",
         back_text="← Back to Crawler"
       )
       return HTMLResponse(content=html_response)

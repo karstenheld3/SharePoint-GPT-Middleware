@@ -7,7 +7,7 @@ from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
-from common_ui_functions import generate_html_head, generate_table_page, generate_table_with_headers, generate_error_html, generate_error_response, generate_success_response, generate_toolbar_button, generate_nested_data_page, generate_documentation_page
+from routers_v1.common_ui_functions import generate_html_head, generate_table_page, generate_table_with_headers, generate_error_html, generate_error_response, generate_success_response, generate_toolbar_button, generate_nested_data_page, generate_documentation_page
 from utils import convert_to_flat_html_table, convert_to_nested_html_table, log_function_footer, log_function_header, log_function_output
 from common_crawler_functions import ( DomainConfig, FileSource, SitePageSource, ListSource, load_all_domains, domain_config_to_dict, save_domain_to_file, delete_domain_folder, validate_domain_config )
 
@@ -31,10 +31,10 @@ async def list_domains(request: Request):
   - format: The response format (json, html, or ui)
     
   Examples:
-  /domains
-  /domains?format=json
-  /domains?format=html
-  /domains?format=ui
+  /v1/domains
+  /v1/domains?format=json
+  /v1/domains?format=html
+  /v1/domains?format=ui
   """
   function_name = 'list_domains()'
   request_data = log_function_header(function_name)
@@ -43,7 +43,7 @@ async def list_domains(request: Request):
   # Display documentation if no params are provided
   if len(request_params) == 0:
     await log_function_footer(request_data)
-    return HTMLResponse(generate_documentation_page('/domains', list_domains.__doc__))
+    return HTMLResponse(generate_documentation_page('/v1/domains', list_domains.__doc__))
 
   format = request_params.get('format', 'html')
   
@@ -79,13 +79,13 @@ async def list_domains(request: Request):
       <td>{domain.vector_store_id}</td>
       <td class="actions">
       <button class="btn-small btn-edit" 
-          hx-get="/domains/update?domain_id={domain.domain_id}&format=ui"
+          hx-get="/v1/domains/update?domain_id={domain.domain_id}&format=ui"
           hx-target="#form-container"
           hx-swap="innerHTML">
         Edit
       </button>
       <button class="btn-small btn-delete" 
-          hx-delete="/domains/delete?domain_id={domain.domain_id}&format=html"
+          hx-delete="/v1/domains/delete?domain_id={domain.domain_id}&format=html"
           hx-confirm="Are you sure you want to delete domain '{domain.name}'?"
           hx-target="#domain-{domain.domain_id}"
           hx-swap="outerHTML">
@@ -172,7 +172,7 @@ async def list_domains(request: Request):
   }}"""
       
       toolbar_html = f"""<div class="toolbar">
-    {generate_toolbar_button('+ Add New Domain', '/domains/create?format=ui', '#form-container')}
+    {generate_toolbar_button('+ Add New Domain', '/v1/domains/create?format=ui', '#form-container')}
   </div>"""
       
       headers = ['Domain ID', 'Name', 'Vector Store Name', 'Vector Store ID', 'Actions']
@@ -228,7 +228,7 @@ async def get_create_form(request: Request):
   - format: Response format (html or ui)
   
   Examples:
-  /domains/create?format=ui
+  /v1/domains/create?format=ui
   """
   function_name = 'get_create_form()'
   request_data = log_function_header(function_name)
@@ -241,7 +241,7 @@ async def get_create_form(request: Request):
   <div class="modal" id="create-modal">
     <div class="modal-content" style="max-width: 900px;">
       <h2>Create New Domain</h2>
-      <form hx-post="/domains/create?format=html" 
+      <form hx-post="/v1/domains/create?format=html" 
           hx-target="#form-container"
           hx-swap="innerHTML">
         <div class="form-group">
@@ -310,7 +310,7 @@ async def create_domain(
   - Form data: domain_id, name, description, vector_store_name, vector_store_id
   
   Examples:
-  POST /domains/create?format=json
+  POST /v1/domains/create?format=json
   """
   function_name = 'create_domain()'
   request_data = log_function_header(function_name)
@@ -423,7 +423,7 @@ async def get_update_form(request: Request):
   - format: Response format (html or ui)
   
   Examples:
-  /domains/update?domain_id=my_domain&format=ui
+  /v1/domains/update?domain_id=my_domain&format=ui
   """
   function_name = 'get_update_form()'
   request_data = log_function_header(function_name)
@@ -465,7 +465,7 @@ async def get_update_form(request: Request):
     <div class="modal" id="update-modal">
       <div class="modal-content" style="max-width: 900px;">
         <h2>Update Domain: {domain.name}</h2>
-        <form hx-put="/domains/update?format=html" 
+        <form hx-put="/v1/domains/update?format=html" 
             hx-target="#form-container"
             hx-swap="innerHTML">
           <input type="hidden" name="domain_id" value="{domain.domain_id}">
@@ -537,7 +537,7 @@ async def update_domain(
   - Form data: domain_id, name, description, vector_store_name, vector_store_id
   
   Examples:
-  PUT /domains/update?format=json
+  PUT /v1/domains/update?format=json
   """
   function_name = 'update_domain()'
   request_data = log_function_header(function_name)
@@ -643,7 +643,7 @@ async def delete_domain(request: Request):
   - format: Response format (json or html)
   
   Examples:
-  DELETE /domains/delete?domain_id=my_domain&format=json
+  DELETE /v1/domains/delete?domain_id=my_domain&format=json
   """
   function_name = 'delete_domain()'
   request_data = log_function_header(function_name)
