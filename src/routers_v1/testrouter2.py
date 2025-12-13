@@ -16,11 +16,13 @@ router = APIRouter()
 config = None
 
 ROUTER_NAME = "testrouter2"
+router_prefix = ""
 
 # Set the configuration for test router. app_config: Config dataclass with openai_client, persistent_storage_path, etc.
-def set_config(app_config):
-  global config
+def set_config(app_config, prefix: str = ""):
+  global config, router_prefix
   config = app_config
+  router_prefix = prefix
 
 
 # Helper: Generate action buttons based on job state

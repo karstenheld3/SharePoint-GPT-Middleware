@@ -12,11 +12,13 @@ router = APIRouter()
 
 # Configuration will be injected from app.py
 config = None
+router_prefix = ""
 
-def set_config(app_config):
+def set_config(app_config, prefix: str = ""):
   """Set the configuration for Inventory management."""
-  global config
+  global config, router_prefix
   config = app_config
+  router_prefix = prefix
 
 @router.get('/inventory', response_class=HTMLResponse)
 async def inventory_root():
@@ -38,15 +40,15 @@ async def inventory_root():
 
   <h4>Available Endpoints</h4>
   <ul>
-    <li><a href="/v1/inventory/vectorstores">/v1/inventory/vectorstores</a> - List All Vector Stores (<a href="/v1/inventory/vectorstores?format=html">HTML</a> + <a href="/v1/inventory/vectorstores?format=json">JSON</a> + <a href="/v1/inventory/vectorstores?format=ui">UI</a>)</li>
-    <li><a href="/v1/inventory/vectorstores/delete">/v1/inventory/vectorstores/delete</a> - Delete Vector Store (<a href="/v1/inventory/vectorstores/delete">Docs</a>)</li>
-    <li><a href="/v1/inventory/vectorstore_files">/v1/inventory/vectorstore_files</a> - List Files in Vector Store (<a href="/v1/inventory/vectorstore_files?vector_store_id=vs_abc123&format=html">Example HTML</a> + <a href="/v1/inventory/vectorstore_files?vector_store_id=vs_abc123&format=json">Example JSON</a>)</li>
-    <li><a href="/v1/inventory/vectorstore_files/remove">/v1/inventory/vectorstore_files/remove</a> - Remove File from Vector Store (<a href="/v1/inventory/vectorstore_files/remove">Docs</a>)</li>
-    <li><a href="/v1/inventory/vectorstore_files/delete">/v1/inventory/vectorstore_files/delete</a> - Delete File from Vector Store and Storage (<a href="/v1/inventory/vectorstore_files/delete">Docs</a>)</li>
-    <li><a href="/v1/inventory/files">/v1/inventory/files</a> - List All Files (<a href="/v1/inventory/files?format=html">HTML</a> + <a href="/v1/inventory/files?format=json">JSON</a> + <a href="/v1/inventory/files?format=ui">UI</a>)</li>
-    <li><a href="/v1/inventory/files/delete">/v1/inventory/files/delete</a> - Delete File from Storage (<a href="/v1/inventory/files/delete">Docs</a>)</li>
-    <li><a href="/v1/inventory/assistants">/v1/inventory/assistants</a> - List All Assistants (<a href="/v1/inventory/assistants?format=html">HTML</a> + <a href="/v1/inventory/assistants?format=json">JSON</a> + <a href="/v1/inventory/assistants?format=ui">UI</a>)</li>
-    <li><a href="/v1/inventory/assistants/delete">/v1/inventory/assistants/delete</a> - Delete Assistant (<a href="/v1/inventory/assistants/delete">Docs</a>)</li>
+    <li><a href="{router_prefix}/inventory/vectorstores">{router_prefix}/inventory/vectorstores</a> - List All Vector Stores (<a href="{router_prefix}/inventory/vectorstores?format=html">HTML</a> + <a href="{router_prefix}/inventory/vectorstores?format=json">JSON</a> + <a href="{router_prefix}/inventory/vectorstores?format=ui">UI</a>)</li>
+    <li><a href="{router_prefix}/inventory/vectorstores/delete">{router_prefix}/inventory/vectorstores/delete</a> - Delete Vector Store (<a href="{router_prefix}/inventory/vectorstores/delete">Docs</a>)</li>
+    <li><a href="{router_prefix}/inventory/vectorstore_files">{router_prefix}/inventory/vectorstore_files</a> - List Files in Vector Store (<a href="{router_prefix}/inventory/vectorstore_files?vector_store_id=vs_abc123&format=html">Example HTML</a> + <a href="{router_prefix}/inventory/vectorstore_files?vector_store_id=vs_abc123&format=json">Example JSON</a>)</li>
+    <li><a href="{router_prefix}/inventory/vectorstore_files/remove">{router_prefix}/inventory/vectorstore_files/remove</a> - Remove File from Vector Store (<a href="{router_prefix}/inventory/vectorstore_files/remove">Docs</a>)</li>
+    <li><a href="{router_prefix}/inventory/vectorstore_files/delete">{router_prefix}/inventory/vectorstore_files/delete</a> - Delete File from Vector Store and Storage (<a href="{router_prefix}/inventory/vectorstore_files/delete">Docs</a>)</li>
+    <li><a href="{router_prefix}/inventory/files">{router_prefix}/inventory/files</a> - List All Files (<a href="{router_prefix}/inventory/files?format=html">HTML</a> + <a href="{router_prefix}/inventory/files?format=json">JSON</a> + <a href="{router_prefix}/inventory/files?format=ui">UI</a>)</li>
+    <li><a href="{router_prefix}/inventory/files/delete">{router_prefix}/inventory/files/delete</a> - Delete File from Storage (<a href="{router_prefix}/inventory/files/delete">Docs</a>)</li>
+    <li><a href="{router_prefix}/inventory/assistants">{router_prefix}/inventory/assistants</a> - List All Assistants (<a href="{router_prefix}/inventory/assistants?format=html">HTML</a> + <a href="{router_prefix}/inventory/assistants?format=json">JSON</a> + <a href="{router_prefix}/inventory/assistants?format=ui">UI</a>)</li>
+    <li><a href="{router_prefix}/inventory/assistants/delete">{router_prefix}/inventory/assistants/delete</a> - Delete Assistant (<a href="{router_prefix}/inventory/assistants/delete">Docs</a>)</li>
   </ul>
 
   <p><a href="/">← Back to Main Page</a></p>
@@ -92,8 +94,8 @@ def _generate_ui_response_for_vector_store_files(title: str, count: int, vector_
     file_id = file.get('id', 'N/A')
     filename = file.get('filename', 'N/A')
     return [
-      {'text': 'Remove', 'hx_method': 'delete', 'hx_endpoint': f'/v1/inventory/vectorstore_files/remove?vector_store_id={vector_store_id}&file_id={file_id}', 'hx_target': f'#file-{file_id}', 'confirm_message': f"Remove file '{filename}' from vector store? (File will remain in global storage)", 'button_class': 'btn-small btn-delete'},
-      {'text': 'Delete', 'hx_method': 'delete', 'hx_endpoint': f'/v1/inventory/vectorstore_files/delete?vector_store_id={vector_store_id}&file_id={file_id}', 'hx_target': f'#file-{file_id}', 'confirm_message': f"Delete file '{filename}' from vector store AND global storage? This cannot be undone!", 'button_class': 'btn-small', 'style': 'background-color: #dc3545; color: white;'}
+      {'text': 'Remove', 'hx_method': 'delete', 'hx_endpoint': f'{router_prefix}/inventory/vectorstore_files/remove?vector_store_id={vector_store_id}&file_id={file_id}', 'hx_target': f'#file-{file_id}', 'confirm_message': f"Remove file '{filename}' from vector store? (File will remain in global storage)", 'button_class': 'btn-small btn-delete'},
+      {'text': 'Delete', 'hx_method': 'delete', 'hx_endpoint': f'{router_prefix}/inventory/vectorstore_files/delete?vector_store_id={vector_store_id}&file_id={file_id}', 'hx_target': f'#file-{file_id}', 'confirm_message': f"Delete file '{filename}' from vector store AND global storage? This cannot be undone!", 'button_class': 'btn-small', 'style': 'background-color: #dc3545; color: white;'}
     ]
   
   columns = [
@@ -105,7 +107,7 @@ def _generate_ui_response_for_vector_store_files(title: str, count: int, vector_
     {'field': 'actions', 'header': 'Actions', 'buttons': get_file_actions}
   ]
   
-  return generate_ui_table_page(title=title, count=count, data=files, columns=columns, row_id_field='id', row_id_prefix='file', back_link='/v1/inventory/vectorstores?format=ui', back_text='← Back to Vector Stores')
+  return generate_ui_table_page(title=title, count=count, data=files, columns=columns, row_id_field='id', row_id_prefix='file', back_link=f'{router_prefix}/inventory/vectorstores?format=ui', back_text='← Back to Vector Stores')
 
 def _generate_ui_response_for_files(title: str, count: int, files: List[Dict]) -> str:
   """
@@ -122,7 +124,7 @@ def _generate_ui_response_for_files(title: str, count: int, files: List[Dict]) -
   def get_file_actions(file):
     file_id = file.get('id', 'N/A')
     filename = file.get('filename', 'N/A')
-    return [{'text': 'Delete', 'hx_method': 'delete', 'hx_endpoint': f'/v1/inventory/files/delete?file_id={file_id}', 'hx_target': f'#file-{file_id}', 'confirm_message': f"Delete file '{filename}' from global storage? This cannot be undone!", 'button_class': 'btn-small btn-delete', 'style': 'background-color: #dc3545; color: white;'}]
+    return [{'text': 'Delete', 'hx_method': 'delete', 'hx_endpoint': f'{router_prefix}/inventory/files/delete?file_id={file_id}', 'hx_target': f'#file-{file_id}', 'confirm_message': f"Delete file '{filename}' from global storage? This cannot be undone!", 'button_class': 'btn-small btn-delete', 'style': 'background-color: #dc3545; color: white;'}]
   
   columns = [
     {'field': 'filename', 'header': 'Filename'},
@@ -154,7 +156,7 @@ def _generate_ui_response_for_assistants(title: str, count: int, assistants: Lis
   def get_assistant_actions(assistant):
     assistant_id = assistant.get('id', 'N/A')
     name = assistant.get('name', 'N/A')
-    return [{'text': 'Delete', 'hx_method': 'delete', 'hx_endpoint': f'/v1/inventory/assistants/delete?assistant_id={assistant_id}', 'hx_target': f'#assistant-{assistant_id}', 'confirm_message': f"Delete assistant '{name}'? This cannot be undone!", 'button_class': 'btn-small btn-delete', 'style': 'background-color: #dc3545; color: white;'}]
+    return [{'text': 'Delete', 'hx_method': 'delete', 'hx_endpoint': f'{router_prefix}/inventory/assistants/delete?assistant_id={assistant_id}', 'hx_target': f'#assistant-{assistant_id}', 'confirm_message': f"Delete assistant '{name}'? This cannot be undone!", 'button_class': 'btn-small btn-delete', 'style': 'background-color: #dc3545; color: white;'}]
   
   columns = [
     {'field': 'name', 'header': 'Name'},
@@ -188,9 +190,9 @@ def _generate_ui_response_for_vector_stores(title: str, count: int, vector_store
     file_counts = vs.get('file_counts', {})
     total_files = file_counts.get('total', 0) if isinstance(file_counts, dict) else 0
     return [
-      {'text': 'Files', 'onclick': f"window.location.href='/v1/inventory/vectorstore_files?vector_store_id={vs_id}&format=ui'", 'button_class': 'btn-small', 'style': 'background-color: #007bff; color: white;'},
-      {'text': 'Delete', 'hx_method': 'delete', 'hx_endpoint': f'/v1/inventory/vectorstores/delete?vector_store_id={vs_id}&delete_files=false', 'hx_target': f'#vectorstore-{vs_id}', 'confirm_message': f"Delete vector store '{vs_name}'? (Files will remain in storage)", 'button_class': 'btn-small btn-delete'},
-      {'text': 'Delete with Files', 'hx_method': 'delete', 'hx_endpoint': f'/v1/inventory/vectorstores/delete?vector_store_id={vs_id}&delete_files=true', 'hx_target': f'#vectorstore-{vs_id}', 'confirm_message': f"Delete vector store '{vs_name}' AND all {total_files} files? This cannot be undone!", 'button_class': 'btn-small', 'style': 'background-color: #dc3545; color: white;'}
+      {'text': 'Files', 'onclick': f"window.location.href='{router_prefix}/inventory/vectorstore_files?vector_store_id={vs_id}&format=ui'", 'button_class': 'btn-small', 'style': 'background-color: #007bff; color: white;'},
+      {'text': 'Delete', 'hx_method': 'delete', 'hx_endpoint': f'{router_prefix}/inventory/vectorstores/delete?vector_store_id={vs_id}&delete_files=false', 'hx_target': f'#vectorstore-{vs_id}', 'confirm_message': f"Delete vector store '{vs_name}'? (Files will remain in storage)", 'button_class': 'btn-small btn-delete'},
+      {'text': 'Delete with Files', 'hx_method': 'delete', 'hx_endpoint': f'{router_prefix}/inventory/vectorstores/delete?vector_store_id={vs_id}&delete_files=true', 'hx_target': f'#vectorstore-{vs_id}', 'confirm_message': f"Delete vector store '{vs_name}' AND all {total_files} files? This cannot be undone!", 'button_class': 'btn-small', 'style': 'background-color: #dc3545; color: white;'}
     ]
   
   columns = [
@@ -215,17 +217,17 @@ async def vectorstores(request: Request):
   - excludeattributes: Comma-separated list of attributes to exclude from response (ignored if includeattributes is set)
     
   Examples:
-  /vectorstores
-  /vectorstores?format=json
-  /vectorstores?format=ui (interactive UI with delete buttons)
-  /vectorstores?format=json&includeattributes=id,name,created_at
-  /vectorstores?format=html&excludeattributes=file_counts,metadata
+  {router_prefix}/inventory/vectorstores
+  {router_prefix}/inventory/vectorstores?format=json
+  {router_prefix}/inventory/vectorstores?format=ui (interactive UI with delete buttons)
+  {router_prefix}/inventory/vectorstores?format=json&includeattributes=id,name,created_at
+  {router_prefix}/inventory/vectorstores?format=html&excludeattributes=file_counts,metadata
   """
   function_name = 'vectorstores()'
   request_data = log_function_header(function_name)
   request_params = dict(request.query_params) 
   endpoint = '/' + function_name.replace('()','')  
-  endpoint_documentation = vectorstores.__doc__
+  endpoint_documentation = vectorstores.__doc__.replace('{router_prefix}', router_prefix)
   documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
   # Display documentation if no params are provided
   if len(request_params) == 0: await log_function_footer(request_data); return HTMLResponse(documentation_HTML)
@@ -280,16 +282,16 @@ async def delete_vectorstore(request: Request):
   - format: Response format (json or html, default: html)
   
   Examples:
-  DELETE /vectorstores/delete?vector_store_id=vs_123
-  DELETE /vectorstores/delete?vector_store_id=vs_123&delete_files=true
-  DELETE /vectorstores/delete?vector_store_id=vs_123&format=json
+  DELETE {router_prefix}/inventory/vectorstores/delete?vector_store_id=vs_123
+  DELETE {router_prefix}/inventory/vectorstores/delete?vector_store_id=vs_123&delete_files=true
+  DELETE {router_prefix}/inventory/vectorstores/delete?vector_store_id=vs_123&format=json
   """
   function_name = 'delete_vectorstore()'
   request_data = log_function_header(function_name)
   request_params = dict(request.query_params)
   
   endpoint = '/' + function_name.replace('()','')
-  endpoint_documentation = delete_vectorstore.__doc__
+  endpoint_documentation = delete_vectorstore.__doc__.replace('{router_prefix}', router_prefix)
   documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
   # Display documentation if no params are provided
   if len(request_params) == 0: await log_function_footer(request_data); return HTMLResponse(documentation_HTML)
@@ -359,17 +361,18 @@ async def vectorstore_files(request: Request):
   - excludeattributes: Comma-separated list of attributes to exclude from response (ignored if includeattributes is set)
     
   Examples:
-  /vectorstore_files
-  /vectorstore_files?vector_store_id=vs_123&format=json
-  /vectorstore_files?vector_store_id=vs_123&format=html
-  /vectorstore_files?vector_store_id=vs_123&format=json&includeattributes=id,filename,created_at
-  /vectorstore_files?vector_store_id=vs_123&format=html&excludeattributes=status_details,last_error
+  {router_prefix}/inventory/vectorstore_files
+  {router_prefix}/inventory/vectorstore_files?vector_store_id=vs_123&format=json
+  {router_prefix}/inventory/vectorstore_files?vector_store_id=vs_123&format=html
+  {router_prefix}/inventory/vectorstore_files?vector_store_id=vs_123&format=json&includeattributes=id,filename,created_at
+  {router_prefix}/inventory/vectorstore_files?vector_store_id=vs_123&format=html&excludeattributes=status_details,last_error
   """
   function_name = 'vectorstore_files()'
   request_data = log_function_header(function_name)
   request_params = dict(request.query_params) 
+  
   endpoint = '/' + function_name.replace('()','')  
-  endpoint_documentation = vectorstore_files.__doc__
+  endpoint_documentation = vectorstore_files.__doc__.replace('{router_prefix}', router_prefix)
   documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
   # Display documentation if no params are provided
   if len(request_params) == 0: await log_function_footer(request_data); return HTMLResponse(documentation_HTML)
@@ -460,15 +463,15 @@ async def remove_file_from_vectorstore(request: Request):
   - format: Response format (json or html, default: html)
   
   Examples:
-  DELETE /vectorstore_files/remove?vector_store_id=vs_123&file_id=file_456
-  DELETE /vectorstore_files/remove?vector_store_id=vs_123&file_id=file_456&format=json
+  DELETE {router_prefix}/inventory/vectorstore_files/remove?vector_store_id=vs_123&file_id=file_456
+  DELETE {router_prefix}/inventory/vectorstore_files/remove?vector_store_id=vs_123&file_id=file_456&format=json
   """
   function_name = 'remove_file_from_vectorstore()'
   request_data = log_function_header(function_name)
   request_params = dict(request.query_params)
   
   endpoint = '/' + function_name.replace('()','')
-  endpoint_documentation = remove_file_from_vectorstore.__doc__
+  endpoint_documentation = remove_file_from_vectorstore.__doc__.replace('{router_prefix}', router_prefix)
   documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
   # Display documentation if no params are provided
   if len(request_params) == 0: await log_function_footer(request_data); return HTMLResponse(documentation_HTML)
@@ -525,15 +528,15 @@ async def delete_file_from_vectorstore(request: Request):
   - format: Response format (json or html, default: html)
   
   Examples:
-  DELETE /vectorstore_files/delete?vector_store_id=vs_123&file_id=file_456
-  DELETE /vectorstore_files/delete?vector_store_id=vs_123&file_id=file_456&format=json
+  DELETE {router_prefix}/inventory/vectorstore_files/delete?vector_store_id=vs_123&file_id=file_456
+  DELETE {router_prefix}/inventory/vectorstore_files/delete?vector_store_id=vs_123&file_id=file_456&format=json
   """
   function_name = 'delete_file_from_vectorstore()'
   request_data = log_function_header(function_name)
   request_params = dict(request.query_params)
   
   endpoint = '/' + function_name.replace('()','')
-  endpoint_documentation = delete_file_from_vectorstore.__doc__
+  endpoint_documentation = delete_file_from_vectorstore.__doc__.replace('{router_prefix}', router_prefix)
   documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
   # Display documentation if no params are provided
   if len(request_params) == 0: await log_function_footer(request_data); return HTMLResponse(documentation_HTML)
@@ -590,17 +593,17 @@ async def files(request: Request):
   - excludeattributes: Comma-separated list of attributes to exclude from response (ignored if includeattributes is set)
     
   Examples:
-  /files
-  /files?format=json
-  /files?format=json&includeattributes=id,filename,created_at
-  /files?format=json&excludeattributes=purpose,status_details
+  {router_prefix}/inventory/files
+  {router_prefix}/inventory/files?format=json
+  {router_prefix}/inventory/files?format=json&includeattributes=id,filename,created_at
+  {router_prefix}/inventory/files?format=html&excludeattributes=status,status_details
   """
   function_name = 'files()'
   request_data = log_function_header(function_name)
   request_params = dict(request.query_params)
   
   endpoint = '/' + function_name.replace('()','')  
-  endpoint_documentation = files.__doc__
+  endpoint_documentation = files.__doc__.replace('{router_prefix}', router_prefix)
   documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
   # Display documentation if no params are provided
   if len(request_params) == 0: await log_function_footer(request_data); return HTMLResponse(documentation_HTML)
@@ -655,15 +658,15 @@ async def delete_file(request: Request):
   - format: Response format (json or html, default: html)
   
   Examples:
-  DELETE /files/delete?file_id=file_456
-  DELETE /files/delete?file_id=file_456&format=json
+  DELETE {router_prefix}/inventory/files/delete?file_id=file_456
+  DELETE {router_prefix}/inventory/files/delete?file_id=file_456&format=json
   """
   function_name = 'delete_file()'
   request_data = log_function_header(function_name)
   request_params = dict(request.query_params)
   
   endpoint = '/' + function_name.replace('()','')
-  endpoint_documentation = delete_file.__doc__
+  endpoint_documentation = delete_file.__doc__.replace('{router_prefix}', router_prefix)
   documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
   # Display documentation if no params are provided
   if len(request_params) == 0: await log_function_footer(request_data); return HTMLResponse(documentation_HTML)
@@ -719,17 +722,17 @@ async def assistants(request: Request):
   - excludeattributes: Comma-separated list of attributes to exclude from response (ignored if includeattributes is set)
     
   Examples:
-  /assistants
-  /assistants?format=json
-  /assistants?format=json&includeattributes=id,name,model,created_at
-  /assistants?format=json&excludeattributes=instructions,description
+  {router_prefix}/inventory/assistants
+  {router_prefix}/inventory/assistants?format=json
+  {router_prefix}/inventory/assistants?format=json&includeattributes=id,name,model,created_at
+  {router_prefix}/inventory/assistants?format=html&excludeattributes=metadata,tools,description
   """
   function_name = 'assistants()'
   request_data = log_function_header(function_name)
   request_params = dict(request.query_params)
   
   endpoint = '/' + function_name.replace('()','')  
-  endpoint_documentation = assistants.__doc__
+  endpoint_documentation = assistants.__doc__.replace('{router_prefix}', router_prefix)
   documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
   # Display documentation if no params are provided
   if len(request_params) == 0: await log_function_footer(request_data); return HTMLResponse(documentation_HTML)
@@ -784,15 +787,15 @@ async def delete_assistant(request: Request):
   - format: Response format (json or html, default: html)
   
   Examples:
-  DELETE /assistants/delete?assistant_id=asst_456
-  DELETE /assistants/delete?assistant_id=asst_456&format=json
+  DELETE {router_prefix}/inventory/assistants/delete?assistant_id=asst_456
+  DELETE {router_prefix}/inventory/assistants/delete?assistant_id=asst_456&format=json
   """
   function_name = 'delete_assistant()'
   request_data = log_function_header(function_name)
   request_params = dict(request.query_params)
   
   endpoint = '/' + function_name.replace('()','')
-  endpoint_documentation = delete_assistant.__doc__
+  endpoint_documentation = delete_assistant.__doc__.replace('{router_prefix}', router_prefix)
   documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
   # Display documentation if no params are provided
   if len(request_params) == 0: await log_function_footer(request_data); return HTMLResponse(documentation_HTML)

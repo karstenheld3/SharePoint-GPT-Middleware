@@ -13,11 +13,13 @@ router = APIRouter()
 
 # Configuration will be injected from app.py
 config = None
+router_prefix = ""
 
 # Set the configuration for test router. app_config: Config dataclass with openai_client, persistent_storage_path, etc.
-def set_config(app_config):
-  global config
+def set_config(app_config, prefix: str = ""):
+  global config, router_prefix
   config = app_config
+  router_prefix = prefix
 
 
 @router.get('/testrouter/streaming01')

@@ -11,8 +11,9 @@ from fastapi.staticfiles import StaticFiles
 
 from common_openai_functions import create_async_azure_openai_client_with_api_key, create_async_azure_openai_client_with_credential, create_async_openai_client
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
-from routers_v1 import crawler, inventory, openai_proxy, sharepoint_search, domains, testrouter, testrouter2, testrouter3
-from routers_v1.sharepoint_search import build_domains_and_metadata_cache
+from routers_v1 import crawler, inventory, domains, testrouter, testrouter2, testrouter3
+from routers_static import openai_proxy, sharepoint_search
+from routers_static.sharepoint_search import build_domains_and_metadata_cache
 from utils import ZipExtractionMode, acquire_startup_lock, convert_to_flat_html_table, extract_zip_files, format_config_for_displaying, format_filesize, log_function_footer, log_function_header, log_function_output, log_function_footer_sync, clear_folder
 
 # Load environment variables from a local .env file if present
@@ -439,51 +440,54 @@ def create_app() -> FastAPI:
   except Exception as e:
     initialization_errors.append({"component": "SharePoint Search Router", "error": str(e)})
   
-  # Include Inventory router under /v1
+  # Include V1 routers
+  v1_router_prefix = "/v1"
+  
+  # Include Inventory router
   try:
-    app.include_router(inventory.router, tags=["Inventory"], prefix="/v1")
-    inventory.set_config(config)
-    log_function_output(log_data, "Inventory router included at /v1")
+    app.include_router(inventory.router, tags=["Inventory"], prefix=v1_router_prefix)
+    inventory.set_config(config, v1_router_prefix)
+    log_function_output(log_data, f"Inventory router included at {v1_router_prefix}")
   except Exception as e:
     initialization_errors.append({"component": "Inventory Router", "error": str(e)})
   
   # Include Crawler router under /v1
   try:
-    app.include_router(crawler.router, tags=["Crawler"], prefix="/v1")
-    crawler.set_config(config)
-    log_function_output(log_data, "Crawler router included at /v1")
+    app.include_router(crawler.router, tags=["Crawler"], prefix=v1_router_prefix)
+    crawler.set_config(config, v1_router_prefix)
+    log_function_output(log_data, f"Crawler router included at {v1_router_prefix}")
   except Exception as e:
     initialization_errors.append({"component": "Crawler Router", "error": str(e)})
   
   # Include Domains router under /v1
   try:
-    app.include_router(domains.router, tags=["Domains"], prefix="/v1")
-    domains.set_config(config)
-    log_function_output(log_data, "Domains router included at /v1")
+    app.include_router(domains.router, tags=["Domains"], prefix=v1_router_prefix)
+    domains.set_config(config, v1_router_prefix)
+    log_function_output(log_data, f"Domains router included at {v1_router_prefix}")
   except Exception as e:
     initialization_errors.append({"component": "Domains Router", "error": str(e)})
   
   # Include Test router under /testrouter
   try:
-    app.include_router(testrouter.router, tags=["Test"], prefix="/v1")
-    testrouter.set_config(config)
-    log_function_output(log_data, "Test router included at /v1")
+    app.include_router(testrouter.router, tags=["Test"], prefix=v1_router_prefix)
+    testrouter.set_config(config, v1_router_prefix)
+    log_function_output(log_data, f"Test router included at {v1_router_prefix}")
   except Exception as e:
     initialization_errors.append({"component": "Test Router", "error": str(e)})
   
-  # Include Test router V2 under /testrouter2
+  # Include Test router V1B under /testrouter2
   try:
-    app.include_router(testrouter2.router, tags=["Test V2"], prefix="/v1")
-    testrouter2.set_config(config)
-    log_function_output(log_data, "Test router V2 included at /v1")
+    app.include_router(testrouter2.router, tags=["Test V1B"], prefix=v1_router_prefix)
+    testrouter2.set_config(config, v1_router_prefix)
+    log_function_output(log_data, f"Test router V2 included at {v1_router_prefix}")
   except Exception as e:
     initialization_errors.append({"component": "Test Router 2", "error": str(e)})
   
-  # Include Test router V3 under /testrouter3
+  # Include Test router V1C under /testrouter3
   try:
-    app.include_router(testrouter3.router, tags=["Test V3"], prefix="/v1")
-    testrouter3.set_config(config)
-    log_function_output(log_data, "Test router V3 included at /v1")
+    app.include_router(testrouter3.router, tags=["Test V1C"], prefix=v1_router_prefix)
+    testrouter3.set_config(config, v1_router_prefix)
+    log_function_output(log_data, f"Test router V3 included at {v1_router_prefix}")
   except Exception as e:
     initialization_errors.append({"component": "Test Router 3", "error": str(e)})
   

@@ -16,11 +16,13 @@ router = APIRouter()
 
 # Configuration will be injected from app.py
 config = None
+router_prefix = ""
 
 # Set the configuration for Crawler management. app_config: Config dataclass with openai_client, persistent_storage_path, etc.
-def set_config(app_config):
-  global config
+def set_config(app_config, prefix: str = ""):
+  global config, router_prefix
   config = app_config
+  router_prefix = prefix
 
 def _delete_zip_file(file_path: str, log_data: Dict[str, Any] = None) -> None:
   """Delete the zip file after it has been served."""
@@ -33,7 +35,6 @@ def _delete_zip_file(file_path: str, log_data: Dict[str, Any] = None) -> None:
     if log_data: log_function_output(log_data, f"ERROR: {error_msg}")
 
 
-
 @router.get('/crawler', response_class=HTMLResponse)
 async def crawler_root(request: Request):
   """
@@ -43,8 +44,8 @@ async def crawler_root(request: Request):
   - format: The response format (default documentation or ui)
   
   Examples:
-  /v1/crawler/
-  /v1/crawler/?format=ui
+  {router_prefix}/crawler/
+  {router_prefix}/crawler/?format=ui
   """
   function_name = 'crawler_root()'
   request_data = log_function_header(function_name)
@@ -73,10 +74,10 @@ async def crawler_root(request: Request):
         domain_id = domain_dict.get('domain_id', '')
         
         # Add list actions HTML
-        domain_dict['list_actions'] = f'<a href="/v1/crawler/list_vectorstore_files?domain_id={domain_id}">Vector Store Files</a><br><a href="/v1/crawler/list_sharepoint_files?domain_id={domain_id}">SharePoint Files</a>'
+        domain_dict['list_actions'] = f'<a href="{router_prefix}/crawler/list_vectorstore_files?domain_id={domain_id}">Vector Store Files</a><br><a href="{router_prefix}/crawler/list_sharepoint_files?domain_id={domain_id}">SharePoint Files</a>'
         
         # Add crawl actions HTML
-        domain_dict['crawl_actions'] = f'<a href="/v1/crawler/download_files?domain_id={domain_id}">Download Files</a><br><a href="/v1/crawler/update_vector_store?domain_id={domain_id}">Update Vector Store</a>'
+        domain_dict['crawl_actions'] = f'<a href="{router_prefix}/crawler/download_files?domain_id={domain_id}">Download Files</a><br><a href="{router_prefix}/crawler/update_vector_store?domain_id={domain_id}">Update Vector Store</a>'
         
         domains_data.append(domain_dict)
       
@@ -89,7 +90,7 @@ async def crawler_root(request: Request):
         {'field': 'crawl_actions', 'header': 'Crawl'}
       ]
       
-      toolbar_html = '<div class="toolbar"><a href="/v1/crawler/replicate_to_global?format=html" class="btn-primary">Replicate to Global Vector Store</a></div>'
+      toolbar_html = f'<div class="toolbar"><a href="{router_prefix}/crawler/replicate_to_global?format=html" class="btn-primary">Replicate to Global Vector Store</a></div>'
       additional_content = '<div id="result-container"></div>'
       
       html_content = generate_ui_table_page(
@@ -129,15 +130,15 @@ async def crawler_root(request: Request):
 
   <h4>Available Endpoints</h4>
   <ul>
-    <li><a href="/v1/crawler/?format=ui">/v1/crawler/?format=ui</a> - Crawler UI (Domain List with Actions)</li>
-    <li><a href="/v1/crawler/download_files">/v1/crawler/download_files</a> - Download SharePoint Files (<a href="/v1/crawler/download_files?domain_id=ExampleDomain01&source_id=source01&format=html">Example HTML</a> + <a href="/v1/crawler/download_files?domain_id=ExampleDomain01&format=json">Example JSON</a>)</li>
-    <li><a href="/v1/crawler/update_vector_store">/v1/crawler/update_vector_store</a> - Update Vector Store (<a href="/v1/crawler/update_vector_store?domain_id=ExampleDomain01&format=html">Example HTML</a> + <a href="/v1/crawler/update_vector_store?domain_id=ExampleDomain01&temp_vs_only=true&format=json">Example JSON</a>)</li>
-    <li><a href="/v1/crawler/replicate_to_global">/v1/crawler/replicate_to_global</a> - Replicate All Domain Vector Stores to Global Vector Store (<a href="/v1/crawler/replicate_to_global?format=html">HTML</a> + <a href="/v1/crawler/replicate_to_global?format=json">JSON</a>)</li>
-    <li><a href="/v1/crawler/localstorage">/v1/crawler/localstorage</a> - Local Storage Inventory (<a href="/v1/crawler/localstorage?format=html">HTML</a> + <a href="/v1/crawler/localstorage?format=json">JSON</a> + <a href="/v1/crawler/localstorage?format=zip">ZIP</a> + <a href="/v1/crawler/localstorage?format=zip&exceptfolder=crawler">ZIP except 'crawler' folder</a>)</li>
-    <li><a href="/v1/crawler/list_sharepoint_files">/v1/crawler/list_sharepoint_files</a> - List SharePoint Files (<a href="/v1/crawler/list_sharepoint_files?domain_id=ExampleDomain01&source_id=source01&format=html&includeattributes=sharepoint_listitem_id,sharepoint_unique_file_id,raw_url,filename,file_size,last_modified_utc">Example HTML</a> + <a href="/v1/crawler/list_sharepoint_files?domain_id=ExampleDomain01&source_id=source01&format=json">Example JSON</a>)</li>
-    <li><a href="/v1/crawler/list_local_files">/v1/crawler/list_local_files</a> - List Local Embedded Files (<a href="/v1/crawler/list_local_files?domain_id=ExampleDomain01&format=html&includeattributes=file_path,raw_url,file_size,last_modified_utc">Example HTML</a> + <a href="/v1/crawler/list_local_files?domain_id=ExampleDomain01&source_id=source01&format=json">Example JSON</a>)</li>
-    <li><a href="/v1/crawler/list_vectorstore_files">/v1/crawler/list_vectorstore_files</a> - List Vector Store Files (<a href="/v1/crawler/list_vectorstore_files?domain_id=ExampleDomain01&format=html">Example HTML</a> + <a href="/v1/crawler/list_vectorstore_files?domain_id=ExampleDomain01&format=json">Example JSON</a>)</li>
-    <li><a href="/v1/crawler/migrate_from_v2_to_v3">/v1/crawler/migrate_from_v2_to_v3</a> - Migrate files_metadata.json from v2 to v3 format (<a href="/v1/crawler/migrate_from_v2_to_v3?format=html">HTML</a> + <a href="/v1/crawler/migrate_from_v2_to_v3?format=json">JSON</a>)</li>
+    <li><a href="{router_prefix}/crawler/?format=ui">{router_prefix}/crawler/?format=ui</a> - Crawler UI (Domain List with Actions)</li>
+    <li><a href="{router_prefix}/crawler/download_files">{router_prefix}/crawler/download_files</a> - Download SharePoint Files (<a href="{router_prefix}/crawler/download_files?domain_id=ExampleDomain01&source_id=source01&format=html">Example HTML</a> + <a href="{router_prefix}/crawler/download_files?domain_id=ExampleDomain01&format=json">Example JSON</a>)</li>
+    <li><a href="{router_prefix}/crawler/update_vector_store">{router_prefix}/crawler/update_vector_store</a> - Update Vector Store (<a href="{router_prefix}/crawler/update_vector_store?domain_id=ExampleDomain01&format=html">Example HTML</a> + <a href="{router_prefix}/crawler/update_vector_store?domain_id=ExampleDomain01&temp_vs_only=true&format=json">Example JSON</a>)</li>
+    <li><a href="{router_prefix}/crawler/replicate_to_global">{router_prefix}/crawler/replicate_to_global</a> - Replicate All Domain Vector Stores to Global Vector Store (<a href="{router_prefix}/crawler/replicate_to_global?format=html">HTML</a> + <a href="{router_prefix}/crawler/replicate_to_global?format=json">JSON</a>)</li>
+    <li><a href="{router_prefix}/crawler/localstorage">{router_prefix}/crawler/localstorage</a> - Local Storage Inventory (<a href="{router_prefix}/crawler/localstorage?format=html">HTML</a> + <a href="{router_prefix}/crawler/localstorage?format=json">JSON</a> + <a href="{router_prefix}/crawler/localstorage?format=zip">ZIP</a> + <a href="{router_prefix}/crawler/localstorage?format=zip&exceptfolder=crawler">ZIP except 'crawler' folder</a>)</li>
+    <li><a href="{router_prefix}/crawler/list_sharepoint_files">{router_prefix}/crawler/list_sharepoint_files</a> - List SharePoint Files (<a href="{router_prefix}/crawler/list_sharepoint_files?domain_id=ExampleDomain01&source_id=source01&format=html&includeattributes=sharepoint_listitem_id,sharepoint_unique_file_id,raw_url,filename,file_size,last_modified_utc">Example HTML</a> + <a href="{router_prefix}/crawler/list_sharepoint_files?domain_id=ExampleDomain01&source_id=source01&format=json">Example JSON</a>)</li>
+    <li><a href="{router_prefix}/crawler/list_local_files">{router_prefix}/crawler/list_local_files</a> - List Local Embedded Files (<a href="{router_prefix}/crawler/list_local_files?domain_id=ExampleDomain01&format=html&includeattributes=file_path,raw_url,file_size,last_modified_utc">Example HTML</a> + <a href="{router_prefix}/crawler/list_local_files?domain_id=ExampleDomain01&source_id=source01&format=json">Example JSON</a>)</li>
+    <li><a href="{router_prefix}/crawler/list_vectorstore_files">{router_prefix}/crawler/list_vectorstore_files</a> - List Vector Store Files (<a href="{router_prefix}/crawler/list_vectorstore_files?domain_id=ExampleDomain01&format=html">Example HTML</a> + <a href="{router_prefix}/crawler/list_vectorstore_files?domain_id=ExampleDomain01&format=json">Example JSON</a>)</li>
+    <li><a href="{router_prefix}/crawler/migrate_from_v2_to_v3">{router_prefix}/crawler/migrate_from_v2_to_v3</a> - Migrate files_metadata.json from v2 to v3 format (<a href="{router_prefix}/crawler/migrate_from_v2_to_v3?format=html">HTML</a> + <a href="{router_prefix}/crawler/migrate_from_v2_to_v3?format=json">JSON</a>)</li>
   </ul>
 
   <p><a href="/">← Back to Main Page</a></p>
@@ -145,7 +146,7 @@ async def crawler_root(request: Request):
 </html>
 """
 
-@router.get('/localstorage')
+@router.get('/crawler/localstorage')
 async def localstorage(request: Request, background_tasks: BackgroundTasks):
   """
   Endpoint to retrieve all files and folders from local persistent storage recursively.
@@ -155,18 +156,18 @@ async def localstorage(request: Request, background_tasks: BackgroundTasks):
   - exceptfolder: Folder name to exclude from processing (optional)
     
   Examples:
-  /localstorage
-  /localstorage?format=json
-  /localstorage?format=html
-  /localstorage?format=zip
-  /localstorage?format=zip&exceptfolder=crawler
+  {router_prefix}/crawler/localstorage
+  {router_prefix}/crawler/localstorage?format=json
+  {router_prefix}/crawler/localstorage?format=html
+  {router_prefix}/crawler/localstorage?format=zip
+  {router_prefix}/crawler/localstorage?format=zip&exceptfolder=crawler
   """
   function_name = 'localstorage()'
   request_data = log_function_header(function_name)
   request_params = dict(request.query_params)
   
   endpoint = '/' + function_name.replace('()','')  
-  endpoint_documentation = localstorage.__doc__
+  endpoint_documentation = localstorage.__doc__.replace('{router_prefix}', router_prefix)
   documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
   # Display documentation if no params are provided
   if len(request_params) == 0: await log_function_footer(request_data); return HTMLResponse(documentation_HTML)
@@ -212,7 +213,7 @@ async def localstorage(request: Request, background_tasks: BackgroundTasks):
     else:
       # HTML format with nested table
       title = f"Local Storage Contents - {storage_path}"
-      html_content = generate_nested_data_page(title, storage_contents, back_link="/v1/crawler?format=ui", back_text="← Back to Crawler")
+      html_content = generate_nested_data_page(title, storage_contents, back_link=f"{router_prefix}/crawler?format=ui", back_text="← Back to Crawler")
       await log_function_footer(request_data)
       return HTMLResponse(html_content)
       
@@ -228,7 +229,7 @@ async def localstorage(request: Request, background_tasks: BackgroundTasks):
       return HTMLResponse(error_html, status_code=500)
 
 
-@router.get('/list_sharepoint_files')
+@router.get('/crawler/list_sharepoint_files')
 async def list_sharepoint_files(request: Request):
   """
   Endpoint to list files from a SharePoint document library for a specific domain source.
@@ -245,11 +246,11 @@ async def list_sharepoint_files(request: Request):
   - excludeattributes: Comma-separated list of attributes to exclude from response (ignored if includeattributes is set)
   
   Examples:
-  /list_sharepoint_files?domain_id=ExampleDomain01&format=json
-  /list_sharepoint_files?domain_id=ExampleDomain01&source_id=source01&format=json
-  /list_sharepoint_files?domain_id=ExampleDomain01&source_id=source01&format=html
-  /list_sharepoint_files?domain_id=ExampleDomain01&source_id=source01&format=json&includeattributes=filename,file_size,last_modified_utc
-  /list_sharepoint_files?domain_id=ExampleDomain01&source_id=source01&format=json&excludeattributes=file_id,file_path
+  {router_prefix}/crawler/list_sharepoint_files?domain_id=ExampleDomain01&format=json
+  {router_prefix}/crawler/list_sharepoint_files?domain_id=ExampleDomain01&source_id=source01&format=json
+  {router_prefix}/crawler/list_sharepoint_files?domain_id=ExampleDomain01&source_id=source01&format=html
+  {router_prefix}/crawler/list_sharepoint_files?domain_id=ExampleDomain01&source_id=source01&format=json&includeattributes=filename,file_size,last_modified_utc
+  {router_prefix}/crawler/list_sharepoint_files?domain_id=ExampleDomain01&source_id=source01&format=json&excludeattributes=file_id,file_path
   """
   
   function_name = 'list_sharepoint_files()'
@@ -257,7 +258,7 @@ async def list_sharepoint_files(request: Request):
   request_params = dict(request.query_params)
   
   endpoint = '/' + function_name.replace('()','')  
-  endpoint_documentation = list_sharepoint_files.__doc__
+  endpoint_documentation = list_sharepoint_files.__doc__.replace('{router_prefix}', router_prefix)
   documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
   
   # Display documentation if no params are provided
@@ -369,7 +370,7 @@ async def list_sharepoint_files(request: Request):
   <p><strong>Total Files:</strong> {len(files)}</p>
   <hr>
   {table_html}
-  <p><a href="/v1/crawler?format=ui">← Back to Crawler</a></p>
+  <p><a href="{router_prefix}/crawler?format=ui">← Back to Crawler</a></p>
 </body>
 </html>"""
       
@@ -384,7 +385,7 @@ async def list_sharepoint_files(request: Request):
       return JSONResponse({"error": error_message}, status_code=500)
     return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
 
-@router.get('/list_local_files')
+@router.get('/crawler/list_local_files')
 async def list_local_files(request: Request):
   """
   Endpoint to list local embedded files from the crawler storage for a specific domain source.
@@ -400,11 +401,11 @@ async def list_local_files(request: Request):
   - excludeattributes: Comma-separated list of attributes to exclude from response (ignored if includeattributes is set)
   
   Examples:
-  /list_local_files?domain_id=ExampleDomain01&format=json
-  /list_local_files?domain_id=ExampleDomain01&source_id=source01&format=json
-  /list_local_files?domain_id=ExampleDomain01&source_id=source01&format=html
-  /list_local_files?domain_id=ExampleDomain01&source_id=source01&format=json&includeattributes=filename,file_size,last_modified_utc
-  /list_local_files?domain_id=ExampleDomain01&source_id=source01&format=json&excludeattributes=file_id,file_path
+  {router_prefix}/crawler/list_local_files?domain_id=ExampleDomain01&format=json
+  {router_prefix}/crawler/list_local_files?domain_id=ExampleDomain01&source_id=source01&format=json
+  {router_prefix}/crawler/list_local_files?domain_id=ExampleDomain01&source_id=source01&format=html
+  {router_prefix}/crawler/list_local_files?domain_id=ExampleDomain01&source_id=source01&format=json&includeattributes=file_path,file_size,last_modified_utc
+  {router_prefix}/crawler/list_local_files?domain_id=ExampleDomain01&source_id=source01&format=json&excludeattributes=file_id,openai_file_idpath
   """
   
   function_name = 'list_local_files()'
@@ -412,7 +413,7 @@ async def list_local_files(request: Request):
   request_params = dict(request.query_params)
   
   endpoint = '/' + function_name.replace('()','')  
-  endpoint_documentation = list_local_files.__doc__
+  endpoint_documentation = list_local_files.__doc__.replace('{router_prefix}', router_prefix)
   documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
   
   # Display documentation if no params are provided
@@ -527,7 +528,7 @@ async def list_local_files(request: Request):
   <p><strong>Total Files:</strong> {len(files)}</p>
   <hr>
   {table_html}
-  <p><a href="/v1/crawler?format=ui">← Back to Crawler</a></p>
+  <p><a href="{router_prefix}/crawler?format=ui">← Back to Crawler</a></p>
 </body>
 </html>"""
       
@@ -542,7 +543,7 @@ async def list_local_files(request: Request):
       return JSONResponse({"error": error_message}, status_code=500)
     return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
 
-@router.get('/list_vectorstore_files')
+@router.get('/crawler/list_vectorstore_files')
 async def list_vectorstore_files(request: Request):
   """
   Endpoint to list files from the OpenAI vector store for a specific domain.
@@ -557,10 +558,10 @@ async def list_vectorstore_files(request: Request):
   - excludeattributes: Comma-separated list of attributes to exclude from response (ignored if includeattributes is set)
   
   Examples:
-  /list_vectorstore_files?domain_id=ExampleDomain01&format=json
-  /list_vectorstore_files?domain_id=ExampleDomain01&format=html
-  /list_vectorstore_files?domain_id=ExampleDomain01&format=json&includeattributes=filename,bytes,status
-  /list_vectorstore_files?domain_id=ExampleDomain01&format=json&excludeattributes=expires_at,status_details
+  {router_prefix}/crawler/list_vectorstore_files?domain_id=ExampleDomain01&format=json
+  {router_prefix}/crawler/list_vectorstore_files?domain_id=ExampleDomain01&format=html
+  {router_prefix}/crawler/list_vectorstore_files?domain_id=ExampleDomain01&format=json&includeattributes=filename,bytes,status
+  {router_prefix}/crawler/list_vectorstore_files?domain_id=ExampleDomain01&format=json&excludeattributes=id,created_at,status_details
   """
   
   function_name = 'list_vectorstore_files()'
@@ -568,7 +569,7 @@ async def list_vectorstore_files(request: Request):
   request_params = dict(request.query_params)
   
   endpoint = '/' + function_name.replace('()','')  
-  endpoint_documentation = list_vectorstore_files.__doc__
+  endpoint_documentation = list_vectorstore_files.__doc__.replace('{router_prefix}', router_prefix)
   documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
   
   # Display documentation if no params are provided
@@ -670,7 +671,7 @@ async def list_vectorstore_files(request: Request):
   <p><strong>Total Files:</strong> {len(files_list)}</p>
   <hr>
   {table_html}
-  <p><a href="/v1/crawler">← Back to Crawler</a></p>
+  <p><a href="{router_prefix}/crawler">← Back to Crawler</a></p>
 </body>
 </html>"""
       
@@ -686,7 +687,7 @@ async def list_vectorstore_files(request: Request):
     return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
 
 
-@router.get('/migrate_from_v2_to_v3')
+@router.get('/crawler/migrate_from_v2_to_v3')
 async def migrate_from_v2_to_v3(request: Request):
   """
   Migrate files_metadata.json from v2 to v3 format across all domains.
@@ -851,7 +852,7 @@ async def migrate_from_v2_to_v3(request: Request):
   <h2>Details</h2>
   {results_html}
   <hr>
-  <p><a href="/v1/crawler">← Back to Crawler</a></p>
+  <p><a href="{router_prefix}/crawler">← Back to Crawler</a></p>
 </body>
 </html>"""
       
@@ -865,7 +866,7 @@ async def migrate_from_v2_to_v3(request: Request):
       return JSONResponse({"error": error_message}, status_code=500)
     return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
 
-@router.get('/download_files')
+@router.get('/crawler/download_files')
 async def download_files(request: Request):
   """
   Endpoint to download files from SharePoint for a specific domain.
@@ -876,15 +877,15 @@ async def download_files(request: Request):
   - format: Response format - 'html' or 'json' (default: 'html')
     
   Examples:
-  /download_files?domain_id=ExampleDomain01&source_id=source01&format=html
-  /download_files?domain_id=ExampleDomain01&format=json
+  {router_prefix}/crawler/download_files?domain_id=ExampleDomain01&source_id=source01&format=html
+  {router_prefix}/crawler/download_files?domain_id=ExampleDomain01&format=json
   """
   function_name = 'download_files()'
   request_data = log_function_header(function_name)
   request_params = dict(request.query_params)
   
   endpoint = '/' + function_name.replace('()','')  
-  endpoint_documentation = download_files.__doc__
+  endpoint_documentation = download_files.__doc__.replace('{router_prefix}', router_prefix)
   documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
   # Display documentation if no params are provided
   if len(request_params) == 0: await log_function_footer(request_data); return HTMLResponse(documentation_HTML)
@@ -944,7 +945,7 @@ async def download_files(request: Request):
       html_response = generate_nested_data_page(
         title=f"Download Files - {domain_id}",
         data=results,
-        back_link="/v1/crawler?format=ui",
+        back_link=f"{router_prefix}/crawler?format=ui",
         back_text="← Back to Crawler"
       )
       return HTMLResponse(content=html_response)
@@ -965,7 +966,7 @@ async def download_files(request: Request):
     await log_function_footer(request_data)
     return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
 
-@router.get('/update_vector_store')
+@router.get('/crawler/update_vector_store')
 async def update_vector_store(request: Request):
   """
   Endpoint to update vector store with files from local storage.
@@ -976,15 +977,15 @@ async def update_vector_store(request: Request):
   - format: Response format - 'html' or 'json' (default: 'html')
     
   Examples:
-  /update_vector_store?domain_id=ExampleDomain01&format=html
-  /update_vector_store?domain_id=ExampleDomain01&temp_vs_only=true&format=json
+  {router_prefix}/crawler/update_vector_store?domain_id=ExampleDomain01&format=html
+  {router_prefix}/crawler/update_vector_store?domain_id=ExampleDomain01&temp_vs_only=true&format=json
   """
   function_name = 'update_vector_store()'
   request_data = log_function_header(function_name)
   request_params = dict(request.query_params)
   
   endpoint = '/' + function_name.replace('()','')  
-  endpoint_documentation = update_vector_store.__doc__
+  endpoint_documentation = update_vector_store.__doc__.replace('{router_prefix}', router_prefix)
   documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
   if len(request_params) == 0: await log_function_footer(request_data); return HTMLResponse(documentation_HTML)
 
@@ -1039,7 +1040,7 @@ async def update_vector_store(request: Request):
     if format == 'json':
       return JSONResponse(content=results)
     else:
-      html_response = generate_nested_data_page(title=f"Update Vector Store - {domain_id}", data=results, back_link="/v1/crawler?format=ui", back_text="← Back to Crawler")
+      html_response = generate_nested_data_page(title=f"Update Vector Store - {domain_id}", data=results, back_link=f"{router_prefix}/crawler?format=ui", back_text="← Back to Crawler")
       return HTMLResponse(content=html_response)
       
   except FileNotFoundError as e:
@@ -1058,7 +1059,7 @@ async def update_vector_store(request: Request):
     await log_function_footer(request_data)
     return HTMLResponse(content=error_message, status_code=500, media_type='text/plain; charset=utf-8')
 
-@router.get('/replicate_to_global')
+@router.get('/crawler/replicate_to_global')
 async def replicate_to_global(request: Request):
   """
   Endpoint to replicate all domain vector stores to the global vector store.
@@ -1070,8 +1071,8 @@ async def replicate_to_global(request: Request):
   - format: Response format - 'html' or 'json' (default: 'html')
   
   Examples:
-  /v1/crawler/replicate_to_global?format=html
-  /v1/crawler/replicate_to_global?format=json
+  {router_prefix}/crawler/replicate_to_global?format=html
+  {router_prefix}/crawler/replicate_to_global?format=json
   """
   
   function_name = 'replicate_to_global()'
@@ -1079,7 +1080,7 @@ async def replicate_to_global(request: Request):
   request_params = dict(request.query_params)
   
   endpoint = '/' + function_name.replace('()','')  
-  endpoint_documentation = replicate_to_global.__doc__
+  endpoint_documentation = replicate_to_global.__doc__.replace('{router_prefix}', router_prefix)
   documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
   
   # Display documentation if no params are provided
@@ -1140,7 +1141,7 @@ async def replicate_to_global(request: Request):
       html_response = generate_nested_data_page(
         title=f"Replicate to Global Vector Store",
         data=results,
-        back_link="/v1/crawler?format=ui",
+        back_link=f"{router_prefix}/crawler?format=ui",
         back_text="← Back to Crawler"
       )
       return HTMLResponse(content=html_response)

@@ -10,6 +10,6 @@ Read these files.
 
 Then read:
 - /src: app.py, utils.py
-- /src/routers: crawler.py, domains.py, inventory.py
+- /src/routers_v1: crawler.py, domains.py, inventory.py
 
 Return only a single line: "Read [x] md files, [y] code files, [z]k context tokens"

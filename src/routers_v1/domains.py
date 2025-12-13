@@ -15,11 +15,13 @@ router = APIRouter()
 
 # Configuration will be injected from app.py
 config = None
+router_prefix = ""
 
-def set_config(app_config):
+def set_config(app_config, prefix: str = ""):
   """Set the configuration for Domain management."""
-  global config
+  global config, router_prefix
   config = app_config
+  router_prefix = prefix
 
 
 @router.get('/domains')
@@ -43,7 +45,7 @@ async def list_domains(request: Request):
   # Display documentation if no params are provided
   if len(request_params) == 0:
     await log_function_footer(request_data)
-    return HTMLResponse(generate_documentation_page('/v1/domains', list_domains.__doc__))
+    return HTMLResponse(generate_documentation_page(f'{router_prefix}/domains', list_domains.__doc__))
 
   format = request_params.get('format', 'html')
   
@@ -79,13 +81,13 @@ async def list_domains(request: Request):
       <td>{domain.vector_store_id}</td>
       <td class="actions">
       <button class="btn-small btn-edit" 
-          hx-get="/v1/domains/update?domain_id={domain.domain_id}&format=ui"
+          hx-get="{router_prefix}/domains/update?domain_id={domain.domain_id}&format=ui"
           hx-target="#form-container"
           hx-swap="innerHTML">
         Edit
       </button>
       <button class="btn-small btn-delete" 
-          hx-delete="/v1/domains/delete?domain_id={domain.domain_id}&format=html"
+          hx-delete="{router_prefix}/domains/delete?domain_id={domain.domain_id}&format=html"
           hx-confirm="Are you sure you want to delete domain '{domain.name}'?"
           hx-target="#domain-{domain.domain_id}"
           hx-swap="outerHTML">
@@ -172,7 +174,7 @@ async def list_domains(request: Request):
   }}"""
       
       toolbar_html = f"""<div class="toolbar">
-    {generate_toolbar_button('+ Add New Domain', '/v1/domains/create?format=ui', '#form-container')}
+    {generate_toolbar_button('+ Add New Domain', f'{router_prefix}/domains/create?format=ui', '#form-container')}
   </div>"""
       
       headers = ['Domain ID', 'Name', 'Vector Store Name', 'Vector Store ID', 'Actions']
@@ -241,7 +243,7 @@ async def get_create_form(request: Request):
   <div class="modal" id="create-modal">
     <div class="modal-content" style="max-width: 900px;">
       <h2>Create New Domain</h2>
-      <form hx-post="/v1/domains/create?format=html" 
+      <form hx-post="{router_prefix}/domains/create?format=html" 
           hx-target="#form-container"
           hx-swap="innerHTML">
         <div class="form-group">
@@ -465,7 +467,7 @@ async def get_update_form(request: Request):
     <div class="modal" id="update-modal">
       <div class="modal-content" style="max-width: 900px;">
         <h2>Update Domain: {domain.name}</h2>
-        <form hx-put="/v1/domains/update?format=html" 
+        <form hx-put="{router_prefix}/domains/update?format=html" 
             hx-target="#form-container"
             hx-swap="innerHTML">
           <input type="hidden" name="domain_id" value="{domain.domain_id}">

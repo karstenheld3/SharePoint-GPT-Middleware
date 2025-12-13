@@ -1,7 +1,9 @@
-# Routers Technical Specification
+# Routers Technical Specification Version 2
+
+This document describes the design and implemenation of the **second generation** routers used for crawling, access to domain objects, and long-running job management. First generation routers and endpoints are out of scope and should remain untouched to ensure backwards compatibility.
 
 **Goal of this document:**
-- Specify implementation of routers with CRUD actions (Create, Read, Update, Delete). 'Read' is implemented as 'Get'.
+- Specify `/v2/` prefixed routers with interactive UI and CRUD operations (Create, Read, Update, Delete). 'Read' is implemented as 'Get' here.
 - Describe solution architecture
 - Document requirements and assumptions
 - Document design decisions and why they have been made
@@ -26,7 +28,7 @@ A FastAPI-based middleware application that bridges SharePoint content with Open
 - Creates map files in local storage to cache data and ids across systems
   - Allows comparison against new data in the sources
   - `sharepoint_map.csv` - caches file metadata from SharePoint
-  - `files_map.csv` - caches local storage metadata
+  - `files_map.csv` - caches local storage metadata and if a processed version of the list or sitepage exists
   - `vectorstore_map_csv`- caches vector store file metadata and maps it to local storage and SharePoint
 
 **Domain** - Knownledge domain to be used for RAG use cases
@@ -54,6 +56,7 @@ A FastAPI-based middleware application that bridges SharePoint content with Open
 
 **OpenAI proxy** - Replicates behavior of a number of OpenAI API endpoints
 - Allows porting of applications to a security-controlled environment where Open AI or Azure OpenAI backends must not be exposed directly
+- Everything 
 
 ## Endpoint architecture and design
 
@@ -67,8 +70,8 @@ In the following sections `resource` acts as a placeholder for the individual do
 - [DD-E004] Format param controls response: `json`, `html`, `ui` (resource root only), `stream` (long-running jobs). 
 - [DD-E005] Body accepts JSON or form data (content-type detection). Principle of least surprise: No need to look up documentation, it just works.
 - [DD-E006] Triggering, monitoring and management of crawling and other jobs via HTTP GET requests. Allows automation via single URL calls (low technology barrier).
-- [DD-E007] Semantic identifyer names like `resource_id` or `domain_id` that explicitly name the resource. Disambiguates object types and allow for actions that require multiple ids.
-- [DD-E008] Semantic entity identifyers like `rs_[RESOURCE_ID]` for a resource, `dm_[DOMAIN_ID]` for a domain. Self-explanatory system: disambiguates object types, simplifies support.
+- [DD-E007] Semantic identifyer names like `job_id`, `domain_id`, `source_id` that explicitly name the resource. Disambiguates object types and allow for actions that require multiple ids.
+- [DD-E008] Semantic entity identifyers for interally created ids like `jb_[JOB_NUMBER]` for a job. Self-explanatory system: disambiguates object types, simplifies support. Exceptions: Domain ids (used as folder names and `domain.json`) and source ids (used in `domain.json`)
 - [DD-E009] Plural naming for resources: `/domains`, `/vector_stores`. Exceptions possible: `/crawler`
 
 ### Why Action-Suffixed over RESTful?
@@ -83,38 +86,75 @@ In the following sections `resource` acts as a placeholder for the individual do
 - Easy to add new action endpoints that do not map to HTTP methods: `/domains/crawl?domain_id={id}&mode=incremental`, `/domains/source?domain_id={id}`
 - Simplified implementation: HTMX forms work naturally with explicit URLs
 
+### Endpoint versioning
+
+There are two types of endpoints:
+1. Unversioned (mostly in the root)
+2. Versioned (prefixed with `/v1/`, `/v2/`, etc.)
+
+**Unversioned endpoints - Query API and OpenAI Proxy**
+
+- Everything under `/openai/` - Necessary as the original OpenAI REST API is being proxied.
+- `POST /describe` - Returns metadata describing the SharePoint content search tool, including available domains and content root (JSON format)
+- `GET /describe2` - Returns metadata describing the SharePoint content search tool, including available domains and content root
+  - `GET /describe2?format=json` - Get metadata in JSON format
+  - `GET /describe2?format=html` - Get metadata in HTML format (default)
+- `POST /query` - Execute a search query against SharePoint documents (JSON request/response)
+  - Request body: `{"data": {"query": "[SEARCH_TEXT]", "vsid": "[VECTOR_STORE_ID]", "results": [MAX_RESULTS]}}`
+- `GET /query2` - Endpoint self-documentation as text (UTF-8)
+  - `GET /query2?query={text}&vsid={vector_store_id}` - Execute search query with HTML response (default)
+  - `GET /query2?query={text}&vsid={vector_store_id}&format=json` - Execute search query with JSON response
+  - `GET /query2?query={text}&vsid={vector_store_id}&results={max_results}` - Execute search query with custom result limit
+
+**Versioned endpoints - Crawler, Job Management, and new endpoints**
+
+Version 1 routers (untouched by this document):
+- inventory router - implements everything under `/v1/inventory/`
+- crawler router - implements everything under `/v1/crawler/`
+- domains router - implements everything under `/v1/domains/`
+- testrouter router - implements everything under `/v1/testrouter/` (streaming test endpoints: `/streaming01`, `/control`, `/operations`)
+- testrouter2 router - implements everything under `/v1/testrouter2/` (V2 streaming with file-based jobs: `/streaming01`, `/monitor`, `/control`, `/jobs`)
+- testrouter3 router - implements everything under `/v1/testrouter3/` (V3 streaming with reactive UI: `/streaming01`, `/monitor`, `/control`, `/jobs`)
+
+Version 2 routers (as specified in this document):
+- inventory router - implements everything under `/v2/inventory/`
+- crawler router - implements everything under `/v2/crawler/`
+- domains router - implements everything under `/v2/domains/`
+- jobs router - implements everything under `/v2/jobs/`
+
+
 ### Action-Suffixed syntax uses explicit action names
 
 **Endpoint format**
-- List top-level resource: `/[RESOURCE]?[PARAM_1]=[VALUE_1]&[PARAM_2]=[VALUE_2]`
-- Perform action with top-level resource: `/[RESOURCE]/[ACTION]?[PARAM_1]=[VALUE_1]&[PARAM_2]=[VALUE_2]`
-- Perform action nested resource: `/[RESOURCE]/[RESOURCE]/[ACTION]?[PARAM_1]=[VALUE_1]&[PARAM_2]=[VALUE_2]`
+- List top-level resource: `/v2/[RESOURCE]?[PARAM_1]=[VALUE_1]&[PARAM_2]=[VALUE_2]`
+- Perform action with top-level resource: `/v2/[RESOURCE]/[ACTION]?[PARAM_1]=[VALUE_1]&[PARAM_2]=[VALUE_2]`
+- Perform action nested resource: `/v2/[RESOURCE]/[RESOURCE]/[ACTION]?[PARAM_1]=[VALUE_1]&[PARAM_2]=[VALUE_2]`
 
 **Actions**
-- `GET /resource` - Endpoint self-documentation as text (UTF-8)
-- `GET /resource?format=json` - Get all
-- `GET /resource/get?resource_id={id}` - Get single
-  - Example variant: `GET /resource/get_content?resource_id={id}` - Retrieve content of single item
-- `POST /resource/create` - Create
-- `PUT /resource/update?resource_id={id}` - Update
-  - Example variant: `PUT /resource/ensure_attributes?resource_id={id}` - Create or update item attributes
-- `DELETE /resource/delete?resource_id={id}` - Delete
+- `GET /v2/resource` -> Self-documentation (UTF-8 text)
+- `GET /v2/resource?format=json` - Get all
+- `GET /v2/resource/get?resource_id={id}` - Get single
+  - Example variant: `GET /v2/resource/get_content?resource_id={id}` - Retrieve content of single item
+- `POST /v2/resource/create` - Create
+- `PUT /v2/resource/update?resource_id={id}` - Update
+  - Example variant: `PUT /v2/resource/ensure_attributes?resource_id={id}` - Create or update item attributes
+- `DELETE /v2/resource/delete?resource_id={id}` - Delete
 
 ### Query params syntax uses explicit query params for ids and data format:
 
 **/resource** - List
-- `GET /resource` -> Documentation
-- `GET /resource?format=json` -> JSON array `[...]`
-- `GET /resource?format=html` -> HTML table (nested or flat)
-- `GET /resource?format=ui` -> Interactive UI listing all items with [Create], [Edit] / [View], [Delete] buttons for each item if supported by endpoint
+- `GET /v2/resource` -> -> Self-documentation (UTF-8 text)
+- `GET /v2/resource?format=json` -> JSON array `[...]`
+- `GET /v2/resource?format=html` -> HTML table (nested or flat)
+- `GET /v2/resource?format=ui` -> Interactive UI listing all items with [Create], [Edit] / [View], [Delete] buttons for each item if supported by endpoint
 
 **/resource/get** - Get single
-- `GET /resource/get` -> Documentation
-- `GET /resource/get?resource_id={id}` -> JSON object `{...}`
-- `GET /resource/get?resource_id={id}&format=json` -> JSON object `{...}`
-- `GET /resource/get?resource_id={id}&format=html` -> HTML detail view
-- `GET /resource/get?format=json` -> Error: missing resource_id
-- `GET /resource/get?format=ui` -> Error: format not supported
+- `GET /v2/resource/get` -> -> Self-documentation (UTF-8 text)
+- `GET /v2/resource/get?resource_id={id}` -> JSON object `{...}`
+- `GET /v2/resource/get?resource_id={id}&format=json` -> JSON object `{...}`
+- `GET /v2/resource/get?resource_id={id}&format=html` -> HTML detail view
+- `GET /v2/resource/get?format=json` -> Error: missing resource_id
+- `GET /v2/resource/get?format=ui` -> Error: format not supported
 
 ### Common query params
 
@@ -149,20 +189,23 @@ Long-running jobs can be monitored, paused, resumed, cancelled by independent pr
 - Encoding: `UTF-8`
 - Support of `event:` and `data:` lines. See HTMX Server Sent Event (SSE) Extension documentation: https://htmx.org/extensions/sse/
 - Each event is terminated by an empty line (**LF** or **CRLF**)
+- Each stream starts with a `start_json` event and ends with a `end_json` event
+- Between the `start_json` and `end_json` events only `log` events are allowed
+- The `start_json` event contains a JSON object representing the 
 
-Example *stream output* for `start_json` event with JSON data
+Example *stream output* for `start_json` event with job metadata as JSON
 ```
 event: start_json
-data: { "id": 2, "endpoint": "streaming01", "state": "running", ... }
+data: { "job_id": 'jb_2', "endpoint": "/v2/crawler/crawl?domain_id=TEST01&format=stream", "state": "running", ... }
 
 ```
 
-Example *multiline stream output* for `start_json` event with JSON data
+Example *multiline stream output* for `start_json` event with job metadata as JSON
 ```
 event: start_json
 data: {
-data:   "id": 2,
-data:   "endpoint": "streaming01",
+data:   "job_id": 'jb_2'
+data:   "endpoint": "/v2/crawler/crawl?domain_id=TEST01&format=stream",
 data:   "state": "running",
 data    ...
 data: }
@@ -191,20 +234,21 @@ data: 00002 | assistant-B8XZtxgQe4aSQwsF5GcbdH | EnergyOverview.pdf             
 
 #### Job file format
 
-**Format:** `[TIMESTAMP]_[[ENDPOINT_ACTION]]_[[JB_ID]]_[[OBJECT_ID]].[state]`
-**Example:** `2025-11-26_14-20-30_[crawl]_[jb_42]_[dm_TEST01].running`
+**Format:** `[TIMESTAMP]_[[ENDPOINT_ACTION]]_[[JB_ID]]_[[OBJECT_ID_OR_NAME]].[state]`
+**Example:** `2025-11-26_14-20-30_[crawl]_[jb_42]_[TEST01].running`
 **Example without object id:** `2025-11-26_14-20-30_[global_cleanup]_[jb_42].running`
 
 **Components:**
 - `[TIMESTAMP]` - When the job was created (YYYY-MM-DD_HH-MM-SS)
 - `[ENDPOINT_NAME]` - Name of the streaming endpoint
 - `[JB_ID]` - Global sequential streaming job ID
-- `[OBJECT_ID]` - Optional: ID of object being processed
+- `[OBJECT_ID_OR_NAME]` - Optional: ID or name of object being processed
 
 **States:**
 - `.running` - Active job, contains log content
-- `.completed` - Finished successfully
-- `.cancelled` - Stopped by user
+- `.completed` - Finished job
+- `.paused` - Paused job
+- `.cancelled` - Cancelled job
 - `.pause_requested` - Control: request pause
 - `.resume_requested` - Control: request resume
 - `.cancel_requested` - Control: request cancel
@@ -215,17 +259,16 @@ The folder structure reflects how resources are exposed as routers and endpoints
 
 ```
 PERSISTENT_STORAGE_PATH/jobs/
-├── example_router/
-│   └── example_endpoint/
-│       ├── 2025-11-26_14-20-30_[crawl]_[jb_1]_[dm_TEST01].running           # Active job
-│       ├── 2025-11-26_14-21-00_[crawl]_[jb_2]_[dm_TEST02].completed         # Finished job
-│       ├── 2025-11-26_14-22-00_[global_cleanup]_[jb_3].cancelled            # Cancelled job
-│       ├── 2025-11-26_14-23-00_[global_cleanup]_[jb_4].running              # Another active job
-│       ├── 2025-11-26_14-24-00_[delete]_[jb_5]_[dm_TEST04].running          # Another active job
-│       └── 2025-11-26_14-25-00_[delete]_[jb_5]_[dm_TEST04].pause_requested  # Control file
-└── another_router/
-    ├── 2025-11-26_14-25-00_[another_action]_[jb_6].running                  # Another active job
-    └── 2025-11-26_14-26-00_[another_action]_[jb_7].completed                # Another completed job 
+├── inventory/
+│   └── vector_stores/
+│       ├── 2025-11-26_14-20-30_[create]_[jb_1]_[VS01].completed                       # Completed job
+│       ├── 2025-11-26_14-21-00_[replicate]_[jb_2]_[vs_123].cancelled                  # Cancelled job
+│       ├── 2025-11-26_14-22-00_[delete_failed_files]_[jb_3]_[vs_456].running          # Running job
+│       ├── 2025-11-26_14-24-00_[delete_failed_files]_[jb_4]_[vs_456].pause_requested  # Control file
+└── crawler/
+    ├── 2025-11-26_14-25-00_[crawl]_[jb_5]_[DOMAIN01].completed                        # Completed job
+    ├── 2025-11-26_14-25-00_[crawl]_[jb_6]_[DOMAIN01].paused                           # A paused job 
+    └── 2025-11-26_14-26-00_[crawl]_[jb_6].resume_requested                            # Control file
 ```
 
 **`jb_id` Generation Algorithm**
@@ -239,6 +282,47 @@ Format: `jb_[NUMBER]` where `[NUMBER]` is an ascending integer starting with 1
 5. Extract `jb_id_number` from filenames
 6. Find maximum `jb_id_number`
 7. Return `"sj_" + (max_jb_id_number + 1)`
+
+**Race Condition Handling**
+
+If two workers generate the same `job_id` simultaneously:
+
+```python
+# Worker 1: job_id = 'jb_1', creates file successfully
+# File: 2025-11-26_14-20-30_[crawl]_[jb_1]_[TEST01].running
+success = create_streaming_job_file(..., job_number=1)  # Returns True
+
+# Worker 2: job_id = 'jb_1', file already exists (same timestamp collision)
+success = create_streaming_job_file(..., job_number=1)  # Returns False
+
+# Worker 2 retries: job_id = 'jb_1', job_number=2
+job_number = generate_streaming_job_number(...)  # Returns 2 (scans again)
+# File: 2025-11-26_14-20-30_[crawl]_[jb_2]_[TEST02]
+success = create_streaming_job_file(..., job_number=2)  # Returns True
+```
+
+#### Controlling jobs via endpoints
+
+Long-running jobs are controlled via the `/v2/jobs/` router. 
+
+**Control Operation**
+
+```
+GET /v2/testrouter/control?job_id={job_id}&action={action}
+```
+
+- Available actions:
+  - `cancel` - requests cancellation of the job
+  - `pause` - requests the job to be paused
+  - `resume` - requests the job to be resumed
+
+**Monitoring**
+
+```
+GET /v2/testrouter/monitor?job_id={job_id}&format=stream
+```
+
+Returns full stream (from start) as Server-Sent Events (SSE), MIME type: `Content-Type: text/event-stream`, UTF-8 encoded
 
 ### Use HTTP status codes for high-level success/failure
 
@@ -267,6 +351,7 @@ This specification uses a shorthand notation to make it easy for AI code generat
   - Example: `L(jhu)` -> LIST action supporting JSON, HTML, UI as return formats
   - Example: `L(jhus)` -> LIST action supporting JSON, HTML, UI, and Server-Sent Events (SSE) stream as return formats
   - Example: `U(js)` -> LIST action supporting JSON and Server-Sent Events (SSE) stream as return formats
+  - No space allowed between action and format letters
   - Available common actions:
     - L -> implements List via `GET [R]/` -> returns collection of items
     - C -> implements Create via `POST [R]/create` -> returns created item
@@ -278,216 +363,145 @@ This specification uses a shorthand notation to make it easy for AI code generat
     - `...(h)` -> supports `format=html`
     - `...(u)` -> supports `format=ui`
     - `...(s)` -> supports `format=stream`
+    - `...(z)` -> supports `format=zip`
 	- `...()`  -> supports only self-documentation with `GET [R]/`
 
 **Examples**
 
 Example 1: This specification
-L(jhu)C(j)G(jh)U(j)D(jh): `/icecreams` - Icecream stock
+L(jhu)C(j)G(jh)U(j)D(jh): `/v2/icecreams` - Icecream stock
 
 translates into this implemented behavior:
-- `GET /icecreams` - Self-documentation of `icecreams` endpoint with all actions
-- `GET /icecreams?format=json` -> JSON array `[...]`
-- `GET /icecreams?format=html` -> HTML detail view
-- `GET /icecreams?format=ui` -> Interactive UI listing all icecreams with [Create], [Edit], [Delete] buttons for each item
+- `GET /v2/icecreams` - Self-documentation of `icecreams` endpoint with all actions
+- `GET /v2/icecreams?format=json` -> JSON array `[...]`
+- `GET /v2/icecreams?format=html` -> HTML detail view
+- `GET /v2/icecreams?format=ui` -> Interactive UI listing all icecreams with [Create], [Edit], [Delete] buttons for each item
 
-- `GET /icecreams/create` - Self-documentation of `create` action
-- `POST /icecreams/create` with JSON or form data -> Creates new icecream item and returns it as JSON object `{...}`
-- `POST /icecreams/create?format=json` with JSON or form data -> Creates new icecream item and returns it as JSON object `{...}`
-- `POST /icecreams/create?format=html` with JSON or form data -> HTTP 400 "ERROR: Response format 'html' not supported."
-- `PUT /icecreams/create` with JSON or form data -> HTTP 400 "ERROR: HTTP method 'PUT' not supported."
+- `GET /v2/icecreams/create` - Self-documentation of `create` action
+- `POST /v2/icecreams/create` with JSON or form data -> Creates new icecream item and returns it as JSON object `{...}`
+- `POST /v2/icecreams/create?dry_run=true` with JSON or form data -> [HERE]
+- `POST /v2/icecreams/create?format=json` with JSON or form data -> Creates new icecream item and returns it as JSON object `{...}`
+- `POST /v2/icecreams/create?format=html` with JSON or form data -> HTTP 400 "ERROR: Response format 'html' not supported."
+- `PUT /v2/icecreams/create` with JSON or form data -> HTTP 400 "ERROR: HTTP method 'PUT' not supported."
 
-- `GET /icecreams/get` - Self-documentation of `get` action
-- `GET /icecreams/get?icecream_id={id}` -> JSON object `{...}`
-- `GET /icecreams/get?icecream_id={id}?format=json` -> JSON object `{...}`
-- `GET /icecreams/get?icecream_id={id}format=html` -> HTML detail view
-- `GET /icecreams/get?icecream_id={id}format=ui` -> HTTP 400 "ERROR: Response format 'ui' not supported."
-- `GET /icecreams/get?icecream_id={id}format=stream` -> HTTP 400 "ERROR: Response format 'stream' not supported."
+- `GET /v2/icecreams/get` - Self-documentation of `get` action
+- `GET /v2/icecreams/get?icecream_id={id}` -> JSON object `{...}`
+- `GET /v2/icecreams/get?icecream_id={id}?format=json` -> JSON object `{...}`
+- `GET /v2/icecreams/get?icecream_id={id}format=html` -> HTML detail view
+- `GET /v2/icecreams/get?icecream_id={id}format=ui` -> HTTP 400 "ERROR: Response format 'ui' not supported."
+- `GET /v2/icecreams/get?icecream_id={id}format=stream` -> HTTP 400 "ERROR: Response format 'stream' not supported."
 
-- `GET /icecreams/update` - Self-documentation of `update` action
-- `PUT /icecreams/update` with JSON or form data -> Updates icecream item and returns it as JSON object `{...}`
-- `PUT /icecreams/update?format=json` with JSON or form data -> Updates icecream itemand returns it as JSON object `{...}`
-- `PUT /icecreams/update?format=html` -> HTTP 400 "ERROR: Response format 'html' not supported."
-- `POST /icecreams/update` with JSON or form data -> HTTP 400 "ERROR: HTTP method 'POST' not supported."
-- `PATCH /icecreams/update` with JSON or form data -> HTTP 400 "ERROR: HTTP method 'PATCH' not supported."
+- `GET /v2/icecreams/update` - Self-documentation of `update` action
+- `PUT /v2/icecreams/update` with JSON or form data -> Updates icecream item and returns it as JSON object `{...}`
+- `PUT /v2/icecreams/update?format=json` with JSON or form data -> Updates icecream itemand returns it as JSON object `{...}`
+- `PUT /v2/icecreams/update?format=html` -> HTTP 400 "ERROR: Response format 'html' not supported."
+- `POST /v2/icecreams/update` with JSON or form data -> HTTP 400 "ERROR: HTTP method 'POST' not supported."
+- `PATCH /v2/icecreams/update` with JSON or form data -> HTTP 400 "ERROR: HTTP method 'PATCH' not supported."
 
-- `GET /icecreams/delete` - Self-documentation of `delete` action
-- `DELETE /icecreams/delete?icecream_id={id}` -> Deletes icecream item and returns it as JSON object `{...}`
-- `GET /icecreams/delete?icecream_id={id}` -> Deletes icecream item and returns it as JSON object `{...}`
-- `DELETE /icecreams/delete?icecream_id={id}?format=json` -> Deletes icecream item and returns it as JSON object `{...}`
-- `DELETE /icecreams/delete?icecream_id={id}?format=html` -> Deletes icecream item and returns it as HTML detail view
-- `GET /icecreams/delete?icecream_id={id}?format=html` -> Deletes icecream item and returns it as HTML detail view
-- `DELETE /icecreams/delete?icecream_id={id}format=stream` -> HTTP 400 "ERROR: Response format 'stream' not supported."
-- `PATCH /icecreams/delete?icecream_id={id}` with JSON or form data -> HTTP 400 "ERROR: HTTP method 'PATCH' not supported."
+- `GET /v2/icecreams/delete` - Self-documentation of `delete` action
+- `DELETE /v2/icecreams/delete?icecream_id={id}` -> Deletes icecream item and returns it as JSON object `{...}`
+- `GET /v2/icecreams/delete?icecream_id={id}` -> Deletes icecream item and returns it as JSON object `{...}`
+- `DELETE /v2/icecreams/delete?icecream_id={id}?format=json` -> Deletes icecream item and returns it as JSON object `{...}`
+- `DELETE /v2/icecreams/delete?icecream_id={id}?format=html` -> Deletes icecream item and returns it as HTML detail view
+- `GET /v2/icecreams/delete?icecream_id={id}?format=html` -> Deletes icecream item and returns it as HTML detail view
+- `DELETE /v2/icecreams/delete?icecream_id={id}format=stream` -> HTTP 400 "ERROR: Response format 'stream' not supported."
+- `PATCH /v2/icecreams/delete?icecream_id={id}` with JSON or form data -> HTTP 400 "ERROR: HTTP method 'PATCH' not supported."
 
 Example 2: This specification
-L(jhu)G(jh): `/icecreams/flavours` - Available icecream flavours
+L(jhu)G(jh): `/v2/icecreams/flavours` - Available icecream flavours
 
 translates into this implemented behavior:
-- `GET /icecreams/flavours` - Self-documentation of `flavours` endpoint
-- `GET /icecreams/flavours?format=json` -> JSON `{"data": {...}}`
-- `GET /icecreams/flavours?format=html` -> HTML detail view
-- `GET /icecreams/flavours?format=ui` -> Interactive UI listing all items with [View] button for each item
-- `GET /icecreams/flavours/get`  - Self-documentation of `get` endpoint
-- `GET /icecreams/flavours/get?flavour_id={id}` -> JSON `{"data": {...}}`
-- `GET /icecreams/flavours/get?flavour_id={id}&format=json` -> JSON `{"data": {...}}`
-- `GET /icecreams/flavours/get?flavour_id={id}&format=html` -> HTML detail view
+- `GET /v2/icecreams/flavours` - Self-documentation of `flavours` endpoint
+- `GET /v2/icecreams/flavours?format=json` -> JSON `[...]`
+- `GET /v2/icecreams/flavours?format=html` -> HTML detail view
+- `GET /v2/icecreams/flavours?format=ui` -> Interactive UI listing all items with [View] button for each item
+- `GET /v2/icecreams/flavours/get`  - Self-documentation of `get` endpoint
+- `GET /v2/icecreams/flavours/get?flavour_id={id}` -> JSON `{...}`
+- `GET /v2/icecreams/flavours/get?flavour_id={id}&format=json` -> JSON `{...}`
+- `GET /v2/icecreams/flavours/get?flavour_id={id}&format=html` -> HTML detail view
 
-### Specification of standard endpoints
+### Specification of endpoints
 
 Additions and exceptions are listed below the endpoint specification.
+Create, Update, Delete operations usually support the `format=stream` query param to ensure logging of changes.
 
 **Inventory**
-- L(u): `/inventory` - UI for managing inventory 
-- L(jhu)G(jh)D(jhs): `/inventory/files` - Files in the connected Open AI backend
-- L(jhu)C(jhs)G(jh)U(jhs)D(jhs): `/inventory/vector_stores` - Vector stores in the connected Open AI backend
-  - `DELETE /inventory/vector_stores/delete?vector_store_id={id}?mode={default|with_files}`
+- L(u): `/v2/inventory` - UI for managing inventory 
+- L(jhu)G(jh)D(jhs): `/v2/inventory/files` - Files in the connected Open AI backend
+- L(jhu)C(jhs)G(jh)U(jhs)D(jhs): `/v2/inventory/vector_stores` - Vector stores in the connected Open AI backend
+  - `DELETE /v2/inventory/vector_stores/delete?vector_store_id={id}?mode=[default|with_files]`
     - `mode=default` (default) - deletes vector store
     - `mode=with_files` - removes all files referenced by the vector store globally and then deletes vector store
-- L(jh)G(jh)D(jhs): `/inventory/vector_stores/files` - Embedded files in vector stores in the connected Open AI backend
-  - `DELETE /inventory/vector_stores/files/delete?vector_store_id={id}?file_id={id}?mode={default|delete_globally}`
+- L(jh)G(jh)D(jhs): `/v2/inventory/vector_stores/files` - Embedded files in vector stores in the connected Open AI backend
+  - `DELETE /v2/inventory/vector_stores/files/delete?vector_store_id={id}?file_id={id}?mode=[default|delete_globally]`
     - `mode=default` (default) - removes file reference from vector store
     - `mode=delete_globally` - removes file reference from vector store and then deletes file globally
-- L(jhu)C(jhs)G(jh)U(jhs)D(jhs): `/inventory/assistants` - Assistants in the connected Open AI backend
-  - `DELETE /inventory/assistants/delete?assistant_id={id}?mode={default|with_files}`
+- L(jhu)C(jhs)G(jh)U(jhs)D(jhs): `/v2/inventory/assistants` - Assistants in the connected Open AI backend
+  - `DELETE /v2/inventory/assistants/delete?assistant_id={id}?mode=[default|with_files]`
     - `mode=default` (default) - deletes assistant
     - `mode=with_files` - if vector store is attached: deletes vector files globally, then vector store, then assistant
-- L()C(jh)G(jh)D(jh): `/inventory/responses` - Model responses in the connected Open AI backend
-  - `DELETE /inventory/assistants/delete?response_id={id}?mode={default|with_conversation}`
+- L()C(jh)G(jh)D(jh): `/v2/inventory/responses` - Model responses in the connected Open AI backend
+  - `DELETE /v2/inventory/assistants/delete?response_id={id}?mode=[default|with_conversation]`
     - `mode=default` (default) - deletes model response
     - `mode=with_conversation` - if response has stored conversation: deletes stored conversation, then model response
 
 **Domain**
-- LCGUD: `/domains` - Knowledge domains to be used for crawling and semantic search
+- L(jhu)C(jhs)G(jh)U(jhs)D(jhs): `/v2/domains` - Knowledge domains to be used for crawling and semantic search
 
 **Crawler**
-- L: `/crawler`
+- L(u): `/v2/crawler` - UI for crawling SharePoint sites and see current status
+- L(jhs): `/v2/crawler/download_data?domain_id={id}&mode=[full|incremental]&scope=[all|files|lists|sitepages]&source_id={id}&dry_run=false`
+  - Downloads data from source to local storage
+  - `mode=full` (default) - performs full crawl of domain, deletes all previously downloaded files in local storage first  
+  - `mode=incremental` - performs incremental crawl, fallback to `mode=full` if no `files_map.csv` file found 
+  - `scope=all` (default) - downloads all: files, lists, sitepages
+  - `scope=files` - downloads only files
+  - `scope=lists` - downloads only lists
+  - `scope=sitepages` - downloads only sitepages
+  - Optional: `source_id={id}` - if a scope other than `all` is given, the action can be further limited to individual sources
+  - `dry_run=false` (default) - performs action as specified
+  - `dry_run=true` - simulates action without writing / modifying data
+- L(jhs): `/v2/crawler/process_data?domain_id={id}&mode=[full|incremental]&scope=[all|files|lists|sitepages]&source_id={id}&dry_run=false`
+  - Performs preprocessing of downloaded data
+  - `mode=full` (default) - performs full processing of domain, deletes all previously processed files in local storage first
+  - `mode=incremental` - performs incremental processing, fallback to `mode=full` if no `files_map.csv` file found
+  - `scope=all` (default) - downloads all: files, lists, sitepages
+  - `scope=files` - downloads only files
+  - `scope=lists` - downloads only lists
+  - Optional: `source_id={id}` - if a scope other than `all` is given, the action can be further limited to individual sources
+  - `dry_run=false` (default) - performs action as specified
+  - `dry_run=true` - simulates action without writing / modifying data
+- L(jhs): `/v2/crawler/embed_data?domain_id={id}&mode=[full|incremental]&scope=[all|files|lists|sitepages]&source_id={id}&overwrite=[all|if_newer]&dry_run=false`
+  - Performs embedding of processed data by uploading files to the Open AI file storage and then adding them to a vector store
+  - `mode=full` (default) - performs full embedding of processed files, creates new vector store
+  - `mode=incremental` - performs incremental embedding (only changes), fallback to `mode=full` if no `vectorstore_map_csv` file found
+  - `scope=all` (default) - downloads all: files, lists, sitepages
+  - `scope=files` - downloads only files
+  - `scope=lists` - downloads only lists
+  - Optional: `source_id={id}` - if a scope other than `all` is given, the action can be further limited to individual sources
+  - `dry_run=false` (default) - performs action as specified
+  - `dry_run=true` - simulates action without writing / modifying data
+- L(jhs): `/v2/crawler/crawl?domain_id={id}&mode=[full|incremental]&scope=[all|files|lists|sitepages]&source_id={id}&overwrite=[all|if_newer]&dry_run=false`
+  - Performs embedding of processed data by uploading files to the Open AI file storage and then adding them to a vector store
+  - `mode=full` (default) - performs full embedding of processed files, creates new vector store
+  - `mode=incremental` - performs incremental embedding (only changes), fallback to `mode=full` if no `vectorstore_map_csv`
+  - `scope=all` (default) - downloads all: files, lists, sitepages
+  - `scope=files` - downloads only files
+  - `scope=lists` - downloads only lists
+  - Optional: `source_id={id}` - if a scope other than `all` is given, the action can be further limited to individual sources
+  - `dry_run=false` (default) - performs action as specified
+  - `dry_run=true` - simulates action without writing / modifying data
 
 **Jobs**
-- LGD: `/jobs` - Manage long-running jobs that are triggered by other endpoints (crawler, inventory)
-- `/jobs/control?job_id={id}?action=[Pause|Resume|Cancel]`
-
-
-Action
-
-All endpoints 
-
-
-
-to support
-
-The main routers should also support
-- format=ui
-
-and should be able to provide methods for the user to do everything: List / Create / update / show / delete objects and trigger lonng-running jobs that can be paused, resumed, canceled. 
-
-We want for ALL endpoints a consistent self-documentation feature with GET.
-We want long-running endpoints to provide monitoring and control via /jobs/monitor and /jobs/control endpoints. Those should also provide self-documentation. Another /jobs/result?job_id={job_id}&format=json or html should return only the "data" part in the <end_json>
-
-For example:
-- GET /inventory -> returns endpoint documentation
-- GET /inventory?format=ui -> returns interactive UI
-
-- GET /inventory/vector_stores -> returns endpoint documentation
-- GET /inventory/vector_stores?format=ui -> returns interactive UI
-- GET /inventory/vector_stores?format=json -> returns all vector stores as json
-- GET /inventory/vector_stores?format=html -> returns all vector stores as html
-- GET /inventory/vector_stores?format=stream -> returns all vector stores as stream
-
-- DELETE /vector_stores/delete?vector_store_id=vs_123 -> deletes vector store and returns JSON
-- DELETE /vector_stores/delete?vector_store_id=vs_123&format=json -> deletes vector store and returns JSON
-- DELETE /vector_stores/delete?vector_store_id=vs_123&delete_files=true -> deletes all files in vector store, deletes vector store and returns JSON
-
-
-
-- GET /domains -> returns endpoint documentation
-- GET /domains?format=ui -> returns interactive UI
-- GET /domains?format=json -> returns JSON
-- GET /domains?format=html -> returns JSON formatted as HTML
-
-- GET /domains/get -> returns endpoint documentation
-- GET /domains/get?domain_id={domain_id} -> returns single domain as JSON
-- GET /domains/get?domain_id={domain_id}&format=json -> returns single domain as JSON
-
-- GET /domains/create -> returns endpoint documentation
-- POST /domains/create with body json -> creates domain and returns JSON
-- POST /domains/create with form data -> creates domain and returns JSON
-- POST /domains/create?format=html with body json -> creates domain and returns HTML
-- POST /domains/create?format=stream with body json -> creates domain and returns log stream
-
-- GET /domains/update -> returns endpoint documentation
-- PUT /domains/update?domain_id={domain_id} with body json -> updates domain and returns JSON
-- PUT /domains/update?domain_id={domain_id} with form data -> updates domain and returns JSON
-- PUT /domains/update?domain_id={domain_id}&format=html with body json -> updates domain and returns HTML
-- PUT /domains/update?domain_id={domain_id}&format=stream with body json -> creates domain and returns log stream
-
-- GET /domains/delete -> returns endpoint documentation
-- DELETE /domains/delete?domain_id={domain_id} -> deletes domain and returns JSON
-- DELETE /domains/delete?domain_id={domain_id}&format=html with body json -> deletes domain and returns HTML
-- DELETE /domains/delete?domain_id={domain_id}&format=stream with body json -> deletes domain and returns log stream
-
-- GET /domains/crawl  -> returns endpoint documentation
-- GET /domains/crawl?domain_id={domain_id} -> returns an error describing the missing arguments (format)
-- GET /domains/crawl?domain_id={domain_id}&format=json -> starts crawling and returns result data as JSON (job is logged for later monitoring)
-- GET /domains/crawl?domain_id={domain_id}&format=stream -> starts crawling and returns job_id and job_url in <start_json>
-
-
-
-Example json for getting a single domain (default format=json):
-- GET /domains/get?id=TEST
-```
-{
-  "result": "ok", "id": "TEST", "name": "Test Domain",
-  ...
-}
-```
-
-Example json for crawled domain:
-- GET /domains/crawl?id={id}&format=json
-```
-{
-  "result": "partial", "id": "TEST", "name": "Test Domain",
-  ... , 
-  "crawler": {
-	"file_sources": [ ... ],
-	"sitepage_sources": [ ... ],
-	"list_sources": [ ... ]
-  }
-}
-```
-
-Example stream:
-```
-<start_json>
-{"id": 42, "endpoint": "/resource/action", "state": "running", "job_url": "/jobs/monitor?job_id=42&format=stream" "started": "2025-11-27T11:30:00Z"}
-</start_json>
-<log>
-
-[DETAILED_ERROR_LOG_TO_MONITOR_PROGRESS]
-
-</log>
-<end_json>
-{"id": 42, "state": "completed", "finished": "2025-11-27T11:30:15",
-  "data": {
-	"result": "partial",
-	[OTHER_DATA_RETURNED_BY_ENDPOINT]
-  }
-}
-</end_json>
-```
-
-**start_json:**
-- `id` - number - streaming job id (e.g. 1, 232, 103352)
-- `endpoint` - string - endpoint url using slashes (e.g. "/domains/update", e.g. "/domains")
-- `state` - string - "running", "paused", "completed", "cancelled"
-- `started` - string - timestamp when job was started in UTC RFC3222 format (e.g. "2025-11-27T11:30:00Z")
-
-**end_json:**
-- `id` - number - streaming job id (e.g. 1, 232, 103352)
-- `endpoint` - string - endpoint url using slashes (e.g. "/domains/update", e.g. "/domains")
-- `state` - string - "running", "paused", "completed", "cancelled"
-- `finished` - string - timestamp when job has finished in UTC RFC3222 format (e.g. "2025-11-27T11:30:00Z")
-
-**data:** The JSON that is also returned by the endpoint with ?format=json
-- `result` - string - "ok", "partial", "fail"
-- [OTHER_DATA_RETURNED_BY_ENDPOINT] - returned data and objects
+- L(jhu)G(jh)D(jh): `/v2/jobs` - Manage long-running jobs that are triggered by other endpoints (crawler, inventory)
+  - `DELETE /v2/jobs/delete` - endpoint does intentionally not support streaming
+  - `GET /v2/jobs/get?job_id={id}`  -  Return job metadata with status in same format as in `start_json` event of the stream
+- L(): `/v2/jobs/control?job_id={id}?action=[pause|resume|cancel]`
+  - `GET /v2/jobs/control?job_id={id}?action=pause` - Requests the job to be paused
+  - `GET /v2/jobs/control?job_id={id}?action=resume` - Requests the job to be resumed
+  - `GET /v2/jobs/control?job_id={id}?action=cancel` - Requests the job to be cancelled
+- L(jhs): `/v2/jobs/monitor?job_id={id}` - Monitor long-running jobs
+  - `GET /v2/jobs/monitor?job_id={id}?format=json` -> JSON `{ [JOB_METADATA], "log" : "[LAST_LOG_EVENT_DATA]"}`
+  - `GET /v2/jobs/monitor?job_id={id}?format=html` -> JSON converted to nested HTML table
+  - `GET /v2/jobs/monitor?job_id={id}?format=stream` -> Full stream (from first event) as Server-Sent Events
+- L(jh): `/v2/jobs/results?job_id={id}` - Return data from `end_json` event of the stream
