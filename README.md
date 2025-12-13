@@ -351,25 +351,6 @@ curl -X POST "http://localhost:8000/domains/create" \
 curl -X POST "http://localhost:8000/crawler/updatemaps?domain_id=MYSITE"
 ```
 
-## Code generation
-
-Model spec understanding results (10 test questions).
-Judge model: GPT-5.2 Medium Reasoning
-Judge model prompt:
-```
-Now rate the given answers against the reference answers and assign an **integer score from 0 to 5** where:
-- Score 0 = completely unrelated and incorrect - FAIL
-- Score 1 = related but completely incorrect - FAIL
-- Score 2 = mostly incorrect - FAIL
-- Score 3 = partially correct - FAIL
-- Score 4 = mostly correct - PASS
-- Score 5 = completely correct - PASS
-Create a question scoring table and calculate the overall PASS / TOTAL ratio in percent.
-```
-
-- Claude Opus 4.5 
-
-
 ## License
 
 See [LICENSE](LICENSE) file for details.

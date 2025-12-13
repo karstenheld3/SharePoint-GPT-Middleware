@@ -281,7 +281,7 @@ Format: `jb_[NUMBER]` where `[NUMBER]` is an ascending integer starting with 1
 4. Take last 100 files
 5. Extract `jb_id_number` from filenames
 6. Find maximum `jb_id_number`
-7. Return `"sj_" + (max_jb_id_number + 1)`
+7. Return `"jb_" + (max_jb_id_number + 1)`
 
 **Race Condition Handling**
 

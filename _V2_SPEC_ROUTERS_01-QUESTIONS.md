@@ -63,7 +63,7 @@ What is the expected response type and MIME type?
 A crawling job was started using this HTTP endpoint:
 `GET /v2/crawler/crawl?domain_id=TEST01` -> returned in the JSON `"job_id": "jb_42"`
 The job needs to be paused. What action enables this, and how is it detected?
-Use the full storage path for files.
+Use the full storage path for example files.
 
 ------
 
