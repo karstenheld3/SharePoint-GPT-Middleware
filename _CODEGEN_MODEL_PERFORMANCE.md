@@ -23,13 +23,13 @@ Create a question scoring table and calculate the overall PASS / TOTAL ratio in 
 Bare models:
 - GPT-5.2 (ChatGPT): 100%
 
-Models in Windsurf:
-- GPT-5.2 Medium Reasoning: 100%
-- Claude Sonnet 3.7: 100%
-- Claude Sonnet 3.7 (Thinking): 60%, 60%
-- Claude Sonnet 4.0: 100%, 100%
-- Claude Sonnet 4.0 (Thinking): 100%, 100%
-- Claude Sonnet 4.5: 70%, 100%, 60%
-- Claude Sonnet 4.5 (Thinking): 100%
-- Claude Opus 4.5: 100%, 100%
-- Claude Opus 4.5 (Thinking): 100%
+Models in Windsurf [Cost as of 2025-12-13]:
+- [Free] GPT-5.2 Medium Reasoning: 100%
+- [2x] Claude Sonnet 3.7: 100%
+- [3x] Claude Sonnet 3.7 (Thinking): 60%, 60%
+- [2x] Claude Sonnet 4.0: 100%, 100%
+- [3x] Claude Sonnet 4.0 (Thinking): 100%, 100%
+- [2x] Claude Sonnet 4.5: 70%, 100%, 60%
+- [3x] Claude Sonnet 4.5 (Thinking): 100%
+- [2x] Claude Opus 4.5: 100%, 100%
+- [3x] Claude Opus 4.5 (Thinking): 100%
