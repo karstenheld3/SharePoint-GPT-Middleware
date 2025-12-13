@@ -28,8 +28,8 @@ A FastAPI-based middleware application that bridges SharePoint content with Open
 - Creates map files in local storage to cache data and ids across systems
   - Allows comparison against new data in the sources
   - `sharepoint_map.csv` - caches file metadata from SharePoint
-  - `files_map.csv` - caches local storage metadata and if a processed version of the list or sitepage exists
-  - `vectorstore_map_csv`- caches vector store file metadata and maps it to local storage and SharePoint
+  - `files_map.csv` - caches local storage, contains file download and processing status
+  - `vectorstore_map.csv`- caches vector store data, contains everything in other map files + upload and embedding status
 
 **Domain** - Knownledge domain to be used for RAG use cases
 - To be crawled (downloaded and embedded) from SharePoint into a single vector store
@@ -452,6 +452,7 @@ Create, Update, Delete operations usually support the `format=stream` query para
 - L(u): `/v2/crawler` - UI for crawling SharePoint sites and see current status
 - L(jhs): `/v2/crawler/download_data?domain_id={id}&mode=[full|incremental]&scope=[all|files|lists|sitepages]&source_id={id}&dry_run=false`
   - Downloads data from source to local storage
+  - `domain_id` - domain to be crawled
   - `mode=full` (default) - performs full crawl of domain, deletes all previously downloaded files in local storage first  
   - `mode=incremental` - performs incremental crawl, fallback to `mode=full` if no `files_map.csv` file found 
   - `scope=all` (default) - downloads all: files, lists, sitepages
@@ -463,6 +464,7 @@ Create, Update, Delete operations usually support the `format=stream` query para
   - `dry_run=true` - simulates action without writing / modifying data
 - L(jhs): `/v2/crawler/process_data?domain_id={id}&mode=[full|incremental]&scope=[all|files|lists|sitepages]&source_id={id}&dry_run=false`
   - Performs preprocessing of downloaded data
+  - `domain_id` - domain to be crawled
   - `mode=full` (default) - performs full processing of domain, deletes all previously processed files in local storage first
   - `mode=incremental` - performs incremental processing, fallback to `mode=full` if no `files_map.csv` file found
   - `scope=all` (default) - downloads all: files, lists, sitepages
@@ -471,17 +473,19 @@ Create, Update, Delete operations usually support the `format=stream` query para
   - Optional: `source_id={id}` - if a scope other than `all` is given, the action can be further limited to individual sources
   - `dry_run=false` (default) - performs action as specified
   - `dry_run=true` - simulates action without writing / modifying data
-- L(jhs): `/v2/crawler/embed_data?domain_id={id}&mode=[full|incremental]&scope=[all|files|lists|sitepages]&source_id={id}&overwrite=[all|if_newer]&dry_run=false`
+- L(jhs): `/v2/crawler/embed_data?domain_id={id}&vector_store_id={id}&mode=[full|incremental]&scope=[all|files|lists|sitepages]&source_id={id}&dry_run=false`
   - Performs embedding of processed data by uploading files to the Open AI file storage and then adding them to a vector store
-  - `mode=full` (default) - performs full embedding of processed files, creates new vector store
-  - `mode=incremental` - performs incremental embedding (only changes), fallback to `mode=full` if no `vectorstore_map_csv` file found
+  - `domain_id` - domain to be crawled
+  - Optional: `vector_store_id` - embed files into this vector store, ignoring configured domain vector store in `domain.json`
+  - `mode=full` (default) - performs full embedding of processed files, deletes all existing embedded files in scope using `vectorstore_map.csv`
+  - `mode=incremental` - performs incremental embedding (only changes), fallback to `mode=full` if no `vectorstore_map.csv` file found
   - `scope=all` (default) - downloads all: files, lists, sitepages
   - `scope=files` - downloads only files
   - `scope=lists` - downloads only lists
   - Optional: `source_id={id}` - if a scope other than `all` is given, the action can be further limited to individual sources
   - `dry_run=false` (default) - performs action as specified
   - `dry_run=true` - simulates action without writing / modifying data
-- L(jhs): `/v2/crawler/crawl?domain_id={id}&mode=[full|incremental]&scope=[all|files|lists|sitepages]&source_id={id}&overwrite=[all|if_newer]&dry_run=false`
+- L(jhs): `/v2/crawler/crawl?domain_id={id}&mode=[full|incremental]&scope=[all|files|lists|sitepages]&source_id={id}&dry_run=false`
   - Performs embedding of processed data by uploading files to the Open AI file storage and then adding them to a vector store
   - `mode=full` (default) - performs full embedding of processed files, creates new vector store
   - `mode=incremental` - performs incremental embedding (only changes), fallback to `mode=full` if no `vectorstore_map_csv`
@@ -505,3 +509,198 @@ Create, Update, Delete operations usually support the `format=stream` query para
   - `GET /v2/jobs/monitor?job_id={id}?format=html` -> JSON converted to nested HTML table
   - `GET /v2/jobs/monitor?job_id={id}?format=stream` -> Full stream (from first event) as Server-Sent Events
 - L(jh): `/v2/jobs/results?job_id={id}` - Return data from `end_json` event of the stream
+
+### Crawling Process
+
+#### Local files (persistent storage)
+
+Data is stored in two top-level folders:
+
+**`PERSISTENT_STORAGE_PATH/crawler/`:**
+- Local cache of downloaded files, processed for embedding
+
+**`PERSISTENT_STORAGE_PATH/domains/`:**
+- Local storage of domain definitions and embedded file metadata
+
+**Folder Structure**:
+```
+/domains/
+├── DOMAIN01/                 # Domain folder
+│   ├── domain.json           # Domain definition file
+│   └── files_metadata.json   # Embedded file metadata (joins data from map files and metadata extraction)
+├── DOMAIN02/
+│   ├── domain.json
+│   └── files_metadata.json
+└── ...
+
+/crawler/
+├── DOMAIN01/                 # Domain folder containing cached crawler files
+├── DOMAIN02/                 # Domain folder containing cached crawler files
+└── ...
+
+/crawler/[DOMAIN_ID]/
+├── 01_files/[SOURCE_ID]/
+│   ├── sharepoint_map.csv    # Cached data for data in SharePoint
+│   ├── files_map.csv         # Cached data for downloaded and processed files
+│   ├── vectorstore_map.csv   # Cached data for embedded files in vector stores + mapping to local storage and SharePoint
+│   ├── 02_embedded/          # Successfully embedded files
+│   │   ├── Document1.docx
+│   │   └── SubFolder/
+│   │       └── AnotherDoc1.pdf
+│   └── 03_failed/            # Files where embedding failed
+│       ├── Document2.docx
+│       └── SubFolder/
+│           └── AnotherDoc2.pdf
+├── 02_lists/[SOURCE_ID]/
+│   ├── sharepoint_map.csv
+│   ├── files_map.csv
+│   ├── vectorstore_map.csv
+│   ├── 01_originals/         # Original CSV exports
+│   ├── 02_embedded/          # Converted Markdown files
+│   └── 03_failed/
+└── 03_sitepages/[SOURCE_ID]/
+│   ├── sharepoint_map.csv
+│   ├── files_map.csv
+│   ├── vectorstore_map.csv
+    ├── 01_originals/         # Original HTML
+    ├── 02_embedded/          # Processed HTML
+    └── 03_failed/
+```
+
+#### Map files (persistent storage)
+
+Map files allow the crawler to quickly identify changes and analyze errors.
+Map file types:
+  - `sharepoint_map.csv` - caches file metadata from SharePoint
+  - `files_map.csv` - caches local storage, contains file download and processing status
+  - `vectorstore_map.csv`- caches vector store data, contains everything in other map files + upload and embedding status
+
+**`sharepoint_map.csv` columns:**
+- `sharepoint_listitem_id` - number - SharePoint list item ID (e.g., 123)
+- `sharepoint_unique_file_id` - string - GUID unique to this file (e.g., "b!abc123...")
+- `filename` - string - file name with extension (e.g., "Document.docx")
+- `file_type` - string - file extension without dot (e.g., "docx")
+- `file_size` - number - size in bytes (e.g., 864368)
+- `url` - string - URL-encoded SharePoint URL (e.g., "https://company.sharepoint.com/sites/demo/Shared%20Documents/Document.docx")
+- `raw_url` - string - unencoded SharePoint URL (e.g., "https://company.sharepoint.com/sites/demo/Shared Documents/Document.docx")
+- `server_relative_url` - string - path from site root (e.g., "/sites/demo/Shared Documents/Document.docx")
+- `last_modified_utc` - string (ISO 8601 / RFC3339) - SharePoint UTC timestamp (e.g., "2024-01-15T10:30:00.000000Z")
+- `last_modified_timestamp` - number - SharePoint Unix timestamp in seconds (e.g., 1705319400)
+
+**`files_map.csv` columns:**
+- `file_relative_path` - string - path relative to storage root with backslashes
+  - Empty if download failed.
+  - Processing failed example: "DOMAIN01\01_files\source01\03_failed\Reports\Q1.docx"
+  - Succeeded example: "DOMAIN01\01_files\source01\02_embedded\Reports\Q1.docx"
+- `file_size` - number - size in bytes (e.g., 864368)
+- `last_modified_utc` - string (ISO 8601 / RFC3339) - SharePoint UTC timestamp (e.g., "2024-01-15T10:30:00.000000Z")
+- `last_modified_timestamp` - number - SharePoint Unix timestamp in seconds (e.g., 1705319400)
+- `downloaded_utc` - string (ISO 8601 / RFC3339) - Download UTC timestamp (e.g., "2024-01-15T10:30:00.000000Z")
+- `downloaded_timestamp` - number - Download Unix timestamp in seconds (e.g., 1705319400)
+- `sharepoint_error` - string - Any error that might have occurred during the download
+- `processing_error` - string - Any error that might have occurred during the processing of the file
+
+**`vectorstore_map.csv` columns:**
+- `openai_file_id` - string - OpenAI file ID assigned after upload (e.g., "assistant-BuQoNyXQnoedPjTySDTFU1")
+  - empty if file could not be uploaded or embedded
+- `vector_store_id` - string - OpenAI vector store ID where the file was embedded last (Domain vector store ID)
+  - empty if file could not be uploaded or embedded
+- `file_relative_path` - string - path relative to storage root with backslashes
+  - Example if succeeded: "DOMAIN01\01_files\source01\02_embedded\Reports\Q1.docx"
+  - Example if failed: "DOMAIN01\01_files\source01\03_failed\Reports\Q1.docx"
+- `sharepoint_listitem_id` - number - SharePoint list item ID (e.g., 123)
+- `sharepoint_unique_file_id` - string - GUID unique to this file (e.g., "b!abc123...")
+- `filename` - string - file name with extension (e.g., "Document.docx")
+- `file_type` - string - file extension without dot (e.g., "docx")
+- `file_size` - number - size in bytes (e.g., 864368)
+- `last_modified_utc` - string (ISO 8601 / RFC3339) - UTC timestamp (e.g., "2024-01-15T10:30:00.000000Z")
+- `last_modified_timestamp` - number - Unix timestamp in seconds (e.g., 1705319400)
+- `downloaded_utc` - string (ISO 8601 / RFC3339) - Download UTC timestamp (e.g., "2024-01-15T10:30:00.000000Z")
+- `downloaded_timestamp` - number - Download Unix timestamp in seconds (e.g., 1705319400)
+- `uploaded_utc` - string (ISO 8601 / RFC3339) - `created_at` Open AI UTC timestamp returned by file upload (e.g., "2024-01-15T10:30:00.000000Z")
+  - empty if file could not be uploaded or embedded
+- `uploaded_timestamp` - number - `created_at` Open AI UTC timestamp returned by file upload (e.g., 1705319400)
+  - empty if file could not be uploaded or embedded
+- `embedded_utc` - number - `created_at` Open AI UTC timestamp returned by file embedding (e.g., "2024-01-15T10:30:00.000000Z")
+  - empty if file could not be uploaded or embedded
+- `embedded_timestamp` - number - `created_at` Open AI UTC timestamp returned by file upload (e.g., 1705319400)
+  - empty if file could not be uploaded or embedded
+- `sharepoint_error` - string - Any error that might have occurred during the download
+- `processing_error` - string - Any error that might have occurred during the processing of the file
+- `embedding_error` - string - Any error that might have occurred during the upload to the Open AI backend or the embedding
+
+#### Crawling process for SharePoint `file_sources`
+
+**Parameters:**
+  - `domain_id={id}` - The domain id
+  - `mode=[full|incremental]` - Full or incremental crawl
+  - Optional: `source_id={id}` - Process only a single source
+  - `dry_run=false` (default) - performs action as specified
+  - `dry_run=true` - simulates action without writing / modifying data
+
+**Download data:**
+1. Crawler loads domain config for `domain_id` and loads all `file_sources` (404 for missing domain)
+2. If optional `source_id` is given, filters out all other sources (404 for missing source)
+3. Crawler connects to SharePoint source using credentials from config (downstream HTTP errors are logged but do not terminate action)
+4. [For each connected source]
+    - Loads files list from document library as defined in source (with filter if configured)
+    - Writes `sharepoint_map.csv` file gracefully (retries on concurrency problems)
+    - If `mode=incremental`:
+	    - Loads `files_map.csv` to internal `file_map` (fallback to `mode=full` if file not exists)
+	    - Identifies 1) added files, 2) removed files, 3) changed files (based on  `file_size` and `last_modified_utc`)
+	    - REMOVED: Deletes all removed files from `02_embedded/` and `03_failed/` folders and from `file_map`. Writes `files_map.csv` gracefully.
+	    - ADDED: Downloads added files to `02_embedded/` folder, applying SharePoint last modified timestamp. Writes updated `files_map.csv` gracefully.
+	    - CHANGED: Deletes all changed files from `02_embedded/` and `03_failed/` folders.
+	    - CHANGED: Downloads changed files to `02_embedded/` folder, applying SharePoint last modified timestamp. Writes updated `files_map.csv` gracefully.
+    - If `mode=full`:
+	    - Deletes all subfolders in `02_embedded/` and `03_failed/` folders
+	    - Deletes `files_map.csv` and creates new internal `file_map`
+	    - ADDED: Downloads added files to `02_embedded/` folder, applying SharePoint last modified timestamp. Writes updated `files_map.csv` gracefully.
+
+Expected outcome:
+- `sharepoint_map.csv` contains all files (rows) that could be identified in SharePoint
+- `sharepoint_map.csv` does not contain files not existing in SharePoint
+- `files_map.csv` contains all files (rows) as `sharepoint_map.csv` with additional column data
+- `files_map.csv` > `file_relative_path` column is empty if download failed
+- `02_embedded/` folder does not contain files not existing in SharePoint
+- `02_embedded/` folder might missing files that could not be downloaded from SharePoint
+- `03_failed/` folder does not contain files not existing in SharePoint
+
+**Process data:**
+- This step is skipped for SharePoint files
+
+**Embed data:**
+1. Crawler loads domain config for `domain_id` and loads all `file_sources` (404 for missing domain)
+2. If optional `source_id` is given, filters out all other sources (404 for missing source)
+3. Get target vector store
+    - If `vector_store_id`is given, sets this vector store as target (404 for missing)
+    - Otherwise uses `vector_store_id` from `domains.json` to get domain vector store (404 if missing, 500 if not configured)
+    - Load all vector store files 
+4. [For each source]
+    - Loads `files_map.csv` (skip source if not found)
+    - Loads `vectorstore_map.csv` (skip source if not found)
+    - Cleanup `vectorstore_map.csv`: Removes all files with `openai_file_id` not found in the vector store. Writes `vectorstore_map.csv` gracefully.
+    - If `mode=incremental`:
+        - Compares the content of `files_map.csv` and `vectorstore_map.csv` while ignoring all files in `03_failed/` folders
+        - Identifies 1) added files, 2) removed files, 3) changed files (based on `file_size` and `last_modified_utc`)
+		- All changes must be reflected in internal `vectorstore_map`
+        - REMOVED: Removes all files from the vector store. Writes updated `vectorstore_map.csv` gracefully.
+        - ADDED: For each file, uploads the file to the global file storage and adds it to the vector store. Writes updated `vectorstore_map.csv` gracefully.
+        - CHANGED: For each file, removes the file from the vector store, uploads the file to the global file storage and adds it to the vector store. Writes updated `vectorstore_map.csv` gracefully.
+        - WAIT: Waits until the vector store has no files with status = 'in_progress'
+		- CLEANUP: Removes files where embedding has failed
+		    - Loads all vector store files
+			- Filters out files not in scope: neither in added files list, nor in changed files lists
+			- Identify files with status != 'completed'
+			- For each file
+			    - Removes file from vector store and deletes file in the global storage
+			    - Moves file from `02_embedded/` to `03_failed/` folder
+				- Updates file properties like `embedding_error` and `file_relative_path` in `vectorstore_map`
+			- Writes updated `vectorstore_map.csv` gracefully
+    - If `mode=full`:
+		- All changes must be reflected in internal `vectorstore_map`
+        - Removes all files in `vectorstore_map.csv` from the vector store but leaves file in global storage (other archived vector stores might still use it)
+		- ADD: For each file in `files_map.csv`, uploads the file to the global file storage and adds it to the vector store
+        - WAIT: Same as `mode=incremental`
+		- CLEANUP: Same as `mode=incremental`
+

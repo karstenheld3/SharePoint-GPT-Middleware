@@ -59,7 +59,7 @@ The `files_metadata.json` file serves as the central mapping that connects files
 - `list_sources` - SharePoint list sources
 - `sitepage_sources` - Site page sources
 
-**Data Provided by SharePoint**:
+**File data provided by the common SharePoint functions**:
 ```json
 {
   "sharepoint_listitem_id": 123,
@@ -67,9 +67,9 @@ The `files_metadata.json` file serves as the central mapping that connects files
   "filename": "Document.docx",
   "file_type": "docx",
   "file_size": 864368,
-  "url": "https://site.sharepoint.com/Shared%20Documents/Document.docx",
-  "raw_url": "https://site.sharepoint.com/Shared Documents/Document.docx",
-  "server_relative_url": "/sites/Site/Shared Documents/Document.docx",
+  "url": "https://company.sharepoint.com/sites/demo/Shared%20Documents/Document.docx",
+  "raw_url": "https://company.sharepoint.com/sites/demo/Shared Documents/Document.docx",
+  "server_relative_url": "/sites/demo/Shared Documents/Document.docx",
   "last_modified_utc": "2024-01-15T10:30:00.000000Z",
   "last_modified_timestamp": 1705319400
 }
@@ -84,28 +84,28 @@ The `files_metadata.json` file serves as the central mapping that connects files
 
 **Purpose**: Local cache of downloaded files, processed for embedding
 
-**Location**: `PERSISTENT_STORAGE_PATH/crawler/DOMAIN_ID/`
+**Location**: `PERSISTENT_STORAGE_PATH/crawler/[DOMAIN_ID]/`
 
 **Folder Structure**:
 ```
 crawler/DOMAIN_ID/
-├── 01_files/source_id/
+├── 01_files/[SOURCE_ID]/
 │   ├── 02_embedded/          # Successfully processed files
 │   │   ├── Document.docx
 │   │   └── SubFolder/
 │   │       └── AnotherDoc.pdf
 │   └── 03_failed/            # Failed processing
-├── 02_lists/source_id/
+├── 02_lists/[SOURCE_ID]/
 │   ├── 01_originals/         # Original CSV exports
 │   ├── 02_embedded/          # Converted Markdown files
 │   └── 03_failed/
-└── 03_sitepages/source_id/
+└── 03_sitepages/[SOURCE_ID]/
     ├── 01_originals/         # Original HTML
     ├── 02_embedded/          # Processed HTML
     └── 03_failed/
 ```
 
-**Download Process** (Step 1: SharePoint → Local Files):
+**Download Process** (Step 1: SharePoint -> Local Files):
 
 1. **Crawler connects to SharePoint** using credentials from config
 2. **Downloads files** from document libraries defined in `file_sources`
