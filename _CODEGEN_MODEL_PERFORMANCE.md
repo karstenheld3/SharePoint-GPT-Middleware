@@ -1,4 +1,4 @@
-# AI Generated Code Performance Tests
+# AI Model Performance Tests
 
 ## Specification understanding
 
