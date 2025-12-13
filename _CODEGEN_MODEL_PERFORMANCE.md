@@ -2,9 +2,11 @@
 ## Specification understanding
 
 Model spec understanding results (10 test questions).
-Test spec: [_V2_SPEC_ROUTERS.md](_V2_SPEC_ROUTERS.md)
-Test questions / answers: [_V2_SPEC_ROUTERS_02-ANSWERS.md](_V2_SPEC_ROUTERS_02-ANSWERS.md)
-Judge model: GPT-5.2 Medium Reasoning
+
+- **Test spec:** [_V2_SPEC_ROUTERS.md](_V2_SPEC_ROUTERS.md)
+- **Test questions / answers:** [_V2_SPEC_ROUTERS_02-ANSWERS.md](_V2_SPEC_ROUTERS_02-ANSWERS.md)
+- **Judge model:** GPT-5.2 Medium Reasoning
+
 Judge model prompt:
 ```
 Now rate the given answers against the reference answers and assign an **integer score from 0 to 5** where:
