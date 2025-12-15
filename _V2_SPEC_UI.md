@@ -259,8 +259,8 @@ function parseSourceUrl(source_url) {
 ```
 
 **Examples:**
-- `/v2/crawler/crawl?domain_id=DOMAIN01&format=stream` -> router: `crawler`, endpoint: `crawl`, objects: `['DOMAIN01']`
-- `/v2/inventory/vector_stores/files/delete?vector_store_id=vs_123&file_id=file_abc` -> router: `inventory`, endpoint: `vector_stores/files/delete`, objects: `['vs_123', 'file_abc']`
+- `/v2/crawler/crawl?domain_id=DOMAIN01&format=stream` -> router: `crawler`, endpoint: `crawl`, objects: `[DOMAIN01]`
+- `/v2/inventory/vector_stores/files/delete?vector_store_id=vs_123&file_id=file_abc` -> router: `inventory`, endpoint: `vector_stores/files/delete`, objects: `[vs_123, file_abc]`
 
 ### Bulk Delete
 
@@ -361,7 +361,7 @@ User clicks [Disconnect]
   
   <!-- Main Content -->
   <div class="container">
-    <h1>Jobs (<span id="job-count">3</span>)</h1>
+    <h1>Jobs (<span id="job-count">4</span>)</h1>
     
     <div class="toolbar">
       <button id="btn-delete-selected" onclick="bulkDelete()" class="btn-small btn-delete" disabled>Delete Selected (0)</button>
@@ -558,6 +558,15 @@ function initConsoleResize() { ... }
 ```
 
 ## Spec Changes
+
+**[2025-12-15 13:00]**
+- Fixed: Added State column to UX diagram and HTML table
+- Fixed: Added `hx-on::after-request` handler to control buttons in Job Row HTML
+- Fixed: Removed [Result] button from running job example in Job Row HTML
+- Fixed: parseSourceUrl examples - removed quotes to match code
+- Changed: Started/Finished datetime format note added above UX diagram
+- Changed: [Disconnect] clears title only, content remains until next [Monitor] click
+- Changed: start_json/end_json events - data reflected in job row then discarded (not persisted)
 
 **[2025-12-15 12:24]**
 - Added: Error Handling for Control Actions - modal dialog (not toast) for `ok: false` responses
