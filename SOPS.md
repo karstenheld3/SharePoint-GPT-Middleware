@@ -79,4 +79,5 @@ Streaming endpoints support `format=stream` and create job files for long-runnin
 8. Handle state transitions: `running` -> `paused`/`cancelled`/`completed`
 9. Yield pause/resume log events to HTTP stream (required for IG-05 byte-identical streams)
 10. Store job files in `PERSISTENT_STORAGE_PATH/jobs/[router]/`
-11. Verify implementation against Python rules
+11. Add link to home page in `app.py` > `root()` available links section
+12. Verify implementation against Python rules

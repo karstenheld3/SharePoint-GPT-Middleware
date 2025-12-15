@@ -1193,6 +1193,7 @@ async def process_files(request: Request):
       action=endpoint,
       object_id=None,
       source_url=source_url,
+      router_prefix=router_prefix,
       buffer_size=PERSISTENT_STORAGE_LOG_EVENTS_PER_WRITE
     ))
     log_function_output(log_data, f"Created job '{writer.job_id}' for {file_count} files")
@@ -1259,10 +1260,11 @@ class StreamingJobWriter:
   """Buffered writer for streaming job files. Handles dual output to HTTP and file."""
   
   def __init__(self, persistent_storage_path: str, router_name: str, action: str, 
-               object_id: Optional[str], source_url: str,
+               object_id: Optional[str], source_url: str, router_prefix: str,
                buffer_size: int = PERSISTENT_STORAGE_LOG_EVENTS_PER_WRITE):
     """
     Create job file and initialize writer.
+    - router_prefix: Injected from app.py (e.g., '/v2') for constructing monitor_url
     - Generates unique job_id (jb_[NUMBER])
     - Creates job file: [TIMESTAMP]_[[ACTION]]_[[JB_ID]]_[[OBJECT_ID]].running
     - Retries with new job_id on collision (STREAM-FR-02)
@@ -1274,7 +1276,7 @@ class StreamingJobWriter:
   
   @property
   def monitor_url(self) -> str:
-    """Returns monitor URL: /v2/jobs/monitor?job_id={job_id}&format=stream"""
+    """Returns monitor URL: {router_prefix}/jobs/monitor?job_id={job_id}&format=stream"""
   
   def emit_start(self) -> str:
     """

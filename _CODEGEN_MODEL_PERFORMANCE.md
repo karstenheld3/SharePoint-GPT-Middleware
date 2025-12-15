@@ -33,3 +33,64 @@ Models in Windsurf [Cost as of 2025-12-13]:
 - [3x] Claude Sonnet 4.5 (Thinking): 100%
 - [2x] Claude Opus 4.5: 100%, 100%
 - [3x] Claude Opus 4.5 (Thinking): 100%
+
+
+## Specification implementation
+
+### 2025-12-15 GPT-5.2 Medium Reasoning vs. Claude Opus 4.5 (Thinking)
+
+**Workflow used to prime models:**
+```
+Make sure you have no duplicates in your read list.
+Find all .md files in the workspace but ONLY in the /.windsurf/rules folder and all subfolders.
+Read these files.
+
+Then read:
+- /src: app.py, utils.py, hardcoded_config.py, common_sharepoint_functions.py, common_openai_functions.py
+- /: _V2_SPEC_JOBS_UI.md, _V2_SPEC_ROUTERS.md, SOPS.md
+
+Return only a single line: "Read [x] md files, [z]k context tokens"
+```
+
+
+### GPT-5.2 Medium Reasoning
+
+**Prompt:**
+```
+@_V2_SPEC_ROUTERS.md#L1141-1352 Implement this with 2 important changes:
+
+Instead of 
+/src/routers_v2 
+use
+/src/routers_v2a
+
+Instead of 
+/v2/ prefix for routers
+use
+/v2a/ prefix for routers
+```
+
+**Results:**
+- Implementation is working
+- Forgot to add links to app.py
+- Ca. 3 minutes
+
+### Claude Opus 4.5 (Thinking)
+
+**Prompt:**
+```
+@_V2_SPEC_ROUTERS.md#L1141-1352 Implement this with 2 important changes:
+
+Instead of 
+/src/routers_v2 
+use
+/src/routers_v2b
+
+Instead of 
+/v2/ prefix for routers
+use
+/v2b/ prefix for routers
+```
+**Results:**
+- Implementation is working
+- Ca. 1 minute

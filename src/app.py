@@ -12,7 +12,8 @@ from fastapi.staticfiles import StaticFiles
 from common_openai_functions import create_async_azure_openai_client_with_api_key, create_async_azure_openai_client_with_credential, create_async_openai_client
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from routers_v1 import crawler, inventory, domains, testrouter, testrouter2, testrouter3
-from routers_v2 import demorouter
+from routers_v2a import demorouter
+from routers_v2b import demorouter as demorouter_v2b
 from routers_static import openai_proxy, sharepoint_search
 from routers_static.sharepoint_search import build_domains_and_metadata_cache
 from utils import ZipExtractionMode, acquire_startup_lock, convert_to_flat_html_table, extract_zip_files, format_config_for_displaying, format_filesize, log_function_footer, log_function_header, log_function_output, log_function_footer_sync, clear_folder
@@ -491,18 +492,29 @@ def create_app() -> FastAPI:
     log_function_output(log_data, f"Test router V3 included at {v1_router_prefix}")
   except Exception as e:
     initialization_errors.append({"component": "Test Router 3", "error": str(e)})
-  
-  # Include V2 routers
-  v2_router_prefix = "/v2"
-  
-  # Include Demo router under /v2
+   
+  # Include V2a routers
+  v2a_router_prefix = "/v2a"
+
+  # Include Demo router under /v2a
   try:
-    app.include_router(demorouter.router, tags=["Demo V2"], prefix=v2_router_prefix)
-    demorouter.set_config(config, v2_router_prefix)
-    log_function_output(log_data, f"Demo router V2 included at {v2_router_prefix}")
+    app.include_router(demorouter.router, tags=["Demo V2A"], prefix=v2a_router_prefix)
+    demorouter.set_config(config, v2a_router_prefix)
+    log_function_output(log_data, f"Demo router V2A included at {v2a_router_prefix}")
   except Exception as e:
-    initialization_errors.append({"component": "Demo Router V2", "error": str(e)})
-  
+    initialization_errors.append({"component": "Demo Router V2A", "error": str(e)})
+
+  # Include V2b routers
+  v2b_router_prefix = "/v2b"
+
+  # Include Demo router under /v2b
+  try:
+    app.include_router(demorouter_v2b.router, tags=["Demo V2B"], prefix=v2b_router_prefix)
+    demorouter_v2b.set_config(config, v2b_router_prefix)
+    log_function_output(log_data, f"Demo router V2B included at {v2b_router_prefix}")
+  except Exception as e:
+    initialization_errors.append({"component": "Demo Router V2B", "error": str(e)})
+
   # Mount static files directory
   static_path = os.path.join(os.path.dirname(__file__), "static")
   if os.path.exists(static_path):
@@ -593,8 +605,10 @@ def root() -> str:
     <li><a href="/v1/testrouter/streaming01">/v1/testrouter/streaming01</a> - V1 Streaming Test (<a href="/v1/testrouter/streaming01?format=stream">Stream</a>)</li>
     <li><a href="/v1/testrouter2/streaming01">/v1/testrouter2/streaming01</a> - V2 Streaming Test (<a href="/v1/testrouter2/streaming01?format=stream">Stream</a> + <a href="/v1/testrouter2/jobs?format=html">Jobs</a>)</li>
     <li><a href="/v1/testrouter3/jobs">/v1/testrouter3/jobs</a> - V3 Streaming Test with UI (<a href="/v1/testrouter3/streaming01?format=stream">Stream</a> + <a href="/v1/testrouter3/jobs?format=ui">Jobs UI</a>)</li>
-    <p>Version 2 Routers</p>
-    <li><a href="/v2/demorouter">/v2/demorouter</a> - Demo Router V2 (<a href="/v2/demorouter/process_files?format=stream&files=5">Stream 5 files</a> + <a href="/v2/demorouter/process_files?format=stream&files=20">Stream 20 files</a>)</li>
+    <p>Version 2A Routers</p>
+    <li><a href="/v2a/demorouter/process_files">/v2a/demorouter/process_files</a> - Demo streaming endpoint (<a href="/v2a/demorouter/process_files?format=stream">Stream</a>)</li>
+    <p>Version 2B Routers</p>
+    <li><a href="/v2b/demorouter/process_files">/v2b/demorouter/process_files</a> - Demo streaming endpoint (<a href="/v2b/demorouter/process_files?format=stream">Stream</a>)</li>
   </ul>
 
   <div class="section">
