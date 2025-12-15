@@ -25,17 +25,23 @@
 1. Determine router root format support using shorthand notation (see `_V2_SPEC_ROUTERS.md`):
   - `L(u)` = UI only (e.g., `/v2/inventory`, `/v2/crawler`)
   - `L(jhu)` = List with json, html, ui formats (e.g., `/v2/domains`)
-  - Bare GET (no params) always returns self-documentation HTML
+  - Bare GET (no params) always returns self-documentation as plain text (UTF-8)
   - If not in spec: 1) ask user, 2) add to spec, 3) get user confirmation before implementation
-2. Create router file in `src/routers_v2/` with `router`, `config`, `router_prefix`, `set_config(app_config, prefix)`
-3. Add import in `src/app.py`
-4. Add `app.include_router()` and `router.set_config(config, v2_router_prefix)` in `create_app()`
+2. Create router file in `src/routers_v2/[routername].py` with `router`, `config`, `router_prefix`, `set_config(app_config, prefix)`
+  - Do NOT create `__init__.py` - use direct imports instead
+3. Add import in `src/app.py`: `from routers_v2 import [routername]`
+4. Add registration in `app.py` > `create_app()`:
+  ```python
+  app.include_router([routername].router, tags=["[Tag]"], prefix=v2_router_prefix)
+  [routername].set_config(config, v2_router_prefix)
+  ```
 5. Implement root endpoint supporting formats as determined in step 1:
-  - Bare GET (no params) -> self-documentation HTML
+  - Bare GET (no params) -> minimalistic HTML with title, endpoint list with format links, back link
   - `format=ui` -> interactive UI
   - `format=json` -> JSON result with `{ok, error, data}`
   - `format=html` -> HTML table view
 6. Add link to home page in `app.py` > `root()` available links section
+7. Verify implementation against Python rules
 
 ## Adding a new `/v2/` endpoint
 
@@ -51,12 +57,13 @@ V2 endpoints follow action-suffixed pattern: `/resource/get`, `/resource/create`
 2. Add `@router.get()`, `@router.post()`, `@router.put()`, or `@router.api_route()` function
 3. Add docstring with Parameters and Examples using `{router_prefix}` placeholder
 4. Add `log_function_header()` / `log_function_footer()` calls
-5. Return self-documentation if no query params: `if len(request.query_params) == 0`
+5. Return plain text self-documentation if no query params: `if len(request.query_params) == 0` -> `PlainTextResponse`
 6. Implement consistent JSON result format: `{"ok": true/false, "error": "", "data": {...}}`
 7. Use semantic identifier names: `job_id`, `domain_id`, `source_id`, `vector_store_id`
 8. Support `dry_run=true` param for Create, Update, Delete actions
 9. If router `/` endpoint shows documentation, add endpoint link there
 10. Add link to home page in `app.py` > `root()` available links section
+11. Verify implementation against Python rules
 
 ## Adding a `/v2/` streaming endpoint
 
@@ -72,3 +79,4 @@ Streaming endpoints support `format=stream` and create job files for long-runnin
 8. Handle state transitions: `running` -> `paused`/`cancelled`/`completed`
 9. Yield pause/resume log events to HTTP stream (required for IG-05 byte-identical streams)
 10. Store job files in `PERSISTENT_STORAGE_PATH/jobs/[router]/`
+11. Verify implementation against Python rules

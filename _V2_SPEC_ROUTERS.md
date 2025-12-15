@@ -529,24 +529,54 @@ Returns full stream (from start) as Server-Sent Events (SSE), MIME type: `Conten
 
 ### Self-Documentation Format
 
-- Bare GET requests (no query params) return self-documentation as HTML.
-- The `router_prefix` variable is set via `set_config()` when the router is initialized
+Two types of self-documentation exist:
 
-**Root endpoints** (e.g., `/v2/crawler`, `/v2/domains`) return a full HTML page with:
-- Title and description
-- List of available sub-endpoints with example links
-- Back navigation link
+1. **Router root endpoints** (e.g., `/v2/demorouter`, `/v2/inventory`) return **minimalistic HTML** with:
+   - Title and description
+   - List of available endpoints with links to each supported format
+   - Back navigation link
 
-**Action endpoints** (e.g., `/v2/domains/get`, `/v2/crawler/crawl`) return minimal HTML with:
-- Docstring wrapped in `<pre>` block
-- Parameters section
-- Example URLs with `{router_prefix}` placeholder replaced at runtime via `__doc__.replace('{router_prefix}', router_prefix)`
+2. **Action endpoints** (e.g., `/v2/demorouter/demo_endpoint`, `/v2/domains/get`) return **plain text (UTF-8)** with:
+   - Docstring content with `{router_prefix}` placeholder replaced at runtime
 
-**Implementation pattern:**
+The `router_prefix` variable is set via `set_config()` when the router is initialized.
+
+**Router root endpoint pattern (HTML):**
 ```python
-# Docstring defines documentation content
-@router.get('/resource/action')
-async def action(request: Request):
+from fastapi.responses import HTMLResponse
+
+@router.get('/demorouter')
+async def demorouter_root(request: Request):
+  """Router root docstring for reference."""
+  return HTMLResponse(f"""
+<!doctype html><html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Demo Router</title>
+  <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+  <h1>Demo Router</h1>
+  <p>Description of the router and its purpose.</p>
+
+  <h4>Available Endpoints</h4>
+  <ul>
+    <li><a href="{router_prefix}/demorouter/demo_endpoint">{router_prefix}/demorouter/demo_endpoint</a> - Process files (<a href="{router_prefix}/demorouter/demo_endpoint?format=stream&files=5">Stream</a>)</li>
+  </ul>
+
+  <p><a href="/">← Back to Main Page</a></p>
+</body>
+</html>
+""")
+```
+
+**Action endpoint pattern (plain text):**
+```python
+from fastapi.responses import PlainTextResponse
+
+@router.get('/demorouter/demo_endpoint')
+async def demo_endpoint(request: Request):
   """
   Description of the endpoint.
   
@@ -555,11 +585,12 @@ async def action(request: Request):
   - format: Response format (json, html)
   
   Examples:
-  {router_prefix}/resource/action?param1=value&format=json
+  {router_prefix}/demorouter/demo_endpoint?param1=value&format=json
   """
   # Return documentation if no params
   if len(request.query_params) == 0:
-    return HTMLResponse(generate_documentation_page(endpoint, action.__doc__))
+    endpoint_documentation = demo_endpoint.__doc__.replace("{router_prefix}", router_prefix)
+    return PlainTextResponse(endpoint_documentation, media_type="text/plain; charset=utf-8")
   # ... handle request
 ```
 
@@ -1087,6 +1118,12 @@ This section specifies the server-side implementation for streaming endpoints an
 - Orphaned `.running` files indicate crashed jobs
 - No automatic recovery - manual cleanup or re-run required
 
+**STREAM-FR-09: Standard Logging**
+- Streaming jobs must use standard logging functions from `utils.py` alongside SSE output
+- Call `log_function_header()` at job start, `log_function_footer()` at job end
+- Use `log_function_output()` for progress and status messages during job execution
+- Standard logs go to server console/log files; SSE output goes to HTTP response and job file
+
 ### Implementation Guarantees
 
 **STREAM-IG-01:** Every job file contains exactly one `start_json` event as first content
@@ -1095,76 +1132,106 @@ This section specifies the server-side implementation for streaming endpoints an
 **STREAM-IG-04:** Control files are ephemeral - never persist after job processes them
 **STREAM-IG-05:** HTTP stream and job file content are byte-identical
 
+### File Organization
+
+V2 router files are located in `src/routers_v2/`:
+- `demorouter.py` - Demo router implementation
+- `router_job_functions.py` - Shared streaming job infrastructure (StreamingJobWriter, ControlAction, job file operations)
+
 ### Example Endpoint Implementation
 
 ```python
+# routers_v2/demorouter.py
+# Registered in app.py: app.include_router(demorouter.router, prefix="/v2")
+#                       demorouter.set_config(config, "/v2")
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
-from common_job_functions import StreamingJobWriter, ControlAction
+from utils import log_function_header, log_function_footer, log_function_output
+from routers_v2.router_job_functions import StreamingJobWriter, ControlAction
 
-router = APIRouter(prefix="/v2/crawler")
+router = APIRouter()
+config = None
+router_prefix = None
 
-# Crawl a domain. Supports format=stream for long-running operation.
-@router.get("/crawl")
-async def crawl(request: Request, domain_id: str = None, format: str = None):
-  if not request.query_params: return HTMLResponse(crawl.__doc__)
-  if format != "stream": return JSONResponse({"ok": False, "error": "Use format=stream for crawl operations", "data": {}})
-  source_url = f"/v2/crawler/crawl?domain_id={domain_id}&format=stream"
-  return StreamingResponse(crawl_generator(domain_id, source_url), media_type="text/event-stream")
+def set_config(app_config, prefix):
+  global config, router_prefix
+  config = app_config
+  router_prefix = prefix
 
-# Generator that yields SSE events and writes to job file
-async def crawl_generator(domain_id: str, source_url: str):
-  writer = (StreamingJobWriter(
-    persistent_storage_path=config.persistent_storage_path,
-    router_name="crawler",
-    action="crawl",
-    object_id=domain_id,
-    source_url=source_url,
-    buffer_size=PERSISTENT_STORAGE_LOG_EVENTS_PER_WRITE
-  ))
+@router.get("/demorouter/process_files")
+async def process_files(request: Request):
+  """
+  Demo streaming endpoint - simulates file processing with streaming output.
   
-  try:
-    # Emit start_json (immediate flush to file and HTTP)
-    yield writer.emit_start()
-    
-    # Load domain and get files to process
-    files = load_domain_files(domain_id)
-    total = len(files)
-    
-    for i, file in enumerate(files, 1):
-      # Check for control files (returns logs for pause/resume, handles async pause loop)
-      control_logs, control = await writer.check_control()
-      for log in control_logs:
-        yield log  # Yield pause/resume logs to HTTP (already written to file)
-      if control == ControlAction.CANCEL:
-        yield writer.emit_end(ok=False, error="Cancelled by user", data={"processed": i-1, "total": total})
-        return
-      
-      # Emit progress log (buffered)
-      yield writer.emit_log(f"[ {i} / {total} ] Processing '{file.name}'...")
-      
-      # Do actual work
-      result = process_file(file)
-      
-      # Emit result log
-      yield writer.emit_log(f"  {'OK' if result.ok else 'FAILED'}.")
-    
-    # Emit end_json with success (immediate flush)
-    yield writer.emit_end(ok=True, data={"processed": total, "total": total})
-    
-  except Exception as e:
-    # Emit end_json with error
-    yield writer.emit_end(ok=False, error=str(e), data={})
+  Parameters:
+  - format: Must be 'stream' for this endpoint
+  - files: Number of files to simulate (default: 20)
   
-  finally:
-    # Ensure file state is finalized (rename to .completed or .cancelled)
-    writer.finalize()
+  Examples:
+  {router_prefix}/demorouter/process_files?format=stream
+  {router_prefix}/demorouter/process_files?format=stream&files=10
+  """
+  function_name = "process_files()"
+  request_params = dict(request.query_params)
+  endpoint = function_name.replace("()", "")
+  endpoint_documentation = process_files.__doc__.replace("{router_prefix}", router_prefix)
+  documentation_HTML = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>/{endpoint} - Documentation</title></head><body><pre>{endpoint_documentation}</pre></body></html>"
+  
+  if len(request_params) == 0: return HTMLResponse(documentation_HTML)
+  
+  format = request_params.get("format", None)
+  file_count = int(request_params.get("files", "20"))
+  
+  if format != "stream": return JSONResponse({"ok": False, "error": "Use format=stream", "data": {}})
+  source_url = f"{router_prefix}/demorouter/process_files?format=stream&files={file_count}"
+  
+  async def stream_generator():
+    log_data = log_function_header(function_name)
+    writer = (StreamingJobWriter(
+      persistent_storage_path=config.persistent_storage_path,
+      router_name="demorouter",
+      action=endpoint,
+      object_id=None,
+      source_url=source_url,
+      buffer_size=PERSISTENT_STORAGE_LOG_EVENTS_PER_WRITE
+    ))
+    log_function_output(log_data, f"Created job '{writer.job_id}' for {file_count} files")
+    
+    try:
+      yield writer.emit_start()
+      
+      # Simulate file list
+      simulated_files = [f"document_{i:03d}.pdf" for i in range(1, file_count + 1)]
+      total = len(simulated_files)
+      
+      for i, filename in enumerate(simulated_files, 1):
+        control_logs, control = await writer.check_control()
+        for log in control_logs: yield log
+        if control == ControlAction.CANCEL:
+          yield writer.emit_end(ok=False, error="Cancelled by user", data={"processed": i-1, "total": total})
+          return
+        
+        yield writer.emit_log_with_standard_logging(log_data, f"[ {i} / {total} ] Processing '{filename}'...")
+        await asyncio.sleep(0.2)  # Simulate work
+        yield writer.emit_log_with_standard_logging(log_data, f"  OK.")
+      
+      yield writer.emit_end(ok=True, data={"processed": total, "total": total})
+      
+    except Exception as e:
+      yield writer.emit_end(ok=False, error=str(e), data={})
+    
+    finally:
+      writer.finalize()
+      await log_function_footer(log_data)
+  
+  return StreamingResponse(stream_generator(), media_type="text/event-stream")
+
 ```
 
 ### Function Definitions
 
 ```python
-# common_job_functions.py
+# routers_v2/router_job_functions.py
 
 from dataclasses import dataclass
 from enum import Enum
@@ -1220,6 +1287,14 @@ class StreamingJobWriter:
     Emit log event. Buffered write to file. (STREAM-FR-03)
     Returns SSE-formatted string for HTTP response.
     """
+  
+  def emit_log_with_standard_logging(self, log_data, message: str) -> str:
+    """
+    Emit log event and also write to standard logging. (STREAM-FR-03, STREAM-FR-09)
+    Combines SSE output with server console/log file output.
+    """
+    log_function_output(log_data, message)
+    return self.emit_log(message)
   
   def emit_end(self, ok: bool, error: str = "", data: dict = None) -> str:
     """

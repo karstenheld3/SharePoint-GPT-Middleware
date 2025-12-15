@@ -2,6 +2,8 @@
 
 This document specifies the HTMX-based User Interface for the `/v2/jobs?format=ui` endpoint.
 
+**Depends on:** `_V2_SPEC_ROUTERS.md` for streaming job infrastructure, SSE format, and job file specifications.
+
 ## Overview
 
 A reactive web UI for monitoring and controlling long-running jobs using HTMX SSE extension for real-time streaming updates. The UI displays a job list table with actions and a resizable console panel for viewing job output streams.
