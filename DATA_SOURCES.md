@@ -75,7 +75,7 @@ The `files_metadata.json` file serves as the central mapping that connects files
 }
 ```
 
-**Endpoint**: `/crawler/list_sharepoint_files`
+**Endpoint**: `/v1/crawler/list_sharepoint_files`
 - Connects to SharePoint using client credentials
 - Retrieves file metadata and content
 - Returns list of files with SharePoint metadata
@@ -127,7 +127,7 @@ crawler/DOMAIN_ID/
 }
 ```
 
-**Endpoint**: `/crawler/list_local_files`
+**Endpoint**: `/v1/crawler/list_local_files`
 - Scans local `02_embedded/` folders
 - Returns list of files with local file system metadata
 - Does NOT include SharePoint metadata (only file path, size, modified date)
@@ -158,7 +158,7 @@ crawler/DOMAIN_ID/
 }
 ```
 
-**Endpoint**: `/crawler/list_vectorstore_files`
+**Endpoint**: `/v1/crawler/list_vectorstore_files`
 - Queries OpenAI API for files in a vector store
 - Returns list of files with OpenAI metadata
 - Does NOT include SharePoint or local file path information

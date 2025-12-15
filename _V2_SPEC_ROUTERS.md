@@ -37,8 +37,8 @@ A FastAPI-based middleware application that bridges SharePoint content with Open
 - Supports many sources in different SharePoint sites and SharePoint filters
 - Contains different categories of SharePoint sources:
 - `file_sources` - list of file sources with individual`site_url` and `filter` attributes (1:n relation)
+- `list_sources` - list of SharePoint list sources with individual `site_url` and `filter` attributes (1:n relation)
 - `sitepage_sources` - list of site page with individual `site_url` and `filter` attributes (1:n relation)
-- `list_sources` - list of site page with individual `site_url` and `filter` attributes (1:n relation)
 
 **Local storage** - Folders and files used to store information that can't be kept in the backend
 - Contains files and data downloaded from SharePoint
@@ -56,7 +56,6 @@ A FastAPI-based middleware application that bridges SharePoint content with Open
 
 **OpenAI proxy** - Replicates behavior of a number of OpenAI API endpoints
 - Allows porting of applications to a security-controlled environment where Open AI or Azure OpenAI backends must not be exposed directly
-- Everything 
 
 ## Endpoint architecture and design
 
@@ -64,21 +63,22 @@ In the following sections `resource` acts as a placeholder for the individual do
 
 ### Endpoint design decisions
 
-- [DD-E001] Self-documentation on bare GET (no query params). When documentation is needed, it's where the developer is working (who might not have access to anything else).
+- [DD-E001] Self-documentation on bare GET (no query params, including `format`). When documentation is needed, it's where the developer is working.
 - [DD-E002] Action-suffixed endpoints: `/resource`, `/resource/get`, `/resource/create`, `/resource/update`, `/resource/delete`. Allows self-documentation.
 - [DD-E003] Backend ships simple interactive UI. Admins need no programming skills. Changes can be implemented and tested fast and in one place.
 - [DD-E004] Format param controls response: `json`, `html`, `ui` (resource root only), `stream` (long-running jobs). 
 - [DD-E005] Body accepts JSON or form data (content-type detection). Principle of least surprise: No need to look up documentation, it just works.
 - [DD-E006] Triggering, monitoring and management of crawling and other jobs via HTTP GET requests. Allows automation via single URL calls (low technology barrier).
-- [DD-E007] Semantic identifyer names like `job_id`, `domain_id`, `source_id` that explicitly name the resource. Disambiguates object types and allow for actions that require multiple ids.
+- [DD-E007] Semantic identifier names like `job_id`, `domain_id`, `source_id` that explicitly name the resource. Disambiguates object types and allow for actions that require multiple ids.
 - [DD-E008] Semantic entity identifyers for interally created ids like `jb_[JOB_NUMBER]` for a job. Self-explanatory system: disambiguates object types, simplifies support. Exceptions: Domain ids (used as folder names and `domain.json`) and source ids (used in `domain.json`)
 - [DD-E009] Plural naming for resources: `/domains`, `/vector_stores`. Exceptions possible: `/crawler`
+- [DD-E010] HTTP semantics exception for `/resource/delete` endpoints: `GET [R]/delete`
 
 ### Why Action-Suffixed over RESTful?
 
 - RESTful was tried in the initial version and led to duplication of endpoints: `/query` -> `/query2`
 - Hybrid API: same endpoints serve both programmatic API (JSON) and interactive UI (HTMX)
-- Self-documenting: URL reflects developer intent via action and query params without hidden information in HTTP method
+- Self-documenting: URL reflects developer intent via action and query params while still implementing HTTP semantics via POST, PUT, DELETE
 - Bare `GET /resource` without params always returns documentation (consistent behavior)
 - Developers can easily inspect content, try out query params and choose return types via HTTP GET in the browser without additional tooling
 - All endpoints use query params (uniform parsing, generalized predictable behavior)
@@ -138,23 +138,23 @@ Version 2 routers (as specified in this document):
 - `POST /v2/resource/create` - Create
 - `PUT /v2/resource/update?resource_id={id}` - Update
   - Example variant: `PUT /v2/resource/ensure_attributes?resource_id={id}` - Create or update item attributes
-- `DELETE /v2/resource/delete?resource_id={id}` - Delete
+- `DELETE, GET /v2/resource/delete?resource_id={id}` - Delete
 
 ### Query params syntax uses explicit query params for ids and data format:
 
 **/resource** - List
 - `GET /v2/resource` -> -> Self-documentation (UTF-8 text)
-- `GET /v2/resource?format=json` -> JSON array `[...]`
+- `GET /v2/resource?format=json` -> JSON result with `"data": [...]`
 - `GET /v2/resource?format=html` -> HTML table (nested or flat)
 - `GET /v2/resource?format=ui` -> Interactive UI listing all items with [Create], [Edit] / [View], [Delete] buttons for each item if supported by endpoint
 
 **/resource/get** - Get single
 - `GET /v2/resource/get` -> -> Self-documentation (UTF-8 text)
-- `GET /v2/resource/get?resource_id={id}` -> JSON object `{...}`
-- `GET /v2/resource/get?resource_id={id}&format=json` -> JSON object `{...}`
+- `GET /v2/resource/get?resource_id={id}` -> JSON result with `"data": {...}`
+- `GET /v2/resource/get?resource_id={id}&format=json` -> JSON result with `"data": {...}`
 - `GET /v2/resource/get?resource_id={id}&format=html` -> HTML detail view
-- `GET /v2/resource/get?format=json` -> Error: missing resource_id
-- `GET /v2/resource/get?format=ui` -> Error: format not supported
+- `GET /v2/resource/get?format=json` -> HTTP 400: JSON error result "Missing 'resource_id'."
+- `GET /v2/resource/get?format=ui` -> HTTP 400: "Format 'ui' not supported".
 
 ### Common query params
 
@@ -163,7 +163,7 @@ Version 2 routers (as specified in this document):
 - All endpoints returning data are required to support this query param.
 - Endpoints are NOT required to support all available options. At least one option must be supported.
 - Available options:
-  - `json` (default) -> JSON object `{...}` for Create, Get, Update, Delete actions. JSON array `[...]` for List and other action returning collections.
+  - `json` (default) -> JSON result with `"data": {...}` for Create, Get, Update, Delete actions. JSON result with `"data": [...]` for List and other action returning collections.
   - `html` -> HTML detail view (JSON converted to flat or nested HTML table)
   - `ui` -> Interactive UI listing all items with [Create], [Edit] / [View], [Delete] buttons for each item if supported by endpoint
   - `stream` ->  Server-Sent Events (SSE) stream with HTMX compatible syntax (`event:` and `data:` lines) with MIME type `Content-Type: text/event-stream`
@@ -175,6 +175,50 @@ Version 2 routers (as specified in this document):
 - Available options:
   - `false` (default) - Allowed to delete or modify data: perform the action as specified.
   - `true` - NOT allowed to delete or modify data: simulate the action and its outcome.
+  
+### Use HTTP status codes for high-level success/failure
+
+- 2xx – the operation was successfully processed (even if result is 'no-op').
+  - 200 - OK
+- 4xx – client did something wrong (validation error, missing field, bad state).
+  - 400 - Bad Request for invalid parameters
+  - 404 - Not Found for missing objects
+- 5xx – server or unknown error
+  - 500 - Internal Server Error for unforseen exceptions and server errors
+
+### Consistent JSON result format
+
+- Endpoints that return data guarantee a minimal JSON format. 
+- Streaming endpoints (`format=stream`) and self-documentation endpoints are excluded from this guarantee.
+
+**Core principles**
+- Every response is structured JSON when `format=json` (or default JSON).
+- HTML/UI formats are just renderings of the same structured JSON. When `format=html` or `format=ui`, the server still constructs the same {ok,error,data} object internally.
+- HTTP status code conveys broad class; JSON `error` attribute contains detailed error message.
+
+**Consistent minimal pattern:**
+- `ok` - `true` for success, `false` for failure
+- `error` - what went wrong (string)
+- `data` - success: result, failure: best effort result (may be {} or [] if nothing is available)
+
+**Success Examples:**
+```
+{ "ok": true, "error": "", "data": {...} }
+or
+{ "ok": true, "error": "", "data": [...] }
+```
+
+**Failure Examples:**
+```
+{ "ok": false, "error": "<error_message>", "data": {} }
+or 
+{ "ok": false, "error": "<error_message>", "data": [] }
+or 
+{ "ok": false, "error": "<error_message>", "data": { "vector_store_id": "vs_2343453245", ... } }
+or 
+{ "ok": false, "error": "<error_message>", "data": [ {"vector_store_id": "vs_2343453245", ... }, {"vector_store_id": "vs_3872455464", ... }, ... } }
+```
+
 
 ### Streaming and job files
 
@@ -190,13 +234,14 @@ Long-running jobs can be monitored, paused, resumed, cancelled by independent pr
 - Support of `event:` and `data:` lines. See HTMX Server Sent Event (SSE) Extension documentation: https://htmx.org/extensions/sse/
 - Each event is terminated by an empty line (**LF** or **CRLF**)
 - Each stream starts with a `start_json` event and ends with a `end_json` event
+- Even if the streaming job is cancelled, an `end_json` event containing the status and result is guaranteed (except on crashes)
 - Between the `start_json` and `end_json` events only `log` events are allowed
-- The `start_json` event contains a JSON object representing the 
+- The `start_json` event contains a JSON object with the job metadata
 
 Example *stream output* for `start_json` event with job metadata as JSON
 ```
 event: start_json
-data: { "job_id": 'jb_2', "endpoint": "/v2/crawler/crawl?domain_id=TEST01&format=stream", "state": "running", ... }
+data: { "job_id": 'jb_2', "endpoint": "/v2/crawler/crawl?domain_id=TEST01&format=stream", "state": "running"}
 
 ```
 
@@ -207,7 +252,7 @@ data: {
 data:   "job_id": 'jb_2'
 data:   "endpoint": "/v2/crawler/crawl?domain_id=TEST01&format=stream",
 data:   "state": "running",
-data    ...
+data:   "start_utc": "2024-01-15T10:30:00.000000Z"
 data: }
 
 ```
@@ -216,6 +261,20 @@ Example *stream output* for `log` event with single line of text
 ```
 event: log
 data: [ 2 / 4 ] Processing file 'document.docx' (ID='assistant-86Bsp9rZQevLksitUBBPEn', modified='2025-11-26 14:20:30')...
+
+```
+
+Example *multiline stream output* for `end_json` event with job metadata as JSON
+```
+event: end_json
+data: {
+data:   "job_id": 'jb_2'
+data:   "endpoint": "/v2/crawler/crawl?domain_id=TEST01&format=stream",
+data:   "state": "completed",
+data:   "start_utc": "2024-01-15T10:30:00.000000Z",
+data:   "end_utc": "2024-01-15T12:23:34.000000Z",
+data    "result": { "ok": true, "error": "", "data": {...} }
+data: }
 
 ```
 
@@ -244,11 +303,13 @@ data: 00002 | assistant-B8XZtxgQe4aSQwsF5GcbdH | EnergyOverview.pdf             
 - `[JB_ID]` - Global sequential streaming job ID
 - `[OBJECT_ID_OR_NAME]` - Optional: ID or name of object being processed
 
-**States:**
+**Job States:**
 - `.running` - Active job, contains log content
 - `.completed` - Finished job
 - `.paused` - Paused job
 - `.cancelled` - Cancelled job
+
+**Job Control States:**
 - `.pause_requested` - Control: request pause
 - `.resume_requested` - Control: request resume
 - `.cancel_requested` - Control: request cancel
@@ -308,7 +369,7 @@ Long-running jobs are controlled via the `/v2/jobs/` router.
 **Control Operation**
 
 ```
-GET /v2/testrouter/control?job_id={job_id}&action={action}
+GET /v2/jobs/control?job_id={job_id}&action={action}
 ```
 
 - Available actions:
@@ -319,20 +380,10 @@ GET /v2/testrouter/control?job_id={job_id}&action={action}
 **Monitoring**
 
 ```
-GET /v2/testrouter/monitor?job_id={job_id}&format=stream
+GET /v2/jobs/monitor?job_id={job_id}&format=stream
 ```
 
 Returns full stream (from start) as Server-Sent Events (SSE), MIME type: `Content-Type: text/event-stream`, UTF-8 encoded
-
-### Use HTTP status codes for high-level success/failure
-
-- 2xx – the operation was successfully processed (even if result is 'no-op').
-  - 200 - OK
-- 4xx – client did something wrong (validation error, missing field, bad state).
-  - 400 - Bad Request for invalid parameters
-  - 404 - Not Found for missing objects
-- 5xx – server or unknown error
-  - 500 - Internal Server Error for unforseen exceptions and server errors
 
 ## Endpoint specification
 
@@ -373,51 +424,49 @@ L(jhu)C(j)G(jh)U(j)D(jh): `/v2/icecreams` - Icecream stock
 
 translates into this implemented behavior:
 - `GET /v2/icecreams` - Self-documentation of `icecreams` endpoint with all actions
-- `GET /v2/icecreams?format=json` -> JSON array `[...]`
+- `GET /v2/icecreams?format=json` -> JSON result with `"data": [...]`
 - `GET /v2/icecreams?format=html` -> HTML detail view
 - `GET /v2/icecreams?format=ui` -> Interactive UI listing all icecreams with [Create], [Edit], [Delete] buttons for each item
 
 - `GET /v2/icecreams/create` - Self-documentation of `create` action
-- `POST /v2/icecreams/create` with JSON or form data -> Creates new icecream item and returns it as JSON object `{...}`
+- `POST /v2/icecreams/create` with JSON or form data -> Creates new icecream item and returns it as JSON result with `"data": {...}`
 - `POST /v2/icecreams/create?dry_run=true` with JSON or form data -> [HERE]
-- `POST /v2/icecreams/create?format=json` with JSON or form data -> Creates new icecream item and returns it as JSON object `{...}`
-- `POST /v2/icecreams/create?format=html` with JSON or form data -> HTTP 400 "ERROR: Response format 'html' not supported."
-- `PUT /v2/icecreams/create` with JSON or form data -> HTTP 400 "ERROR: HTTP method 'PUT' not supported."
+- `POST /v2/icecreams/create?format=json` with JSON or form data -> Creates new icecream item and returns it as JSON result with `"data": {...}`
+- `POST /v2/icecreams/create?format=html` with JSON or form data -> HTTP 400: "Format 'html' not supported."
+- `PUT /v2/icecreams/create` with JSON or form data -> HTTP 400: "HTTP method 'PUT' not supported."
 
 - `GET /v2/icecreams/get` - Self-documentation of `get` action
-- `GET /v2/icecreams/get?icecream_id={id}` -> JSON object `{...}`
-- `GET /v2/icecreams/get?icecream_id={id}?format=json` -> JSON object `{...}`
+- `GET /v2/icecreams/get?icecream_id={id}` -> JSON result with `"data": {...}`
+- `GET /v2/icecreams/get?icecream_id={id}&format=json` -> JSON result with `"data": {...}`
 - `GET /v2/icecreams/get?icecream_id={id}format=html` -> HTML detail view
-- `GET /v2/icecreams/get?icecream_id={id}format=ui` -> HTTP 400 "ERROR: Response format 'ui' not supported."
-- `GET /v2/icecreams/get?icecream_id={id}format=stream` -> HTTP 400 "ERROR: Response format 'stream' not supported."
+- `GET /v2/icecreams/get?icecream_id={id}format=ui` -> HTTP 400: "Format 'ui' not supported."
+- `GET /v2/icecreams/get?icecream_id={id}format=stream` -> HTTP 400: "Format 'stream' not supported."
 
 - `GET /v2/icecreams/update` - Self-documentation of `update` action
-- `PUT /v2/icecreams/update` with JSON or form data -> Updates icecream item and returns it as JSON object `{...}`
-- `PUT /v2/icecreams/update?format=json` with JSON or form data -> Updates icecream itemand returns it as JSON object `{...}`
-- `PUT /v2/icecreams/update?format=html` -> HTTP 400 "ERROR: Response format 'html' not supported."
-- `POST /v2/icecreams/update` with JSON or form data -> HTTP 400 "ERROR: HTTP method 'POST' not supported."
-- `PATCH /v2/icecreams/update` with JSON or form data -> HTTP 400 "ERROR: HTTP method 'PATCH' not supported."
+- `PUT /v2/icecreams/update` with JSON or form data -> Updates icecream item and returns it as JSON result with `"data": {...}`
+- `PUT /v2/icecreams/update?format=json` with JSON or form data -> Updates icecream itemand returns it as JSON result with `"data": {...}`
+- `PUT /v2/icecreams/update?format=html` -> HTTP 400: "Format 'html' not supported."
+- `POST /v2/icecreams/update` with JSON or form data -> HTTP 400: "HTTP method 'POST' not supported."
+- `PATCH /v2/icecreams/update` with JSON or form data -> HTTP 400: "HTTP method 'PATCH' not supported."
 
 - `GET /v2/icecreams/delete` - Self-documentation of `delete` action
-- `DELETE /v2/icecreams/delete?icecream_id={id}` -> Deletes icecream item and returns it as JSON object `{...}`
-- `GET /v2/icecreams/delete?icecream_id={id}` -> Deletes icecream item and returns it as JSON object `{...}`
-- `DELETE /v2/icecreams/delete?icecream_id={id}?format=json` -> Deletes icecream item and returns it as JSON object `{...}`
-- `DELETE /v2/icecreams/delete?icecream_id={id}?format=html` -> Deletes icecream item and returns it as HTML detail view
-- `GET /v2/icecreams/delete?icecream_id={id}?format=html` -> Deletes icecream item and returns it as HTML detail view
-- `DELETE /v2/icecreams/delete?icecream_id={id}format=stream` -> HTTP 400 "ERROR: Response format 'stream' not supported."
-- `PATCH /v2/icecreams/delete?icecream_id={id}` with JSON or form data -> HTTP 400 "ERROR: HTTP method 'PATCH' not supported."
+- `DELETE, GET /v2/icecreams/delete?icecream_id={id}` -> Deletes icecream item and returns it as JSON result with `"data": {...}`
+- `DELETE, GET /v2/icecreams/delete?icecream_id={id}&format=json` -> Deletes icecream item and returns it as JSON result with `"data": {...}`
+- `DELETE, GET /v2/icecreams/delete?icecream_id={id}&format=html` -> Deletes icecream item and returns it as HTML detail view
+- `DELETE, GET /v2/icecreams/delete?icecream_id={id}format=stream` -> HTTP 400: "Format 'stream' not supported."
+- `PATCH /v2/icecreams/delete?icecream_id={id}` with JSON or form data -> HTTP 400: "HTTP method 'PATCH' not supported."
 
 Example 2: This specification
 L(jhu)G(jh): `/v2/icecreams/flavours` - Available icecream flavours
 
 translates into this implemented behavior:
 - `GET /v2/icecreams/flavours` - Self-documentation of `flavours` endpoint
-- `GET /v2/icecreams/flavours?format=json` -> JSON `[...]`
+- `GET /v2/icecreams/flavours?format=json` -> JSON result with `"data": [...]`
 - `GET /v2/icecreams/flavours?format=html` -> HTML detail view
 - `GET /v2/icecreams/flavours?format=ui` -> Interactive UI listing all items with [View] button for each item
 - `GET /v2/icecreams/flavours/get`  - Self-documentation of `get` endpoint
-- `GET /v2/icecreams/flavours/get?flavour_id={id}` -> JSON `{...}`
-- `GET /v2/icecreams/flavours/get?flavour_id={id}&format=json` -> JSON `{...}`
+- `GET /v2/icecreams/flavours/get?flavour_id={id}` -> JSON result with `"data": {...}`
+- `GET /v2/icecreams/flavours/get?flavour_id={id}&format=json` -> JSON result with `"data": {...}`
 - `GET /v2/icecreams/flavours/get?flavour_id={id}&format=html` -> HTML detail view
 
 ### Specification of endpoints
@@ -429,19 +478,25 @@ Create, Update, Delete operations usually support the `format=stream` query para
 - L(u): `/v2/inventory` - UI for managing inventory 
 - L(jhu)G(jh)D(jhs): `/v2/inventory/files` - Files in the connected Open AI backend
 - L(jhu)C(jhs)G(jh)U(jhs)D(jhs): `/v2/inventory/vector_stores` - Vector stores in the connected Open AI backend
-  - `DELETE /v2/inventory/vector_stores/delete?vector_store_id={id}?mode=[default|with_files]`
+  - `DELETE, GET /v2/inventory/vector_stores/delete?vector_store_id={id}&mode=[default|with_files]`
     - `mode=default` (default) - deletes vector store
     - `mode=with_files` - removes all files referenced by the vector store globally and then deletes vector store
+  - `GET /v2/inventory/vector_stores/replicate?source_vector_store_ids={id1},{id2},...&target_vector_store_ids={id3},{id4},...&remove_target_files_not_in_sources=[true|false]`
+    - Collects all files in the source vector stores (incl. de-duplication) and ensures all target vector stores contain all collected files
+    - `source_vector_store_ids={id1},{id2},...` - one or many source vector stores
+	- `target_vector_store_ids={id3},{id4},...` - one or many target vector stores
+	- `remove_target_files_not_in_sources=false` (default) - only adds missing files to the target vector stores
+	- `remove_target_files_not_in_sources=true` - after adding missing files, removes all files in the targets that are not part of the files collected from sources  	
 - L(jh)G(jh)D(jhs): `/v2/inventory/vector_stores/files` - Embedded files in vector stores in the connected Open AI backend
-  - `DELETE /v2/inventory/vector_stores/files/delete?vector_store_id={id}?file_id={id}?mode=[default|delete_globally]`
+  - `DELETE, GET /v2/inventory/vector_stores/files/delete?vector_store_id={id}&file_id={id}&mode=[default|delete_globally]`
     - `mode=default` (default) - removes file reference from vector store
     - `mode=delete_globally` - removes file reference from vector store and then deletes file globally
 - L(jhu)C(jhs)G(jh)U(jhs)D(jhs): `/v2/inventory/assistants` - Assistants in the connected Open AI backend
-  - `DELETE /v2/inventory/assistants/delete?assistant_id={id}?mode=[default|with_files]`
+  - `DELETE, GET /v2/inventory/assistants/delete?assistant_id={id}&mode=[default|with_files]`
     - `mode=default` (default) - deletes assistant
     - `mode=with_files` - if vector store is attached: deletes vector files globally, then vector store, then assistant
 - L()C(jh)G(jh)D(jh): `/v2/inventory/responses` - Model responses in the connected Open AI backend
-  - `DELETE /v2/inventory/assistants/delete?response_id={id}?mode=[default|with_conversation]`
+  - `DELETE, GET /v2/inventory/responses/delete?response_id={id}&mode=[default|with_conversation]`
     - `mode=default` (default) - deletes model response
     - `mode=with_conversation` - if response has stored conversation: deletes stored conversation, then model response
 
@@ -454,11 +509,11 @@ Create, Update, Delete operations usually support the `format=stream` query para
   - Downloads data from source to local storage
   - `domain_id` - domain to be crawled
   - `mode=full` (default) - performs full crawl of domain, deletes all previously downloaded files in local storage first  
-  - `mode=incremental` - performs incremental crawl, fallback to `mode=full` if no `files_map.csv` file found 
+  - `mode=incremental` - performs incremental crawl, fallback to `mode=full` if no `files_map.csv` file found
   - `scope=all` (default) - downloads all: files, lists, sitepages
-  - `scope=files` - downloads only files
-  - `scope=lists` - downloads only lists
-  - `scope=sitepages` - downloads only sitepages
+  - `scope=files` - downloads only files, operating ONLY on `01_files/` local storage
+  - `scope=lists` - downloads only lists, operating ONLY on `02_lists/` local storage
+  - `scope=sitepages` - downloads only sitepages, operating ONLY on `03_sitepages/` local storage
   - Optional: `source_id={id}` - if a scope other than `all` is given, the action can be further limited to individual sources
   - `dry_run=false` (default) - performs action as specified
   - `dry_run=true` - simulates action without writing / modifying data
@@ -467,9 +522,10 @@ Create, Update, Delete operations usually support the `format=stream` query para
   - `domain_id` - domain to be crawled
   - `mode=full` (default) - performs full processing of domain, deletes all previously processed files in local storage first
   - `mode=incremental` - performs incremental processing, fallback to `mode=full` if no `files_map.csv` file found
-  - `scope=all` (default) - downloads all: files, lists, sitepages
-  - `scope=files` - downloads only files
-  - `scope=lists` - downloads only lists
+  - `scope=all` (default) - process all: files, lists, sitepages
+  - `scope=files` - processes only files (nothing implemented at the moment), operating ONLY on `01_files/` local storage
+  - `scope=lists` - processes only lists, operating ONLY on `02_lists/` local storage
+  - `scope=sitepages` - processes only sitepages, operating ONLY on `03_sitepages/` local storage
   - Optional: `source_id={id}` - if a scope other than `all` is given, the action can be further limited to individual sources
   - `dry_run=false` (default) - performs action as specified
   - `dry_run=true` - simulates action without writing / modifying data
@@ -477,38 +533,40 @@ Create, Update, Delete operations usually support the `format=stream` query para
   - Performs embedding of processed data by uploading files to the Open AI file storage and then adding them to a vector store
   - `domain_id` - domain to be crawled
   - Optional: `vector_store_id` - embed files into this vector store, ignoring configured domain vector store in `domain.json`
-  - `mode=full` (default) - performs full embedding of processed files, deletes all existing embedded files in scope using `vectorstore_map.csv`
-  - `mode=incremental` - performs incremental embedding (only changes), fallback to `mode=full` if no `vectorstore_map.csv` file found
-  - `scope=all` (default) - downloads all: files, lists, sitepages
-  - `scope=files` - downloads only files
-  - `scope=lists` - downloads only lists
+  - `mode=full` (default) - performs full embedding of processed files
+  - `mode=incremental` - performs incremental embedding (only changes)
+  - `scope=all` (default) - embeds all: files, lists, sitepages
+  - `scope=files` - embeds only files, operating ONLY on `01_files/` local storage
+  - `scope=lists` - embeds only lists, operating ONLY on `02_lists/` local storage
+  - `scope=sitepages` - embeds only sitepages, operating ONLY on `03_sitepages/` local storage
   - Optional: `source_id={id}` - if a scope other than `all` is given, the action can be further limited to individual sources
   - `dry_run=false` (default) - performs action as specified
   - `dry_run=true` - simulates action without writing / modifying data
 - L(jhs): `/v2/crawler/crawl?domain_id={id}&mode=[full|incremental]&scope=[all|files|lists|sitepages]&source_id={id}&dry_run=false`
-  - Performs embedding of processed data by uploading files to the Open AI file storage and then adding them to a vector store
-  - `mode=full` (default) - performs full embedding of processed files, creates new vector store
-  - `mode=incremental` - performs incremental embedding (only changes), fallback to `mode=full` if no `vectorstore_map_csv`
-  - `scope=all` (default) - downloads all: files, lists, sitepages
-  - `scope=files` - downloads only files
-  - `scope=lists` - downloads only lists
+  - Performs the following steps: 1) download, 2) processing, 3) embedding
+  - `mode=full` (default) - performs full crawl
+  - `mode=incremental` - performs incremental crawl (only changes)
+  - `scope=all` (default) - crawls all: files, lists, sitepages
+  - `scope=files` - crawls only files, operating ONLY on `01_files/` local storage
+  - `scope=lists` - crawls only lists, operating ONLY on `02_lists/` local storage
+  - `scope=sitepages` - crawls only sitepages, operating ONLY on `03_sitepages/` local storage
   - Optional: `source_id={id}` - if a scope other than `all` is given, the action can be further limited to individual sources
   - `dry_run=false` (default) - performs action as specified
   - `dry_run=true` - simulates action without writing / modifying data
 
 **Jobs**
 - L(jhu)G(jh)D(jh): `/v2/jobs` - Manage long-running jobs that are triggered by other endpoints (crawler, inventory)
-  - `DELETE /v2/jobs/delete` - endpoint does intentionally not support streaming
+  - `DELETE, GET /v2/jobs/delete` - endpoint does intentionally not support streaming
   - `GET /v2/jobs/get?job_id={id}`  -  Return job metadata with status in same format as in `start_json` event of the stream
-- L(): `/v2/jobs/control?job_id={id}?action=[pause|resume|cancel]`
-  - `GET /v2/jobs/control?job_id={id}?action=pause` - Requests the job to be paused
-  - `GET /v2/jobs/control?job_id={id}?action=resume` - Requests the job to be resumed
-  - `GET /v2/jobs/control?job_id={id}?action=cancel` - Requests the job to be cancelled
+- L(): `/v2/jobs/control?job_id={id}&action=[pause|resume|cancel]`
+  - `GET /v2/jobs/control?job_id={id}&action=pause` - Requests the job to be paused
+  - `GET /v2/jobs/control?job_id={id}&action=resume` - Requests the job to be resumed
+  - `GET /v2/jobs/control?job_id={id}&action=cancel` - Requests the job to be cancelled
 - L(jhs): `/v2/jobs/monitor?job_id={id}` - Monitor long-running jobs
-  - `GET /v2/jobs/monitor?job_id={id}?format=json` -> JSON `{ [JOB_METADATA], "log" : "[LAST_LOG_EVENT_DATA]"}`
-  - `GET /v2/jobs/monitor?job_id={id}?format=html` -> JSON converted to nested HTML table
-  - `GET /v2/jobs/monitor?job_id={id}?format=stream` -> Full stream (from first event) as Server-Sent Events
-- L(jh): `/v2/jobs/results?job_id={id}` - Return data from `end_json` event of the stream
+  - `GET /v2/jobs/monitor?job_id={id}&format=json` -> JSON `{ [JOB_METADATA], "log" : "[LAST_LOG_EVENT_DATA]"}`
+  - `GET /v2/jobs/monitor?job_id={id}&format=html` -> JSON converted to nested HTML table
+  - `GET /v2/jobs/monitor?job_id={id}&format=stream` -> Full stream (from first event) as Server-Sent Events
+- L(jh): `/v2/jobs/results?job_id={id}` - Return `result` JSON from `end_json` event of the stream
 
 ### Crawling Process
 
@@ -559,9 +617,9 @@ Data is stored in two top-level folders:
 │   ├── 02_embedded/          # Converted Markdown files
 │   └── 03_failed/
 └── 03_sitepages/[SOURCE_ID]/
-│   ├── sharepoint_map.csv
-│   ├── files_map.csv
-│   ├── vectorstore_map.csv
+    ├── sharepoint_map.csv
+    ├── files_map.csv
+    ├── vectorstore_map.csv
     ├── 01_originals/         # Original HTML
     ├── 02_embedded/          # Processed HTML
     └── 03_failed/
@@ -621,7 +679,7 @@ Map file types:
   - empty if file could not be uploaded or embedded
 - `uploaded_timestamp` - number - `created_at` Open AI UTC timestamp returned by file upload (e.g., 1705319400)
   - empty if file could not be uploaded or embedded
-- `embedded_utc` - number - `created_at` Open AI UTC timestamp returned by file embedding (e.g., "2024-01-15T10:30:00.000000Z")
+- `embedded_utc` - string (ISO 8601 / RFC3339) - `created_at` Open AI UTC timestamp returned by file embedding (e.g., "2024-01-15T10:30:00.000000Z")
   - empty if file could not be uploaded or embedded
 - `embedded_timestamp` - number - `created_at` Open AI UTC timestamp returned by file upload (e.g., 1705319400)
   - empty if file could not be uploaded or embedded
@@ -674,7 +732,7 @@ Expected outcome:
 2. If optional `source_id` is given, filters out all other sources (404 for missing source)
 3. Get target vector store
     - If `vector_store_id`is given, sets this vector store as target (404 for missing)
-    - Otherwise uses `vector_store_id` from `domains.json` to get domain vector store (404 if missing, 500 if not configured)
+    - Otherwise uses `vector_store_id` from `domain.json` to get domain vector store (404 if missing, 500 if not configured)
     - Load all vector store files 
 4. [For each source]
     - Loads `files_map.csv` (skip source if not found)
@@ -683,10 +741,15 @@ Expected outcome:
     - If `mode=incremental`:
         - Compares the content of `files_map.csv` and `vectorstore_map.csv` while ignoring all files in `03_failed/` folders
         - Identifies 1) added files, 2) removed files, 3) changed files (based on `file_size` and `last_modified_utc`)
-		- All changes must be reflected in internal `vectorstore_map`
+		- All changes must be reflected in internal `vectorstore_map`
         - REMOVED: Removes all files from the vector store. Writes updated `vectorstore_map.csv` gracefully.
         - ADDED: For each file, uploads the file to the global file storage and adds it to the vector store. Writes updated `vectorstore_map.csv` gracefully.
         - CHANGED: For each file, removes the file from the vector store, uploads the file to the global file storage and adds it to the vector store. Writes updated `vectorstore_map.csv` gracefully.
+    - If `mode=full`:
+		- All changes must be reflected in internal `vectorstore_map`
+        - Removes all files in `vectorstore_map.csv` from the vector store but leaves file in global storage (other vector stores might still use it)
+		- ADD: For each file in `files_map.csv`, uploads the file to the global file storage and adds it to the vector store
+	- After modifying the target vector store:
         - WAIT: Waits until the vector store has no files with status = 'in_progress'
 		- CLEANUP: Removes files where embedding has failed
 		    - Loads all vector store files
@@ -697,10 +760,3 @@ Expected outcome:
 			    - Moves file from `02_embedded/` to `03_failed/` folder
 				- Updates file properties like `embedding_error` and `file_relative_path` in `vectorstore_map`
 			- Writes updated `vectorstore_map.csv` gracefully
-    - If `mode=full`:
-		- All changes must be reflected in internal `vectorstore_map`
-        - Removes all files in `vectorstore_map.csv` from the vector store but leaves file in global storage (other archived vector stores might still use it)
-		- ADD: For each file in `files_map.csv`, uploads the file to the global file storage and adds it to the vector store
-        - WAIT: Same as `mode=incremental`
-		- CLEANUP: Same as `mode=incremental`
-

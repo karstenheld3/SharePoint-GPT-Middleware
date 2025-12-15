@@ -104,7 +104,7 @@ Each domain has a `domain.json` file with the following structure:
 
 Contains metadata for all files that have been uploaded to the OpenAI vector store.
 
-**Migration**: Use the `/crawler/migrate_from_v2_to_v3` endpoint to automatically migrate from v2 to v3 format. This endpoint creates a backup of the v2 file before conversion.
+**Migration**: Use the `/v1/crawler/migrate_from_v2_to_v3` endpoint to automatically migrate from v2 to v3 format. This endpoint creates a backup of the v2 file before conversion.
 
 #### V3 Format (Current)
 
@@ -503,7 +503,7 @@ log_file = os.path.join(
 ## Related Files
 
 - **Configuration**: `src/hardcoded_config.py`
-- **Domain Management**: `src/routers/domains.py`
-- **Crawler Endpoints**: `src/routers/crawler.py`
+- **Domain Management**: `src/routers_v1/domains.py`
+- **Crawler Endpoints**: `src/routers_v1/crawler.py`
 - **Utility Functions**: `src/utils.py` (logfile functions)
 - **Common Functions**: `src/common_crawler_functions.py`

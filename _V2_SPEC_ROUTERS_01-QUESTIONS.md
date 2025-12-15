@@ -7,7 +7,7 @@ GET /v2/domains
 ```
 
 No query parameters are provided.
- What **must** the response be, and why?
+What **must** the response be, and why?
 
 ------
 

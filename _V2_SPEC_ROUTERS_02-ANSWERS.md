@@ -39,8 +39,7 @@ PUT /v2/icecreams/create
 
 The server must return:
 
-- **HTTP 400 – Bad Request**
-- Error message indicating **HTTP method not supported**
+- HTTP 400: JSON error result "HTTP method 'PUT' not supported."
 
 Reason:
 
@@ -66,7 +65,7 @@ What is the correct behavior?
 Return:
 
 - **HTTP 400 – Bad Request**
-- Error stating: response format `ui` is not supported.
+- JSON error with result "Format 'ui' not supported".
 
 Reason:
 
@@ -110,6 +109,7 @@ The response must be:
 - MIME type: `Content-Type: text/event-stream`
 - UTF-8 encoded
 - Using `event:` and `data:` lines compatible with HTMX SSE
+- Stream must include `start_json` -> `log` -> `end_json` events
 
 If the endpoint did **not** support `(s)`, it must return HTTP 400.
 
@@ -153,6 +153,8 @@ Algorithm:
 5. Extract numeric part of `jb_[NUMBER]`
 6. Find the maximum number
 7. Generate `jb_[max + 1]`
+
+If create fails due to collision, regenerate/retry.
 
 This guarantees:
 

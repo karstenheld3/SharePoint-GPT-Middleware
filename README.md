@@ -30,12 +30,15 @@ src/
 ├── common_crawler_functions.py     # SharePoint crawler utilities
 ├── common_sharepoint_functions.py  # SharePoint access utilities
 ├── utils.py                        # Helper functions
-└── routers/
-    ├── openai_proxy.py             # OpenAI API proxy endpoints
-    ├── sharepoint_search.py        # AI-powered search endpoints
-    ├── domains.py                  # Domain management endpoints
+├── routers_static/                 # Static routers (no version prefix)
+│   ├── openai_proxy.py             # OpenAI API proxy endpoints
+│   └── sharepoint_search.py        # AI-powered search endpoints
+└── routers_v1/                     # V1 routers (mounted at /v1)
     ├── crawler.py                  # SharePoint crawler endpoints
-    └── inventory.py                # Vector store inventory endpoints
+    ├── domains.py                  # Domain management endpoints
+    ├── inventory.py                # Vector store inventory endpoints
+    ├── common_ui_functions.py      # Shared UI generation functions
+    └── common_job_functions.py     # Shared job management functions
 ```
 
 ### Storage Structure
@@ -87,36 +90,49 @@ AI-powered search across SharePoint content:
 | `/describe` | GET | Get search configuration |
 | `/describe2` | GET | Get search configuration (HTML/JSON) |
 
-### Domain Management (`/domains`)
+### Domain Management (`/v1/domains`)
 
 Manage SharePoint domains and their vector stores:
 
 | Endpoint | Method | Description |
 | --- | --- | --- |
-| `/domains` | GET | List all domains (HTML/JSON/UI) |
-| `/domains/create` | GET/POST | Create new domain |
-| `/domains/update` | GET/POST | Update domain configuration |
-| `/domains/delete` | GET/POST | Delete domain |
+| `/v1/domains` | GET | List all domains (HTML/JSON/UI) |
+| `/v1/domains/create` | GET/POST | Create new domain |
+| `/v1/domains/update` | GET/PUT | Update domain configuration |
+| `/v1/domains/delete` | DELETE | Delete domain |
 
-### Crawler (`/crawler`)
+### Crawler (`/v1/crawler`)
 
 SharePoint content crawling and synchronization:
 
 | Endpoint | Method | Description |
 | --- | --- | --- |
-| `/crawler/updatemaps` | GET/POST | Crawl and update vector stores |
-| `/crawler/localstorage` | GET | Download local storage as ZIP |
-| `/crawler/getlogfile` | GET | Retrieve crawler log files |
+| `/v1/crawler` | GET | Crawler UI and documentation |
+| `/v1/crawler/localstorage` | GET | Local storage inventory (HTML/JSON/ZIP) |
+| `/v1/crawler/list_sharepoint_files` | GET | List files from SharePoint source |
+| `/v1/crawler/list_local_files` | GET | List local embedded files |
+| `/v1/crawler/list_vectorstore_files` | GET | List files in domain vector store |
+| `/v1/crawler/download_files` | GET | Download files from SharePoint |
+| `/v1/crawler/update_vector_store` | GET | Update vector store with local files |
+| `/v1/crawler/replicate_to_global` | GET | Replicate domain stores to global |
+| `/v1/crawler/migrate_from_v2_to_v3` | GET | Migrate metadata format |
 
-### Inventory (`/inventory`)
+### Inventory (`/v1/inventory`)
 
 Manage and inspect OpenAI resources:
 
 | Endpoint | Method | Description |
 | --- | --- | --- |
-| `/inventory/vectorstores` | GET | List vector stores (HTML/JSON) |
-| `/inventory/files` | GET | List files (HTML/JSON) |
-| `/inventory/assistants` | GET | List assistants (HTML/JSON) |
+| `/v1/inventory` | GET | Inventory documentation |
+| `/v1/inventory/vectorstores` | GET | List vector stores (HTML/JSON/UI) |
+| `/v1/inventory/vectorstores/delete` | DELETE | Delete vector store |
+| `/v1/inventory/vectorstore_files` | GET | List files in vector store |
+| `/v1/inventory/vectorstore_files/remove` | DELETE | Remove file from vector store |
+| `/v1/inventory/vectorstore_files/delete` | DELETE | Delete file from store and storage |
+| `/v1/inventory/files` | GET | List all files (HTML/JSON/UI) |
+| `/v1/inventory/files/delete` | DELETE | Delete file from storage |
+| `/v1/inventory/assistants` | GET | List assistants (HTML/JSON/UI) |
+| `/v1/inventory/assistants/delete` | DELETE | Delete assistant |
 
 ### Health & Status
 
@@ -331,24 +347,19 @@ curl -X POST "http://localhost:8000/query" \
 ### Create a Domain
 
 ```bash
-curl -X POST "http://localhost:8000/domains/create" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "domain_id": "MYSITE",
-    "name": "My SharePoint Site",
-    "description": "Project documentation site",
-    "file_sources": [{
-      "source_id": "docs",
-      "site_url": "https://contoso.sharepoint.com/sites/MyProject",
-      "sharepoint_url_part": "/Shared Documents"
-    }]
-  }'
+curl -X POST "http://localhost:8000/v1/domains/create" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "domain_id=MYSITE&name=My SharePoint Site&description=Project documentation site&vector_store_name=SharePoint-MYSITE"
 ```
 
-### Crawl and Update Vector Store
+### Download Files and Update Vector Store
 
 ```bash
-curl -X POST "http://localhost:8000/crawler/updatemaps?domain_id=MYSITE"
+# Download files from SharePoint
+curl "http://localhost:8000/v1/crawler/download_files?domain_id=MYSITE&format=json"
+
+# Update vector store with downloaded files
+curl "http://localhost:8000/v1/crawler/update_vector_store?domain_id=MYSITE&format=json"
 ```
 
 ## License
@@ -359,4 +370,4 @@ See [LICENSE](LICENSE) file for details.
 
 - **[PERSISTENT_STORAGE_STRUCTURE.md](PERSISTENT_STORAGE_STRUCTURE.md)** - Detailed storage structure documentation
 - **[DATA_SOURCES.md](DATA_SOURCES.md)** - Data flow between SharePoint, local files, and vector stores
-- ###### **[SecureAzureAppService.md](SecureAzureAppService.md)** - Azure App Service security configuration
+- **[SECURE_AZURE_APP_SERVICE.md](SECURE_AZURE_APP_SERVICE.md)** - Azure App Service security configuration
