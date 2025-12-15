@@ -37,7 +37,20 @@ Models in Windsurf [Cost as of 2025-12-13]:
 
 ## Specification implementation
 
-### 2025-12-15 GPT-5.2 Medium Reasoning vs. Claude Opus 4.5 (Thinking)
+### 2025-12-15 GPT-5.2 Medium Reasoning Fast vs. Claude Opus 4.5 (Thinking)
+
+#### Task
+
+- **Reading and parsing specification documents** - Models read _V2_SPEC_ROUTERS.md lines 1141-1354 containing example endpoint implementation
+- **Context priming** - Reading 6 md files + 5 Python files (~35k tokens) to understand existing codebase patterns
+- **Replicating template source code with minimal changes** - Copying the v2a implementation pattern to create v2b (or vice versa)
+- **String substitution** - Changing /v2/ to /v2a/ or /v2b/ prefixes, and routers_v2 to routers_v2a or routers_v2b
+- **Creating new files in correct locations** - router_job_functions.py and demorouter.py in the new folder
+- **Modifying existing file** - Adding import and router registration in app.py
+- **Following existing code conventions** - Matching indentation, naming patterns, import style from the codebase
+- **Understanding file relationships** - Import paths between modules (from routers_v2b.router_job_functions import ...)
+
+**Complexity level**: Low-medium. Mostly mechanical code replication with path/prefix substitution. No algorithmic problem-solving or novel architecture decisions required.
 
 **Workflow used to prime models:**
 ```
@@ -52,12 +65,11 @@ Then read:
 Return only a single line: "Read [x] md files, [z]k context tokens"
 ```
 
-
-### GPT-5.2 Medium Reasoning
+### GPT-5.2 Medium Reasoning Fast
 
 **Prompt:**
 ```
-@_V2_SPEC_ROUTERS.md#L1141-1352 Implement this with 2 important changes:
+@_V2_SPEC_ROUTERS.md#L1141-1354 Implement this with 2 important changes:
 
 Instead of 
 /src/routers_v2 
@@ -68,18 +80,24 @@ Instead of
 /v2/ prefix for routers
 use
 /v2a/ prefix for routers
+
 ```
 
 **Results:**
 - Implementation is working
-- Forgot to add links to app.py
-- Ca. 3 minutes
+- Forgot to implement `read_job_result()` in `router_job_functions.py`
+  - Reason: No critical spec bug; minor “not explicit enough” area if you want to prevent future omissions.
+- Forgot to /v2a/demorouter self-documentation
+  - Reason: Minor ambiguity (router root doc format vs “bare GET always plaintext”), but the main miss is implementation, not the spec.
+- Forgot to add new links to `app.py` as specified in [SOPS.md](SOPS.md)
+  - Reason fixed: Added cross-reference -> **Depends on:** `SOPS.md` for implementation checklist.
+- Time: 9m 45s  (1m 45s priming) 
 
 ### Claude Opus 4.5 (Thinking)
 
 **Prompt:**
 ```
-@_V2_SPEC_ROUTERS.md#L1141-1352 Implement this with 2 important changes:
+@_V2_SPEC_ROUTERS.md#L1141-1354 Implement this with 2 important changes:
 
 Instead of 
 /src/routers_v2 
@@ -93,4 +111,6 @@ use
 ```
 **Results:**
 - Implementation is working
-- Ca. 1 minute
+- Forgot to add new links to `app.py` as specified in [SOPS.md](SOPS.md)
+  - Reason fixed: Added cross-reference -> **Depends on:** `SOPS.md` for implementation checklist.
+- Time: 2m 59s (27s priming)

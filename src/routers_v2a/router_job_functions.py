@@ -1,14 +1,15 @@
 import asyncio, datetime, glob, json, os, re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
-from utils import log_function_output
-
 
 JobState = Literal["running", "paused", "completed", "cancelled"]
 ControlState = Literal["pause_requested", "resume_requested", "cancel_requested"]
+
+VALID_JOB_STATES: set[str] = {"running", "paused", "completed", "cancelled"}
+VALID_CONTROL_STATES: set[str] = {"pause_requested", "resume_requested", "cancel_requested"}
 
 
 @dataclass
@@ -27,17 +28,24 @@ class ControlAction(Enum):
 
 
 def _utc_now_iso() -> str:
-  return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+  return datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
-def _format_sse_event(event_name: str, data: str) -> str:
-  lines = data.split("\n")
-  data_lines = "".join([f"data: {line}\n" for line in lines])
-  return f"event: {event_name}\n{data_lines}\n"
+def _get_jobs_root(persistent_storage_path: str) -> str:
+  if not persistent_storage_path: raise ValueError("Expected a non-empty value for 'persistent_storage_path'.")
+  jobs_root = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_JOBS_SUBFOLDER)
+  os.makedirs(jobs_root, exist_ok=True)
+  return jobs_root
 
 
-def _is_valid_job_state_extension(ext: str) -> bool:
-  return ext in {"running", "paused", "completed", "cancelled"}
+def _iter_job_state_files(persistent_storage_path: str):
+  jobs_root = _get_jobs_root(persistent_storage_path)
+  for root, _, files in os.walk(jobs_root):
+    for name in files:
+      _, ext = os.path.splitext(name)
+      ext = ext.lstrip(".")
+      if ext in VALID_JOB_STATES:
+        yield os.path.join(root, name)
 
 
 def _extract_job_number_from_filename(filename: str) -> Optional[int]:
@@ -47,258 +55,119 @@ def _extract_job_number_from_filename(filename: str) -> Optional[int]:
   except Exception: return None
 
 
-def _extract_job_id_from_filename(filename: str) -> Optional[str]:
-  match = re.search(r"\[(jb_\d+)\]", filename)
-  if not match: return None
-  return match.group(1)
-
-
-def _parse_sse_events(sse_text: str) -> list[dict]:
-  blocks = [b for b in sse_text.split("\n\n") if b.strip()]
-  events = []
-  for block in blocks:
-    event_name = None
-    data_lines = []
-    for line in block.split("\n"):
-      if line.startswith("event:"):
-        event_name = line[len("event:"):].strip()
-      elif line.startswith("data:"):
-        data_lines.append(line[len("data:"):].lstrip())
-    if event_name:
-      events.append({"event": event_name, "data": "\n".join(data_lines)})
-  return events
-
-
-def _get_jobs_root(persistent_storage_path: str) -> str:
-  return os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_JOBS_SUBFOLDER)
-
-
 def generate_job_id(persistent_storage_path: str) -> str:
-  jobs_root = _get_jobs_root(persistent_storage_path)
-  os.makedirs(jobs_root, exist_ok=True)
-
-  all_files = glob.glob(os.path.join(jobs_root, "**", "*.*"), recursive=True)
-  job_files = []
-  for f in all_files:
-    ext = os.path.splitext(f)[1][1:]
-    if _is_valid_job_state_extension(ext): job_files.append(f)
-
+  job_files = list(_iter_job_state_files(persistent_storage_path))
   if not job_files: return "jb_1"
 
-  job_files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+  job_files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
   recent_files = job_files[:1000]
 
-  max_num = 0
-  for path in recent_files:
-    n = _extract_job_number_from_filename(os.path.basename(path))
-    if n is not None: max_num = max(max_num, n)
+  max_id = 0
+  for file_path in recent_files:
+    number = _extract_job_number_from_filename(os.path.basename(file_path))
+    if number is not None: max_id = max(max_id, number)
 
-  return f"jb_{max_num + 1}"
+  return f"jb_{max_id + 1}"
 
 
-def find_job_by_id(persistent_storage_path: str, job_id: str) -> Optional[JobMetadata]:
-  jobs_root = _get_jobs_root(persistent_storage_path)
-  if not os.path.exists(jobs_root): return None
-
-  all_files = glob.glob(os.path.join(jobs_root, "**", f"*[{job_id}]*.*"), recursive=True)
+def _parse_sse_event_json(full_text: str, event_name: str, last: bool = False) -> Optional[dict]:
+  lines = full_text.splitlines()
   candidates = []
-  for f in all_files:
-    ext = os.path.splitext(f)[1][1:]
-    if _is_valid_job_state_extension(ext): candidates.append(f)
-
-  if not candidates: return None
-  candidates.sort(key=lambda f: os.path.getmtime(f), reverse=True)
-  return get_job_metadata_from_file_path(persistent_storage_path, candidates[0])
-
-
-def list_jobs(persistent_storage_path: str, router_filter: str = None, state_filter: str = None) -> list[JobMetadata]:
-  jobs_root = _get_jobs_root(persistent_storage_path)
-  if not os.path.exists(jobs_root): return []
-
-  all_files = glob.glob(os.path.join(jobs_root, "**", "*.*"), recursive=True)
-  job_files = []
-  for f in all_files:
-    ext = os.path.splitext(f)[1][1:]
-    if not _is_valid_job_state_extension(ext):
+  i = 0
+  while i < len(lines):
+    if lines[i].strip() != f"event: {event_name}":
+      i += 1
       continue
-    if state_filter and ext != state_filter:
-      continue
-    if router_filter:
-      rel = os.path.relpath(f, jobs_root)
-      if not rel.split(os.sep)[0] == router_filter:
-        continue
-    job_files.append(f)
 
-  job_files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+    i += 1
+    data_lines = []
+    while i < len(lines) and lines[i].strip() != "":
+      if lines[i].startswith("data:"):
+        data_lines.append(lines[i][len("data:"):].lstrip(" "))
+      i += 1
 
-  jobs = []
-  for f in job_files:
-    meta = get_job_metadata_from_file_path(persistent_storage_path, f)
-    if meta:
-      jobs.append(meta)
-
-  return jobs
-
-
-def get_job_metadata(persistent_storage_path: str, job_id: str) -> Optional[JobMetadata]:
-  meta = find_job_by_id(persistent_storage_path, job_id)
-  return meta
-
-
-def get_job_metadata_from_file_path(persistent_storage_path: str, file_path: str) -> Optional[JobMetadata]:
-  try:
-    state = os.path.splitext(file_path)[1][1:]
-    if not _is_valid_job_state_extension(state):
-      return None
-
-    with open(file_path, "r", encoding="utf-8") as f:
-      content = f.read()
-
-    events = _parse_sse_events(content)
-    start_json = next((e for e in events if e.get("event") == "start_json"), None)
-    end_json = next((e for e in reversed(events) if e.get("event") == "end_json"), None)
-
-    start_data = None
-    if start_json and start_json.get("data"):
-      try: start_data = json.loads(start_json["data"])
-      except Exception: start_data = None
-
-    end_data = None
-    if end_json and end_json.get("data"):
-      try: end_data = json.loads(end_json["data"])
-      except Exception: end_data = None
-
-    job_id_in_file = None
-    if end_data and end_data.get("job_id"):
-      job_id_in_file = end_data.get("job_id")
-    elif start_data and start_data.get("job_id"):
-      job_id_in_file = start_data.get("job_id")
-    else:
-      job_id_in_file = _extract_job_id_from_filename(os.path.basename(file_path))
-
-    if not job_id_in_file:
-      return None
-
-    source_url = (start_data or {}).get("source_url", "")
-    monitor_url = (start_data or {}).get("monitor_url", f"/v2a/jobs/monitor?job_id={job_id_in_file}&format=stream")
-    started_utc = (start_data or {}).get("started_utc", "")
-
-    finished_utc = None
-    result = None
-
-    if end_data:
-      finished_utc = end_data.get("finished_utc")
-      result = end_data.get("result")
-      state = end_data.get("state", state)
-
-    return JobMetadata(job_id=job_id_in_file, state=state, source_url=source_url, monitor_url=monitor_url, started_utc=started_utc, finished_utc=finished_utc, result=result)
-  except Exception:
-    return None
-
-
-def read_job_log(persistent_storage_path: str, job_id: str) -> str:
-  meta = find_job_by_id(persistent_storage_path, job_id)
-  if not meta:
-    return ""
-
-  jobs_root = _get_jobs_root(persistent_storage_path)
-  matches = glob.glob(os.path.join(jobs_root, "**", f"*[{job_id}]*.*"), recursive=True)
-  candidates = []
-  for f in matches:
-    ext = os.path.splitext(f)[1][1:]
-    if _is_valid_job_state_extension(ext): candidates.append(f)
-
-  if not candidates:
-    return ""
-
-  candidates.sort(key=lambda f: os.path.getmtime(f), reverse=True)
-  try:
-    with open(candidates[0], "r", encoding="utf-8") as fp:
-      return fp.read()
-  except Exception:
-    return ""
-
-
-def read_job_result(persistent_storage_path: str, job_id: str) -> Optional[dict]:
-  meta = find_job_by_id(persistent_storage_path, job_id)
-  if not meta:
-    return None
-  return meta.result
-
-
-def create_control_file(persistent_storage_path: str, job_id: str, action: str) -> bool:
-  job_meta = find_job_by_id(persistent_storage_path, job_id)
-  if not job_meta:
-    return False
-
-  jobs_root = _get_jobs_root(persistent_storage_path)
-  matches = glob.glob(os.path.join(jobs_root, "**", f"*[{job_id}]*.*"), recursive=True)
-  candidates = []
-  for f in matches:
-    ext = os.path.splitext(f)[1][1:]
-    if _is_valid_job_state_extension(ext): candidates.append(f)
-
-  if not candidates:
-    return False
-
-  candidates.sort(key=lambda f: os.path.getmtime(f), reverse=True)
-  job_file_path = candidates[0]
-  base, _ = os.path.splitext(job_file_path)
-
-  control_state = None
-  if action == "pause": control_state = "pause_requested"
-  elif action == "resume": control_state = "resume_requested"
-  elif action == "cancel": control_state = "cancel_requested"
-  else: return False
-
-  control_path = f"{base}.{control_state}"
-
-  try:
-    with open(control_path, "x", encoding="utf-8") as f:
-      f.write(_utc_now_iso())
-    return True
-  except FileExistsError:
-    return False
-  except Exception:
-    return False
-
-
-def delete_job(persistent_storage_path: str, job_id: str) -> bool:
-  jobs_root = _get_jobs_root(persistent_storage_path)
-  matches = glob.glob(os.path.join(jobs_root, "**", f"*[{job_id}]*.*"), recursive=True)
-  deleted_any = False
-  for f in matches:
-    ext = os.path.splitext(f)[1][1:]
-    if _is_valid_job_state_extension(ext) or ext in {"pause_requested", "resume_requested", "cancel_requested"}:
+    if data_lines:
+      json_str = "\n".join(data_lines).strip()
       try:
-        os.remove(f)
-        deleted_any = True
+        candidates.append(json.loads(json_str))
       except Exception:
         pass
-  return deleted_any
+
+    i += 1
+
+  if not candidates: return None
+  return candidates[-1] if last else candidates[0]
+
+
+def _safe_json_dumps(data: Any) -> str:
+  return json.dumps(data, ensure_ascii=False)
+
+
+def _format_sse_event(event_name: str, message: str) -> str:
+  if message is None: message = ""
+  lines = str(message).splitlines() or [""]
+  data_lines = "\n".join([f"data: {line}" for line in lines])
+  return f"event: {event_name}\n{data_lines}\n\n"
+
+
+def _sanitize_filename_component(value: Optional[str]) -> Optional[str]:
+  if value is None: return None
+  v = str(value).replace("\\", "_").replace("/", "_")
+  v = v.replace("[", "").replace("]", "")
+  v = v.replace(":", "_").replace("*", "_").replace("?", "_").replace('"', "_")
+  v = v.replace("<", "_").replace(">", "_").replace("|", "_")
+  return v
+
+
+def _rename_file_if_exists(from_path: str, to_path: str) -> bool:
+  if not os.path.exists(from_path): return False
+  os.rename(from_path, to_path)
+  return True
+
+
+def _extract_router_from_path(jobs_root: str, file_path: str) -> str:
+  rel = os.path.relpath(os.path.dirname(file_path), jobs_root)
+  if rel == ".": return ""
+  return rel.split(os.sep)[0]
 
 
 class StreamingJobWriter:
 
-  def __init__(self, persistent_storage_path: str, router_name: str, action: str, object_id: Optional[str], source_url: str, buffer_size: int = CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_LOG_EVENTS_PER_WRITE):
-    self._persistent_storage_path = persistent_storage_path
-    self._router_name = router_name
-    self._action = action
-    self._object_id = object_id
-    self._source_url = source_url
-    self._buffer_size = buffer_size
+  def __init__(
+    self,
+    persistent_storage_path: str,
+    router_name: str,
+    action: str,
+    object_id: Optional[str],
+    source_url: str,
+    router_prefix: str,
+    buffer_size: int = CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_LOG_EVENTS_PER_WRITE,
+  ):
+    self.persistent_storage_path = persistent_storage_path
+    self.router_name = (router_name or "").strip("/")
+    self.action = _sanitize_filename_component(action) or "action"
+    self.object_id = _sanitize_filename_component(object_id)
+    self.source_url = source_url or ""
+    self.router_prefix = router_prefix or ""
+    self.buffer_size = max(1, int(buffer_size or 1))
 
-    self._job_id = None
-    self._state: JobState = "running"
-    self._started_utc = _utc_now_iso()
-    self._finished_utc = None
-    self._result = None
+    self._jobs_root = _get_jobs_root(persistent_storage_path)
+
+    folder_parts = [p for p in self.router_name.split("/") if p]
+    self._router_folder = os.path.join(self._jobs_root, *folder_parts) if folder_parts else self._jobs_root
+    os.makedirs(self._router_folder, exist_ok=True)
+
     self._buffer: list[str] = []
-    self._job_file_path = None
+    self._current_state_ext: JobState = "running"
     self._end_emitted = False
-    self._cancel_requested = False
+    self._final_state_ext: Optional[JobState] = None
 
-    self._create_job_file()
+    self._timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    self._started_utc = _utc_now_iso()
+    self._finished_utc: Optional[str] = None
+
+    self._job_id, self._file_base = self._create_job_file_base_with_retry(max_retries=5)
+    self._job_file_path = f"{self._file_base}.running"
 
   @property
   def job_id(self) -> str:
@@ -306,171 +175,258 @@ class StreamingJobWriter:
 
   @property
   def monitor_url(self) -> str:
-    return f"/v2/jobs/monitor?job_id={self._job_id}&format=stream"
+    return f"{self.router_prefix}/jobs/monitor?job_id={self.job_id}&format=stream"
 
-  def emit_start(self) -> str:
-    payload = {
-      "job_id": self._job_id,
-      "state": "running",
-      "source_url": self._source_url,
-      "monitor_url": self.monitor_url,
-      "started_utc": self._started_utc,
-      "finished_utc": None,
-      "result": None
-    }
-    sse = _format_sse_event("start_json", json.dumps(payload, ensure_ascii=False))
-    self._flush_buffer_to_file()
-    self._write_to_file(sse)
-    return sse
-
-  def emit_log(self, message: str) -> str:
-    sse = _format_sse_event("log", message)
-    self._buffer.append(sse)
-    if len(self._buffer) >= self._buffer_size:
-      self._flush_buffer_to_file()
-    return sse
-
-  def emit_log_with_standard_logging(self, log_data, message: str) -> str:
-    log_function_output(log_data, message)
-    return self.emit_log(message)
-
-  def emit_end(self, ok: bool, error: str = "", data: dict = None) -> str:
-    self._finished_utc = _utc_now_iso()
-    state: JobState = "cancelled" if self._cancel_requested else "completed"
-    self._result = {"ok": bool(ok), "error": error or "", "data": {} if data is None else data}
-
-    payload = {
-      "job_id": self._job_id,
-      "state": state,
-      "source_url": self._source_url,
-      "monitor_url": self.monitor_url,
-      "started_utc": self._started_utc,
-      "finished_utc": self._finished_utc,
-      "result": self._result
-    }
-
-    sse = _format_sse_event("end_json", json.dumps(payload, ensure_ascii=False))
-    self._flush_buffer_to_file()
-    self._write_to_file(sse)
-    self._end_emitted = True
-    self._state = state
-    return sse
-
-  async def check_control(self) -> tuple[list[str], Optional[ControlAction]]:
-    self._flush_buffer_to_file()
-
-    control_logs: list[str] = []
-
-    cancel_path = self._control_file_path("cancel_requested")
-    pause_path = self._control_file_path("pause_requested")
-    resume_path = self._control_file_path("resume_requested")
-
-    if os.path.exists(cancel_path):
-      self._cancel_requested = True
-      self._try_delete_file(cancel_path)
-      control_logs.append(self._emit_control_log_immediate("  Cancel requested, stopping..."))
-      return control_logs, ControlAction.CANCEL
-
-    if self._state == "running" and os.path.exists(pause_path):
-      self._try_delete_file(pause_path)
-      control_logs.append(self._emit_control_log_immediate("  Pause requested, pausing..."))
-      self._rename_state("paused")
-      self._state = "paused"
-
-    while self._state == "paused":
-      cancel_path = self._control_file_path("cancel_requested")
-      resume_path = self._control_file_path("resume_requested")
-
-      if os.path.exists(cancel_path):
-        self._cancel_requested = True
-        self._try_delete_file(cancel_path)
-        control_logs.append(self._emit_control_log_immediate("  Cancel requested while paused, stopping..."))
-        return control_logs, ControlAction.CANCEL
-
-      if os.path.exists(resume_path):
-        self._try_delete_file(resume_path)
-        control_logs.append(self._emit_control_log_immediate("  Resume requested, resuming..."))
-        self._rename_state("running")
-        self._state = "running"
-        break
-
-      await asyncio.sleep(0.2)
-
-    return control_logs, None
-
-  def finalize(self) -> None:
-    try:
-      self._flush_buffer_to_file()
-      if self._end_emitted:
-        if self._state == "cancelled":
-          self._rename_state("cancelled")
-        else:
-          self._rename_state("completed")
-    except Exception:
-      pass
-
-  def _create_job_file(self) -> None:
-    jobs_root = _get_jobs_root(self._persistent_storage_path)
-    folder = os.path.join(jobs_root, self._router_name)
-    os.makedirs(folder, exist_ok=True)
-
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-
-    for _ in range(10):
-      job_id = generate_job_id(self._persistent_storage_path)
-      base_parts = [timestamp, f"[{self._action}]", f"[{job_id}]"]
-      if self._object_id:
-        base_parts.append(f"[{self._object_id}]")
-      base_name = "_".join(base_parts)
-      file_path = os.path.join(folder, f"{base_name}.running")
-
+  def _create_job_file_base_with_retry(self, max_retries: int = 3) -> tuple[str, str]:
+    for _ in range(max_retries):
+      job_id = generate_job_id(self.persistent_storage_path)
+      object_part = f"_[{self.object_id}]" if self.object_id else ""
+      base_name = f"{self._timestamp}_[{self.action}]_[{job_id}]{object_part}"
+      base_path = os.path.join(self._router_folder, base_name)
       try:
-        with open(file_path, "x", encoding="utf-8"):
+        with open(f"{base_path}.running", "x", encoding="utf-8"):
           pass
-        self._job_id = job_id
-        self._job_file_path = file_path
-        return
+        return job_id, base_path
       except FileExistsError:
         continue
 
-    raise RuntimeError("Failed to create job file due to repeated collisions")
+    raise RuntimeError("Failed to create streaming job file after retries")
 
-  def _control_file_path(self, control_state: ControlState) -> str:
-    base, _ = os.path.splitext(self._job_file_path)
-    return f"{base}.{control_state}"
-
-  def _emit_control_log_immediate(self, message: str) -> str:
-    sse = _format_sse_event("log", message)
-    self._flush_buffer_to_file()
-    self._write_to_file(sse)
-    return sse
-
-  def _flush_buffer_to_file(self) -> None:
-    if not self._buffer:
-      return
-    payload = "".join(self._buffer)
+  def _flush_buffer(self) -> None:
+    if not self._buffer: return
+    with open(f"{self._file_base}.{self._current_state_ext}", "a", encoding="utf-8") as f:
+      f.write("".join(self._buffer))
+      f.flush()
     self._buffer = []
-    self._write_to_file(payload)
 
-  def _write_to_file(self, text: str) -> None:
-    if not self._job_file_path:
-      return
-    with open(self._job_file_path, "a", encoding="utf-8") as f:
-      f.write(text)
+  def _append_to_file_immediately(self, sse_chunk: str) -> None:
+    self._flush_buffer()
+    with open(f"{self._file_base}.{self._current_state_ext}", "a", encoding="utf-8") as f:
+      f.write(sse_chunk)
       f.flush()
 
-  def _rename_state(self, new_state: JobState) -> None:
-    if not self._job_file_path:
-      return
-    base, _ = os.path.splitext(self._job_file_path)
-    new_path = f"{base}.{new_state}"
-    if self._job_file_path == new_path:
-      return
-    os.rename(self._job_file_path, new_path)
-    self._job_file_path = new_path
+  def _transition_state(self, new_state: JobState) -> None:
+    if new_state == self._current_state_ext: return
+    from_path = f"{self._file_base}.{self._current_state_ext}"
+    to_path = f"{self._file_base}.{new_state}"
+    if _rename_file_if_exists(from_path, to_path):
+      self._current_state_ext = new_state
 
-  def _try_delete_file(self, path: str) -> None:
+  def emit_start(self) -> str:
+    start_data = {
+      "job_id": self.job_id,
+      "state": "running",
+      "source_url": self.source_url,
+      "monitor_url": self.monitor_url,
+      "started_utc": self._started_utc,
+      "finished_utc": None,
+      "result": None,
+    }
+    sse = _format_sse_event("start_json", _safe_json_dumps(start_data))
+    self._append_to_file_immediately(sse)
+    return sse
+
+  def emit_log(self, message: str, flush: bool = False) -> str:
+    sse = _format_sse_event("log", message)
+    self._buffer.append(sse)
+    if flush or len(self._buffer) >= self.buffer_size:
+      self._flush_buffer()
+    return sse
+
+  def emit_log_with_standard_logging(self, log_data, message: str) -> str:
+    from utils import log_function_output
+
+    log_function_output(log_data, message)
+    return self.emit_log(message)
+
+  def emit_end(self, ok: bool, error: str = "", data: dict | None = None) -> str:
+    self._flush_buffer()
+
+    self._finished_utc = _utc_now_iso()
+
+    is_cancelled = ("cancel" in (error or "").lower())
+    state: JobState = "cancelled" if (not ok and is_cancelled) else "completed"
+
+    end_data = {
+      "job_id": self.job_id,
+      "state": state,
+      "source_url": self.source_url,
+      "monitor_url": self.monitor_url,
+      "started_utc": self._started_utc,
+      "finished_utc": self._finished_utc,
+      "result": {"ok": bool(ok), "error": error or "", "data": data or {}},
+    }
+
+    sse = _format_sse_event("end_json", _safe_json_dumps(end_data))
+    self._append_to_file_immediately(sse)
+    self._end_emitted = True
+    self._final_state_ext = state
+    return sse
+
+  async def check_control(self) -> tuple[list[str], Optional[ControlAction]]:
+    self._flush_buffer()
+
+    cancel_path = f"{self._file_base}.cancel_requested"
+    pause_path = f"{self._file_base}.pause_requested"
+    resume_path = f"{self._file_base}.resume_requested"
+
+    if os.path.exists(cancel_path):
+      try: os.unlink(cancel_path)
+      except Exception: pass
+      return [], ControlAction.CANCEL
+
+    if os.path.exists(pause_path) and self._current_state_ext == "running":
+      try: os.unlink(pause_path)
+      except Exception: pass
+      pause_log = self.emit_log("  Pause requested, pausing...", flush=True)
+      self._transition_state("paused")
+
+      while True:
+        await asyncio.sleep(0.1)
+
+        if os.path.exists(cancel_path):
+          try: os.unlink(cancel_path)
+          except Exception: pass
+          cancel_log = self.emit_log("  Cancel requested while paused, stopping...", flush=True)
+          return [pause_log, cancel_log], ControlAction.CANCEL
+
+        if os.path.exists(resume_path):
+          try: os.unlink(resume_path)
+          except Exception: pass
+          resume_log = self.emit_log("  Resume requested, resuming...", flush=True)
+          self._transition_state("running")
+          return [pause_log, resume_log], None
+
+    return [], None
+
+  def finalize(self) -> None:
+    self._flush_buffer()
+    if self._end_emitted and self._final_state_ext:
+      self._transition_state(self._final_state_ext)
+
+
+def find_job_by_id(persistent_storage_path: str, job_id: str) -> Optional[JobMetadata]:
+  if not job_id: return None
+  jobs_root = _get_jobs_root(persistent_storage_path)
+
+  for file_path in _iter_job_state_files(persistent_storage_path):
+    name = os.path.basename(file_path)
+    if f"[{job_id}]" not in name: continue
+
+    _, ext = os.path.splitext(name)
+    state = ext.lstrip(".")
+    if state not in VALID_JOB_STATES: continue
+
     try:
-      os.remove(path)
+      with open(file_path, "r", encoding="utf-8") as f:
+        content = f.read()
     except Exception:
-      pass
+      continue
+
+    start_json = _parse_sse_event_json(content, "start_json") or {}
+    end_json = _parse_sse_event_json(content, "end_json", last=True) or {}
+
+    source_url = str(start_json.get("source_url", ""))
+    monitor_url = str(start_json.get("monitor_url", ""))
+    started_utc = str(start_json.get("started_utc", ""))
+    finished_utc = end_json.get("finished_utc", None)
+    result = end_json.get("result", None)
+
+    return JobMetadata(
+      job_id=job_id,
+      state=state,  # type: ignore[arg-type]
+      source_url=source_url,
+      monitor_url=monitor_url,
+      started_utc=started_utc,
+      finished_utc=finished_utc,
+      result=result,
+    )
+
+  return None
+
+
+def get_job_metadata(persistent_storage_path: str, job_id: str) -> Optional[JobMetadata]:
+  return find_job_by_id(persistent_storage_path, job_id)
+
+
+def list_jobs(persistent_storage_path: str, router_filter: str | None = None, state_filter: str | None = None) -> list[JobMetadata]:
+  jobs_root = _get_jobs_root(persistent_storage_path)
+
+  entries = []
+  for file_path in _iter_job_state_files(persistent_storage_path):
+    name = os.path.basename(file_path)
+    _, ext = os.path.splitext(name)
+    state = ext.lstrip(".")
+
+    if state_filter and state != state_filter: continue
+    if router_filter:
+      router_name = _extract_router_from_path(jobs_root, file_path)
+      if router_name != router_filter: continue
+
+    job_number = _extract_job_number_from_filename(name)
+    if job_number is None: continue
+    job_id = f"jb_{job_number}"
+
+    meta = find_job_by_id(persistent_storage_path, job_id)
+    if meta is None:
+      meta = JobMetadata(job_id=job_id, state=state, source_url="", monitor_url="", started_utc="", finished_utc=None, result=None)  # type: ignore[arg-type]
+
+    entries.append((os.path.getmtime(file_path), meta))
+
+  entries.sort(key=lambda x: x[0], reverse=True)
+  return [m for _, m in entries]
+
+
+def read_job_log(persistent_storage_path: str, job_id: str) -> str:
+  meta = find_job_by_id(persistent_storage_path, job_id)
+  if not meta: return ""
+
+  jobs_root = _get_jobs_root(persistent_storage_path)
+  for file_path in _iter_job_state_files(persistent_storage_path):
+    if f"[{job_id}]" in os.path.basename(file_path):
+      try:
+        with open(file_path, "r", encoding="utf-8") as f:
+          return f.read()
+      except Exception:
+        return ""
+
+  return ""
+
+
+def read_job_result(persistent_storage_path: str, job_id: str) -> Optional[dict]:
+  meta = find_job_by_id(persistent_storage_path, job_id)
+  if not meta: return None
+  if meta.state not in ("completed", "cancelled"): return None
+  return meta.result
+
+
+def create_control_file(persistent_storage_path: str, job_id: str, action: str) -> bool:
+  if action not in ("pause", "resume", "cancel"): return False
+  meta = find_job_by_id(persistent_storage_path, job_id)
+  if not meta: return False
+
+  jobs_root = _get_jobs_root(persistent_storage_path)
+  for file_path in _iter_job_state_files(persistent_storage_path):
+    if f"[{job_id}]" not in os.path.basename(file_path): continue
+
+    file_base = os.path.splitext(file_path)[0]
+    control_path = f"{file_base}.{action}_requested"
+    try:
+      with open(control_path, "w", encoding="utf-8") as f:
+        f.write("")
+      return True
+    except Exception:
+      return False
+
+  return False
+
+
+def delete_job(persistent_storage_path: str, job_id: str) -> bool:
+  for file_path in _iter_job_state_files(persistent_storage_path):
+    if f"[{job_id}]" in os.path.basename(file_path):
+      try:
+        os.unlink(file_path)
+        return True
+      except Exception:
+        return False
+  return False

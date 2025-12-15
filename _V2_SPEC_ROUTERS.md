@@ -1140,6 +1140,8 @@ V2 router files are located in `src/routers_v2/`:
 
 ### Example Endpoint Implementation
 
+**Depends on:** `SOPS.md` for implementation checklist.
+
 ```python
 # routers_v2/demorouter.py
 # Registered in app.py: app.include_router(demorouter.router, prefix="/v2")
