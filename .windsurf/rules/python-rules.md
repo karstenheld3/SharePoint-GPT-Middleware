@@ -10,6 +10,7 @@ trigger: manual
 
 - Indent code with TAB.
 - If a statement is ≤ MAX_LINE_CHARS characters (including spaces), keep it on a single line.
+- Ignore MAX_LINE_CHARS restrictions in Markdown; especially for tables and UI prototypes
 - Function definitions: put the full signature on a single line; function body starts on the next line.
 - One empty line as delimiter between imports, functions and class definitions
 

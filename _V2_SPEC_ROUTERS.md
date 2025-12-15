@@ -35,10 +35,8 @@ A FastAPI-based middleware application that bridges SharePoint content with Open
 - To be crawled (downloaded and embedded) from SharePoint into a single vector store
 - Maps to exactly one vector store (1:1 relation)
 - Supports many sources in different SharePoint sites and SharePoint filters
-- Contains different categories of SharePoint sources:
-- `file_sources` - list of file sources with individual`site_url` and `filter` attributes (1:n relation)
-- `list_sources` - list of SharePoint list sources with individual `site_url` and `filter` attributes (1:n relation)
-- `sitepage_sources` - list of site page with individual `site_url` and `filter` attributes (1:n relation)
+- Contains different categories of SharePoint sources: `file_sources`, `list_sources`, `sitepage_sources`
+- Schema: See "Domain object schemas" section below
 
 **Local storage** - Folders and files used to store information that can't be kept in the backend
 - Contains files and data downloaded from SharePoint
@@ -60,6 +58,70 @@ A FastAPI-based middleware application that bridges SharePoint content with Open
 ## Endpoint architecture and design
 
 In the following sections `resource` acts as a placeholder for the individual domain objects: `domain`, `vector_store`, etc. while `action` acts as a placeholder for Create, List, Update, Delete, and other actions. The combination of resources and actions is called an endpoint and is implemented as a HTTP/HTTPS URL.
+
+### Domain object schemas
+
+**Domain (`domain.json`)**
+```json
+{
+  "domain_id": "DOMAIN01",
+  "vector_store_name": "SharePoint-DOMAIN01",
+  "vector_store_id": "vs_xxxxxxxxxxxxxxxxxxxxx",
+  "name": "Example Domain 01",
+  "description": "Description of the SharePoint site and its purpose",
+  "file_sources": [ { "source_id": "...", "site_url": "...", "sharepoint_url_part": "...", "filter": "" } ],
+  "sitepage_sources": [ { "source_id": "...", "site_url": "...", "sharepoint_url_part": "...", "filter": "" } ],
+  "list_sources": [ { "source_id": "...", "site_url": "...", "list_name": "...", "filter": "" } ]
+}
+```
+
+**File Source**
+- `source_id` - unique identifier for this source within the domain
+- `site_url` - full SharePoint site URL (e.g., `https://contoso.sharepoint.com/sites/ExampleSite`)
+- `sharepoint_url_part` - path to document library (e.g., `/Shared Documents`)
+- `filter` - optional OData filter expression
+
+**Sitepage Source**
+- `source_id` - unique identifier for this source within the domain
+- `site_url` - full SharePoint site URL
+- `sharepoint_url_part` - path to site pages (usually `/SitePages`)
+- `filter` - optional OData filter expression
+
+**List Source**
+- `source_id` - unique identifier for this source within the domain
+- `site_url` - full SharePoint site URL
+- `list_name` - name of the SharePoint list
+- `filter` - optional OData filter expression
+
+**Job Metadata (returned in `start_json` and `end_json` events)**
+
+Note: The `result` field uses the same `{ok, error, data}` format as defined in "Consistent JSON result format" section.
+
+Example `start_json`:
+```json
+{
+  "job_id": "jb_42",
+  "state": "running",
+  "source_url": "/v2/crawler/crawl?domain_id=TEST01&format=stream",
+  "monitor_url": "/v2/jobs/monitor?job_id=jb_42",
+  "started_utc": "2024-01-15T10:30:00.000000Z",
+  "finished_utc": null,
+  "result": null
+}
+```
+
+Example `end_json`:
+```json
+{
+  "job_id": "jb_42",
+  "state": "completed",
+  "source_url": "/v2/crawler/crawl?domain_id=TEST01&format=stream",
+  "monitor_url": "/v2/jobs/monitor?job_id=jb_42",
+  "started_utc": "2024-01-15T10:30:00.000000Z",
+  "finished_utc": "2024-01-15T12:23:34.000000Z",
+  "result": { "ok": true, "error": "", "data": {...} }
+}
+```
 
 ### Endpoint design decisions
 
@@ -162,6 +224,7 @@ Version 2 routers (as specified in this document):
 - Specifies the returned data format.
 - All endpoints returning data are required to support this query param.
 - Endpoints are NOT required to support all available options. At least one option must be supported.
+- Note: `format=json` is the default **when query params are provided**. Bare GET (no params) always returns self-documentation regardless of format support (see DD-E001).
 - Available options:
   - `json` (default) -> JSON result with `"data": {...}` for Create, Get, Update, Delete actions. JSON result with `"data": [...]` for List and other action returning collections.
   - `html` -> HTML detail view (JSON converted to flat or nested HTML table)
@@ -241,7 +304,7 @@ Long-running jobs can be monitored, paused, resumed, cancelled by independent pr
 Example *stream output* for `start_json` event with job metadata as JSON
 ```
 event: start_json
-data: { "job_id": 'jb_2', "endpoint": "/v2/crawler/crawl?domain_id=TEST01&format=stream", "state": "running"}
+data: { "job_id": 'jb_2', "source_url": "/v2/crawler/crawl?domain_id=TEST01&format=stream", "state": "running"}
 
 ```
 
@@ -250,9 +313,12 @@ Example *multiline stream output* for `start_json` event with job metadata as JS
 event: start_json
 data: {
 data:   "job_id": 'jb_2'
-data:   "endpoint": "/v2/crawler/crawl?domain_id=TEST01&format=stream",
 data:   "state": "running",
-data:   "start_utc": "2024-01-15T10:30:00.000000Z"
+data:   "source_url": "/v2/crawler/crawl?domain_id=TEST01&format=stream",
+data:   "monitor_url": "/v2/jobs/monitor?job_id=jb_2",
+data:   "started_utc": "2024-01-15T10:30:00.000000Z",
+data:   "finished_utc": null
+data:   "result": null
 data: }
 
 ```
@@ -269,10 +335,10 @@ Example *multiline stream output* for `end_json` event with job metadata as JSON
 event: end_json
 data: {
 data:   "job_id": 'jb_2'
-data:   "endpoint": "/v2/crawler/crawl?domain_id=TEST01&format=stream",
+data:   "source_url": "/v2/crawler/crawl?domain_id=TEST01&format=stream",
 data:   "state": "completed",
-data:   "start_utc": "2024-01-15T10:30:00.000000Z",
-data:   "end_utc": "2024-01-15T12:23:34.000000Z",
+data:   "started_utc": "2024-01-15T10:30:00.000000Z",
+data:   "finished_utc": "2024-01-15T12:23:34.000000Z",
 data    "result": { "ok": true, "error": "", "data": {...} }
 data: }
 
@@ -293,7 +359,36 @@ data: 00002 | assistant-B8XZtxgQe4aSQwsF5GcbdH | EnergyOverview.pdf             
 
 #### Job file format
 
-**Format:** `[TIMESTAMP]_[[ENDPOINT_ACTION]]_[[JB_ID]]_[[OBJECT_ID_OR_NAME]].[state]`
+Job files serve two purposes:
+1. **State tracking** - The file extension indicates current job state
+2. **Stream storage** - The file content is the complete SSE stream (identical to `/v2/jobs/monitor?job_id={id}&format=stream` output)
+
+**File Content Format (SSE stream):**
+
+Note: Format `[ current / total ]` after `data:` is mandatory when logging steps or collections of known size. This way the HTTP client can detect progress at any time.
+
+```
+event: start_json
+data: {"job_id": "jb_42", "state": "running", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": null, "result": null}
+
+event: log
+data: [ 1 / 2 ] Processing file 'document1.pdf'...
+
+event: log
+data:   OK.
+
+event: log
+data: [ 2 / 2 ] Processing file 'document2.docx'...
+
+event: log
+data:   OK.
+
+event: end_json
+data: {"job_id": "jb_42", "state": "completed", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": "...", "result": {"ok": true, "error": "", "data": {...}}}
+
+```
+
+**Filename Format:** `[TIMESTAMP]_[[ENDPOINT_ACTION]]_[[JB_ID]]_[[OBJECT_ID_OR_NAME]].[state]`
 **Example:** `2025-11-26_14-20-30_[crawl]_[jb_42]_[TEST01].running`
 **Example without object id:** `2025-11-26_14-20-30_[global_cleanup]_[jb_42].running`
 
@@ -313,6 +408,39 @@ data: 00002 | assistant-B8XZtxgQe4aSQwsF5GcbdH | EnergyOverview.pdf             
 - `.pause_requested` - Control: request pause
 - `.resume_requested` - Control: request resume
 - `.cancel_requested` - Control: request cancel
+
+**Control File Lifecycle:**
+
+Control files are ephemeral signals. The job process is responsible for cleanup:
+
+1. Job process periodically checks for control files matching its `jb_id`
+2. When a control file is detected, the job:
+   a. Logs the control action (e.g., "Pause requested, pausing...")
+   b. **Deletes the control file immediately**
+   c. Transitions to the new state (renames job file extension)
+
+Example - Pause flow:
+```
+1. Control endpoint creates: [jb_42].pause_requested
+2. Job detects .pause_requested file
+3. Job deletes .pause_requested file
+4. Job renames .running -> .paused
+```
+
+Example - Cancel while paused:
+```
+1. Control endpoint creates: [jb_42].cancel_requested
+2. Job detects .cancel_requested file
+3. Job deletes .cancel_requested file
+4. Job deletes .paused file
+5. Job creates .cancelled file with final state
+```
+
+**Valid State Transitions:**
+- `running` -> `paused`, `cancelled`, `completed`
+- `paused` -> `running` (via resume), `cancelled`
+- `completed` -> (terminal, no transitions)
+- `cancelled` -> (terminal, no transitions)
 
 **Job Files Location**
 
@@ -336,13 +464,18 @@ PERSISTENT_STORAGE_PATH/jobs/
 
 Format: `jb_[NUMBER]` where `[NUMBER]` is an ascending integer starting with 1 
 
-1. Scan all files in `PERSISTENT_STORAGE_PATH/jobs/**/*`
-2. Filter files with valid extensions (`.running`, `.completed`, `.cancelled`)
+1. Scan all files in `PERSISTENT_STORAGE_PATH/jobs/**/*` (recursive)
+2. Filter files with valid extensions (`.running`, `.completed`, `.cancelled`, `.paused`)
 3. Sort by modification time (newest first)
-4. Take last 100 files
-5. Extract `jb_id_number` from filenames
+4. Take the first 1000 files (most recent)
+5. Extract `jb_id_number` from filenames using regex pattern
 6. Find maximum `jb_id_number`
-7. Return `"jb_" + (max_jb_id_number + 1)`
+7. Return `max_jb_id_number + 1` (or `1` if no files found)
+
+**Why limit to 1000 files?**
+- Performance: Avoids scanning entire history on systems with many completed jobs
+- Correctness: Recent files contain the highest IDs; older files are irrelevant for max calculation
+- The limit is intentionally high (1000) to handle burst scenarios safely
 
 **Race Condition Handling**
 
@@ -386,6 +519,42 @@ GET /v2/jobs/monitor?job_id={job_id}&format=stream
 Returns full stream (from start) as Server-Sent Events (SSE), MIME type: `Content-Type: text/event-stream`, UTF-8 encoded
 
 ## Endpoint specification
+
+### Self-Documentation Format
+
+- Bare GET requests (no query params) return self-documentation as HTML.
+- The `router_prefix` variable is set via `set_config()` when the router is initialized
+
+**Root endpoints** (e.g., `/v2/crawler`, `/v2/domains`) return a full HTML page with:
+- Title and description
+- List of available sub-endpoints with example links
+- Back navigation link
+
+**Action endpoints** (e.g., `/v2/domains/get`, `/v2/crawler/crawl`) return minimal HTML with:
+- Docstring wrapped in `<pre>` block
+- Parameters section
+- Example URLs with `{router_prefix}` placeholder replaced at runtime via `__doc__.replace('{router_prefix}', router_prefix)`
+
+**Implementation pattern:**
+```python
+# Docstring defines documentation content
+@router.get('/resource/action')
+async def action(request: Request):
+  """
+  Description of the endpoint.
+  
+  Parameters:
+  - param1: Description
+  - format: Response format (json, html)
+  
+  Examples:
+  {router_prefix}/resource/action?param1=value&format=json
+  """
+  # Return documentation if no params
+  if len(request.query_params) == 0:
+    return HTMLResponse(generate_documentation_page(endpoint, action.__doc__))
+  # ... handle request
+```
 
 ### Shorthand specification notation
 
@@ -562,11 +731,120 @@ Create, Update, Delete operations usually support the `format=stream` query para
   - `GET /v2/jobs/control?job_id={id}&action=pause` - Requests the job to be paused
   - `GET /v2/jobs/control?job_id={id}&action=resume` - Requests the job to be resumed
   - `GET /v2/jobs/control?job_id={id}&action=cancel` - Requests the job to be cancelled
+  - Error handling:
+    - HTTP 404 if `job_id` does not exist: "Job 'jb_42' does not exist."
+    - HTTP 400 if `action` is missing or invalid: "Param 'action' is missing." or "Invalid value '<value>' for 'action' param."
+    - HTTP 400 if job is in terminal state (`completed`, `cancelled`): "Job '<job_id>' is already completed.", "Job '<job_id>' is already cancelled."
+    - HTTP 400 if action is invalid for current state (e.g., `resume` on a `running` job): "Cannot resume running job '<job_id>'."
 - L(jhs): `/v2/jobs/monitor?job_id={id}` - Monitor long-running jobs
   - `GET /v2/jobs/monitor?job_id={id}&format=json` -> JSON `{ [JOB_METADATA], "log" : "[LAST_LOG_EVENT_DATA]"}`
   - `GET /v2/jobs/monitor?job_id={id}&format=html` -> JSON converted to nested HTML table
   - `GET /v2/jobs/monitor?job_id={id}&format=stream` -> Full stream (from first event) as Server-Sent Events
 - L(jh): `/v2/jobs/results?job_id={id}` - Return `result` JSON from `end_json` event of the stream
+
+### Endpoint return formats
+
+#### `/v2/jobs?format=json`
+
+Returns standard JSON result where `data` is an array of job objects:
+```json
+{
+  "ok": true,
+  "error": "",
+  "data": [
+    {"job_id": "jb_44", "state": "running", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": null, "result": null},
+    {"job_id": "jb_42", "state": "completed", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": "...", "result": {"ok": true, "error": "", "data": {...}}}
+  ]
+}
+```
+
+Each job object uses the same schema as `start_json`/`end_json` events:
+- For running/paused jobs: `finished_utc` and `result` are null
+- For completed/failed/cancelled jobs: `finished_utc` and `result` are populated
+
+#### `/v2/jobs/get?job_id={id}&format=json`
+
+Returns standard JSON result where `data` is a single job object:
+```json
+{
+  "ok": true,
+  "error": "",
+  "data": {
+    "job_id": "jb_42",
+    "state": "running",
+    "source_url": "/v2/crawler/crawl?domain_id=DOMAIN01&format=stream",
+    "monitor_url": "/v2/jobs/monitor?job_id=jb_42",
+    "started_utc": "2025-01-15T14:00:00.000000Z",
+    "finished_utc": null,
+    "result": null
+  }
+}
+```
+
+#### `/v2/jobs/control?job_id={id}&action={action}`
+
+Returns standard JSON result confirming the control action was requested:
+```json
+{"ok": true, "error": "", "data": {"job_id": "jb_42", "action": "pause", "message": "Pause requested for job 'jb_42'."}}
+```
+
+#### `/v2/jobs/monitor?job_id={id}&format=json`
+
+- Returns standard JSON result with job metadata and last log line.
+- The `data` in `result` can be a JSON object or JSON array.
+
+**Running job:**
+```json
+{"ok": true, "error": "", "data": {"job_id": "jb_42", "state": "running", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": null, "result": null, "log": "[ 15 / 20 ] Processing 'document_015.pdf'..."}}
+```
+
+**Paused job:**
+```json
+{"ok": true, "error": "", "data": {"job_id": "jb_42", "state": "paused", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": null, "result": null, "log": "  Pause requested, pausing..."}}
+```
+
+**Completed job:**
+```json
+{"ok": true, "error": "", "data": {"job_id": "jb_42", "state": "completed", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": "...", "result": {"ok": true, "error": "", "data": {...}}, "log": "  OK."}}
+```
+
+**Cancelled job:**
+```json
+{"ok": true, "error": "", "data": {"job_id": "jb_42", "state": "cancelled", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": "...", "result": {"ok": false, "error": "Cancelled by user.", "data": {...}}, "log": "  Cancel requested, stopping..."}}
+```
+
+#### `/v2/jobs/monitor?job_id={id}&format=stream`
+
+Returns Server-Sent Events stream (Content-Type: `text/event-stream`):
+```
+event: start_json
+data: {"job_id": "jb_42", "state": "running", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": null, "result": null}
+
+event: log
+data: [ 1 / 20 ] Processing 'document_001.pdf'...
+
+event: log
+data:   OK.
+
+event: log
+data: [ 2 / 20 ] Processing 'document_002.pdf'...
+
+event: end_json
+data: {"job_id": "jb_42", "state": "completed", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": "...", "result": {"ok": true, "error": "", "data": {...}}}
+
+```
+
+#### `/v2/jobs/results?job_id={id}&format=json`
+
+Returns standard JSON result where `data` is the `result` object from `end_json`:
+```json
+{"ok": true, "error": "", "data": {"ok": true, "error": "", "data": {...}}}
+```
+
+Returns error if job is not in 'completed' state ():
+```json
+{"ok": false, "error": "Results not available. Job 'jb_42' state is 'running'.", "data": {}}
+```
 
 ### Crawling Process
 

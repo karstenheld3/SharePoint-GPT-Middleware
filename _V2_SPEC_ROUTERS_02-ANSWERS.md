@@ -146,13 +146,13 @@ Describe the exact algorithm used to generate the next `jb_id`.
 
 Algorithm:
 
-1. Scan all files under `PERSISTENT_STORAGE_PATH/jobs/**/*`
-2. Keep files ending in `.running`, `.completed`, `.cancelled`
+1. Scan all files under `PERSISTENT_STORAGE_PATH/jobs/**/*` (recursive)
+2. Keep files ending in `.running`, `.completed`, `.cancelled`, `.paused`
 3. Sort by modification time (newest first)
-4. Take the last 100 files
-5. Extract numeric part of `jb_[NUMBER]`
+4. Take the first 1000 files (most recent)
+5. Extract numeric part of `jb_[NUMBER]` using regex pattern
 6. Find the maximum number
-7. Generate `jb_[max + 1]`
+7. Return `max + 1` (or `1` if no files found)
 
 If create fails due to collision, regenerate/retry.
 
@@ -161,6 +161,11 @@ This guarantees:
 - Monotonic IDs
 - Cross-router uniqueness
 - Robustness against deleted or old job files
+
+Why limit to 1000 files?
+- Performance: Avoids scanning entire history
+- Correctness: Recent files contain the highest IDs
+- The limit is intentionally high to handle burst scenarios
 
 ------
 
