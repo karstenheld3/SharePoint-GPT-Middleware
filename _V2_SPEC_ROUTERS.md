@@ -388,6 +388,13 @@ data: {"job_id": "jb_42", "state": "completed", "source_url": "...", "monitor_ur
 
 ```
 
+**Disk Write Optimization:**
+
+To prevent heavy disk I/O when emitting many log events, implementations should batch log events before writing to the job file:
+- `PERSISTENT_STORAGE_LOG_EVENTS_PER_WRITE` (default: 5) - Number of log events to buffer before flushing to disk
+- The buffer is always flushed immediately for `start_json` and `end_json` events
+- The buffer is also flushed when checking for control files (pause/cancel requests)
+
 **Filename Format:** `[TIMESTAMP]_[[ENDPOINT_ACTION]]_[[JB_ID]]_[[OBJECT_ID_OR_NAME]].[state]`
 **Example:** `2025-11-26_14-20-30_[crawl]_[jb_42]_[TEST01].running`
 **Example without object id:** `2025-11-26_14-20-30_[global_cleanup]_[jb_42].running`
@@ -841,7 +848,7 @@ Returns standard JSON result where `data` is the `result` object from `end_json`
 {"ok": true, "error": "", "data": {"ok": true, "error": "", "data": {...}}}
 ```
 
-Returns error if job is not in 'completed' state ():
+Returns error if job is not in terminal state ('completed' or 'cancelled'):
 ```json
 {"ok": false, "error": "Results not available. Job 'jb_42' state is 'running'.", "data": {}}
 ```
@@ -1038,3 +1045,233 @@ Expected outcome:
 			    - Moves file from `02_embedded/` to `03_failed/` folder
 				- Updates file properties like `embedding_error` and `file_relative_path` in `vectorstore_map`
 			- Writes updated `vectorstore_map.csv` gracefully
+
+
+## Job streaming specification
+
+This section specifies the server-side implementation for streaming endpoints and job management.
+
+### Functional Requirements
+
+**STREAM-FR-01: Dual Output**
+- Streaming endpoints must simultaneously: 1) yield SSE to HTTP response, 2) write same SSE to job file
+
+**STREAM-FR-02: Atomic Job Creation**
+- Job file creation must use exclusive mode to prevent race conditions
+- On collision: regenerate job_id and retry
+
+**STREAM-FR-03: Buffered Disk Writes**
+- Log events buffered until `PERSISTENT_STORAGE_LOG_EVENTS_PER_WRITE` reached
+- `start_json` and `end_json` always flush immediately
+- Buffer flushed when checking control files
+
+**STREAM-FR-04: Control File Polling**
+- Job must check for control files at regular intervals (e.g., after each item processed)
+- Detection order: `cancel_requested` > `pause_requested` > `resume_requested`
+- Job deletes control file immediately after detection
+
+**STREAM-FR-05: Graceful Pause**
+- On pause: flush buffer, write pause log, rename `.running` -> `.paused`
+- While paused: poll for `resume_requested` or `cancel_requested` using `await asyncio.sleep()` to avoid blocking event loop
+- On resume: rename `.paused` -> `.running`, continue processing
+
+**STREAM-FR-06: Graceful Cancel**
+- On cancel: flush buffer, emit `end_json` with `result.ok=false`, rename to `.cancelled`
+- Partial results should be included in `result.data` if available
+
+**STREAM-FR-07: Job Completion**
+- On completion: emit `end_json` with final result, rename `.running` -> `.completed`
+- `finished_utc` must be set in `end_json`
+
+**STREAM-FR-08: Crash Recovery**
+- Orphaned `.running` files indicate crashed jobs
+- No automatic recovery - manual cleanup or re-run required
+
+### Implementation Guarantees
+
+**STREAM-IG-01:** Every job file contains exactly one `start_json` event as first content
+**STREAM-IG-02:** Every completed/cancelled job file contains exactly one `end_json` event as last content
+**STREAM-IG-03:** Job ID is unique across all routers for the lifetime of the jobs folder
+**STREAM-IG-04:** Control files are ephemeral - never persist after job processes them
+**STREAM-IG-05:** HTTP stream and job file content are byte-identical
+
+### Example Endpoint Implementation
+
+```python
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from common_job_functions import StreamingJobWriter, ControlAction
+
+router = APIRouter(prefix="/v2/crawler")
+
+# Crawl a domain. Supports format=stream for long-running operation.
+@router.get("/crawl")
+async def crawl(request: Request, domain_id: str = None, format: str = None):
+  if not request.query_params: return HTMLResponse(crawl.__doc__)
+  if format != "stream": return JSONResponse({"ok": False, "error": "Use format=stream for crawl operations", "data": {}})
+  source_url = f"/v2/crawler/crawl?domain_id={domain_id}&format=stream"
+  return StreamingResponse(crawl_generator(domain_id, source_url), media_type="text/event-stream")
+
+# Generator that yields SSE events and writes to job file
+async def crawl_generator(domain_id: str, source_url: str):
+  writer = (StreamingJobWriter(
+    persistent_storage_path=config.persistent_storage_path,
+    router_name="crawler",
+    action="crawl",
+    object_id=domain_id,
+    source_url=source_url,
+    buffer_size=PERSISTENT_STORAGE_LOG_EVENTS_PER_WRITE
+  ))
+  
+  try:
+    # Emit start_json (immediate flush to file and HTTP)
+    yield writer.emit_start()
+    
+    # Load domain and get files to process
+    files = load_domain_files(domain_id)
+    total = len(files)
+    
+    for i, file in enumerate(files, 1):
+      # Check for control files (returns logs for pause/resume, handles async pause loop)
+      control_logs, control = await writer.check_control()
+      for log in control_logs:
+        yield log  # Yield pause/resume logs to HTTP (already written to file)
+      if control == ControlAction.CANCEL:
+        yield writer.emit_end(ok=False, error="Cancelled by user", data={"processed": i-1, "total": total})
+        return
+      
+      # Emit progress log (buffered)
+      yield writer.emit_log(f"[ {i} / {total} ] Processing '{file.name}'...")
+      
+      # Do actual work
+      result = process_file(file)
+      
+      # Emit result log
+      yield writer.emit_log(f"  {'OK' if result.ok else 'FAILED'}.")
+    
+    # Emit end_json with success (immediate flush)
+    yield writer.emit_end(ok=True, data={"processed": total, "total": total})
+    
+  except Exception as e:
+    # Emit end_json with error
+    yield writer.emit_end(ok=False, error=str(e), data={})
+  
+  finally:
+    # Ensure file state is finalized (rename to .completed or .cancelled)
+    writer.finalize()
+```
+
+### Function Definitions
+
+```python
+# common_job_functions.py
+
+from dataclasses import dataclass
+from enum import Enum
+from typing import Literal, Optional
+
+# Type definitions
+JobState = Literal["running", "paused", "completed", "cancelled"]
+ControlState = Literal["pause_requested", "resume_requested", "cancel_requested"]
+
+@dataclass
+class JobMetadata:
+  job_id: str                           # "jb_42"
+  state: JobState
+  source_url: str                       # "/v2/crawler/crawl?domain_id=TEST01&format=stream"
+  monitor_url: str                      # "/v2/jobs/monitor?job_id=jb_42&format=stream"
+  started_utc: str                      # ISO 8601: "2025-01-15T14:20:30.000000Z"
+  finished_utc: str | None              # ISO 8601 or None if running
+  result: dict | None                   # {ok, error, data} or None if running
+
+class ControlAction(Enum):
+  CANCEL = "cancel"
+  # PAUSE handled internally by check_control()
+
+class StreamingJobWriter:
+  """Buffered writer for streaming job files. Handles dual output to HTTP and file."""
+  
+  def __init__(self, persistent_storage_path: str, router_name: str, action: str, 
+               object_id: Optional[str], source_url: str,
+               buffer_size: int = PERSISTENT_STORAGE_LOG_EVENTS_PER_WRITE):
+    """
+    Create job file and initialize writer.
+    - Generates unique job_id (jb_[NUMBER])
+    - Creates job file: [TIMESTAMP]_[[ACTION]]_[[JB_ID]]_[[OBJECT_ID]].running
+    - Retries with new job_id on collision (STREAM-FR-02)
+    """
+  
+  @property
+  def job_id(self) -> str:
+    """Returns job_id string, e.g., 'jb_42'"""
+  
+  @property
+  def monitor_url(self) -> str:
+    """Returns monitor URL: /v2/jobs/monitor?job_id={job_id}&format=stream"""
+  
+  def emit_start(self) -> str:
+    """
+    Emit start_json event. Immediate flush to file. (STREAM-FR-03)
+    Returns SSE-formatted string for HTTP response.
+    """
+  
+  def emit_log(self, message: str) -> str:
+    """
+    Emit log event. Buffered write to file. (STREAM-FR-03)
+    Returns SSE-formatted string for HTTP response.
+    """
+  
+  def emit_end(self, ok: bool, error: str = "", data: dict = None) -> str:
+    """
+    Emit end_json event. Immediate flush to file. (STREAM-FR-03, STREAM-FR-07)
+    Sets finished_utc timestamp.
+    Returns SSE-formatted string for HTTP response.
+    """
+  
+  async def check_control(self) -> tuple[list[str], Optional[ControlAction]]:
+    """
+    Check for control files and handle pause loop. (STREAM-FR-04, STREAM-FR-05)
+    - Flushes buffer before checking
+    - If pause_requested: emits pause log, enters async pause loop, renames to .paused
+    - If cancel_requested: returns ControlAction.CANCEL
+    - If resume_requested (while paused): emits resume log, renames to .running
+    Returns (log_events, control_action):
+    - log_events: list of SSE-formatted strings for pause/resume (already written to file)
+    - control_action: ControlAction.CANCEL if cancelled, None otherwise
+    Caller must yield all log_events to maintain FR-01/IG-05 compliance.
+    """
+  
+  def finalize(self) -> None:
+    """
+    Finalize job file state. (STREAM-FR-06, STREAM-FR-07)
+    - If end_json emitted: rename to .completed or .cancelled
+    - Flushes any remaining buffer
+    Called automatically in finally block.
+    """
+
+# Standalone functions for /v2/jobs endpoints
+
+def generate_job_id(persistent_storage_path: str) -> str:
+  """Generate next job ID: 'jb_[NUMBER]'. Scans existing files to find max."""
+
+def find_job_by_id(persistent_storage_path: str, job_id: str) -> Optional[JobMetadata]:
+  """Find job across all routers. Returns JobMetadata or None."""
+
+def list_jobs(persistent_storage_path: str, router_filter: str = None, state_filter: str = None) -> list[JobMetadata]:
+  """List all jobs. Returns list of JobMetadata, newest first."""
+
+def get_job_metadata(persistent_storage_path: str, job_id: str) -> Optional[JobMetadata]:
+  """Parse job file and return JobMetadata from start_json/end_json."""
+
+def read_job_log(persistent_storage_path: str, job_id: str) -> str:
+  """Read full SSE content from job file for monitoring."""
+
+def read_job_result(persistent_storage_path: str, job_id: str) -> Optional[dict]:
+  """Extract result from end_json. Returns None if job not completed/cancelled."""
+
+def create_control_file(persistent_storage_path: str, job_id: str, action: str) -> bool:
+  """Create control file (.pause_requested, .resume_requested, .cancel_requested)."""
+
+def delete_job(persistent_storage_path: str, job_id: str) -> bool:
+  """Delete job file. Returns True if deleted."""
+```

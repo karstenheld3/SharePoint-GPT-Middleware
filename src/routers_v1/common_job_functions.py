@@ -10,7 +10,7 @@ from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 # Get state folder path for streaming operations, creating if needed
 def get_streaming_state_folder(persistent_storage_path: str) -> str:
   if not persistent_storage_path: return None
-  state_folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_LOGS_SUBFOLDER)
+  state_folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_JOBS_SUBFOLDER)
   os.makedirs(state_folder, exist_ok=True)
   return state_folder
 
@@ -105,7 +105,7 @@ ALL_VALID_STATES = VALID_JOB_STATES | VALID_CONTROL_STATES
 
 # Generate next streaming job ID by scanning existing files. Returns sequential integer starting at 1.
 def generate_streaming_job_id(persistent_storage_path: str) -> int:
-  jobs_folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_LOGS_SUBFOLDER)
+  jobs_folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_JOBS_SUBFOLDER)
   os.makedirs(jobs_folder, exist_ok=True)
   
   # Get all job files recursively
@@ -134,7 +134,7 @@ def generate_streaming_job_id(persistent_storage_path: str) -> int:
 
 # Get folder path for streaming job files: PERSISTENT_STORAGE_PATH/jobs/[router]/[endpoint]/
 def get_streaming_job_folder(persistent_storage_path: str, router_name: str, endpoint_name: str) -> str:
-  folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_LOGS_SUBFOLDER, router_name, endpoint_name)
+  folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_JOBS_SUBFOLDER, router_name, endpoint_name)
   os.makedirs(folder, exist_ok=True)
   return folder
 
@@ -219,7 +219,7 @@ def get_streaming_job_current_state(persistent_storage_path: str, router_name: s
 
 # Find streaming job by sj_id across all routers/endpoints. Returns dict with router_name, endpoint_name, state, file_path, timestamp or None.
 def find_streaming_job_by_id(persistent_storage_path: str, sj_id: int) -> Optional[Dict]:
-  jobs_folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_LOGS_SUBFOLDER)
+  jobs_folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_JOBS_SUBFOLDER)
   if not os.path.exists(jobs_folder): return None
   
   for root, dirs, files in os.walk(jobs_folder):
@@ -236,7 +236,7 @@ def find_streaming_job_by_id(persistent_storage_path: str, sj_id: int) -> Option
 
 # List all streaming jobs with optional filters. Returns list of StreamingJob instances.
 def list_streaming_jobs(persistent_storage_path: str, router_filter: Optional[str] = None, endpoint_filter: Optional[str] = None, state_filter: Optional[str] = None) -> List[StreamingJob]:
-  jobs_folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_LOGS_SUBFOLDER)
+  jobs_folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_JOBS_SUBFOLDER)
   if not os.path.exists(jobs_folder): return []
   
   jobs = []
