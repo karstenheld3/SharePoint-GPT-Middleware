@@ -52,14 +52,14 @@ A reactive web UI for monitoring and controlling long-running jobs using HTMX SS
 ## User Actions
 
 1. **View job list** - Page load: server returns HTML with empty table, JavaScript fetches `/v2/jobs?format=json` on DOMContentLoaded and renders rows
-2. **Refresh job list** - Click [Refresh] to reload job data
+2. **Refresh job list** - Click [Refresh] to fetch jobs and re-render table (preserves console connection and output)
 3. **Monitor job** - Click [Monitor] to connect SSE stream and show console
 4. **Pause job** - Click [Pause] on running job to request pause
 5. **Resume job** - Click [Resume] on paused job to request resume
 6. **Cancel job** - Click [Cancel] on running/paused job to request cancellation
 7. **Disconnect console** - Click [Disconnect] to close SSE connection
 8. **Clear console** - Click [Clear] to empty console output
-9. **Resize console** - Drag resize handle to adjust console height
+9. **Resize console** - Drag resize handle to adjust console height (min: 45px, max: viewport height - 30px)
 10. **Select jobs** - Click checkbox to select jobs for bulk operations
 11. **Bulk delete** - Click [Delete Selected] to delete all selected jobs
 
@@ -85,7 +85,7 @@ Main Page: /v2/jobs?format=ui
 |                                                                                                                                     |
 +-------------------------------------------------------------------------------------------------------------------------------------+
 | [Resize Handle]                                                                                                                     |
-| Console Output - Job jb_44                                                                                     [Disconnect] [Clear] |
+| Console Output (connected): Job ID='jb_44'                                                                     [Disconnect] [Clear] |
 | ----------------------------------------------------------------------------------------------------------------------------------- |
 | [ 1 / 20 ] Processing 'document_001.pdf'...                                                                                         |
 |   OK.                                                                                                                               |
@@ -201,6 +201,20 @@ Toasts shown for:
 - Control action success (info): "Pause requested for jb_44"
 - SSE connection error (error): "Connection failed"
 
+**Suppress toasts when monitoring historical job:**
+- When clicking [Monitor] on completed/cancelled job, suppress `start_json`/`end_json` toasts
+- Prevents toast spam when loading historical logs
+- Implementation: `suppressToasts` flag, set `true` on monitor, `false` on live stream
+
+**Security:** Use `escapeHtml()` for toast content:
+```javascript
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+```
+
 ### Error Handling for Control Actions
 
 When `/v2/jobs/control` returns `ok: false`, show a **modal dialog** (not a toast):
@@ -222,14 +236,170 @@ Modal populated from response JSON:
 {"ok": false, "error": "Job 'jb_44' is already paused.", "data": {"job_id": "jb_44", "action": "pause"}}
 ```
 
+### Modal Dialog Behavior
+
+The `#modal` element is used by [View], [Result] buttons and error dialogs.
+
+**HTML Structure:**
+```html
+<div id="modal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
+  <div class="modal-content">
+    <button class="modal-close" onclick="closeModal()">×</button>
+    <div class="modal-body">
+      <!-- Content injected by HTMX or JavaScript -->
+    </div>
+  </div>
+</div>
+```
+
+**[View] Button Example:**
+```html
+<button class="btn-small" hx-get="/v2/jobs/get?job_id=jb_44&format=html" hx-target="#modal .modal-body" hx-swap="innerHTML" onclick="openModal()">View</button>
+```
+
+**[Result] Button Example:**
+```html
+<button class="btn-small" hx-get="/v2/jobs/results?job_id=jb_44&format=html" hx-target="#modal .modal-body" hx-swap="innerHTML" onclick="openModal()">Result</button>
+```
+
+**JavaScript Functions:**
+```javascript
+function openModal() {
+  document.getElementById('modal').classList.add('visible');
+  document.addEventListener('keydown', handleEscapeKey);
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('visible');
+  document.removeEventListener('keydown', handleEscapeKey);
+}
+
+function closeModalOnBackdrop(event) {
+  if (event.target.classList.contains('modal-overlay')) closeModal();
+}
+
+function handleEscapeKey(event) {
+  if (event.key === 'Escape') closeModal();
+}
+
+// For error modals (control action failures)
+function showErrorModal(response) {
+  const body = document.querySelector('#modal .modal-body');
+  body.innerHTML = `
+    <h3>Control Action Failed</h3>
+    <p><strong>Action:</strong> ${response.data?.action || 'unknown'}</p>
+    <p><strong>Job:</strong> ${response.data?.job_id || 'unknown'}</p>
+    <p><strong>Error:</strong> ${response.error}</p>
+    <button class="btn-small" onclick="closeModal()">OK</button>
+  `;
+  openModal();
+}
+```
+
+**CSS (added to inline styles):**
+```css
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1100; }
+.modal-overlay.visible { display: flex; justify-content: center; align-items: center; }
+.modal-content { background: #fff; padding: 1.5rem; border-radius: 8px; max-width: 600px; max-height: 80vh; overflow: auto; position: relative; }
+.modal-close { position: absolute; top: 0.5rem; right: 0.5rem; background: none; border: none; font-size: 1.5rem; cursor: pointer; }
+```
+
+### Job Row Updates
+
+Job table rows are updated in two scenarios:
+
+**1. Control action success (pause/resume/cancel)**
+
+When `/v2/jobs/control` returns `ok: true`, optimistically update the row:
+```javascript
+function handleControlResponse(event) {
+  const response = JSON.parse(event.detail.xhr.responseText);
+  if (response.ok) {
+    const { job_id, action } = response.data;
+    // Optimistic state update based on action
+    const newState = action === 'pause' ? 'paused' 
+                   : action === 'resume' ? 'running' 
+                   : action === 'cancel' ? 'cancelled' : null;
+    if (newState) {
+      updateJob(job_id, { state: newState });
+    }
+    showToast(`${action} requested`, job_id, 'info');
+  } else {
+    showErrorModal(response);  // Modal for errors
+  }
+}
+```
+
+Note: This is optimistic - the actual state change happens when the job processes the control file. For cancel, the job may still emit `end_json` with final result before terminating.
+
+**2. Monitored job state change (start_json/end_json received)**
+
+When SSE events arrive, update the corresponding job row:
+```javascript
+function handleSseEvent(event) {
+  const eventType = event.detail.type;  // 'start_json' or 'end_json'
+  const data = JSON.parse(event.detail.data);
+  
+  if (eventType === 'start_json') {
+    updateJob(data.job_id, { state: data.state });
+    showToast('Job Started', data.job_id, 'info');
+  }
+  
+  if (eventType === 'end_json') {
+    updateJob(data.job_id, { 
+      state: data.state, 
+      finished_utc: data.finished_utc,
+      result: data.result 
+    });
+    showToast('Job Finished', data.job_id, data.result?.ok ? 'success' : 'error');
+    disconnectStream();  // Auto-disconnect on completion
+  }
+}
+
+// Register handler
+document.body.addEventListener('htmx:sseBeforeMessage', handleSseEvent);
+```
+
+**Row re-rendering on update:**
+- `updateJob()` merges new properties into `jobsState` Map entry
+- Calls `renderAllJobs()` which re-renders entire table
+- Action buttons change based on new state (see "Action Buttons Per State")
+
+### Empty State
+
+When no jobs exist, show message row:
+```html
+<tr><td colspan="9" class="empty-state">No jobs found</td></tr>
+```
+
 ### Console Behavior
 
 - Single console panel, one active stream at a time
+- Console output truncation: max 1,000,000 characters, prefix with "...[truncated]\n" when exceeded
 - Clicking [Monitor] on different job disconnects current stream, connects to new one
-- Console title shows currently monitored job: "Console Output - Job jb_44"
+- Console title shows connection state and job: "Console Output (connected): Job ID='jb_44'"
 - [Clear] empties console but keeps connection
 - [Disconnect] closes connection and clears console title (content remains until next [Monitor] click)
-- Auto-scroll to bottom on new log lines (can be disabled by scrolling up)
+- Auto-scroll to bottom on new log lines during active streaming
+
+### Timestamp Formatting
+
+API returns ISO 8601 UTC timestamps (`2025-01-15T14:20:30.000000Z`). UI converts to local timezone with fixed format:
+
+```javascript
+function formatTimestamp(ts) {
+  if (!ts) return '-';
+  const date = new Date(ts);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+```
+
+**Format:** `YYYY-MM-DD HH:MM:SS` (local timezone, 24-hour)
+
+**Examples (browser in UTC+1):**
+- API: `2025-01-15T14:20:30.000000Z` → Display: `2025-01-15 15:20:30`
+- Null/empty → Display: `-`
 
 ### Parsing source_url for Display
 
@@ -272,6 +442,32 @@ function parseSourceUrl(source_url) {
 - Jobs deleted via `DELETE /v2/jobs/delete?job_id={id}`
 - **Error handling:** Failed deletes remain in list with toast error; succeeded deletes removed from table immediately
 
+**Bulk Delete Flow:**
+```javascript
+async function bulkDelete() {
+  const selected = getSelectedJobIds();
+  if (selected.length === 0) return;
+  if (!confirm(`Delete ${selected.length} selected jobs?`)) return;
+  
+  for (const jobId of selected) {
+    const response = await fetch(`/v2/jobs/delete?job_id=${jobId}`, { method: 'DELETE' });
+    const result = await response.json();
+    if (result.ok) {
+      jobsState.delete(jobId);
+      showToast('Job Deleted', jobId, 'success');
+    } else {
+      showToast('Delete Failed', `${jobId}: ${result.error}`, 'error');
+    }
+  }
+  renderAllJobs();
+  updateSelectedCount();
+}
+```
+
+**Toast Messages:**
+- Success: title="Job Deleted", message="{job_id}", type="success"
+- Error: title="Delete Failed", message="{job_id}: {error}", type="error"
+
 ## Action Flow
 
 ### Monitor Job
@@ -279,10 +475,10 @@ function parseSourceUrl(source_url) {
 User clicks [Monitor] on job row (job_id = jb_44)
   |-> disconnectCurrentStream() if connected
   |-> Clear console output
-  |-> Set console title to "Console Output - Job jb_44"
+  |-> Set console title to "Console Output (connecting): Job ID='jb_44'"
   |-> Set sse-connect="/v2/jobs/monitor?job_id=jb_44&format=stream" on #sse-container
   |-> HTMX SSE extension creates EventSource
-      |-> On htmx:sseOpen: Update connection state to "connected"
+      |-> On htmx:sseOpen: Update console title to "Console Output (connected): Job ID='jb_44'"
       |-> On event "log": HTMX appends data to #console-output (via sse-swap)
       |-> On event "start_json": 
           |-> htmx:sseBeforeMessage handler parses JSON
@@ -336,7 +532,7 @@ User clicks [Disconnect]
   |-> disconnectCurrentStream()
       |-> Remove sse-connect attribute from #sse-container
       |-> HTMX SSE extension closes EventSource
-      |-> Clear console title to "Console Output"
+      |-> Set console title to "Console Output (disconnected)"
       |-> Update connection state to "disconnected"
 ```
 
@@ -365,13 +561,13 @@ User clicks [Disconnect]
     
     <div class="toolbar">
       <button id="btn-delete-selected" onclick="bulkDelete()" class="btn-small btn-delete" disabled>Delete Selected (0)</button>
-      <button onclick="location.reload()" class="btn-small">Refresh</button>
+      <button onclick="refreshJobs()" class="btn-small">Refresh</button>
     </div>
     
     <table>
       <thead>
         <tr>
-          <th><input type="checkbox" id="select-all" onclick="toggleSelectAll()"></th>
+          <th></th>
           <th>ID</th>
           <th>Router</th>
           <th>Endpoint</th>
@@ -397,7 +593,7 @@ User clicks [Disconnect]
   <div id="console-panel" class="console-panel">
     <div class="console-resize-handle"></div>
     <div class="console-header">
-      <span id="console-title">Console Output</span>
+      <span id="console-title">Console Output (disconnected)</span>
       <div class="console-controls">
         <button onclick="disconnectStream()" class="btn-small" id="btn-disconnect" disabled>Disconnect</button>
         <button onclick="clearConsole()" class="btn-small">Clear</button>
@@ -500,6 +696,17 @@ async def generate_sse_stream(job_id: str, ...):
 let currentJobId = null;
 let isConnected = false;
 
+// Fetch jobs and re-render table (preserves console state)
+async function refreshJobs() {
+  const response = await fetch('/v2/jobs?format=json');
+  const result = await response.json();
+  if (result.ok) {
+    jobsState.clear();
+    result.data.forEach(job => jobsState.set(job.job_id, job));
+    renderAllJobs();
+  }
+}
+
 // Connect to job stream
 function monitorJob(jobId) { ... }
 
@@ -558,6 +765,43 @@ function initConsoleResize() { ... }
 ```
 
 ## Spec Changes
+
+**[2025-12-15 13:57]**
+- Added: "Empty State" section - "No jobs found" message row
+- Added: Console output truncation (max 1M chars)
+- Added: Suppress toasts when monitoring historical job
+- Added: `escapeHtml()` security function for toast content
+- Added: Console resize bounds (min: 45px, max: viewport - 30px)
+
+**[2025-12-15 13:53]**
+- Added: "Timestamp Formatting" section - converts UTC to local timezone with fixed format `YYYY-MM-DD HH:MM:SS` (not locale-dependent)
+
+**[2025-12-15 13:50]**
+- Removed: Select-all checkbox from table header (not needed)
+
+**[2025-12-15 13:49]**
+- Changed: Console title now shows connection state: "Console Output (disconnected)", "Console Output (connecting): Job ID='jb_44'", "Console Output (connected): Job ID='jb_44'"
+- Updated: UX diagram, Console Behavior, Action Flow, HTML Structure to reflect new title format
+
+**[2025-12-15 13:43]**
+- Added: Bulk delete flow with `bulkDelete()` function and toast message format specification
+
+**[2025-12-15 13:40]**
+- Added: "Modal Dialog Behavior" section with HTML structure, [View]/[Result] button examples, JavaScript functions (open/close/backdrop/escape), CSS styles
+
+**[2025-12-15 13:39]**
+- Removed: Auto-scroll toggle mechanism ("can be disabled by scrolling up") - not implemented
+
+**[2025-12-15 13:35]**
+- Changed: [Refresh] button now calls `refreshJobs()` instead of `location.reload()`
+- Added: `refreshJobs()` function - fetches jobs and re-renders table, preserves console connection and output
+
+**[2025-12-15 13:32]**
+- Added: "Job Row Updates" section specifying row update mechanism for:
+  - Control action success (optimistic update based on action type)
+  - Monitored job state change (update on start_json/end_json events)
+- Added: `handleControlResponse()` function with optimistic state mapping
+- Added: `handleSseEvent()` function with htmx:sseBeforeMessage handler registration
 
 **[2025-12-15 13:00]**
 - Fixed: Added State column to UX diagram and HTML table
