@@ -1195,7 +1195,7 @@ class MiddlewareLogger:
   
   def _emit_to_stream(self, message: str) -> Optional[str]:
     """Emit to stream if writer is set. Calls writer.emit_log() for dual output (STREAM-FR-01)."""
-
+```
 
 ### Log Output Formats
 
@@ -1248,8 +1248,6 @@ class MiddlewareLogger:
 [2025-01-15 10:30:03]   END: process_file() (2.0 secs).
 [2025-01-15 10:30:04] END: crawl() (4.0 secs).
 ```
-
-
 
 ## Job streaming specification
 
