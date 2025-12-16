@@ -39,6 +39,7 @@ def generate_streaming_ui_page(title: str, jobs: list) -> str:
   <meta charset='utf-8'>
   <title>{title}</title>
   <link rel='stylesheet' href='/static/css/styles.css'>
+  <link rel='stylesheet' href='/static/css/routers_v1.css'>
   <script src='/static/js/htmx.js'></script>
   <style>
 /* ============================================
@@ -187,8 +188,8 @@ body.console-visible main {{
     <h1>{title} <span id="job-count">({len(jobs)})</span></h1>
     
     <div class="toolbar">
-      <button class="btn-primary" onclick="streamStart(this)" data-stream-url="/testrouter3/streaming01?format=stream&files=20">Start New Job (20 files)</button>
-      <button class="btn-primary" onclick="streamStart(this)" data-stream-url="/testrouter3/streaming01?format=stream&files=5">Start New Job (5 files)</button>
+      <button class="btn-primary" onclick="streamStart(this)" data-stream-url="{router_prefix}/testrouter3/streaming01?format=stream&files=20">Start New Job (20 files)</button>
+      <button class="btn-primary" onclick="streamStart(this)" data-stream-url="{router_prefix}/testrouter3/streaming01?format=stream&files=5">Start New Job (5 files)</button>
       <button onclick="location.reload()" class="btn-small">Refresh</button>
     </div>
     
@@ -262,7 +263,7 @@ function renderJobRow(job) {{
 }}
 
 function renderJobActions(job) {{
-  let html = `<button class="btn-small" onclick="streamMonitor(this)" data-stream-url="/testrouter3/monitor?id=${{job.id}}">Monitor</button>`;
+  let html = `<button class="btn-small" onclick="streamMonitor(this)" data-stream-url="{router_prefix}/testrouter3/monitor?id=${{job.id}}">Monitor</button>`;
   
   if (job.state === 'running') {{
     html += ` <button class="btn-small" onclick="controlJob(${{job.id}}, 'pause')">Pause</button>`;
@@ -315,7 +316,7 @@ async function controlJob(id, action) {{
   if (action === 'cancel' && !confirm(`Cancel job ${{id}}?`)) return;
   
   try {{
-    const response = await fetch(`/testrouter3/control?id=${{id}}&action=${{action}}`);
+    const response = await fetch(`{router_prefix}/testrouter3/control?id=${{id}}&action=${{action}}`);
     const data = await response.json();
     if (data.success) {{
       // Optimistically update state
@@ -713,6 +714,7 @@ def generate_docs_page(endpoint: str, docstring: str) -> str:
   <meta charset='utf-8'>
   <title>Documentation - {endpoint}</title>
   <link rel='stylesheet' href='/static/css/styles.css'>
+  <link rel='stylesheet' href='/static/css/routers_v1.css'>
 </head>
 <body>
   <div class="container">

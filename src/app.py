@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from common_openai_functions import create_async_azure_openai_client_with_api_key, create_async_azure_openai_client_with_credential, create_async_openai_client
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
-from routers_v1 import crawler, inventory, domains, testrouter, testrouter2, testrouter3
+from routers_v1 import crawler, inventory, domains, testrouter3
 from routers_v2 import demorouter
 from routers_static import openai_proxy, sharepoint_search
 from routers_static.sharepoint_search import build_domains_and_metadata_cache
@@ -469,22 +469,6 @@ def create_app() -> FastAPI:
   except Exception as e:
     initialization_errors.append({"component": "Domains Router", "error": str(e)})
   
-  # Include Test router under /testrouter
-  try:
-    app.include_router(testrouter.router, tags=["Test"], prefix=v1_router_prefix)
-    testrouter.set_config(config, v1_router_prefix)
-    log_function_output(log_data, f"Test router included at {v1_router_prefix}")
-  except Exception as e:
-    initialization_errors.append({"component": "Test Router", "error": str(e)})
-  
-  # Include Test router V1B under /testrouter2
-  try:
-    app.include_router(testrouter2.router, tags=["Test V1B"], prefix=v1_router_prefix)
-    testrouter2.set_config(config, v1_router_prefix)
-    log_function_output(log_data, f"Test router V2 included at {v1_router_prefix}")
-  except Exception as e:
-    initialization_errors.append({"component": "Test Router 2", "error": str(e)})
-  
   # Include Test router V1C under /testrouter3
   try:
     app.include_router(testrouter3.router, tags=["Test V1C"], prefix=v1_router_prefix)
@@ -591,9 +575,7 @@ def root() -> str:
     <li><a href="/v1/inventory/assistants">/v1/inventory/assistants</a> - Assistants Inventory (<a href="/v1/inventory/assistants?format=html&excludeattributes=description,instructions,tools,tool_resources">HTML</a> + <a href="/v1/inventory/assistants?format=json">JSON</a>)</li>
     <li><a href="/v1/domains">/v1/domains</a> - Domains Management (<a href="/v1/domains?format=html">HTML</a> + <a href="/v1/domains?format=json">JSON</a> + <a href="/v1/domains?format=ui">UI</a> + <a href="/v1/domains/create">Create</a> + <a href="/v1/domains/update">Update</a> + <a href="/v1/domains/delete">Delete</a>)</li>
     <li><a href="/v1/crawler">/v1/crawler</a> - Crawler Endpoints (<a href="/v1/crawler/localstorage">Local Storage</a> + <a href="/v1/crawler/updatemaps">Update Maps</a> + <a href="/v1/crawler/getlogfile">Get Logfile</a>)</li>
-    <li><a href="/v1/testrouter/streaming01">/v1/testrouter/streaming01</a> - V1 Streaming Test (<a href="/v1/testrouter/streaming01?format=stream">Stream</a>)</li>
-    <li><a href="/v1/testrouter2/streaming01">/v1/testrouter2/streaming01</a> - V2 Streaming Test (<a href="/v1/testrouter2/streaming01?format=stream">Stream</a> + <a href="/v1/testrouter2/jobs?format=html">Jobs</a>)</li>
-    <li><a href="/v1/testrouter3/jobs">/v1/testrouter3/jobs</a> - V3 Streaming Test with UI (<a href="/v1/testrouter3/streaming01?format=stream">Stream</a> + <a href="/v1/testrouter3/jobs?format=ui">Jobs UI</a>)</li>
+    <li><a href="/v1/testrouter3/jobs">/v1/testrouter3/jobs</a> - Streaming Test with UI (<a href="/v1/testrouter3/streaming01?format=stream">Stream</a> + <a href="/v1/testrouter3/jobs?format=ui">Jobs UI</a>)</li>
     <p>Version 2 Routers</p>
     <li><a href="/v2/demorouter">/v2/demorouter</a> - Demo Router (<a href="/v2/demorouter?format=json">JSON</a> + <a href="/v2/demorouter?format=html">HTML</a> + <a href="/v2/demorouter?format=ui">UI</a>)</li>
   </ul>

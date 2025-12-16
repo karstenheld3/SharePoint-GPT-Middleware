@@ -34,6 +34,7 @@ def generate_html_head(title: str, additional_scripts: str = "", additional_styl
   return f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
 {TAB}<title>{title}</title>
 {TAB}<link rel='stylesheet' href='/static/css/styles.css'>
+{TAB}<link rel='stylesheet' href='/static/css/routers_v1.css'>
 {TAB}<script src='/static/js/htmx.js'></script>{scripts_section}{styles_section}
 </head>"""
 

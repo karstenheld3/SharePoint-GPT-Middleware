@@ -76,19 +76,18 @@ Main Page: /v2/jobs?format=ui
 | <- Back to Main Page                                                                                                                |
 |                                                                                                                                     |
 | +---+-------+-----------+---------------------+----------+-----------+---------+----------+---------------------------------------+ |
-| |   | ID    | Router    | Endpoint            | Objects  | State     | Started | Finished | Actions                               | |
+| |[ ]| ID    | Router    | Endpoint            | Objects  | State     | Started | Finished | Actions                               | |
 | +---+-------+-----------+---------------------+----------+-----------+---------+----------+---------------------------------------+ |
-| |[ ]| jb_44 | crawler   | crawl               | DOMAIN01 | running   | ...     | -        | [View] [Monitor] [Pause] [Cancel]     | |
-| |[ ]| jb_43 | crawler   | crawl               | DOMAIN02 | paused    | ...     | -        | [View] [Monitor] [Resume] [Cancel]    | |
+| |[ ]| jb_44 | crawler   | crawl               | DOMAIN01 | running   | ...     | -        | [Monitor] [Pause] [Cancel]            | |
+| |[ ]| jb_43 | crawler   | crawl               | DOMAIN02 | paused    | ...     | -        | [Monitor] [Resume] [Cancel]           | |
 | |[x]| jb_42 | crawler   | crawl               | DOMAIN01 | completed | ...     | ...      | [View] [Result] [Monitor]             | |
 | |[ ]| jb_41 | inventory | vector_stores/files | vs_123   | completed | ...     | ...      | [View] [Result] [Monitor]             | |
 | |   |       |           |                     | file_abc |           |         |          |                                       | |
 | +---+-------+-----------+---------------------+----------+-----------+---------+----------+---------------------------------------+ |
 |                                                                                                                                     |
-+-------------------------------------------------------------------------------------------------------------------------------------+
-| [Resize Handle]                                                                                                                     |
-| Console Output (connected): Job ID='jb_44'                                                                     [Disconnect] [Clear] |
-| ----------------------------------------------------------------------------------------------------------------------------------- |
++-- [Resize Handle] ------------------------------------------------------------------------------------------------------------------+
+| Console Output (connected): Job ID='jb_44'                                                                     [Pause] [Clear]  [X] |
+|-------------------------------------------------------------------------------------------------------------------------------------+
 | [ 1 / 20 ] Processing 'document_001.pdf'...                                                                                         |
 |   OK.                                                                                                                               |
 | [ 2 / 20 ] Processing 'document_002.pdf'...                                                                                         |

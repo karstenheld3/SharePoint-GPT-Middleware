@@ -195,55 +195,10 @@ async def demorouter_root(request: Request):
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Demo Items</title>
   <link rel="stylesheet" href="/static/css/styles.css">
+  <link rel="stylesheet" href="/static/css/routers_v2.css">
   <script src="/static/js/htmx.js"></script>
-  <style>
-    /* Toast Container */
-    #toast-container {{ position: fixed; top: 1rem; right: 1rem; z-index: 1000; display: flex; flex-direction: column; gap: 0.5rem; max-width: 400px; }}
-    .toast {{ background: #f8f9fa; border: 1px solid #dee2e6; border-left: 4px solid #0078d4; padding: 0.75rem 1rem; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; animation: slideIn 0.3s ease-out; }}
-    .toast.toast-info {{ border-left-color: #0078d4; }}
-    .toast.toast-success {{ border-left-color: #28a745; }}
-    .toast.toast-error {{ border-left-color: #dc3545; }}
-    .toast.toast-warning {{ border-left-color: #ffc107; }}
-    .toast-content {{ flex: 1; font-size: 0.875rem; }}
-    .toast-title {{ font-weight: 600; margin-bottom: 0.25rem; }}
-    .toast-close {{ background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #6c757d; }}
-    @keyframes slideIn {{ from {{ transform: translateX(100%); opacity: 0; }} to {{ transform: translateX(0); opacity: 1; }} }}
-    
-    /* Modal */
-    .modal-overlay {{ display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1100; }}
-    .modal-overlay.visible {{ display: flex; justify-content: center; align-items: center; }}
-    .modal-content {{ background: #fff; padding: 1.5rem 2rem 1.5rem 2rem; border-radius: 8px; max-width: 500px; min-width: 400px; max-height: 80vh; overflow: auto; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }}
-    .modal-close {{ position: absolute; top: 0.5rem; right: 0.75rem; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #666; }}
-    .modal-close:hover {{ color: #333; }}
-    
-    /* Form styling */
-    .form-group {{ margin-bottom: 1rem; }}
-    .form-group label {{ display: block; font-weight: 500; margin-bottom: 0.25rem; color: #333; }}
-    .form-group input {{ width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; box-sizing: border-box; }}
-    .form-group input:focus {{ outline: none; border-color: #0078d4; box-shadow: 0 0 0 2px rgba(0,120,212,0.2); }}
-    .form-actions {{ margin-top: 1.5rem; display: flex; gap: 0.5rem; }}
-    .form-error {{ color: #c00; font-size: 0.9em; margin-top: 5px; }}
-    .empty-state {{ text-align: center; color: #6c757d; padding: 2rem; }}
-    .page-header {{ display: flex; justify-content: space-between; align-items: center; }}
-    .page-header h1 {{ margin: 0; }}
-    
-    /* Console Panel - fixed bottom per spec */
-    .console-panel {{ position: fixed; bottom: 0; left: 0; right: 0; background: #012456; z-index: 900; height: 232px; display: flex; flex-direction: column; transition: transform 0.2s ease-out; }}
-    .console-panel.hidden {{ transform: translateY(100%); }}
-    .console-resize-handle {{ height: 4px; background: #aaaaaa; cursor: ns-resize; flex-shrink: 0; transition: background 0.2s; }}
-    .console-resize-handle:hover, .console-resize-handle.dragging {{ background: #0090F1; }}
-    .console-header {{ display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 1rem; background: #FAFAFA; border-bottom: 1px solid #d0d0d0; font-size: 0.875rem; font-weight: 500; color: #333333; flex-shrink: 0; }}
-    .console-status {{ font-weight: normal; color: #666; }}
-    .console-controls {{ display: flex; gap: 0.5rem; align-items: center; }}
-    .console-close {{ background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #666; padding: 0; margin-left: 0.5rem; }}
-    .console-close:hover {{ color: #333; }}
-    .console-output {{ flex: 1; overflow-y: auto; padding: 0.75rem 1rem; margin: 0; font-family: 'Consolas', 'Monaco', monospace; font-size: 0.9rem; line-height: 1.4; background: #012456; color: #ffffff; white-space: pre-wrap; word-wrap: break-word; }}
-    
-    /* Main content margin to avoid console overlap */
-    body {{ margin-bottom: 250px; }}
-  </style>
 </head>
-<body>
+<body class="has-console">
   <!-- Toast Container -->
   <div id="toast-container"></div>
   
