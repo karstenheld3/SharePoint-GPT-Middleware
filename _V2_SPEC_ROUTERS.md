@@ -535,6 +535,11 @@ Two types of self-documentation exist:
    - Title and description
    - List of available endpoints with links to each supported format
    - Back navigation link
+   - Required elements for consistent look and feel:
+     - Stylesheet: `/static/css/styles.css`
+     - Script: `/static/js/htmx.js` (include for HTMX interactivity)
+     - Standard HTML5 doctype: `<!doctype html><html lang="en">`
+     - Viewport meta tag for responsive design
 
 2. **Action endpoints** (e.g., `/v2/demorouter/demo_endpoint`, `/v2/domains/get`) return **plain text (UTF-8)** with:
    - Docstring content with `{router_prefix}` placeholder replaced at runtime

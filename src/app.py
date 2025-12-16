@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from common_openai_functions import create_async_azure_openai_client_with_api_key, create_async_azure_openai_client_with_credential, create_async_openai_client
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from routers_v1 import crawler, inventory, domains, testrouter, testrouter2, testrouter3
+from routers_v2 import demorouter
 from routers_static import openai_proxy, sharepoint_search
 from routers_static.sharepoint_search import build_domains_and_metadata_cache
 from utils import ZipExtractionMode, acquire_startup_lock, convert_to_flat_html_table, extract_zip_files, format_config_for_displaying, format_filesize, clear_folder
@@ -492,6 +493,17 @@ def create_app() -> FastAPI:
   except Exception as e:
     initialization_errors.append({"component": "Test Router 3", "error": str(e)})
 
+  # Include V2 routers
+  v2_router_prefix = "/v2"
+  
+  # Include Demo router under /v2
+  try:
+    app.include_router(demorouter.router, tags=["Demo"], prefix=v2_router_prefix)
+    demorouter.set_config(config, v2_router_prefix)
+    log_function_output(log_data, f"Demo router included at {v2_router_prefix}")
+  except Exception as e:
+    initialization_errors.append({"component": "Demo Router", "error": str(e)})
+
   # Mount static files directory
   static_path = os.path.join(os.path.dirname(__file__), "static")
   if os.path.exists(static_path):
@@ -582,6 +594,8 @@ def root() -> str:
     <li><a href="/v1/testrouter/streaming01">/v1/testrouter/streaming01</a> - V1 Streaming Test (<a href="/v1/testrouter/streaming01?format=stream">Stream</a>)</li>
     <li><a href="/v1/testrouter2/streaming01">/v1/testrouter2/streaming01</a> - V2 Streaming Test (<a href="/v1/testrouter2/streaming01?format=stream">Stream</a> + <a href="/v1/testrouter2/jobs?format=html">Jobs</a>)</li>
     <li><a href="/v1/testrouter3/jobs">/v1/testrouter3/jobs</a> - V3 Streaming Test with UI (<a href="/v1/testrouter3/streaming01?format=stream">Stream</a> + <a href="/v1/testrouter3/jobs?format=ui">Jobs UI</a>)</li>
+    <p>Version 2 Routers</p>
+    <li><a href="/v2/demorouter">/v2/demorouter</a> - Demo Router (<a href="/v2/demorouter?format=ui">UI</a>)</li>
   </ul>
 
   <div class="section">
