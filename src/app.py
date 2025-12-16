@@ -595,7 +595,7 @@ def root() -> str:
     <li><a href="/v1/testrouter2/streaming01">/v1/testrouter2/streaming01</a> - V2 Streaming Test (<a href="/v1/testrouter2/streaming01?format=stream">Stream</a> + <a href="/v1/testrouter2/jobs?format=html">Jobs</a>)</li>
     <li><a href="/v1/testrouter3/jobs">/v1/testrouter3/jobs</a> - V3 Streaming Test with UI (<a href="/v1/testrouter3/streaming01?format=stream">Stream</a> + <a href="/v1/testrouter3/jobs?format=ui">Jobs UI</a>)</li>
     <p>Version 2 Routers</p>
-    <li><a href="/v2/demorouter">/v2/demorouter</a> - Demo Router (<a href="/v2/demorouter?format=ui">UI</a>)</li>
+    <li><a href="/v2/demorouter">/v2/demorouter</a> - Demo Router (<a href="/v2/demorouter?format=json">JSON</a> + <a href="/v2/demorouter?format=html">HTML</a> + <a href="/v2/demorouter?format=ui">UI</a>)</li>
   </ul>
 
   <div class="section">

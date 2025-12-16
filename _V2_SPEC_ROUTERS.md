@@ -1273,7 +1273,8 @@ This section specifies the server-side implementation for streaming endpoints an
 - Buffer flushed when checking control files
 
 **STREAM-FR-04: Control File Polling**
-- Job must check for control files at regular intervals (e.g., after each item processed)
+- Iterative/long-running jobs must check for control files at regular intervals (e.g., after each item processed)
+- Instantaneous operations (single CRUD, < 100ms) may skip control file checking
 - Detection order: `cancel_requested` > `pause_requested` > `resume_requested`
 - Job deletes control file immediately after detection
 
@@ -1452,7 +1453,81 @@ async def process_files(request: Request):
       writer.finalize()
   
   return StreamingResponse(stream_generator(), media_type="text/event-stream")
+
+### Example: Instantaneous Streaming Endpoint
+
+For quick single-operation endpoints (create, update, delete), control file checking is unnecessary since the operation completes before any control action could be processed:
+
+```python
+# routers_v2/demorouter.py - Instantaneous streaming (no control file checking)
+
+@router.post("/demorouter/create")
+async def demorouter_create(request: Request):
+  """Create a new demo item. Supports format=json, html, stream."""
+  logger = MiddlewareLogger.create()
+  logger.log_function_header("demorouter_create")
+  
+  request_params = dict(request.query_params)
+  demo_id = request_params.get("demo_id", None)
+  format_param = request_params.get("format", "json")
+  
+  # Validation (non-streaming logger for early returns)
+  if not demo_id:
+    logger.log_function_footer()
+    return JSONResponse({"ok": False, "error": "Missing demo_id", "data": {}})
+  
+  # format=stream - uses StreamingJobWriter for dual output
+  if format_param == "stream":
+    writer = StreamingJobWriter(
+      persistent_storage_path=get_persistent_storage_path(),
+      router_name="demorouter",
+      action="create",
+      object_id=demo_id,
+      source_url=str(request.url),
+      router_prefix=router_prefix
+    )
+    stream_logger = MiddlewareLogger.create(stream_job_writer=writer)
+    stream_logger.log_function_header("demorouter_create")
+    
+    async def stream_create():
+      try:
+        yield writer.emit_start()
+        
+        # No check_control() - operation is instantaneous
+        sse = stream_logger.log_function_output(f"Creating item '{demo_id}'...")
+        if sse: yield sse
+        
+        save_demo_item(demo_id, item_data)  # Single operation
+        
+        sse = stream_logger.log_function_output("  OK.")
+        if sse: yield sse
+        
+        stream_logger.log_function_footer()
+        yield writer.emit_end(ok=True, data={"demo_id": demo_id})
+        
+      except Exception as e:
+        stream_logger.log_function_footer()
+        yield writer.emit_end(ok=False, error=str(e), data={})
+      finally:
+        writer.finalize()
+    
+    return StreamingResponse(stream_create(), media_type="text/event-stream")
+  
+  # Non-streaming formats (json, html)
+  save_demo_item(demo_id, item_data)
+  logger.log_function_footer()
+  return JSONResponse({"ok": True, "error": "", "data": {"demo_id": demo_id}})
 ```
+
+**When to use control file checking:**
+- Iterative operations (processing N files, crawling pages)
+- Long-running operations (> 1 second)
+- Operations with natural pause points (between iterations)
+
+**When to skip control file checking:**
+- Single CRUD operations (create, update, delete one item)
+- Instantaneous operations (< 100ms)
+- No loop/iteration in the operation
 
 ### Function Definitions
 
