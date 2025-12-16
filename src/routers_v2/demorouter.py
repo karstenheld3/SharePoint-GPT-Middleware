@@ -173,9 +173,9 @@ async def demorouter_root(request: Request):
         <td>{name}</td>
         <td>{version}</td>
         <td class="actions">
-          <button class="btn-small" hx-get="{router_prefix}/demorouter/get?item_id={item_id}&format=html" hx-target="#modal .modal-body" hx-swap="innerHTML" onclick="openModal()">View</button>
+          <button class="btn-small" onclick="showViewModal('{item_id}')">View</button>
           <button class="btn-small" onclick="showUpdateForm('{item_id}')">Update</button>
-          <button class="btn-small btn-delete" hx-delete="{router_prefix}/demorouter/delete?item_id={item_id}" hx-confirm="Delete '{item_id}'?" hx-swap="none" hx-on::after-request="handleDeleteResponse(event, '{item_id}')">Delete</button>
+          <button class="btn-small btn-delete" data-url="{router_prefix}/demorouter/delete?item_id={{itemId}}" data-method="DELETE" data-format="json" onclick="if(confirm('Delete {item_id}?')) callItemEndpoint(this, '{item_id}')">Delete</button>
         </td>
       </tr>"""
     if not items: rows_html = '<tr><td colspan="5" class="empty-state">No demo items found</td></tr>'
@@ -430,7 +430,150 @@ function initConsoleResize() {{
 }}
 
 // ============================================
-// ITEM ACTIONS (preserves console output)
+// GENERIC ENDPOINT CALLERS
+// ============================================
+
+// Call item-independent endpoint (Create, Selftest) - refreshes full table on success
+async function callEndpoint(btn, bodyData = null) {{
+  const url = btn.dataset.url;
+  const method = (btn.dataset.method || 'GET').toUpperCase();
+  const format = btn.dataset.format || 'json';
+  
+  if (format === 'stream') {{
+    streamRequest(method, url, bodyData, null);
+  }} else {{
+    try {{
+      const options = {{ method }};
+      if (bodyData && (method === 'POST' || method === 'PUT')) {{
+        options.headers = {{ 'Content-Type': 'application/json' }};
+        options.body = JSON.stringify(bodyData);
+      }}
+      const response = await fetch(url, options);
+      const result = await response.json();
+      if (result.ok) {{
+        showToast('OK', '', 'success');
+        refreshItems();
+      }} else {{
+        showToast('Failed', result.error, 'error');
+      }}
+    }} catch (e) {{
+      showToast('Error', e.message, 'error');
+    }}
+  }}
+}}
+
+// Call item-level endpoint (Update, Delete) - updates/removes specific row on success
+async function callItemEndpoint(btn, itemId, bodyData = null) {{
+  const url = btn.dataset.url.replace('{{itemId}}', itemId);
+  const method = (btn.dataset.method || 'GET').toUpperCase();
+  const format = btn.dataset.format || 'json';
+  
+  if (format === 'stream') {{
+    streamRequest(method, url, bodyData, itemId);
+  }} else {{
+    try {{
+      const options = {{ method }};
+      if (bodyData && (method === 'POST' || method === 'PUT')) {{
+        options.headers = {{ 'Content-Type': 'application/json' }};
+        options.body = JSON.stringify(bodyData);
+      }}
+      const response = await fetch(url, options);
+      const result = await response.json();
+      if (result.ok) {{
+        if (method === 'DELETE') {{
+          const row = document.getElementById('item-' + itemId);
+          if (row) row.remove();
+          showToast('Deleted', itemId, 'success');
+          updateItemCount();
+        }} else {{
+          showToast('Updated', itemId, 'success');
+          refreshItems();
+        }}
+      }} else {{
+        showToast('Failed', result.error, 'error');
+      }}
+    }} catch (e) {{
+      showToast('Error', e.message, 'error');
+    }}
+  }}
+}}
+
+// Generic stream request - handles both item-independent and item-level
+function streamRequest(method, url, bodyData, itemId) {{
+  clearConsole();
+  updateConsoleTitle('connecting', url);
+  document.getElementById('btn-disconnect').disabled = false;
+  
+  const options = {{ method }};
+  if (bodyData && (method === 'POST' || method === 'PUT')) {{
+    options.headers = {{ 'Content-Type': 'application/json' }};
+    options.body = JSON.stringify(bodyData);
+  }}
+  
+  fetch(url, options).then(response => {{
+    updateConsoleTitle('connected', url);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let currentEvent = 'log';
+    
+    function read() {{
+      reader.read().then(({{ done, value }}) => {{
+        if (done) {{
+          updateConsoleTitle('disconnected');
+          document.getElementById('btn-disconnect').disabled = true;
+          showToast('Stream Finished', '', 'success');
+          refreshItems();
+          return;
+        }}
+        const text = decoder.decode(value);
+        const lines = text.split('\\n');
+        for (const line of lines) {{
+          if (line.startsWith('event: ')) {{
+            currentEvent = line.substring(7).trim();
+          }} else if (line.startsWith('data: ')) {{
+            const data = line.substring(6);
+            handleSSEData(currentEvent, data);
+            currentEvent = 'log';
+          }}
+        }}
+        read();
+      }});
+    }}
+    read();
+  }}).catch(err => {{
+    showToast('Stream Error', err.message, 'error');
+    updateConsoleTitle('disconnected');
+    document.getElementById('btn-disconnect').disabled = true;
+  }});
+}}
+
+// Format SSE events for human-readable console output
+function handleSSEData(eventType, data) {{
+  if (eventType === 'log') {{
+    appendToConsole(data);
+  }} else if (eventType === 'start_json') {{
+    try {{
+      const json = JSON.parse(data);
+      appendToConsole("===== START: Job ID='" + json.job_id + "'");
+    }} catch (e) {{
+      appendToConsole(data);
+    }}
+  }} else if (eventType === 'end_json') {{
+    try {{
+      const json = JSON.parse(data);
+      const status = json.result?.ok ? 'OK' : 'FAIL';
+      const error = json.result?.error ? ' - ' + json.result.error : '';
+      appendToConsole("===== END: Job ID='" + json.job_id + "' Result='" + status + error + "'");
+    }} catch (e) {{
+      appendToConsole(data);
+    }}
+  }} else {{
+    appendToConsole(data);
+  }}
+}}
+
+// ============================================
+// TABLE RENDERING
 // ============================================
 async function refreshItems() {{
   try {{
@@ -448,12 +591,12 @@ async function refreshItems() {{
 function renderItemsTable(items) {{
   const tbody = document.getElementById('items-tbody');
   if (items.length === 0) {{
-    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No demo items found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No demo items found</td></tr>';
   }} else {{
     tbody.innerHTML = items.map(item => renderItemRow(item)).join('');
   }}
   document.getElementById('item-count').textContent = items.length;
-  htmx.process(tbody);  // Re-process HTMX attributes on new elements
+  updateSelectedCount();
 }}
 
 function renderItemRow(item) {{
@@ -466,27 +609,11 @@ function renderItemRow(item) {{
     <td>${{name}}</td>
     <td>${{version}}</td>
     <td class="actions">
-      <button class="btn-small" hx-get="{router_prefix}/demorouter/get?item_id=${{itemId}}&format=html" hx-target="#modal .modal-body" hx-swap="innerHTML" onclick="openModal()">View</button>
+      <button class="btn-small" onclick="showViewModal('${{itemId}}')">View</button>
       <button class="btn-small" onclick="showUpdateForm('${{itemId}}')">Update</button>
-      <button class="btn-small btn-delete" hx-delete="{router_prefix}/demorouter/delete?item_id=${{itemId}}" hx-confirm="Delete '${{itemId}}'?" hx-swap="none" hx-on::after-request="handleDeleteResponse(event, '${{itemId}}')">Delete</button>
+      <button class="btn-small btn-delete" data-url="{router_prefix}/demorouter/delete?item_id={{itemId}}" data-method="DELETE" data-format="json" onclick="if(confirm('Delete ${{itemId}}?')) callItemEndpoint(this, '${{itemId}}')">Delete</button>
     </td>
   </tr>`;
-}}
-
-function handleDeleteResponse(event, itemId) {{
-  try {{
-    const response = JSON.parse(event.detail.xhr.responseText);
-    if (response.ok) {{
-      const row = document.getElementById('item-' + itemId);
-      if (row) row.remove();
-      showToast('Deleted', itemId, 'success');
-      updateItemCount();
-    }} else {{
-      showToast('Delete Failed', response.error, 'error');
-    }}
-  }} catch (e) {{
-    showToast('Error', 'Failed to parse response', 'error');
-  }}
 }}
 
 function updateItemCount() {{
@@ -499,13 +626,15 @@ function updateItemCount() {{
   updateSelectedCount();
 }}
 
+// ============================================
+// SELECTION & BULK DELETE
+// ============================================
 function updateSelectedCount() {{
   const selected = document.querySelectorAll('.item-checkbox:checked');
   const total = document.querySelectorAll('.item-checkbox');
   const btn = document.getElementById('btn-delete-selected');
   btn.textContent = 'Delete Selected (' + selected.length + ')';
   btn.disabled = selected.length === 0;
-  // Update select-all checkbox state
   const selectAll = document.getElementById('select-all');
   if (selectAll) selectAll.checked = total.length > 0 && selected.length === total.length;
 }}
@@ -523,30 +652,34 @@ function getSelectedItemIds() {{
 }}
 
 async function bulkDelete() {{
-  const selected = getSelectedItemIds();
-  if (selected.length === 0) return;
-  if (!confirm('Delete ' + selected.length + ' selected items?')) return;
+  const itemIds = getSelectedItemIds();
+  if (itemIds.length === 0) return;
+  if (!confirm('Delete ' + itemIds.length + ' selected items?')) return;
   
-  for (const itemId of selected) {{
-    try {{
-      const response = await fetch('{router_prefix}/demorouter/delete?item_id=' + itemId, {{ method: 'DELETE' }});
-      const result = await response.json();
-      if (result.ok) {{
-        const row = document.getElementById('item-' + itemId);
-        if (row) row.remove();
-        showToast('Deleted', itemId, 'success');
-      }} else {{
-        showToast('Delete Failed', itemId + ': ' + result.error, 'error');
-      }}
-    }} catch (e) {{
-      showToast('Error', itemId + ': ' + e.message, 'error');
-    }}
+  const btnConfig = {{ dataset: {{ url: '{router_prefix}/demorouter/delete?item_id={{itemId}}', method: 'DELETE', format: 'json' }} }};
+  for (const itemId of itemIds) {{
+    await callItemEndpoint(btnConfig, itemId, null);
   }}
-  updateItemCount();
 }}
 
 // ============================================
-// CREATE FORM (JSON or Stream)
+// VIEW MODAL
+// ============================================
+async function showViewModal(itemId) {{
+  const body = document.querySelector('#modal .modal-body');
+  body.innerHTML = '<p>Loading...</p>';
+  openModal();
+  
+  try {{
+    const response = await fetch('{router_prefix}/demorouter/get?item_id=' + itemId + '&format=html');
+    body.innerHTML = await response.text();
+  }} catch (e) {{
+    body.innerHTML = '<p>Error: ' + e.message + '</p>';
+  }}
+}}
+
+// ============================================
+// CREATE FORM
 // ============================================
 function showCreateForm() {{
   const body = document.querySelector('#modal .modal-body');
@@ -557,16 +690,16 @@ function showCreateForm() {{
       <p><label>Name: <input type="text" name="name" style="width: 200px;"></label></p>
       <p><label>Version: <input type="number" name="version" value="1" style="width: 80px;"></label></p>
       <p>
-        <button type="button" class="btn-primary" onclick="submitCreate('json')">Create</button>
-        <button type="button" class="btn-primary" onclick="submitCreate('stream')">Create (Stream)</button>
-        <button type="button" class="btn-small" onclick="closeModal()">Cancel</button>
+        <button type="button" class="btn-primary" data-url="{router_prefix}/demorouter/create" data-method="POST" data-format="json" onclick="submitCreateForm(this)">Create</button>
+        <button type="button" class="btn-primary" data-url="{router_prefix}/demorouter/create?format=stream" data-method="POST" data-format="stream" onclick="submitCreateForm(this)">Create (Stream)</button>
+        <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
       </p>
     </form>
   `;
   openModal();
 }}
 
-async function submitCreate(format) {{
+function submitCreateForm(btn) {{
   const form = document.getElementById('create-form');
   const formData = new FormData(form);
   const data = Object.fromEntries(formData.entries());
@@ -578,40 +711,17 @@ async function submitCreate(format) {{
   }}
   
   closeModal();
-  
-  if (format === 'stream') {{
-    // Stream mode: show output in console
-    streamRequest('POST', '{router_prefix}/demorouter/create?format=stream', data);
-  }} else {{
-    // JSON mode: quick create, then refresh table
-    try {{
-      const response = await fetch('{router_prefix}/demorouter/create', {{
-        method: 'POST',
-        headers: {{ 'Content-Type': 'application/json' }},
-        body: JSON.stringify(data)
-      }});
-      const result = await response.json();
-      if (result.ok) {{
-        showToast('Created', data.item_id, 'success');
-        refreshItems();
-      }} else {{
-        showToast('Create Failed', result.error, 'error');
-      }}
-    }} catch (e) {{
-      showToast('Error', e.message, 'error');
-    }}
-  }}
+  callEndpoint(btn, data);
 }}
 
 // ============================================
-// UPDATE FORM (JSON or Stream)
+// UPDATE FORM
 // ============================================
 async function showUpdateForm(itemId) {{
   const body = document.querySelector('#modal .modal-body');
   body.innerHTML = '<p>Loading...</p>';
   openModal();
   
-  // Fetch current item data
   try {{
     const response = await fetch('{router_prefix}/demorouter/get?item_id=' + itemId + '&format=json');
     const result = await response.json();
@@ -627,7 +737,7 @@ async function showUpdateForm(itemId) {{
         <p><label>Name: <input type="text" name="name" value="${{item.name || ''}}" style="width: 200px;"></label></p>
         <p><label>Version: <input type="number" name="version" value="${{item.version || ''}}" style="width: 80px;"></label></p>
         <p>
-          <button type="button" class="btn-primary" onclick="submitUpdate('${{itemId}}', 'json')">Update</button>
+          <button type="button" class="btn-primary" data-url="{router_prefix}/demorouter/update?item_id={{itemId}}" data-method="PUT" data-format="json" onclick="submitUpdateForm(this, '${{itemId}}')">Update</button>
           <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
         </p>
       </form>
@@ -637,7 +747,7 @@ async function showUpdateForm(itemId) {{
   }}
 }}
 
-async function submitUpdate(itemId, format) {{
+function submitUpdateForm(btn, itemId) {{
   const form = document.getElementById('update-form');
   const formData = new FormData(form);
   const data = {{}};
@@ -648,74 +758,12 @@ async function submitUpdate(itemId, format) {{
   }}
   
   closeModal();
-  
-  if (format === 'stream') {{
-    streamRequest('PUT', `{router_prefix}/demorouter/update?item_id=${{itemId}}&format=stream`, data);
-  }} else {{
-    try {{
-      const response = await fetch(`{router_prefix}/demorouter/update?item_id=${{itemId}}`, {{
-        method: 'PUT',
-        headers: {{ 'Content-Type': 'application/json' }},
-        body: JSON.stringify(data)
-      }});
-      const result = await response.json();
-      if (result.ok) {{
-        showToast('Updated', itemId, 'success');
-        refreshItems();
-      }} else {{
-        showToast('Update Failed', result.error, 'error');
-      }}
-    }} catch (e) {{
-      showToast('Error', e.message, 'error');
-    }}
-  }}
+  callItemEndpoint(btn, itemId, data);
 }}
 
 // ============================================
-// GENERIC STREAM REQUEST (for POST/PUT with body)
+// SELFTEST
 // ============================================
-function streamRequest(method, url, bodyData) {{
-  clearConsole();
-  updateConsoleTitle('connecting', url);
-  document.getElementById('btn-disconnect').disabled = false;
-  
-  fetch(url, {{
-    method: method,
-    headers: {{ 'Content-Type': 'application/json' }},
-    body: JSON.stringify(bodyData)
-  }}).then(response => {{
-    updateConsoleTitle('connected', url);
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    
-    function read() {{
-      reader.read().then(({{ done, value }}) => {{
-        if (done) {{
-          updateConsoleTitle('disconnected');
-          document.getElementById('btn-disconnect').disabled = true;
-          showToast('Stream Finished', '', 'success');
-          refreshItems();  // Refresh table, preserve console
-          return;
-        }}
-        const text = decoder.decode(value);
-        const lines = text.split('\\n');
-        for (const line of lines) {{
-          if (line.startsWith('data: ')) {{
-            appendToConsole(line.substring(6));
-          }}
-        }}
-        read();
-      }});
-    }}
-    read();
-  }}).catch(err => {{
-    showToast('Stream Error', err.message, 'error');
-    updateConsoleTitle('disconnected');
-    document.getElementById('btn-disconnect').disabled = true;
-  }});
-}}
-
-// Run selftest with streaming output
 function runSelftest() {{
   clearConsole();
   const url = '{router_prefix}/demorouter/selftest?format=stream';
