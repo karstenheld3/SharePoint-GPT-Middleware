@@ -34,7 +34,6 @@ Models in Windsurf [Cost as of 2025-12-13]:
 - [2x] Claude Opus 4.5: 100%, 100%
 - [3x] Claude Opus 4.5 (Thinking): 100%
 
-
 ## Specification implementation
 
 ### 2025-12-15 GPT-5.2 Medium Reasoning Fast vs. Claude Opus 4.5 (Thinking)

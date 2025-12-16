@@ -493,26 +493,6 @@ def create_app() -> FastAPI:
   except Exception as e:
     initialization_errors.append({"component": "Test Router 3", "error": str(e)})
 
-  # Include V2A routers
-  v2a_router_prefix = "/v2a"
-
-  try:
-    app.include_router(demorouter.router, tags=["Demo V2A"], prefix=v2a_router_prefix)
-    demorouter.set_config(config, v2a_router_prefix)
-    log_function_output(log_data, f"Demo V2A router included at {v2a_router_prefix}")
-  except Exception as e:
-    initialization_errors.append({"component": "Demo V2A Router", "error": str(e)})
-
-  # Include V2B routers
-  v2b_router_prefix = "/v2b"
-
-  try:
-    app.include_router(demorouter_v2b.router, tags=["Demo V2B"], prefix=v2b_router_prefix)
-    demorouter_v2b.set_config(config, v2b_router_prefix)
-    log_function_output(log_data, f"Demo V2B router included at {v2b_router_prefix}")
-  except Exception as e:
-    initialization_errors.append({"component": "Demo V2B Router", "error": str(e)})
-
   # Mount static files directory
   static_path = os.path.join(os.path.dirname(__file__), "static")
   if os.path.exists(static_path):
@@ -603,9 +583,6 @@ def root() -> str:
     <li><a href="/v1/testrouter/streaming01">/v1/testrouter/streaming01</a> - V1 Streaming Test (<a href="/v1/testrouter/streaming01?format=stream">Stream</a>)</li>
     <li><a href="/v1/testrouter2/streaming01">/v1/testrouter2/streaming01</a> - V2 Streaming Test (<a href="/v1/testrouter2/streaming01?format=stream">Stream</a> + <a href="/v1/testrouter2/jobs?format=html">Jobs</a>)</li>
     <li><a href="/v1/testrouter3/jobs">/v1/testrouter3/jobs</a> - V3 Streaming Test with UI (<a href="/v1/testrouter3/streaming01?format=stream">Stream</a> + <a href="/v1/testrouter3/jobs?format=ui">Jobs UI</a>)</li>
-    <p>Version 2 Routers</p>
-    <li><a href="/v2a/demorouter">/v2a/demorouter</a> - Demo V2A Router (<a href="/v2a/demorouter/process_files?format=stream">Stream</a>)</li>
-    <li><a href="/v2b/demorouter">/v2b/demorouter</a> - Demo V2B Router (<a href="/v2b/demorouter/process_files?format=stream">Stream</a>)</li>
   </ul>
 
   <div class="section">
