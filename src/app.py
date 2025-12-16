@@ -12,11 +12,10 @@ from fastapi.staticfiles import StaticFiles
 from common_openai_functions import create_async_azure_openai_client_with_api_key, create_async_azure_openai_client_with_credential, create_async_openai_client
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from routers_v1 import crawler, inventory, domains, testrouter, testrouter2, testrouter3
-from routers_v2a import demorouter
-from routers_v2b import demorouter as demorouter_v2b
 from routers_static import openai_proxy, sharepoint_search
 from routers_static.sharepoint_search import build_domains_and_metadata_cache
-from utils import ZipExtractionMode, acquire_startup_lock, convert_to_flat_html_table, extract_zip_files, format_config_for_displaying, format_filesize, log_function_footer, log_function_header, log_function_output, log_function_footer_sync, clear_folder
+from utils import ZipExtractionMode, acquire_startup_lock, convert_to_flat_html_table, extract_zip_files, format_config_for_displaying, format_filesize, clear_folder
+from logging_v1 import log_function_footer, log_function_header, log_function_output, log_function_footer_sync
 
 # Load environment variables from a local .env file if present
 load_dotenv()

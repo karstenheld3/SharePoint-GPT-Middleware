@@ -7,7 +7,8 @@ from fastapi.responses import HTMLResponse, Response, StreamingResponse
 
 import httpx
 
-from utils import clean_response, convert_to_flat_html_table, format_config_for_displaying, format_milliseconds, log_function_footer, log_function_header, log_function_output, truncate_string
+from utils import clean_response, convert_to_flat_html_table, format_config_for_displaying
+from logging_v1 import format_milliseconds, log_function_footer, log_function_header, log_function_output, truncate_string
 router = APIRouter()
 
 # Configuration will be injected from app.py

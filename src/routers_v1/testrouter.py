@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 from routers_v1.common_ui_functions import generate_documentation_page
 from routers_v1.common_job_functions import create_streaming_state_file, delete_streaming_state_file, generate_streaming_operation_id, get_streaming_current_state, get_streaming_state_folder, list_streaming_operations, rename_streaming_state_file, streaming_state_file_exists
-from utils import log_function_footer, log_function_header
+from logging_v1 import log_function_footer, log_function_header
 
 router = APIRouter()
 

@@ -4,7 +4,8 @@ from dataclasses import asdict, dataclass
 from typing import Any, Dict, List
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
-from utils import log_function_output, normalize_long_path
+from utils import normalize_long_path
+from logging_v1 import log_function_output
 from common_sharepoint_functions import connect_to_site_using_client_id_and_certificate, try_get_document_library, get_document_library_files
 from common_openai_functions import get_vector_store_files_with_filenames_as_dict, create_vector_store, try_get_vector_store_by_id, replicate_vector_store_content
 @dataclass

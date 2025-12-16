@@ -1105,7 +1105,7 @@ This section specifies the unified logging system for both non-streaming and str
 
 **LOG-FR-05: Optional Streaming Integration**
 - `stream_job_writer` property optionally holds a `StreamingJobWriter` instance
-- When set: log methods return SSE-formatted strings for yielding
+- When set: log methods call `writer.emit_log()` internally for dual output compliance (STREAM-FR-01) and return SSE-formatted strings for yielding
 - When None: log methods return None (server console only)
 
 **LOG-FR-06: Central Logger Configuration**
@@ -1194,8 +1194,8 @@ class MiddlewareLogger:
     """Write to server console using standard format."""
   
   def _emit_to_stream(self, message: str) -> Optional[str]:
-    """Emit to stream if writer is set. Uses short format [TIMESTAMP] for SSE."""
-```
+    """Emit to stream if writer is set. Calls writer.emit_log() for dual output (STREAM-FR-01)."""
+
 
 ### Log Output Formats
 
@@ -1409,10 +1409,10 @@ async def process_files(request: Request):
     )
     
     try:
+      yield writer.emit_start()  # Must be first (STREAM-IG-01)
+      
       sse = logger.log_function_header(function_name)
       if sse: yield sse
-      
-      yield writer.emit_start()
       
       sse = logger.log_function_output(f"Created job '{writer.job_id}' for {file_count} files")
       if sse: yield sse
@@ -1424,6 +1424,8 @@ async def process_files(request: Request):
         control_logs, control = await writer.check_control()
         for log in control_logs: yield log
         if control == ControlAction.CANCEL:
+          sse = logger.log_function_footer()
+          if sse: yield sse
           yield writer.emit_end(ok=False, error="Cancelled by user", data={"processed": i-1, "total": total})
           return
         
@@ -1433,17 +1435,20 @@ async def process_files(request: Request):
         sse = logger.log_function_output(f"  OK.")
         if sse: yield sse
       
+      sse = logger.log_function_footer()
+      if sse: yield sse
+      
       yield writer.emit_end(ok=True, data={"processed": total, "total": total})
       
     except Exception as e:
+      sse = logger.log_function_footer()
+      if sse: yield sse
       yield writer.emit_end(ok=False, error=str(e), data={})
     
     finally:
       writer.finalize()
-      logger.log_function_footer()  # No yield needed for footer
   
   return StreamingResponse(stream_generator(), media_type="text/event-stream")
-
 ```
 
 ### Function Definitions

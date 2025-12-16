@@ -20,7 +20,7 @@ from openai.types.shared_params.responses_model import ResponsesModel
 
 import httpx
 
-from utils import log_function_output
+from logging_v1 import log_function_output
 
 # Global variable for OpenAI datetime attributes that need conversion
 OPENAI_DATETIME_ATTRIBUTES = ["created_at", "expires_at"]
