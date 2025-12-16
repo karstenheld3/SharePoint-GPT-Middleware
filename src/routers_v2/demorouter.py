@@ -165,36 +165,568 @@ async def demorouter_root(request: Request):
     rows_html = ""
     for item in items:
       item_id = item.get("item_id", "")
-      rows_html += f"""<tr>
+      name = item.get("name", "-")
+      version = item.get("version", "-")
+      rows_html += f"""<tr id="item-{item_id}">
+        <td><input type="checkbox" class="item-checkbox" data-item-id="{item_id}" onchange="updateSelectedCount()"></td>
         <td>{item_id}</td>
-        <td><button class="btn-small" hx-get="{router_prefix}/demorouter/get?item_id={item_id}&format=html" hx-target="#detail">View</button>
-            <button class="btn-small btn-delete" hx-delete="{router_prefix}/demorouter/delete?item_id={item_id}" hx-confirm="Delete {item_id}?" hx-swap="none">Delete</button></td>
+        <td>{name}</td>
+        <td>{version}</td>
+        <td class="actions">
+          <button class="btn-small" hx-get="{router_prefix}/demorouter/get?item_id={item_id}&format=html" hx-target="#modal .modal-body" hx-swap="innerHTML" onclick="openModal()">View</button>
+          <button class="btn-small" onclick="showUpdateForm('{item_id}')">Update</button>
+          <button class="btn-small btn-delete" hx-delete="{router_prefix}/demorouter/delete?item_id={item_id}" hx-confirm="Delete '{item_id}'?" hx-swap="none" hx-on::after-request="handleDeleteResponse(event, '{item_id}')">Delete</button>
+        </td>
       </tr>"""
-    if not items: rows_html = '<tr><td colspan="2">No demo items found</td></tr>'
+    if not items: rows_html = '<tr><td colspan="5" class="empty-state">No demo items found</td></tr>'
     
     return HTMLResponse(f"""<!doctype html><html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Demo Router UI</title>
+  <title>Demo Items</title>
   <link rel="stylesheet" href="/static/css/styles.css">
   <script src="/static/js/htmx.js"></script>
+  <style>
+    /* Toast Container */
+    #toast-container {{ position: fixed; top: 1rem; right: 1rem; z-index: 1000; display: flex; flex-direction: column; gap: 0.5rem; max-width: 400px; }}
+    .toast {{ background: #f8f9fa; border: 1px solid #dee2e6; border-left: 4px solid #0078d4; padding: 0.75rem 1rem; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; animation: slideIn 0.3s ease-out; }}
+    .toast.toast-info {{ border-left-color: #0078d4; }}
+    .toast.toast-success {{ border-left-color: #28a745; }}
+    .toast.toast-error {{ border-left-color: #dc3545; }}
+    .toast.toast-warning {{ border-left-color: #ffc107; }}
+    .toast-content {{ flex: 1; font-size: 0.875rem; }}
+    .toast-title {{ font-weight: 600; margin-bottom: 0.25rem; }}
+    .toast-close {{ background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #6c757d; }}
+    @keyframes slideIn {{ from {{ transform: translateX(100%); opacity: 0; }} to {{ transform: translateX(0); opacity: 1; }} }}
+    
+    /* Modal */
+    .modal-overlay {{ display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1100; }}
+    .modal-overlay.visible {{ display: flex; justify-content: center; align-items: center; }}
+    .modal-content {{ background: #fff; padding: 1.5rem; border-radius: 8px; max-width: 600px; min-width: 400px; max-height: 80vh; overflow: auto; position: relative; }}
+    .modal-close {{ position: absolute; top: 0.5rem; right: 0.5rem; background: none; border: none; font-size: 1.5rem; cursor: pointer; }}
+    .empty-state {{ text-align: center; color: #6c757d; padding: 2rem; }}
+    
+    /* Console Panel - fixed bottom per spec */
+    .console-panel {{ position: fixed; bottom: 0; left: 0; right: 0; background: #012456; z-index: 900; height: 232px; display: flex; flex-direction: column; }}
+    .console-resize-handle {{ height: 4px; background: #aaaaaa; cursor: ns-resize; flex-shrink: 0; transition: background 0.2s; }}
+    .console-resize-handle:hover, .console-resize-handle.dragging {{ background: #0090F1; }}
+    .console-header {{ display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 1rem; background: #FAFAFA; border-bottom: 1px solid #d0d0d0; font-size: 0.875rem; font-weight: 500; color: #333333; flex-shrink: 0; }}
+    .console-controls {{ display: flex; gap: 0.5rem; }}
+    .console-output {{ flex: 1; overflow-y: auto; padding: 0.75rem 1rem; margin: 0; font-family: 'Consolas', 'Monaco', monospace; font-size: 0.9rem; line-height: 1.4; background: #012456; color: #ffffff; white-space: pre-wrap; word-wrap: break-word; }}
+    
+    /* Main content padding to avoid console overlap */
+    .container {{ padding-bottom: 250px; }}
+  </style>
 </head>
 <body>
-  <h1>Demo Items ({len(items)})</h1>
+  <!-- Toast Container -->
+  <div id="toast-container"></div>
   
-  <div class="toolbar">
-    <button class="btn-primary" onclick="location.reload()">Refresh</button>
+  <!-- Modal -->
+  <div id="modal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
+    <div class="modal-content">
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+      <div class="modal-body"></div>
+    </div>
   </div>
+
+  <!-- Main Content -->
+  <div class="container">
+    <h1>Demo Items (<span id="item-count">{len(items)}</span>)</h1>
+    <p><a href="{router_prefix}/demorouter">← Back to Demo Router</a> | <a href="/">← Back to Main Page</a></p>
+    
+    <div class="toolbar">
+      <button class="btn-primary" onclick="refreshItems()">Refresh</button>
+      <button class="btn-primary" onclick="showCreateForm()">Create</button>
+      <button class="btn-primary" onclick="runSelftest()">Run Selftest</button>
+      <button id="btn-delete-selected" class="btn-primary btn-delete" onclick="bulkDelete()" disabled>Delete Selected (0)</button>
+    </div>
+    
+    <table>
+      <thead><tr><th><input type="checkbox" id="select-all" onchange="toggleSelectAll()"></th><th>ID</th><th>Name</th><th>Version</th><th>Actions</th></tr></thead>
+      <tbody id="items-tbody">{rows_html}</tbody>
+    </table>
+  </div>
+
+  <!-- Console Panel (always visible, fixed bottom) -->
+  <div id="console-panel" class="console-panel">
+    <div class="console-resize-handle" id="console-resize-handle"></div>
+    <div class="console-header">
+      <span id="console-title">Console Output (disconnected)</span>
+      <div class="console-controls">
+        <button onclick="disconnectStream()" class="btn-small" id="btn-disconnect" disabled>Disconnect</button>
+        <button onclick="clearConsole()" class="btn-small">Clear</button>
+      </div>
+    </div>
+    <pre id="console-output" class="console-output"></pre>
+  </div>
+
+<script>
+// ============================================
+// CONSOLE STATE
+// ============================================
+let currentEventSource = null;
+let currentStreamUrl = null;
+const MAX_CONSOLE_CHARS = 1000000;
+
+// ============================================
+// TOAST NOTIFICATIONS
+// ============================================
+function showToast(title, message, type = 'info', autoDismiss = 5000) {{
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = 'toast toast-' + type;
+  toast.innerHTML = '<div class="toast-content"><div class="toast-title">' + escapeHtml(title) + '</div>' + escapeHtml(message) + '</div><button class="toast-close" onclick="this.parentElement.remove()">&times;</button>';
+  container.appendChild(toast);
+  if (autoDismiss > 0) setTimeout(() => toast.remove(), autoDismiss);
+}}
+
+function escapeHtml(text) {{
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}}
+
+// ============================================
+// MODAL FUNCTIONS
+// ============================================
+function openModal() {{
+  document.getElementById('modal').classList.add('visible');
+  document.addEventListener('keydown', handleEscapeKey);
+}}
+
+function closeModal() {{
+  document.getElementById('modal').classList.remove('visible');
+  document.removeEventListener('keydown', handleEscapeKey);
+}}
+
+function closeModalOnBackdrop(event) {{
+  if (event.target.classList.contains('modal-overlay')) closeModal();
+}}
+
+function handleEscapeKey(event) {{
+  if (event.key === 'Escape') closeModal();
+}}
+
+// ============================================
+// CONSOLE STREAMING (SSE)
+// ============================================
+function connectStream(url) {{
+  disconnectStream();
+  currentStreamUrl = url;
+  updateConsoleTitle('connecting', url);
   
-  <table>
-    <thead><tr><th>Demo ID</th><th>Actions</th></tr></thead>
-    <tbody>{rows_html}</tbody>
-  </table>
+  currentEventSource = new EventSource(url);
   
-  <div id="detail"></div>
+  currentEventSource.onopen = function() {{
+    updateConsoleTitle('connected', url);
+    document.getElementById('btn-disconnect').disabled = false;
+  }};
   
-  <p><a href="{router_prefix}/demorouter">← Back to Demo Router</a> | <a href="/">← Back to Main Page</a></p>
+  currentEventSource.onerror = function(e) {{
+    if (currentEventSource.readyState === EventSource.CLOSED) {{
+      updateConsoleTitle('disconnected');
+      document.getElementById('btn-disconnect').disabled = true;
+      showToast('Stream Ended', '', 'info');
+    }} else {{
+      showToast('Connection Error', 'Stream connection failed', 'error');
+    }}
+    currentEventSource = null;
+  }};
+  
+  // Handle start_json event
+  currentEventSource.addEventListener('start_json', function(e) {{
+    try {{
+      const data = JSON.parse(e.data);
+      showToast('Stream Started', data.job_id || '', 'info');
+    }} catch (err) {{ }}
+  }});
+  
+  // Handle log event
+  currentEventSource.addEventListener('log', function(e) {{
+    appendToConsole(e.data);
+  }});
+  
+  // Handle end_json event
+  currentEventSource.addEventListener('end_json', function(e) {{
+    try {{
+      const data = JSON.parse(e.data);
+      const resultType = data.result?.ok ? 'success' : 'error';
+      showToast('Stream Finished', data.job_id || '', resultType);
+    }} catch (err) {{ }}
+    disconnectStream();
+  }});
+}}
+
+function disconnectStream() {{
+  if (currentEventSource) {{
+    currentEventSource.close();
+    currentEventSource = null;
+  }}
+  currentStreamUrl = null;
+  updateConsoleTitle('disconnected');
+  document.getElementById('btn-disconnect').disabled = true;
+}}
+
+function updateConsoleTitle(state, url = '') {{
+  const titleEl = document.getElementById('console-title');
+  if (state === 'disconnected') {{
+    titleEl.textContent = 'Console Output (disconnected)';
+  }} else if (state === 'connecting') {{
+    titleEl.textContent = 'Console Output (connecting)...';
+  }} else if (state === 'connected') {{
+    titleEl.textContent = 'Console Output (connected)';
+  }}
+}}
+
+function appendToConsole(text) {{
+  const output = document.getElementById('console-output');
+  let content = output.textContent + text + '\\n';
+  
+  // Truncate if exceeds max chars (per spec: 1M chars)
+  if (content.length > MAX_CONSOLE_CHARS) {{
+    content = '...[truncated]\\n' + content.slice(-MAX_CONSOLE_CHARS + 20);
+  }}
+  
+  output.textContent = content;
+  
+  // Auto-scroll to bottom
+  output.scrollTop = output.scrollHeight;
+}}
+
+function clearConsole() {{
+  document.getElementById('console-output').textContent = '';
+}}
+
+// ============================================
+// CONSOLE RESIZE (per spec: min 45px, max viewport - 30px)
+// ============================================
+function initConsoleResize() {{
+  const panel = document.getElementById('console-panel');
+  const handle = document.getElementById('console-resize-handle');
+  let startY, startHeight;
+  
+  handle.addEventListener('mousedown', function(e) {{
+    startY = e.clientY;
+    startHeight = panel.offsetHeight;
+    handle.classList.add('dragging');
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    e.preventDefault();
+  }});
+  
+  function onMouseMove(e) {{
+    const delta = startY - e.clientY;
+    const newHeight = Math.min(Math.max(startHeight + delta, 45), window.innerHeight - 30);
+    panel.style.height = newHeight + 'px';
+  }}
+  
+  function onMouseUp() {{
+    handle.classList.remove('dragging');
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+  }}
+}}
+
+// ============================================
+// ITEM ACTIONS (preserves console output)
+// ============================================
+async function refreshItems() {{
+  try {{
+    const response = await fetch('{router_prefix}/demorouter?format=json');
+    const result = await response.json();
+    if (result.ok) {{
+      renderItemsTable(result.data);
+      showToast('Refreshed', result.data.length + ' items', 'info');
+    }}
+  }} catch (e) {{
+    showToast('Refresh Failed', e.message, 'error');
+  }}
+}}
+
+function renderItemsTable(items) {{
+  const tbody = document.getElementById('items-tbody');
+  if (items.length === 0) {{
+    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No demo items found</td></tr>';
+  }} else {{
+    tbody.innerHTML = items.map(item => renderItemRow(item)).join('');
+  }}
+  document.getElementById('item-count').textContent = items.length;
+  htmx.process(tbody);  // Re-process HTMX attributes on new elements
+}}
+
+function renderItemRow(item) {{
+  const itemId = item.item_id || '';
+  const name = item.name || '-';
+  const version = item.version || '-';
+  return `<tr id="item-${{itemId}}">
+    <td><input type="checkbox" class="item-checkbox" data-item-id="${{itemId}}" onchange="updateSelectedCount()"></td>
+    <td>${{itemId}}</td>
+    <td>${{name}}</td>
+    <td>${{version}}</td>
+    <td class="actions">
+      <button class="btn-small" hx-get="{router_prefix}/demorouter/get?item_id=${{itemId}}&format=html" hx-target="#modal .modal-body" hx-swap="innerHTML" onclick="openModal()">View</button>
+      <button class="btn-small" onclick="showUpdateForm('${{itemId}}')">Update</button>
+      <button class="btn-small btn-delete" hx-delete="{router_prefix}/demorouter/delete?item_id=${{itemId}}" hx-confirm="Delete '${{itemId}}'?" hx-swap="none" hx-on::after-request="handleDeleteResponse(event, '${{itemId}}')">Delete</button>
+    </td>
+  </tr>`;
+}}
+
+function handleDeleteResponse(event, itemId) {{
+  try {{
+    const response = JSON.parse(event.detail.xhr.responseText);
+    if (response.ok) {{
+      const row = document.getElementById('item-' + itemId);
+      if (row) row.remove();
+      showToast('Deleted', itemId, 'success');
+      updateItemCount();
+    }} else {{
+      showToast('Delete Failed', response.error, 'error');
+    }}
+  }} catch (e) {{
+    showToast('Error', 'Failed to parse response', 'error');
+  }}
+}}
+
+function updateItemCount() {{
+  const rows = document.querySelectorAll('#items-tbody tr:not(.empty-state)');
+  const count = rows.length;
+  document.getElementById('item-count').textContent = count;
+  if (count === 0) {{
+    document.getElementById('items-tbody').innerHTML = '<tr><td colspan="5" class="empty-state">No demo items found</td></tr>';
+  }}
+  updateSelectedCount();
+}}
+
+function updateSelectedCount() {{
+  const selected = document.querySelectorAll('.item-checkbox:checked');
+  const total = document.querySelectorAll('.item-checkbox');
+  const btn = document.getElementById('btn-delete-selected');
+  btn.textContent = 'Delete Selected (' + selected.length + ')';
+  btn.disabled = selected.length === 0;
+  // Update select-all checkbox state
+  const selectAll = document.getElementById('select-all');
+  if (selectAll) selectAll.checked = total.length > 0 && selected.length === total.length;
+}}
+
+function toggleSelectAll() {{
+  const selectAll = document.getElementById('select-all');
+  const checkboxes = document.querySelectorAll('.item-checkbox');
+  checkboxes.forEach(cb => cb.checked = selectAll.checked);
+  updateSelectedCount();
+}}
+
+function getSelectedItemIds() {{
+  const selected = document.querySelectorAll('.item-checkbox:checked');
+  return Array.from(selected).map(cb => cb.dataset.itemId);
+}}
+
+async function bulkDelete() {{
+  const selected = getSelectedItemIds();
+  if (selected.length === 0) return;
+  if (!confirm('Delete ' + selected.length + ' selected items?')) return;
+  
+  for (const itemId of selected) {{
+    try {{
+      const response = await fetch('{router_prefix}/demorouter/delete?item_id=' + itemId, {{ method: 'DELETE' }});
+      const result = await response.json();
+      if (result.ok) {{
+        const row = document.getElementById('item-' + itemId);
+        if (row) row.remove();
+        showToast('Deleted', itemId, 'success');
+      }} else {{
+        showToast('Delete Failed', itemId + ': ' + result.error, 'error');
+      }}
+    }} catch (e) {{
+      showToast('Error', itemId + ': ' + e.message, 'error');
+    }}
+  }}
+  updateItemCount();
+}}
+
+// ============================================
+// CREATE FORM (JSON or Stream)
+// ============================================
+function showCreateForm() {{
+  const body = document.querySelector('#modal .modal-body');
+  body.innerHTML = `
+    <h3>Create Demo Item</h3>
+    <form id="create-form">
+      <p><label>Item ID: <input type="text" name="item_id" required style="width: 200px;"></label></p>
+      <p><label>Name: <input type="text" name="name" style="width: 200px;"></label></p>
+      <p><label>Version: <input type="number" name="version" value="1" style="width: 80px;"></label></p>
+      <p>
+        <button type="button" class="btn-primary" onclick="submitCreate('json')">Create</button>
+        <button type="button" class="btn-primary" onclick="submitCreate('stream')">Create (Stream)</button>
+        <button type="button" class="btn-small" onclick="closeModal()">Cancel</button>
+      </p>
+    </form>
+  `;
+  openModal();
+}}
+
+async function submitCreate(format) {{
+  const form = document.getElementById('create-form');
+  const formData = new FormData(form);
+  const data = Object.fromEntries(formData.entries());
+  if (data.version) data.version = parseInt(data.version);
+  
+  if (!data.item_id) {{
+    showToast('Validation Error', 'Item ID is required', 'error');
+    return;
+  }}
+  
+  closeModal();
+  
+  if (format === 'stream') {{
+    // Stream mode: show output in console
+    streamRequest('POST', '{router_prefix}/demorouter/create?format=stream', data);
+  }} else {{
+    // JSON mode: quick create, then refresh table
+    try {{
+      const response = await fetch('{router_prefix}/demorouter/create', {{
+        method: 'POST',
+        headers: {{ 'Content-Type': 'application/json' }},
+        body: JSON.stringify(data)
+      }});
+      const result = await response.json();
+      if (result.ok) {{
+        showToast('Created', data.item_id, 'success');
+        refreshItems();
+      }} else {{
+        showToast('Create Failed', result.error, 'error');
+      }}
+    }} catch (e) {{
+      showToast('Error', e.message, 'error');
+    }}
+  }}
+}}
+
+// ============================================
+// UPDATE FORM (JSON or Stream)
+// ============================================
+async function showUpdateForm(itemId) {{
+  const body = document.querySelector('#modal .modal-body');
+  body.innerHTML = '<p>Loading...</p>';
+  openModal();
+  
+  // Fetch current item data
+  try {{
+    const response = await fetch('{router_prefix}/demorouter/get?item_id=' + itemId + '&format=json');
+    const result = await response.json();
+    if (!result.ok) {{
+      body.innerHTML = '<p>Error loading item: ' + result.error + '</p>';
+      return;
+    }}
+    const item = result.data;
+    body.innerHTML = `
+      <h3>Update Item: ${{itemId}}</h3>
+      <form id="update-form">
+        <input type="hidden" name="item_id" value="${{itemId}}">
+        <p><label>Name: <input type="text" name="name" value="${{item.name || ''}}" style="width: 200px;"></label></p>
+        <p><label>Version: <input type="number" name="version" value="${{item.version || ''}}" style="width: 80px;"></label></p>
+        <p>
+          <button type="button" class="btn-primary" onclick="submitUpdate('${{itemId}}', 'json')">Update</button>
+          <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
+        </p>
+      </form>
+    `;
+  }} catch (e) {{
+    body.innerHTML = '<p>Error: ' + e.message + '</p>';
+  }}
+}}
+
+async function submitUpdate(itemId, format) {{
+  const form = document.getElementById('update-form');
+  const formData = new FormData(form);
+  const data = {{}};
+  for (const [key, value] of formData.entries()) {{
+    if (value && key !== 'item_id') {{
+      data[key] = key === 'version' ? parseInt(value) : value;
+    }}
+  }}
+  
+  closeModal();
+  
+  if (format === 'stream') {{
+    streamRequest('PUT', `{router_prefix}/demorouter/update?item_id=${{itemId}}&format=stream`, data);
+  }} else {{
+    try {{
+      const response = await fetch(`{router_prefix}/demorouter/update?item_id=${{itemId}}`, {{
+        method: 'PUT',
+        headers: {{ 'Content-Type': 'application/json' }},
+        body: JSON.stringify(data)
+      }});
+      const result = await response.json();
+      if (result.ok) {{
+        showToast('Updated', itemId, 'success');
+        refreshItems();
+      }} else {{
+        showToast('Update Failed', result.error, 'error');
+      }}
+    }} catch (e) {{
+      showToast('Error', e.message, 'error');
+    }}
+  }}
+}}
+
+// ============================================
+// GENERIC STREAM REQUEST (for POST/PUT with body)
+// ============================================
+function streamRequest(method, url, bodyData) {{
+  clearConsole();
+  updateConsoleTitle('connecting', url);
+  document.getElementById('btn-disconnect').disabled = false;
+  
+  fetch(url, {{
+    method: method,
+    headers: {{ 'Content-Type': 'application/json' }},
+    body: JSON.stringify(bodyData)
+  }}).then(response => {{
+    updateConsoleTitle('connected', url);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    
+    function read() {{
+      reader.read().then(({{ done, value }}) => {{
+        if (done) {{
+          updateConsoleTitle('disconnected');
+          document.getElementById('btn-disconnect').disabled = true;
+          showToast('Stream Finished', '', 'success');
+          refreshItems();  // Refresh table, preserve console
+          return;
+        }}
+        const text = decoder.decode(value);
+        const lines = text.split('\\n');
+        for (const line of lines) {{
+          if (line.startsWith('data: ')) {{
+            appendToConsole(line.substring(6));
+          }}
+        }}
+        read();
+      }});
+    }}
+    read();
+  }}).catch(err => {{
+    showToast('Stream Error', err.message, 'error');
+    updateConsoleTitle('disconnected');
+    document.getElementById('btn-disconnect').disabled = true;
+  }});
+}}
+
+// Run selftest with streaming output
+function runSelftest() {{
+  clearConsole();
+  const url = '{router_prefix}/demorouter/selftest?format=stream';
+  connectStream(url);
+}}
+
+// Initialize on load
+document.addEventListener('DOMContentLoaded', function() {{
+  initConsoleResize();
+}});
+</script>
 </body>
 </html>""")
   
@@ -633,21 +1165,21 @@ async def demorouter_selftest(request: Request):
   test_data_v2 = {"name": "Updated Item", "version": 2}
   
   async def run_selftest():
-    passed = 0
-    failed = 0
+    ok_count = 0
+    fail_count = 0
     
     def log(msg: str):
-      nonlocal passed, failed
+      nonlocal ok_count, fail_count
       sse = stream_logger.log_function_output(msg)
       return sse
     
-    def check(condition: bool, pass_msg: str, fail_msg: str):
-      nonlocal passed, failed
+    def check(condition: bool, ok_msg: str, fail_msg: str):
+      nonlocal ok_count, fail_count
       if condition:
-        passed += 1
-        return log(f"  PASS: {pass_msg}")
+        ok_count += 1
+        return log(f"  OK: {ok_msg}")
       else:
-        failed += 1
+        fail_count += 1
         return log(f"  FAIL: {fail_msg}")
     
     try:
@@ -883,19 +1415,19 @@ async def demorouter_selftest(request: Request):
       if sse: yield sse
       sse = log(f"===== SELFTEST COMPLETE =====")
       if sse: yield sse
-      sse = log(f"Passed: {passed}, Failed: {failed}")
+      sse = log(f"OK: {ok_count}, FAIL: {fail_count}")
       if sse: yield sse
       
       stream_logger.log_function_footer()
       
-      ok = (failed == 0)
-      yield writer.emit_end(ok=ok, error="" if ok else f"{failed} test(s) failed", data={"passed": passed, "failed": failed})
+      ok = (fail_count == 0)
+      yield writer.emit_end(ok=ok, error="" if ok else f"{fail_count} test(s) failed", data={"ok": ok_count, "fail": fail_count})
       
     except Exception as e:
       sse = log(f"ERROR: {type(e).__name__}: {str(e)}")
       if sse: yield sse
       stream_logger.log_function_footer()
-      yield writer.emit_end(ok=False, error=str(e), data={"passed": passed, "failed": failed, "test_id": test_id})
+      yield writer.emit_end(ok=False, error=str(e), data={"ok": ok_count, "fail": fail_count, "test_id": test_id})
     finally:
       # Cleanup: ensure test item is deleted via HTTP
       try:
