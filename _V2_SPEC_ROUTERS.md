@@ -138,7 +138,7 @@ Example `end_json`:
 - [DD-E011] Control parameters (`format`, `dry_run`) are always passed via query string.
 - [DD-E012] `/create` endpoints receive all resource data including the identifier from the request body.
 - [DD-E013] `/get` and `/delete` endpoints receive the resource identifier via query string.
-- [DD-E014] `/update` endpoints receive the identifier via query string and update data from the body (any identifier in the body is ignored).
+- [DD-E014] `/update` endpoints receive the identifier via query string and update data from the body. If the endpoint supports identifier modification and the body contains a different identifier than the query string, this triggers a rename operation: the resource is renamed from the query string identifier to the body identifier, then updated with the remaining body data. Otherwise, any identifier in the body is ignored.
 
 ### Why Action-Suffixed over RESTful?
 
@@ -658,6 +658,7 @@ This specification uses a shorthand notation to make it easy for AI code generat
     - G -> implements Get single via `GET [R]/get` -> returns single item
     - U -> implements Update via `PUT [R]/update` -> returns modified item
     - D -> implements Delete via `DELETE [R]/delete` and `GET [R]/delete` -> returns deleted item
+    - X -> implements custom action via `GET [R]/[action_name]` -> for stream-only or non-CRUD endpoints (e.g., `/selftest`, `/create_demo_items`)
   - Available common formats:
     - `...(j)` -> supports `format=json` (default when object id given)
     - `...(h)` -> supports `format=html`

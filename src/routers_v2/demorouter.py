@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Str
 
 from utils import convert_to_flat_html_table
 from logging_v2 import MiddlewareLogger
-from streaming_jobs_v2 import StreamingJobWriter
+from streaming_jobs_v2 import StreamingJobWriter, ControlAction
 
 router = APIRouter()
 config = None
@@ -58,6 +58,15 @@ def delete_demo_item(item_id: str) -> bool:
   if not os.path.exists(path): return False
   os.remove(path)
   return True
+
+# Rename a demo item (change item_id). Returns (success, error_message)
+def rename_demo_item(source_item_id: str, target_item_id: str) -> tuple[bool, str]:
+  source_path = get_demo_item_path(source_item_id)
+  target_path = get_demo_item_path(target_item_id)
+  if not os.path.exists(source_path): return (False, f"Source item '{source_item_id}' not found.")
+  if os.path.exists(target_path): return (False, f"Target item ID '{target_item_id}' already exists.")
+  os.rename(source_path, target_path)
+  return (True, "")
 
 # List all demo items
 def list_demo_items() -> list[dict]:
@@ -140,6 +149,7 @@ async def demorouter_root(request: Request):
     <li><a href="{router_prefix}/demorouter/update">{router_prefix}/demorouter/update</a> - Update item (PUT)</li>
     <li><a href="{router_prefix}/demorouter/delete">{router_prefix}/demorouter/delete</a> - Delete item (DELETE/GET)</li>
     <li><a href="{router_prefix}/demorouter/selftest">{router_prefix}/demorouter/selftest</a> - Self-test (<a href="{router_prefix}/demorouter/selftest?format=stream">stream</a>)</li>
+    <li><a href="{router_prefix}/demorouter/create_demo_items">{router_prefix}/demorouter/create_demo_items</a> - Create demo items (<a href="{router_prefix}/demorouter/create_demo_items?format=stream">stream</a>)</li>
   </ul>
 
   <p><a href="/">← Back to Main Page</a></p>
@@ -173,8 +183,7 @@ async def demorouter_root(request: Request):
         <td>{name}</td>
         <td>{version}</td>
         <td class="actions">
-          <button class="btn-small" onclick="showViewModal('{item_id}')">View</button>
-          <button class="btn-small" onclick="showUpdateForm('{item_id}')">Update</button>
+          <button class="btn-small" onclick="showUpdateForm('{item_id}')">Edit</button>
           <button class="btn-small btn-delete" data-url="{router_prefix}/demorouter/delete?item_id={{itemId}}" data-method="DELETE" data-format="json" onclick="if(confirm('Delete {item_id}?')) callItemEndpoint(this, '{item_id}')">Delete</button>
         </td>
       </tr>"""
@@ -203,20 +212,35 @@ async def demorouter_root(request: Request):
     /* Modal */
     .modal-overlay {{ display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1100; }}
     .modal-overlay.visible {{ display: flex; justify-content: center; align-items: center; }}
-    .modal-content {{ background: #fff; padding: 1.5rem; border-radius: 8px; max-width: 600px; min-width: 400px; max-height: 80vh; overflow: auto; position: relative; }}
-    .modal-close {{ position: absolute; top: 0.5rem; right: 0.5rem; background: none; border: none; font-size: 1.5rem; cursor: pointer; }}
+    .modal-content {{ background: #fff; padding: 1.5rem 2rem 1.5rem 2rem; border-radius: 8px; max-width: 500px; min-width: 400px; max-height: 80vh; overflow: auto; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }}
+    .modal-close {{ position: absolute; top: 0.5rem; right: 0.75rem; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #666; }}
+    .modal-close:hover {{ color: #333; }}
+    
+    /* Form styling */
+    .form-group {{ margin-bottom: 1rem; }}
+    .form-group label {{ display: block; font-weight: 500; margin-bottom: 0.25rem; color: #333; }}
+    .form-group input {{ width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; box-sizing: border-box; }}
+    .form-group input:focus {{ outline: none; border-color: #0078d4; box-shadow: 0 0 0 2px rgba(0,120,212,0.2); }}
+    .form-actions {{ margin-top: 1.5rem; display: flex; gap: 0.5rem; }}
+    .form-error {{ color: #c00; font-size: 0.9em; margin-top: 5px; }}
     .empty-state {{ text-align: center; color: #6c757d; padding: 2rem; }}
+    .page-header {{ display: flex; justify-content: space-between; align-items: center; }}
+    .page-header h1 {{ margin: 0; }}
     
     /* Console Panel - fixed bottom per spec */
-    .console-panel {{ position: fixed; bottom: 0; left: 0; right: 0; background: #012456; z-index: 900; height: 232px; display: flex; flex-direction: column; }}
+    .console-panel {{ position: fixed; bottom: 0; left: 0; right: 0; background: #012456; z-index: 900; height: 232px; display: flex; flex-direction: column; transition: transform 0.2s ease-out; }}
+    .console-panel.hidden {{ transform: translateY(100%); }}
     .console-resize-handle {{ height: 4px; background: #aaaaaa; cursor: ns-resize; flex-shrink: 0; transition: background 0.2s; }}
     .console-resize-handle:hover, .console-resize-handle.dragging {{ background: #0090F1; }}
     .console-header {{ display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 1rem; background: #FAFAFA; border-bottom: 1px solid #d0d0d0; font-size: 0.875rem; font-weight: 500; color: #333333; flex-shrink: 0; }}
-    .console-controls {{ display: flex; gap: 0.5rem; }}
+    .console-status {{ font-weight: normal; color: #666; }}
+    .console-controls {{ display: flex; gap: 0.5rem; align-items: center; }}
+    .console-close {{ background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #666; padding: 0; margin-left: 0.5rem; }}
+    .console-close:hover {{ color: #333; }}
     .console-output {{ flex: 1; overflow-y: auto; padding: 0.75rem 1rem; margin: 0; font-family: 'Consolas', 'Monaco', monospace; font-size: 0.9rem; line-height: 1.4; background: #012456; color: #ffffff; white-space: pre-wrap; word-wrap: break-word; }}
     
-    /* Main content padding to avoid console overlap */
-    .container {{ padding-bottom: 250px; }}
+    /* Main content margin to avoid console overlap */
+    body {{ margin-bottom: 250px; }}
   </style>
 </head>
 <body>
@@ -224,7 +248,7 @@ async def demorouter_root(request: Request):
   <div id="toast-container"></div>
   
   <!-- Modal -->
-  <div id="modal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
+  <div id="modal" class="modal-overlay">
     <div class="modal-content">
       <button class="modal-close" onclick="closeModal()">&times;</button>
       <div class="modal-body"></div>
@@ -233,14 +257,14 @@ async def demorouter_root(request: Request):
 
   <!-- Main Content -->
   <div class="container">
-    <h1>Demo Items (<span id="item-count">{len(items)}</span>)</h1>
-    <p><a href="{router_prefix}/demorouter">← Back to Demo Router</a> | <a href="/">← Back to Main Page</a></p>
+    <div style="display: flex; align-items: center; gap: 0.75rem;"><h1 style="margin: 0;">Demo Items (<span id="item-count">{len(items)}</span>)</h1> <button class="btn-small" style="align-self: center;" onclick="reloadItems()">Reload</button></div>
+    <p><a href="{router_prefix}/demorouter">← Back to Demo Router</a></p>
     
     <div class="toolbar">
-      <button class="btn-primary" onclick="refreshItems()">Refresh</button>
       <button class="btn-primary" onclick="showCreateForm()">Create</button>
+      <button class="btn-primary" onclick="showCreateDemoItemsForm()">Create Demo Items</button>
       <button class="btn-primary" onclick="runSelftest()">Run Selftest</button>
-      <button id="btn-delete-selected" class="btn-primary btn-delete" onclick="bulkDelete()" disabled>Delete Selected (0)</button>
+      <button id="btn-delete-selected" class="btn-primary btn-delete" onclick="bulkDelete()" disabled>Delete (0)</button>
     </div>
     
     <table>
@@ -253,10 +277,11 @@ async def demorouter_root(request: Request):
   <div id="console-panel" class="console-panel">
     <div class="console-resize-handle" id="console-resize-handle"></div>
     <div class="console-header">
-      <span id="console-title">Console Output (disconnected)</span>
+      <div><span id="console-title">Console Output</span> <span id="console-status" class="console-status">(disconnected)</span></div>
       <div class="console-controls">
-        <button onclick="disconnectStream()" class="btn-small" id="btn-disconnect" disabled>Disconnect</button>
+        <button id="btn-pause-resume" onclick="togglePauseResume()" class="btn-small" disabled>Pause</button>
         <button onclick="clearConsole()" class="btn-small">Clear</button>
+        <button onclick="hideConsole()" class="console-close">&times;</button>
       </div>
     </div>
     <pre id="console-output" class="console-output"></pre>
@@ -268,6 +293,8 @@ async def demorouter_root(request: Request):
 // ============================================
 let currentEventSource = null;
 let currentStreamUrl = null;
+let currentJobId = null;
+let isPaused = false;
 const MAX_CONSOLE_CHARS = 1000000;
 
 // ============================================
@@ -301,9 +328,6 @@ function closeModal() {{
   document.removeEventListener('keydown', handleEscapeKey);
 }}
 
-function closeModalOnBackdrop(event) {{
-  if (event.target.classList.contains('modal-overlay')) closeModal();
-}}
 
 function handleEscapeKey(event) {{
   if (event.key === 'Escape') closeModal();
@@ -313,24 +337,25 @@ function handleEscapeKey(event) {{
 // CONSOLE STREAMING (SSE)
 // ============================================
 function connectStream(url) {{
-  disconnectStream();
+  if (currentEventSource) {{
+    currentEventSource.close();
+    currentEventSource = null;
+  }}
+  showConsole();
   currentStreamUrl = url;
-  updateConsoleTitle('connecting', url);
+  updateConsoleStatus('connecting', url);
   
   currentEventSource = new EventSource(url);
   
   currentEventSource.onopen = function() {{
-    updateConsoleTitle('connected', url);
-    document.getElementById('btn-disconnect').disabled = false;
+    updateConsoleStatus('connected', url);
   }};
   
   currentEventSource.onerror = function(e) {{
     if (currentEventSource.readyState === EventSource.CLOSED) {{
-      updateConsoleTitle('disconnected');
-      document.getElementById('btn-disconnect').disabled = true;
-      showToast('Stream Ended', '', 'info');
+      updateConsoleStatus('disconnected');
     }} else {{
-      showToast('Connection Error', 'Stream connection failed', 'error');
+      showToast('Connection Error', 'Job connection failed', 'error');
     }}
     currentEventSource = null;
   }};
@@ -339,7 +364,10 @@ function connectStream(url) {{
   currentEventSource.addEventListener('start_json', function(e) {{
     try {{
       const data = JSON.parse(e.data);
-      showToast('Stream Started', data.job_id || '', 'info');
+      currentJobId = data.job_id || null;
+      isPaused = false;
+      updatePauseResumeButton();
+      showToast('Job started', data.job_id || '', 'info');
     }} catch (err) {{ }}
   }});
   
@@ -353,30 +381,64 @@ function connectStream(url) {{
     try {{
       const data = JSON.parse(e.data);
       const resultType = data.result?.ok ? 'success' : 'error';
-      showToast('Stream Finished', data.job_id || '', resultType);
+      showToast('Job finished', data.job_id || '', resultType);
     }} catch (err) {{ }}
-    disconnectStream();
+    if (currentEventSource) {{
+      currentEventSource.close();
+      currentEventSource = null;
+    }}
+    currentJobId = null;
+    isPaused = false;
+    updatePauseResumeButton();
+    updateConsoleStatus('disconnected');
   }});
 }}
 
-function disconnectStream() {{
-  if (currentEventSource) {{
-    currentEventSource.close();
-    currentEventSource = null;
+// ============================================
+// PAUSE / RESUME
+// ============================================
+function updatePauseResumeButton() {{
+  const btn = document.getElementById('btn-pause-resume');
+  if (!currentJobId) {{
+    btn.disabled = true;
+    btn.textContent = 'Pause';
+  }} else {{
+    btn.disabled = false;
+    btn.textContent = isPaused ? 'Resume' : 'Pause';
   }}
-  currentStreamUrl = null;
-  updateConsoleTitle('disconnected');
-  document.getElementById('btn-disconnect').disabled = true;
 }}
 
-function updateConsoleTitle(state, url = '') {{
-  const titleEl = document.getElementById('console-title');
+async function togglePauseResume() {{
+  if (!currentJobId) return;
+  
+  const action = isPaused ? 'resume' : 'pause';
+  const btn = document.getElementById('btn-pause-resume');
+  btn.disabled = true;
+  
+  try {{
+    const response = await fetch(`{router_prefix}/jobs/control?job_id=${{currentJobId}}&action=${{action}}`);
+    const result = await response.json();
+    if (result.ok) {{
+      isPaused = !isPaused;
+      showToast(isPaused ? 'Paused' : 'Resumed', currentJobId, 'info');
+    }} else {{
+      showToast('Control Failed', result.error, 'error');
+    }}
+  }} catch (e) {{
+    showToast('Error', e.message, 'error');
+  }}
+  
+  updatePauseResumeButton();
+}}
+
+function updateConsoleStatus(state) {{
+  const statusEl = document.getElementById('console-status');
   if (state === 'disconnected') {{
-    titleEl.textContent = 'Console Output (disconnected)';
+    statusEl.textContent = '(disconnected)';
   }} else if (state === 'connecting') {{
-    titleEl.textContent = 'Console Output (connecting)...';
+    statusEl.textContent = '(connecting...)';
   }} else if (state === 'connected') {{
-    titleEl.textContent = 'Console Output (connected)';
+    statusEl.textContent = '(connected)';
   }}
 }}
 
@@ -397,6 +459,14 @@ function appendToConsole(text) {{
 
 function clearConsole() {{
   document.getElementById('console-output').textContent = '';
+}}
+
+function hideConsole() {{
+  document.getElementById('console-panel').classList.add('hidden');
+}}
+
+function showConsole() {{
+  document.getElementById('console-panel').classList.remove('hidden');
 }}
 
 // ============================================
@@ -433,7 +503,7 @@ function initConsoleResize() {{
 // GENERIC ENDPOINT CALLERS
 // ============================================
 
-// Call item-independent endpoint (Create, Selftest) - refreshes full table on success
+// Call item-independent endpoint (Create, Selftest) - reloads full table on success
 async function callEndpoint(btn, bodyData = null) {{
   const url = btn.dataset.url;
   const method = (btn.dataset.method || 'GET').toUpperCase();
@@ -452,7 +522,7 @@ async function callEndpoint(btn, bodyData = null) {{
       const result = await response.json();
       if (result.ok) {{
         showToast('OK', '', 'success');
-        refreshItems();
+        reloadItems();
       }} else {{
         showToast('Failed', result.error, 'error');
       }}
@@ -487,7 +557,7 @@ async function callItemEndpoint(btn, itemId, bodyData = null) {{
           updateItemCount();
         }} else {{
           showToast('Updated', itemId, 'success');
-          refreshItems();
+          reloadItems();
         }}
       }} else {{
         showToast('Failed', result.error, 'error');
@@ -500,18 +570,27 @@ async function callItemEndpoint(btn, itemId, bodyData = null) {{
 
 // Generic stream request - handles both item-independent and item-level
 function streamRequest(method, url, bodyData, itemId) {{
-  clearConsole();
-  updateConsoleTitle('connecting', url);
-  document.getElementById('btn-disconnect').disabled = false;
+  streamRequestWithOptions(url, {{ method, bodyData, itemId, reloadOnFinish: true }});
+}}
+
+// Stream request with options object
+function streamRequestWithOptions(url, options = {{}}) {{
+  const method = options.method || 'GET';
+  const bodyData = options.bodyData || null;
+  const reloadOnFinish = options.reloadOnFinish !== false;  // default true
   
-  const options = {{ method }};
+  showConsole();
+  clearConsole();
+  updateConsoleStatus('connecting', url);
+  
+  const fetchOptions = {{ method }};
   if (bodyData && (method === 'POST' || method === 'PUT')) {{
-    options.headers = {{ 'Content-Type': 'application/json' }};
-    options.body = JSON.stringify(bodyData);
+    fetchOptions.headers = {{ 'Content-Type': 'application/json' }};
+    fetchOptions.body = JSON.stringify(bodyData);
   }}
   
-  fetch(url, options).then(response => {{
-    updateConsoleTitle('connected', url);
+  fetch(url, fetchOptions).then(response => {{
+    updateConsoleStatus('connected', url);
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let currentEvent = 'log';
@@ -519,10 +598,13 @@ function streamRequest(method, url, bodyData, itemId) {{
     function read() {{
       reader.read().then(({{ done, value }}) => {{
         if (done) {{
-          updateConsoleTitle('disconnected');
-          document.getElementById('btn-disconnect').disabled = true;
-          showToast('Stream Finished', '', 'success');
-          refreshItems();
+          const finishedJobId = currentJobId;
+          currentJobId = null;
+          isPaused = false;
+          updatePauseResumeButton();
+          updateConsoleStatus('disconnected');
+          showToast('Job Finished', finishedJobId || '', 'success');
+          if (reloadOnFinish) reloadItems();
           return;
         }}
         const text = decoder.decode(value);
@@ -541,9 +623,11 @@ function streamRequest(method, url, bodyData, itemId) {{
     }}
     read();
   }}).catch(err => {{
-    showToast('Stream Error', err.message, 'error');
-    updateConsoleTitle('disconnected');
-    document.getElementById('btn-disconnect').disabled = true;
+    currentJobId = null;
+    isPaused = false;
+    updatePauseResumeButton();
+    showToast('Job Error', err.message, 'error');
+    updateConsoleStatus('disconnected');
   }});
 }}
 
@@ -554,6 +638,9 @@ function handleSSEData(eventType, data) {{
   }} else if (eventType === 'start_json') {{
     try {{
       const json = JSON.parse(data);
+      currentJobId = json.job_id || null;
+      isPaused = false;
+      updatePauseResumeButton();
       appendToConsole("===== START: Job ID='" + json.job_id + "'");
     }} catch (e) {{
       appendToConsole(data);
@@ -575,16 +662,16 @@ function handleSSEData(eventType, data) {{
 // ============================================
 // TABLE RENDERING
 // ============================================
-async function refreshItems() {{
+async function reloadItems() {{
   try {{
     const response = await fetch('{router_prefix}/demorouter?format=json');
     const result = await response.json();
     if (result.ok) {{
       renderItemsTable(result.data);
-      showToast('Refreshed', result.data.length + ' items', 'info');
+      showToast('Reloaded', result.data.length + ' items', 'info');
     }}
   }} catch (e) {{
-    showToast('Refresh Failed', e.message, 'error');
+    showToast('Reload Failed', e.message, 'error');
   }}
 }}
 
@@ -609,8 +696,7 @@ function renderItemRow(item) {{
     <td>${{name}}</td>
     <td>${{version}}</td>
     <td class="actions">
-      <button class="btn-small" onclick="showViewModal('${{itemId}}')">View</button>
-      <button class="btn-small" onclick="showUpdateForm('${{itemId}}')">Update</button>
+      <button class="btn-small" onclick="showUpdateForm('${{itemId}}')">Edit</button>
       <button class="btn-small btn-delete" data-url="{router_prefix}/demorouter/delete?item_id={{itemId}}" data-method="DELETE" data-format="json" onclick="if(confirm('Delete ${{itemId}}?')) callItemEndpoint(this, '${{itemId}}')">Delete</button>
     </td>
   </tr>`;
@@ -633,7 +719,7 @@ function updateSelectedCount() {{
   const selected = document.querySelectorAll('.item-checkbox:checked');
   const total = document.querySelectorAll('.item-checkbox');
   const btn = document.getElementById('btn-delete-selected');
-  btn.textContent = 'Delete Selected (' + selected.length + ')';
+  btn.textContent = 'Delete (' + selected.length + ')';
   btn.disabled = selected.length === 0;
   const selectAll = document.getElementById('select-all');
   if (selectAll) selectAll.checked = total.length > 0 && selected.length === total.length;
@@ -656,25 +742,31 @@ async function bulkDelete() {{
   if (itemIds.length === 0) return;
   if (!confirm('Delete ' + itemIds.length + ' selected items?')) return;
   
-  const btnConfig = {{ dataset: {{ url: '{router_prefix}/demorouter/delete?item_id={{itemId}}', method: 'DELETE', format: 'json' }} }};
-  for (const itemId of itemIds) {{
-    await callItemEndpoint(btnConfig, itemId, null);
-  }}
-}}
-
-// ============================================
-// VIEW MODAL
-// ============================================
-async function showViewModal(itemId) {{
-  const body = document.querySelector('#modal .modal-body');
-  body.innerHTML = '<p>Loading...</p>';
-  openModal();
+  let deleted = 0;
+  let failed = 0;
   
-  try {{
-    const response = await fetch('{router_prefix}/demorouter/get?item_id=' + itemId + '&format=html');
-    body.innerHTML = await response.text();
-  }} catch (e) {{
-    body.innerHTML = '<p>Error: ' + e.message + '</p>';
+  for (const itemId of itemIds) {{
+    try {{
+      const response = await fetch(`{router_prefix}/demorouter/delete?item_id=${{itemId}}`, {{ method: 'DELETE' }});
+      const result = await response.json();
+      if (result.ok) {{
+        const row = document.getElementById('item-' + itemId);
+        if (row) row.remove();
+        deleted++;
+      }} else {{
+        failed++;
+      }}
+    }} catch (e) {{
+      failed++;
+    }}
+  }}
+  
+  updateItemCount();
+  
+  if (failed === 0) {{
+    showToast('Bulk Delete', deleted + ' items deleted', 'success');
+  }} else {{
+    showToast('Bulk Delete', deleted + ' deleted, ' + failed + ' failed', 'warning');
   }}
 }}
 
@@ -686,14 +778,22 @@ function showCreateForm() {{
   body.innerHTML = `
     <h3>Create Demo Item</h3>
     <form id="create-form">
-      <p><label>Item ID: <input type="text" name="item_id" required style="width: 200px;"></label></p>
-      <p><label>Name: <input type="text" name="name" style="width: 200px;"></label></p>
-      <p><label>Version: <input type="number" name="version" value="1" style="width: 80px;"></label></p>
-      <p>
+      <div class="form-group">
+        <label>Item ID *</label>
+        <input type="text" name="item_id" required>
+      </div>
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" name="name">
+      </div>
+      <div class="form-group">
+        <label>Version</label>
+        <input type="number" name="version" value="1">
+      </div>
+      <div class="form-actions">
         <button type="button" class="btn-primary" data-url="{router_prefix}/demorouter/create" data-method="POST" data-format="json" onclick="submitCreateForm(this)">Create</button>
-        <button type="button" class="btn-primary" data-url="{router_prefix}/demorouter/create?format=stream" data-method="POST" data-format="stream" onclick="submitCreateForm(this)">Create (Stream)</button>
         <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
-      </p>
+      </div>
     </form>
   `;
   openModal();
@@ -705,13 +805,33 @@ function submitCreateForm(btn) {{
   const data = Object.fromEntries(formData.entries());
   if (data.version) data.version = parseInt(data.version);
   
-  if (!data.item_id) {{
-    showToast('Validation Error', 'Item ID is required', 'error');
+  // Validate item_id
+  const itemIdInput = form.querySelector('input[name="item_id"]');
+  if (!data.item_id || !data.item_id.trim()) {{
+    showFieldError(itemIdInput, 'Item ID is required');
     return;
   }}
+  clearFieldError(itemIdInput);
   
   closeModal();
   callEndpoint(btn, data);
+}}
+
+// Show inline validation error below a field
+function showFieldError(input, message) {{
+  clearFieldError(input);
+  const error = document.createElement('div');
+  error.className = 'form-error';
+  error.textContent = message;
+  input.parentElement.appendChild(error);
+  input.setCustomValidity(message);
+}}
+
+// Clear inline validation error
+function clearFieldError(input) {{
+  const existing = input.parentElement.querySelector('.form-error');
+  if (existing) existing.remove();
+  input.setCustomValidity('');
 }}
 
 // ============================================
@@ -731,15 +851,25 @@ async function showUpdateForm(itemId) {{
     }}
     const item = result.data;
     body.innerHTML = `
-      <h3>Update Item: ${{itemId}}</h3>
+      <h3>Edit Item</h3>
       <form id="update-form">
-        <input type="hidden" name="item_id" value="${{itemId}}">
-        <p><label>Name: <input type="text" name="name" value="${{item.name || ''}}" style="width: 200px;"></label></p>
-        <p><label>Version: <input type="number" name="version" value="${{item.version || ''}}" style="width: 80px;"></label></p>
-        <p>
-          <button type="button" class="btn-primary" data-url="{router_prefix}/demorouter/update?item_id={{itemId}}" data-method="PUT" data-format="json" onclick="submitUpdateForm(this, '${{itemId}}')">Update</button>
+        <input type="hidden" name="source_item_id" value="${{itemId}}">
+        <div class="form-group">
+          <label>Item ID</label>
+          <input type="text" name="item_id" value="${{itemId}}">
+        </div>
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" name="name" value="${{item.name || ''}}">
+        </div>
+        <div class="form-group">
+          <label>Version</label>
+          <input type="number" name="version" value="${{item.version || ''}}">
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn-primary" data-url="{router_prefix}/demorouter/update?item_id={{itemId}}" data-method="PUT" data-format="json" onclick="submitUpdateForm(this, '${{itemId}}')">Save</button>
           <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
-        </p>
+        </div>
       </form>
     `;
   }} catch (e) {{
@@ -747,27 +877,92 @@ async function showUpdateForm(itemId) {{
   }}
 }}
 
-function submitUpdateForm(btn, itemId) {{
+function submitUpdateForm(btn, sourceItemId) {{
   const form = document.getElementById('update-form');
   const formData = new FormData(form);
   const data = {{}};
+  
+  // Get target item_id from form (may differ from source if rename requested)
+  const targetItemId = formData.get('item_id');
+  const itemIdInput = form.querySelector('input[name="item_id"]');
+  
+  // Validate: target item_id cannot be empty
+  if (!targetItemId || !targetItemId.trim()) {{
+    showFieldError(itemIdInput, 'Item ID cannot be empty');
+    return;
+  }}
+  clearFieldError(itemIdInput);
+  
   for (const [key, value] of formData.entries()) {{
-    if (value && key !== 'item_id') {{
+    if (key === 'source_item_id') continue;  // Skip hidden field
+    if (key === 'item_id') {{
+      // Include item_id in body only if it changed (triggers rename)
+      if (value && value !== sourceItemId) {{
+        data.item_id = value.trim();
+      }}
+    }} else if (value) {{
       data[key] = key === 'version' ? parseInt(value) : value;
     }}
   }}
   
   closeModal();
-  callItemEndpoint(btn, itemId, data);
+  callItemEndpoint(btn, sourceItemId, data);
 }}
 
 // ============================================
-// SELFTEST
+// SELFTEST & DEMO
 // ============================================
 function runSelftest() {{
   clearConsole();
   const url = '{router_prefix}/demorouter/selftest?format=stream';
   connectStream(url);
+}}
+
+function showCreateDemoItemsForm() {{
+  const body = document.querySelector('#modal .modal-body');
+  body.innerHTML = `
+    <h3>Create Demo Items</h3>
+    <form id="create-demo-items-form">
+      <div class="form-group">
+        <label>Count (1-100)</label>
+        <input type="number" name="count" value="10" min="1" max="100">
+      </div>
+      <div class="form-group">
+        <label>Delay per item (ms)</label>
+        <input type="number" name="delay_ms" value="300" min="0" max="10000">
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn-primary" data-url="{router_prefix}/demorouter/create_demo_items?format=stream&count={{count}}&delay_ms={{delay_ms}}" data-format="stream" data-reload-on-finish="true" onclick="submitCreateDemoItemsForm(this)">Start</button>
+        <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
+      </div>
+    </form>
+  `;
+  openModal();
+}}
+
+function submitCreateDemoItemsForm(btn) {{
+  const form = document.getElementById('create-demo-items-form');
+  const formData = new FormData(form);
+  const count = parseInt(formData.get('count')) || 10;
+  const delayMs = parseInt(formData.get('delay_ms')) || 300;
+  
+  // Validate
+  if (count < 1 || count > 100) {{
+    showToast('Invalid', 'Count must be between 1 and 100', 'error');
+    return;
+  }}
+  if (delayMs < 0 || delayMs > 10000) {{
+    showToast('Invalid', 'Delay must be between 0 and 10000 ms', 'error');
+    return;
+  }}
+  
+  // Build URL from template
+  const urlTemplate = btn.dataset.url;
+  const url = urlTemplate.replace('{{count}}', count).replace('{{delay_ms}}', delayMs);
+  const reloadOnFinish = btn.dataset.reloadOnFinish === 'true';
+  
+  closeModal();
+  streamRequestWithOptions(url, {{ reloadOnFinish }});
 }}
 
 // Initialize on load
@@ -1009,11 +1204,24 @@ async def demorouter_update(request: Request):
         body_data = dict(form)
   except: pass
   
-  # Check if exists
-  existing = load_demo_item(item_id)
+  # Check if rename is requested (body item_id differs from query param)
+  source_item_id = item_id
+  target_item_id = body_data.get("item_id", None)
+  rename_requested = target_item_id and target_item_id != source_item_id
+  
+  # Check if source exists
+  existing = load_demo_item(source_item_id)
   if existing is None:
     logger.log_function_footer()
-    return JSONResponse({"ok": False, "error": f"Demo item '{item_id}' not found.", "data": {}}, status_code=404)
+    return JSONResponse({"ok": False, "error": f"Source item '{source_item_id}' not found.", "data": {}}, status_code=404)
+  
+  # Handle rename if requested (non-stream mode only; stream mode handles inside generator)
+  if rename_requested and format_param != "stream":
+    success, error_msg = rename_demo_item(source_item_id, target_item_id)
+    if not success:
+      logger.log_function_footer()
+      return JSONResponse({"ok": False, "error": error_msg, "data": {}}, status_code=400)
+    item_id = target_item_id  # Use target item_id for subsequent operations
   
   # Build update data (exclude control params)
   update_data = {k: v for k, v in body_data.items() if k not in ["item_id", "format", "dry_run"]}
@@ -1025,11 +1233,12 @@ async def demorouter_update(request: Request):
   
   # format=stream - uses StreamingJobWriter for dual output (STREAM-FR-01)
   if format_param == "stream":
+    final_item_id = target_item_id if rename_requested else source_item_id
     writer = StreamingJobWriter(
       persistent_storage_path=get_persistent_storage_path(),
       router_name="demorouter",
       action="update",
-      object_id=item_id,
+      object_id=final_item_id,
       source_url=str(request.url),
       router_prefix=router_prefix
     )
@@ -1037,9 +1246,26 @@ async def demorouter_update(request: Request):
     stream_logger.log_function_header("demorouter_update")
     
     async def stream_update():
+      nonlocal item_id
       try:
         yield writer.emit_start()
-        sse = stream_logger.log_function_output(f"Updating demo item '{item_id}'...")
+        
+        # Handle rename inside stream
+        if rename_requested:
+          sse = stream_logger.log_function_output(f"Renaming item '{source_item_id}' to '{target_item_id}'...")
+          if sse: yield sse
+          success, error_msg = rename_demo_item(source_item_id, target_item_id)
+          if not success:
+            sse = stream_logger.log_function_output(f"  FAIL: {error_msg}")
+            if sse: yield sse
+            stream_logger.log_function_footer()
+            yield writer.emit_end(ok=False, error=error_msg, data={})
+            return
+          sse = stream_logger.log_function_output("  OK.")
+          if sse: yield sse
+          item_id = target_item_id
+        
+        sse = stream_logger.log_function_output(f"Updating item '{item_id}'...")
         if sse: yield sse
         save_demo_item(item_id, merged_data)
         sse = stream_logger.log_function_output("  OK.")
@@ -1215,11 +1441,17 @@ async def demorouter_selftest(request: Request):
   async def run_selftest():
     ok_count = 0
     fail_count = 0
+    test_num = 0
     
     def log(msg: str):
       nonlocal ok_count, fail_count
       sse = stream_logger.log_function_output(msg)
       return sse
+    
+    def next_test(description: str):
+      nonlocal test_num
+      test_num += 1
+      return log(f"[Test {test_num}] {description}")
     
     def check(condition: bool, ok_msg: str, fail_msg: str):
       nonlocal ok_count, fail_count
@@ -1240,55 +1472,56 @@ async def demorouter_selftest(request: Request):
         list_url = f"{base_url}{router_prefix}/demorouter?format=json"
         delete_url = f"{base_url}{router_prefix}/demorouter/delete?item_id={test_id}"
         
-        # ===== TEST 1: Error cases =====
-        sse = log(f"[Test 1] Error cases...")
+        # ===== Error cases =====
+        sse = next_test("Error cases...")
         if sse: yield sse
         
-        # 1a) POST /create without body -> error
+        # a) POST /create without body -> error
         r = await client.post(create_url)
         sse = check(r.json().get("ok") == False, "POST /create without body returns error", f"Expected error, got: {r.json()}")
         if sse: yield sse
         
-        # 1b) PUT /update without body -> error
+        # b) PUT /update without body -> error
         r = await client.put(update_url)
         sse = check(r.json().get("ok") == False, "PUT /update without body returns error", f"Expected error, got: {r.json()}")
         if sse: yield sse
         
-        # 1c) GET /get without item_id -> error
+        # c) GET /get without item_id -> error
         r = await client.get(f"{base_url}{router_prefix}/demorouter/get?format=json")
         sse = check(r.json().get("ok") == False, "GET /get without item_id returns error", f"Expected error, got: {r.json()}")
         if sse: yield sse
         
-        # 1d) DELETE /delete without item_id -> error
+        # d) DELETE /delete without item_id -> error
         r = await client.delete(f"{base_url}{router_prefix}/demorouter/delete")
         sse = check(r.json().get("ok") == False, "DELETE /delete without item_id returns error", f"Expected error, got: {r.json()}")
         if sse: yield sse
         
-        # 1e) PUT /update non-existent item -> 404
+        # e) PUT /update non-existent item -> 404
         r = await client.put(f"{update_url}?item_id=nonexistent_item_xyz", json={})
         sse = check(r.status_code == 404, "PUT /update non-existent returns 404", f"Expected 404, got: {r.status_code}")
         if sse: yield sse
         
-        # 1f) DELETE /delete non-existent item -> 404
+        # f) DELETE /delete non-existent item -> 404
         r = await client.delete(f"{base_url}{router_prefix}/demorouter/delete?item_id=nonexistent_item_xyz")
         sse = check(r.status_code == 404, "DELETE /delete non-existent returns 404", f"Expected 404, got: {r.status_code}")
         if sse: yield sse
         
-        # 1g) PUT /update without item_id query param -> error
+        # g) PUT /update without item_id query param -> error
         r = await client.put(f"{update_url}?format=json", json={"name": "Test"})
         sse = check(r.json().get("ok") == False, "PUT /update without item_id query param returns error", f"Expected error, got: {r.json()}")
         if sse: yield sse
         
-        # 1h) POST /create with empty body {} -> missing item_id error
+        # h) POST /create with empty body {} -> missing item_id error
         r = await client.post(create_url, json={})
         sse = check(r.json().get("ok") == False and "item_id" in r.json().get("error", "").lower(), 
                     "POST /create with {} body returns item_id error", f"Expected item_id error, got: {r.json()}")
         if sse: yield sse
         
-        # ===== TEST 2: Create with JSON body =====
-        sse = log(f"[Test 2] POST /create with JSON body - Creating '{test_id}'...")
+        # ===== Create with JSON body =====
+        sse = next_test(f"POST /create with JSON body - Creating '{test_id}'...")
         if sse: yield sse
         
+        # a) Create item
         r = await client.post(create_url, json={"item_id": test_id, **test_data_v1})
         result = r.json()
         sse = check(r.status_code == 200, "POST /create returns HTTP 200", f"Expected 200, got: {r.status_code}")
@@ -1297,15 +1530,16 @@ async def demorouter_selftest(request: Request):
                     "Response has {ok:true, error:'', data:...} structure", f"Bad structure: {result}")
         if sse: yield sse
         
-        # 2b) Create duplicate -> error
+        # b) Create duplicate -> error
         r = await client.post(create_url, json={"item_id": test_id, "name": "Duplicate"})
         sse = check(r.json().get("ok") == False, "POST /create duplicate returns error", f"Expected error, got: {r.json()}")
         if sse: yield sse
         
-        # ===== TEST 3: Get item =====
-        sse = log(f"[Test 3] GET /get - Verifying created item...")
+        # ===== Get item =====
+        sse = next_test("GET /get - Verifying created item...")
         if sse: yield sse
         
+        # a) Get returns 200 with data
         r = await client.get(get_url)
         result = r.json()
         sse = check(r.status_code == 200, "GET /get returns HTTP 200", f"Expected 200, got: {r.status_code}")
@@ -1313,30 +1547,35 @@ async def demorouter_selftest(request: Request):
         sse = check(result.get("ok") == True and "data" in result, "GET /get returned ok=true with data", f"Failed: {result}")
         if sse: yield sse
         
+        # b) Content matches
         item_data = result.get("data", {})
         match = (item_data.get("name") == test_data_v1["name"] and item_data.get("version") == test_data_v1["version"])
         sse = check(match, f"Content matches: name='{item_data.get('name')}', version={item_data.get('version')}", f"Mismatch: {item_data}")
         if sse: yield sse
         
-        # ===== TEST 4: List all items =====
-        sse = log(f"[Test 4] GET / - Listing all items...")
+        # ===== List all items =====
+        sse = next_test("GET / - Listing all items...")
         if sse: yield sse
         
+        # a) List returns 200 with array
         r = await client.get(list_url)
         list_result = r.json()
         sse = check(r.status_code == 200, "GET / returns HTTP 200", f"Expected 200, got: {r.status_code}")
         if sse: yield sse
         sse = check(isinstance(list_result.get("data"), list), "List data is array", f"Expected array, got: {type(list_result.get('data'))}")
         if sse: yield sse
+        
+        # b) Item found in list
         items = list_result.get("data", [])
         item_ids = [i.get("item_id") for i in items]
         sse = check(test_id in item_ids, f"Item found in list ({len(items)} total)", f"Item NOT found in list")
         if sse: yield sse
         
-        # ===== TEST 5: dry_run for create =====
-        sse = log(f"[Test 5] POST /create?dry_run=true...")
+        # ===== dry_run for create =====
+        sse = next_test("POST /create?dry_run=true...")
         if sse: yield sse
         
+        # a) dry_run returns ok with flag
         test_id_dry = f"{test_id}_dry"
         r = await client.post(f"{create_url}?dry_run=true", json={"item_id": test_id_dry, "name": "DryRun"})
         result = r.json()
@@ -1344,71 +1583,146 @@ async def demorouter_selftest(request: Request):
                     "dry_run=true returns ok with dry_run flag", f"Failed: {result}")
         if sse: yield sse
         
-        # Verify item was NOT created
+        # b) Item was NOT created
         r = await client.get(f"{base_url}{router_prefix}/demorouter/get?item_id={test_id_dry}&format=json")
         sse = check(r.status_code == 404, "dry_run did NOT create item (404)", f"Item was created! Status: {r.status_code}")
         if sse: yield sse
         
-        # ===== TEST 6: Update with JSON body =====
-        sse = log(f"[Test 6] PUT /update with JSON body...")
+        # ===== Update with JSON body =====
+        sse = next_test("PUT /update with JSON body...")
         if sse: yield sse
         
+        # a) Update returns ok
         r = await client.put(f"{update_url}?item_id={test_id}", json=test_data_v2)
         sse = check(r.json().get("ok") == True, "PUT /update ok=true", f"Failed: {r.json().get('error')}")
         if sse: yield sse
         
-        # Verify update
+        # b) Verify update applied
         r = await client.get(get_url)
         updated = r.json().get("data", {})
         sse = check(updated.get("name") == test_data_v2["name"] and updated.get("version") == test_data_v2["version"],
                     f"Update verified: name='{updated.get('name')}', version={updated.get('version')}", f"Mismatch: {updated}")
         if sse: yield sse
         
-        # Verify original field preserved
+        # c) Original field preserved
         sse = check(updated.get("created") == test_data_v1["created"], "Original 'created' field preserved", "Field lost")
         if sse: yield sse
         
-        # ===== TEST 7: dry_run for update =====
-        sse = log(f"[Test 7] PUT /update?dry_run=true...")
+        # ===== Update with ID change (rename) =====
+        sse = next_test("PUT /update with item_id change (rename)...")
         if sse: yield sse
         
+        test_id_rename_src = f"{test_id}_rename_src"
+        test_id_rename_tgt = f"{test_id}_rename_tgt"
+        
+        # a) Create source item for rename test
+        r = await client.post(create_url, json={"item_id": test_id_rename_src, "name": "RenameSource", "version": 1})
+        sse = check(r.json().get("ok") == True, "Created source item for rename test", f"Failed: {r.json().get('error')}")
+        if sse: yield sse
+        
+        # b) Rename: PUT with different item_id in body
+        r = await client.put(f"{update_url}?item_id={test_id_rename_src}", json={"item_id": test_id_rename_tgt, "name": "RenamedItem"})
+        sse = check(r.json().get("ok") == True, "Rename via PUT ok=true", f"Failed: {r.json().get('error')}")
+        if sse: yield sse
+        
+        # c) Verify source no longer exists
+        r = await client.get(f"{base_url}{router_prefix}/demorouter/get?item_id={test_id_rename_src}&format=json")
+        sse = check(r.status_code == 404, "Source item no longer exists (404)", f"Source still exists: {r.status_code}")
+        if sse: yield sse
+        
+        # d) Verify target exists with updated data
+        r = await client.get(f"{base_url}{router_prefix}/demorouter/get?item_id={test_id_rename_tgt}&format=json")
+        renamed_item = r.json().get("data", {})
+        sse = check(r.status_code == 200 and renamed_item.get("name") == "RenamedItem", 
+                    f"Target item exists with name='RenamedItem'", f"Failed: {r.json()}")
+        if sse: yield sse
+        
+        # Cleanup rename target
+        await client.delete(f"{base_url}{router_prefix}/demorouter/delete?item_id={test_id_rename_tgt}")
+        
+        # ===== Rename conflict (target exists) =====
+        sse = next_test("PUT /update rename conflict (target exists)...")
+        if sse: yield sse
+        
+        test_id_conflict_src = f"{test_id}_conflict_src"
+        test_id_conflict_tgt = f"{test_id}_conflict_tgt"
+        
+        # a) Create source item
+        r = await client.post(create_url, json={"item_id": test_id_conflict_src, "name": "ConflictSource"})
+        sse = check(r.json().get("ok") == True, "Created conflict source item", f"Failed: {r.json().get('error')}")
+        if sse: yield sse
+        
+        # b) Create target item (conflict)
+        r = await client.post(create_url, json={"item_id": test_id_conflict_tgt, "name": "ConflictTarget"})
+        sse = check(r.json().get("ok") == True, "Created conflict target item", f"Failed: {r.json().get('error')}")
+        if sse: yield sse
+        
+        # c) Try to rename source to existing target - should fail
+        r = await client.put(f"{update_url}?item_id={test_id_conflict_src}", json={"item_id": test_id_conflict_tgt})
+        sse = check(r.status_code == 400 and "already exists" in r.json().get("error", "").lower(),
+                    "Rename to existing target returns 400 with 'already exists'", f"Expected 400 + error, got: {r.status_code} {r.json()}")
+        if sse: yield sse
+        
+        # d) Verify source unchanged
+        r = await client.get(f"{base_url}{router_prefix}/demorouter/get?item_id={test_id_conflict_src}&format=json")
+        sse = check(r.status_code == 200 and r.json().get("data", {}).get("name") == "ConflictSource",
+                    "Source item unchanged after failed rename", f"Source changed: {r.json()}")
+        if sse: yield sse
+        
+        # e) Verify target unchanged
+        r = await client.get(f"{base_url}{router_prefix}/demorouter/get?item_id={test_id_conflict_tgt}&format=json")
+        sse = check(r.status_code == 200 and r.json().get("data", {}).get("name") == "ConflictTarget",
+                    "Target item unchanged after failed rename", f"Target changed: {r.json()}")
+        if sse: yield sse
+        
+        # Cleanup conflict test items
+        await client.delete(f"{base_url}{router_prefix}/demorouter/delete?item_id={test_id_conflict_src}")
+        await client.delete(f"{base_url}{router_prefix}/demorouter/delete?item_id={test_id_conflict_tgt}")
+        
+        # ===== dry_run for update =====
+        sse = next_test("PUT /update?dry_run=true...")
+        if sse: yield sse
+        
+        # a) dry_run returns ok with flag
         r = await client.put(f"{update_url}?item_id={test_id}&dry_run=true", json={"name": "ShouldNotChange"})
         result = r.json()
         sse = check(result.get("ok") == True and result.get("data", {}).get("dry_run") == True,
                     "dry_run=true returns ok with dry_run flag", f"Failed: {result}")
         if sse: yield sse
         
-        # Verify item was NOT changed
+        # b) Item was NOT changed
         r = await client.get(get_url)
         sse = check(r.json().get("data", {}).get("name") == test_data_v2["name"], 
                     "dry_run did NOT change item", f"Item was changed! Name: {r.json().get('data', {}).get('name')}")
         if sse: yield sse
         
-        # ===== TEST 8: Create with form data =====
-        sse = log(f"[Test 8] POST /create with form data...")
+        # ===== Create with form data =====
+        sse = next_test("POST /create with form data...")
         if sse: yield sse
         
+        # a) Create with form data
         test_id_form = f"{test_id}_form"
         r = await client.post(create_url, data={"item_id": test_id_form, "name": "FormItem", "source": "form"})
         sse = check(r.json().get("ok") == True, "POST /create with form data ok=true", f"Failed: {r.json().get('error')}")
         if sse: yield sse
         
-        # Verify form-created item
+        # b) Verify form-created item
         r = await client.get(f"{base_url}{router_prefix}/demorouter/get?item_id={test_id_form}&format=json")
         form_item = r.json().get("data", {})
         sse = check(form_item.get("name") == "FormItem" and form_item.get("source") == "form",
                     f"Form item verified: name='{form_item.get('name')}', source='{form_item.get('source')}'", f"Mismatch: {form_item}")
         if sse: yield sse
         
-        # ===== TEST 9: Update with form data =====
-        sse = log(f"[Test 9] PUT /update with form data...")
+        # ===== Update with form data =====
+        sse = next_test("PUT /update with form data...")
         if sse: yield sse
         
+        # a) Update with form data
         r = await client.put(f"{update_url}?item_id={test_id_form}", data={"name": "UpdatedFormItem"})
         sse = check(r.json().get("ok") == True, "PUT /update with form data ok=true", f"Failed: {r.json().get('error')}")
         if sse: yield sse
         
-        # Verify update
+        # b) Verify update
         r = await client.get(f"{base_url}{router_prefix}/demorouter/get?item_id={test_id_form}&format=json")
         sse = check(r.json().get("data", {}).get("name") == "UpdatedFormItem", "Form update verified", f"Mismatch: {r.json()}")
         if sse: yield sse
@@ -1416,44 +1730,47 @@ async def demorouter_selftest(request: Request):
         # Cleanup form item
         await client.delete(f"{base_url}{router_prefix}/demorouter/delete?item_id={test_id_form}")
         
-        # ===== TEST 10: Delete with dry_run =====
-        sse = log(f"[Test 10] DELETE /delete?dry_run=true...")
+        # ===== Delete with dry_run =====
+        sse = next_test("DELETE /delete?dry_run=true...")
         if sse: yield sse
         
+        # a) dry_run returns ok with flag
         r = await client.delete(f"{delete_url}&dry_run=true")
         result = r.json()
         sse = check(result.get("ok") == True and result.get("data", {}).get("dry_run") == True,
                     "dry_run=true returns ok with dry_run flag", f"Failed: {result}")
         if sse: yield sse
         
-        # Verify item still exists
+        # b) Item still exists
         r = await client.get(get_url)
         sse = check(r.status_code == 200, "Item still exists after dry_run", "Item was deleted!")
         if sse: yield sse
         
-        # ===== TEST 11: Actual delete =====
-        sse = log(f"[Test 11] DELETE /delete - Actual delete...")
+        # ===== Actual delete =====
+        sse = next_test("DELETE /delete - Actual delete...")
         if sse: yield sse
         
         r = await client.delete(delete_url)
         sse = check(r.json().get("ok") == True, "DELETE ok=true", f"Failed: {r.json().get('error')}")
         if sse: yield sse
         
-        # ===== TEST 12: Verify deletion =====
-        sse = log(f"[Test 12] Verifying deletion...")
+        # ===== Verify deletion =====
+        sse = next_test("Verifying deletion...")
         if sse: yield sse
         
+        # a) GET deleted item returns 404
         r = await client.get(get_url)
         sse = check(r.status_code == 404, "GET deleted item returns 404", f"Got: {r.status_code}")
         if sse: yield sse
         
+        # b) Item removed from list
         r = await client.get(list_url)
         items_after = r.json().get("data", [])
         item_ids_after = [i.get("item_id") for i in items_after]
         sse = check(test_id not in item_ids_after, "Item removed from list", "Item still in list!")
         if sse: yield sse
         
-        # Verify empty list returns [] (if no other items)
+        # c) Empty list returns [] (if no other items)
         if len(items_after) == 0:
           sse = check(isinstance(items_after, list), "Empty list returns [] not error", f"Expected [], got: {items_after}")
           if sse: yield sse
@@ -1488,3 +1805,140 @@ async def demorouter_selftest(request: Request):
   return StreamingResponse(run_selftest(), media_type="text/event-stream")
 
 # ----------------------------------------- END: Selftest ----------------------------------------------------------------------
+
+
+# ----------------------------------------- START: Create Demo Items (long-running demo) ------------------------------------
+
+@router.get("/demorouter/create_demo_items")
+async def demorouter_create_demo_items(request: Request):
+  """
+  Create multiple demo items as a long-running operation demo.
+  
+  Only supports format=stream.
+  
+  Parameters:
+  - count: Number of items to create (default: 10)
+  - delay_ms: Delay per item in milliseconds (default: 300)
+  
+  Examples:
+  GET {router_prefix}/demorouter/create_demo_items?format=stream
+  GET {router_prefix}/demorouter/create_demo_items?format=stream&count=5&delay_ms=500
+  """
+  import asyncio, uuid, datetime
+  
+  request_params = dict(request.query_params)
+  
+  # Bare GET returns self-documentation
+  if len(request_params) == 0:
+    return PlainTextResponse(demorouter_create_demo_items.__doc__.replace("{router_prefix}", router_prefix), media_type="text/plain; charset=utf-8")
+  
+  format_param = request_params.get("format", "")
+  
+  if format_param != "stream":
+    return json_result(False, "This endpoint only supports format=stream", {})
+  
+  # Get parameters
+  try:
+    count = int(request_params.get("count", "10"))
+  except ValueError:
+    return json_result(False, "Invalid 'count' parameter. Must be integer.", {})
+  
+  try:
+    delay_ms = int(request_params.get("delay_ms", "300"))
+  except ValueError:
+    return json_result(False, "Invalid 'delay_ms' parameter. Must be integer.", {})
+  
+  if count < 1 or count > 100:
+    return json_result(False, "'count' must be between 1 and 100.", {})
+  
+  if delay_ms < 0 or delay_ms > 10000:
+    return json_result(False, "'delay_ms' must be between 0 and 10000.", {})
+  
+  # Create StreamingJobWriter for job file
+  writer = StreamingJobWriter(
+    persistent_storage_path=get_persistent_storage_path(),
+    router_name="demorouter",
+    action="create_demo_items",
+    object_id=None,
+    source_url=str(request.url),
+    router_prefix=router_prefix
+  )
+  stream_logger = MiddlewareLogger.create(stream_job_writer=writer)
+  stream_logger.log_function_header("demorouter_create_demo_items")
+  
+  async def stream_create_demo_items():
+    created_items = []
+    failed_items = []
+    batch_id = uuid.uuid4().hex[:8]
+    
+    try:
+      yield writer.emit_start()
+      
+      sse = stream_logger.log_function_output(f"Creating {count} demo items (batch ID='{batch_id}', delay={delay_ms}ms each)...")
+      if sse: yield sse
+      
+      for i in range(count):
+        item_id = f"demo_{batch_id}_{i+1:03d}"
+        item_data = {
+          "name": f"Demo Item {i+1}",
+          "batch_id": batch_id,
+          "sequence": i + 1,
+          "created_utc": datetime.datetime.utcnow().isoformat() + "Z"
+        }
+        
+        sse = stream_logger.log_function_output(f"[ {i+1} / {count} ] Creating item '{item_id}'...")
+        if sse: yield sse
+        
+        # Simulate long-running operation
+        await asyncio.sleep(delay_ms / 1000.0)
+        
+        # Check for control files (pause/cancel) - handles pause loop internally
+        log_events, control_action = await writer.check_control()
+        for sse in log_events:
+          yield sse
+        
+        # Handle cancel
+        if control_action == ControlAction.CANCEL:
+          sse = stream_logger.log_function_output(f"Cancelled after creating {len(created_items)} items.")
+          if sse: yield sse
+          stream_logger.log_function_footer()
+          yield writer.emit_end(ok=False, error="Cancelled by user.", data={"created": len(created_items), "items": created_items})
+          return
+        
+        # Create the item
+        try:
+          save_demo_item(item_id, item_data)
+          created_items.append(item_id)
+          sse = stream_logger.log_function_output("  OK.")
+          if sse: yield sse
+        except Exception as e:
+          failed_items.append({"item_id": item_id, "error": str(e)})
+          sse = stream_logger.log_function_output(f"  FAIL: {str(e)}")
+          if sse: yield sse
+      
+      # Summary
+      sse = stream_logger.log_function_output(f"")
+      if sse: yield sse
+      sse = stream_logger.log_function_output(f"Completed: {len(created_items)} created, {len(failed_items)} failed.")
+      if sse: yield sse
+      
+      stream_logger.log_function_footer()
+      
+      ok = len(failed_items) == 0
+      yield writer.emit_end(
+        ok=ok,
+        error="" if ok else f"{len(failed_items)} item(s) failed.",
+        data={"batch_id": batch_id, "created": len(created_items), "failed": len(failed_items), "items": created_items}
+      )
+      
+    except Exception as e:
+      sse = stream_logger.log_function_output(f"ERROR: {type(e).__name__}: {str(e)}")
+      if sse: yield sse
+      stream_logger.log_function_footer()
+      yield writer.emit_end(ok=False, error=str(e), data={"created": len(created_items), "items": created_items})
+    finally:
+      writer.finalize()
+  
+  return StreamingResponse(stream_create_demo_items(), media_type="text/event-stream")
+
+# ----------------------------------------- END: Create Demo Items (long-running demo) --------------------------------------
