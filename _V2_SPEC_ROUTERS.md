@@ -1078,6 +1078,179 @@ Expected outcome:
 			- Writes updated `vectorstore_map.csv` gracefully
 
 
+## MiddlewareLogger specification
+
+This section specifies the unified logging system for both non-streaming and streaming endpoints.
+
+### Functional Requirements
+
+**LOG-FR-01: Unified Logger Class**
+- Single `MiddlewareLogger` class handles all endpoint logging
+- Three methods: `log_function_header()`, `log_function_output()`, `log_function_footer()`
+- Replaces separate `log_data` dict pattern with stateful object
+
+**LOG-FR-02: Nested Function Support**
+- Logger tracks nesting depth via internal counter
+- Same logger instance passed to nested function calls
+- Outer function controls inner function logging behavior
+
+**LOG-FR-03: Configurable Inner Function Logging**
+- `log_inner_function_headers_and_footers` property controls if nested START/END lines are logged
+- When False: inner `log_function_header()` and `log_function_footer()` produce no output
+- `log_function_output()` always produces output regardless of nesting depth
+
+**LOG-FR-04: Indentation for Nested Logs**
+- `inner_log_indentation` property specifies spaces per nesting level (default: 2)
+- Indentation applied to MESSAGE portion only, not the bracket prefix
+
+**LOG-FR-05: Optional Streaming Integration**
+- `stream_job_writer` property optionally holds a `StreamingJobWriter` instance
+- When set: log methods return SSE-formatted strings for yielding
+- When None: log methods return None (server console only)
+
+**LOG-FR-06: Central Logger Configuration**
+- `MiddlewareLogger` uses module-level `logger` from `utils.py`
+- `logging.basicConfig()` in `utils.py` remains the single configuration point
+- Changes to log level, handlers, format apply to all `MiddlewareLogger` instances
+
+### Implementation Guarantees
+
+**LOG-IG-01:** Non-streaming endpoints have zero streaming overhead - no StreamingJobWriter created, no SSE formatting
+**LOG-IG-02:** All log output uses the same `logger.info()` call regardless of streaming mode
+**LOG-IG-03:** Server log format unchanged: `[TIMESTAMP,process PID,request N,top_function] MESSAGE`
+**LOG-IG-04:** Request counter is global and monotonically increasing across all endpoints
+**LOG-IG-05:** Nesting depth correctly tracks even with early returns or exceptions
+
+### MiddlewareLogger Class Definition
+
+```python
+# src/utils.py (add to existing file, after existing log functions)
+
+from dataclasses import dataclass, field
+from typing import Optional, List, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+  from routers_v2.router_job_functions import StreamingJobWriter
+
+@dataclass
+class MiddlewareLogger:
+  """Unified logger for FastAPI endpoints with optional streaming support."""
+  
+  # Configuration (set at creation)
+  log_inner_function_headers_and_footers: bool = True
+  inner_log_indentation: int = 2
+  stream_job_writer: Optional["StreamingJobWriter"] = None
+  
+  # State (managed internally)
+  _function_name: str = ""                                    # Top-level function name
+  _start_time: Optional[datetime.datetime] = None             # Top-level start time
+  _request_number: int = 0                                    # From global counter
+  _nesting_depth: int = 0                                     # 0 = top-level
+  _inner_stack: List[Tuple[str, datetime.datetime]] = field(default_factory=list)
+  
+  @classmethod
+  def create(cls,
+             log_inner_function_headers_and_footers: bool = True,
+             inner_log_indentation: int = 2,
+             stream_job_writer: Optional["StreamingJobWriter"] = None) -> "MiddlewareLogger":
+    """Factory method. Increments global request counter."""
+    global _request_counter
+    _request_counter += 1
+    instance = cls(
+      log_inner_function_headers_and_footers=log_inner_function_headers_and_footers,
+      inner_log_indentation=inner_log_indentation,
+      stream_job_writer=stream_job_writer,
+      _request_number=_request_counter
+    )
+    return instance
+  
+  def log_function_header(self, function_name: str) -> Optional[str]:
+    """
+    Log function start.
+    - depth=0: Always logs, sets top-level function name and start time
+    - depth>0: Logs only if log_inner_function_headers_and_footers=True
+    Returns: SSE event string if stream_job_writer set and output logged, else None
+    """
+  
+  def log_function_output(self, output: str) -> Optional[str]:
+    """
+    Log intermediate output. Always logs regardless of nesting depth.
+    Applies indentation based on current nesting depth.
+    Returns: SSE event string if stream_job_writer set, else None
+    """
+  
+  def log_function_footer(self) -> Optional[str]:
+    """
+    Log function end.
+    - depth>0: Pops from stack, logs if log_inner_function_headers_and_footers=True
+    - depth=0: Logs total duration (should not decrement below 0)
+    Returns: SSE event string if stream_job_writer set and output logged, else None
+    """
+  
+  def _apply_indentation(self, output: str) -> str:
+    """Apply indentation based on nesting depth."""
+  
+  def _log_to_console(self, message: str) -> None:
+    """Write to server console using standard format."""
+  
+  def _emit_to_stream(self, message: str) -> Optional[str]:
+    """Emit to stream if writer is set. Uses short format [TIMESTAMP] for SSE."""
+```
+
+### Log Output Formats
+
+**Server console logs** (full context for debugging):
+```
+[YYYY-MM-DD HH:MM:SS,process PID,request N,top_function] MESSAGE
+```
+
+**SSE events and job files** (timestamp only, context implicit from job):
+```
+[YYYY-MM-DD HH:MM:SS] MESSAGE
+```
+
+### Example: Server Console Output (log_inner=True, indent=2)
+
+```
+[2025-01-15 10:30:00,process 1234,request 1,crawl()] START: crawl()...
+[2025-01-15 10:30:00,process 1234,request 1,crawl()] Fetching file list...
+[2025-01-15 10:30:01,process 1234,request 1,crawl()]   START: process_file()...
+[2025-01-15 10:30:01,process 1234,request 1,crawl()]   [ 1 / 10 ] Processing 'doc.pdf'...
+[2025-01-15 10:30:02,process 1234,request 1,crawl()]     START: upload_to_openai()...
+[2025-01-15 10:30:03,process 1234,request 1,crawl()]     Uploading...
+[2025-01-15 10:30:03,process 1234,request 1,crawl()]     END: upload_to_openai() (1.0 sec).
+[2025-01-15 10:30:03,process 1234,request 1,crawl()]   OK.
+[2025-01-15 10:30:03,process 1234,request 1,crawl()]   END: process_file() (2.0 secs).
+[2025-01-15 10:30:04,process 1234,request 1,crawl()] END: crawl() (4.0 secs).
+```
+### Example: Server Console Output (log_inner=False, indent=2)
+
+```
+[2025-01-15 10:30:00,process 1234,request 1,crawl()] START: crawl()...
+[2025-01-15 10:30:00,process 1234,request 1,crawl()] Fetching file list...
+[2025-01-15 10:30:01,process 1234,request 1,crawl()]   [ 1 / 10 ] Processing 'doc.pdf'...
+[2025-01-15 10:30:03,process 1234,request 1,crawl()]     Uploading...
+[2025-01-15 10:30:03,process 1234,request 1,crawl()]   OK.
+[2025-01-15 10:30:04,process 1234,request 1,crawl()] END: crawl() (4.0 secs).
+```
+
+### Example: SSE/Job File Output (log_inner=True, indent=2)
+
+```
+[2025-01-15 10:30:00] START: crawl()...
+[2025-01-15 10:30:00] Fetching file list...
+[2025-01-15 10:30:01]   START: process_file()...
+[2025-01-15 10:30:01]   [ 1 / 10 ] Processing 'doc.pdf'...
+[2025-01-15 10:30:02]     START: upload_to_openai()...
+[2025-01-15 10:30:03]     Uploading...
+[2025-01-15 10:30:03]     END: upload_to_openai() (1.0 sec).
+[2025-01-15 10:30:03]   OK.
+[2025-01-15 10:30:03]   END: process_file() (2.0 secs).
+[2025-01-15 10:30:04] END: crawl() (4.0 secs).
+```
+
+
+
 ## Job streaming specification
 
 This section specifies the server-side implementation for streaming endpoints and job management.
@@ -1118,12 +1291,6 @@ This section specifies the server-side implementation for streaming endpoints an
 - Orphaned `.running` files indicate crashed jobs
 - No automatic recovery - manual cleanup or re-run required
 
-**STREAM-FR-09: Standard Logging**
-- Streaming jobs must use standard logging functions from `utils.py` alongside SSE output
-- Call `log_function_header()` at job start, `log_function_footer()` at job end
-- Use `log_function_output()` for progress and status messages during job execution
-- Standard logs go to server console/log files; SSE output goes to HTTP response and job file
-
 ### Implementation Guarantees
 
 **STREAM-IG-01:** Every job file contains exactly one `start_json` event as first content
@@ -1131,6 +1298,7 @@ This section specifies the server-side implementation for streaming endpoints an
 **STREAM-IG-03:** Job ID is unique across all routers for the lifetime of the jobs folder
 **STREAM-IG-04:** Control files are ephemeral - never persist after job processes them
 **STREAM-IG-05:** HTTP stream and job file content are byte-identical
+**STREAM-IG-06:** StreamingJobWriter has no dependency on MiddlewareLogger or FastAPI logging
 
 ### File Organization
 
@@ -1138,17 +1306,52 @@ V2 router files are located in `src/routers_v2/`:
 - `demorouter.py` - Demo router implementation
 - `router_job_functions.py` - Shared streaming job infrastructure (StreamingJobWriter, ControlAction, job file operations)
 
-### Example Endpoint Implementation
+### Example: Non-Streaming Endpoint
 
-**Depends on:** `SOPS.md` for implementation checklist.
+Shows MiddlewareLogger usage without streaming (LOG-IG-01 compliance):
+
+```python
+# routers_v2/inventory.py
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+from utils import MiddlewareLogger
+
+router = APIRouter()
+config = None
+
+def set_config(app_config, prefix):
+  global config
+  config = app_config
+
+@router.get("/inventory/list")
+async def list_inventory(request: Request):
+  logger = MiddlewareLogger.create()  # No stream_job_writer = no streaming overhead
+  logger.log_function_header("list_inventory()")
+  
+  logger.log_function_output("Fetching inventory...")
+  items = await fetch_items(logger)  # Pass logger to nested function
+  logger.log_function_output(f"Found {len(items)} items.")
+  
+  logger.log_function_footer()
+  return JSONResponse({"ok": True, "data": items})
+
+async def fetch_items(logger: MiddlewareLogger):
+  logger.log_function_header("fetch_items()")  # Logs if log_inner=True (default)
+  logger.log_function_output("Querying database...")
+  items = [...]  # do work
+  logger.log_function_footer()
+  return items
+```
+
+### Example: Streaming Endpoint
+
+Shows MiddlewareLogger with StreamingJobWriter integration:
 
 ```python
 # routers_v2/demorouter.py
-# Registered in app.py: app.include_router(demorouter.router, prefix="/v2")
-#                       demorouter.set_config(config, "/v2")
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
-from utils import log_function_header, log_function_footer, log_function_output
+from utils import MiddlewareLogger
 from routers_v2.router_job_functions import StreamingJobWriter, ControlAction
 
 router = APIRouter()
@@ -1188,8 +1391,8 @@ async def process_files(request: Request):
   source_url = f"{router_prefix}/demorouter/process_files?format=stream&files={file_count}"
   
   async def stream_generator():
-    log_data = log_function_header(function_name)
-    writer = (StreamingJobWriter(
+    # Create writer first (no logging dependency)
+    writer = StreamingJobWriter(
       persistent_storage_path=config.persistent_storage_path,
       router_name="demorouter",
       action=endpoint,
@@ -1197,13 +1400,23 @@ async def process_files(request: Request):
       source_url=source_url,
       router_prefix=router_prefix,
       buffer_size=PERSISTENT_STORAGE_LOG_EVENTS_PER_WRITE
-    ))
-    log_function_output(log_data, f"Created job '{writer.job_id}' for {file_count} files")
+    )
+    
+    # Create logger with writer attached
+    logger = MiddlewareLogger.create(
+      log_inner_function_headers_and_footers=False,
+      stream_job_writer=writer
+    )
     
     try:
+      sse = logger.log_function_header(function_name)
+      if sse: yield sse
+      
       yield writer.emit_start()
       
-      # Simulate file list
+      sse = logger.log_function_output(f"Created job '{writer.job_id}' for {file_count} files")
+      if sse: yield sse
+      
       simulated_files = [f"document_{i:03d}.pdf" for i in range(1, file_count + 1)]
       total = len(simulated_files)
       
@@ -1214,9 +1427,11 @@ async def process_files(request: Request):
           yield writer.emit_end(ok=False, error="Cancelled by user", data={"processed": i-1, "total": total})
           return
         
-        yield writer.emit_log_with_standard_logging(log_data, f"[ {i} / {total} ] Processing '{filename}'...")
+        sse = logger.log_function_output(f"[ {i} / {total} ] Processing '{filename}'...")
+        if sse: yield sse
         await asyncio.sleep(0.2)  # Simulate work
-        yield writer.emit_log_with_standard_logging(log_data, f"  OK.")
+        sse = logger.log_function_output(f"  OK.")
+        if sse: yield sse
       
       yield writer.emit_end(ok=True, data={"processed": total, "total": total})
       
@@ -1225,7 +1440,7 @@ async def process_files(request: Request):
     
     finally:
       writer.finalize()
-      await log_function_footer(log_data)
+      logger.log_function_footer()  # No yield needed for footer
   
   return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
@@ -1291,14 +1506,6 @@ class StreamingJobWriter:
     Emit log event. Buffered write to file. (STREAM-FR-03)
     Returns SSE-formatted string for HTTP response.
     """
-  
-  def emit_log_with_standard_logging(self, log_data, message: str) -> str:
-    """
-    Emit log event and also write to standard logging. (STREAM-FR-03, STREAM-FR-09)
-    Combines SSE output with server console/log file output.
-    """
-    log_function_output(log_data, message)
-    return self.emit_log(message)
   
   def emit_end(self, ok: bool, error: str = "", data: dict = None) -> str:
     """
