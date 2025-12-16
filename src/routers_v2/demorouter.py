@@ -3,6 +3,7 @@
 # See _V2_SPEC_ROUTERS.md for specification
 
 import json, os
+import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 
@@ -35,25 +36,25 @@ def ensure_demorouter_folder():
   return folder
 
 # Get path to a demo item file
-def get_demo_item_path(demo_id: str) -> str:
+def get_demo_item_path(item_id: str) -> str:
   folder = get_demorouter_folder()
-  return os.path.join(folder, f"{demo_id}.json")
+  return os.path.join(folder, f"{item_id}.json")
 
 # Load a demo item from file
-def load_demo_item(demo_id: str) -> dict | None:
-  path = get_demo_item_path(demo_id)
+def load_demo_item(item_id: str) -> dict | None:
+  path = get_demo_item_path(item_id)
   if not os.path.exists(path): return None
   with open(path, 'r', encoding='utf-8') as f: return json.load(f)
 
 # Save a demo item to file
-def save_demo_item(demo_id: str, data: dict) -> None:
+def save_demo_item(item_id: str, data: dict) -> None:
   ensure_demorouter_folder()
-  path = get_demo_item_path(demo_id)
+  path = get_demo_item_path(item_id)
   with open(path, 'w', encoding='utf-8') as f: json.dump(data, f, indent=2)
 
 # Delete a demo item file
-def delete_demo_item(demo_id: str) -> bool:
-  path = get_demo_item_path(demo_id)
+def delete_demo_item(item_id: str) -> bool:
+  path = get_demo_item_path(item_id)
   if not os.path.exists(path): return False
   os.remove(path)
   return True
@@ -65,9 +66,9 @@ def list_demo_items() -> list[dict]:
   items = []
   for filename in os.listdir(folder):
     if filename.endswith('.json'):
-      demo_id = filename[:-5]
-      item = load_demo_item(demo_id)
-      if item: items.append({"demo_id": demo_id, **item})
+      item_id = filename[:-5]
+      item = load_demo_item(item_id)
+      if item: items.append({"item_id": item_id, **item})
   return items
 
 # Generate JSON response with consistent format
@@ -105,10 +106,10 @@ async def demorouter_root(request: Request):
   
   Endpoints:
   - {router_prefix}/demorouter - List all demo items (json, html, ui)
-  - {router_prefix}/demorouter/get?demo_id={id} - Get single item (json, html)
+  - {router_prefix}/demorouter/get?item_id={id} - Get single item (json, html)
   - {router_prefix}/demorouter/create - Create item (json, html, stream)
-  - {router_prefix}/demorouter/update?demo_id={id} - Update item (json, html, stream)
-  - {router_prefix}/demorouter/delete?demo_id={id} - Delete item (json, html, stream)
+  - {router_prefix}/demorouter/update?item_id={id} - Update item (json, html, stream)
+  - {router_prefix}/demorouter/delete?item_id={id} - Delete item (json, html, stream)
   - {router_prefix}/demorouter/selftest - Run CRUD self-test (stream only)
   """
   logger = MiddlewareLogger.create()
@@ -134,7 +135,7 @@ async def demorouter_root(request: Request):
   <h4>Available Endpoints</h4>
   <ul>
     <li><a href="{router_prefix}/demorouter">{router_prefix}/demorouter</a> - List all (<a href="{router_prefix}/demorouter?format=json">JSON</a> | <a href="{router_prefix}/demorouter?format=html">HTML</a> | <a href="{router_prefix}/demorouter?format=ui">UI</a>)</li>
-    <li><a href="{router_prefix}/demorouter/get">{router_prefix}/demorouter/get</a> - Get single item (<a href="{router_prefix}/demorouter/get?demo_id=example&format=json">JSON</a> | <a href="{router_prefix}/demorouter/get?demo_id=example&format=html">HTML</a>)</li>
+    <li><a href="{router_prefix}/demorouter/get">{router_prefix}/demorouter/get</a> - Get single item (<a href="{router_prefix}/demorouter/get?item_id=example&format=json">JSON</a> | <a href="{router_prefix}/demorouter/get?item_id=example&format=html">HTML</a>)</li>
     <li><a href="{router_prefix}/demorouter/create">{router_prefix}/demorouter/create</a> - Create item (POST)</li>
     <li><a href="{router_prefix}/demorouter/update">{router_prefix}/demorouter/update</a> - Update item (PUT)</li>
     <li><a href="{router_prefix}/demorouter/delete">{router_prefix}/demorouter/delete</a> - Delete item (DELETE/GET)</li>
@@ -163,11 +164,11 @@ async def demorouter_root(request: Request):
     logger.log_function_footer()
     rows_html = ""
     for item in items:
-      demo_id = item.get("demo_id", "")
+      item_id = item.get("item_id", "")
       rows_html += f"""<tr>
-        <td>{demo_id}</td>
-        <td><button class="btn-small" hx-get="{router_prefix}/demorouter/get?demo_id={demo_id}&format=html" hx-target="#detail">View</button>
-            <button class="btn-small btn-delete" hx-delete="{router_prefix}/demorouter/delete?demo_id={demo_id}" hx-confirm="Delete {demo_id}?" hx-swap="none">Delete</button></td>
+        <td>{item_id}</td>
+        <td><button class="btn-small" hx-get="{router_prefix}/demorouter/get?item_id={item_id}&format=html" hx-target="#detail">View</button>
+            <button class="btn-small btn-delete" hx-delete="{router_prefix}/demorouter/delete?item_id={item_id}" hx-confirm="Delete {item_id}?" hx-swap="none">Delete</button></td>
       </tr>"""
     if not items: rows_html = '<tr><td colspan="2">No demo items found</td></tr>'
     
@@ -212,12 +213,12 @@ async def demorouter_get(request: Request):
   Get a single demo item by ID.
   
   Parameters:
-  - demo_id: ID of the demo item (required)
+  - item_id: ID of the demo item (required)
   - format: Response format - json (default), html
   
   Examples:
-  {router_prefix}/demorouter/get?demo_id=example
-  {router_prefix}/demorouter/get?demo_id=example&format=html
+  {router_prefix}/demorouter/get?item_id=example
+  {router_prefix}/demorouter/get?item_id=example&format=html
   """
   logger = MiddlewareLogger.create()
   logger.log_function_header("demorouter_get")
@@ -228,23 +229,23 @@ async def demorouter_get(request: Request):
     return PlainTextResponse(demorouter_get.__doc__.replace("{router_prefix}", router_prefix), media_type="text/plain; charset=utf-8")
   
   request_params = dict(request.query_params)
-  demo_id = request_params.get("demo_id", None)
+  item_id = request_params.get("item_id", None)
   format_param = request_params.get("format", "json")
   
-  # Validate demo_id
-  if not demo_id:
+  # Validate item_id
+  if not item_id:
     logger.log_function_footer()
-    if format_param == "html": return html_result("Error", {"error": "Missing 'demo_id' parameter."}, f"{router_prefix}/demorouter")
-    return json_result(False, "Missing 'demo_id' parameter.", {})
+    if format_param == "html": return html_result("Error", {"error": "Missing 'item_id' parameter."}, f"{router_prefix}/demorouter")
+    return json_result(False, "Missing 'item_id' parameter.", {})
   
   # Load item
-  item = load_demo_item(demo_id)
+  item = load_demo_item(item_id)
   if item is None:
     logger.log_function_footer()
-    if format_param == "html": return html_result("Not Found", {"error": f"Demo item '{demo_id}' not found."}, f"{router_prefix}/demorouter")
-    return JSONResponse({"ok": False, "error": f"Demo item '{demo_id}' not found.", "data": {}}, status_code=404)
+    if format_param == "html": return html_result("Not Found", {"error": f"Demo item '{item_id}' not found."}, f"{router_prefix}/demorouter")
+    return JSONResponse({"ok": False, "error": f"Demo item '{item_id}' not found.", "data": {}}, status_code=404)
   
-  item_with_id = {"demo_id": demo_id, **item}
+  item_with_id = {"item_id": item_id, **item}
   
   if format_param == "json":
     logger.log_function_footer()
@@ -252,7 +253,7 @@ async def demorouter_get(request: Request):
   
   if format_param == "html":
     logger.log_function_footer()
-    return html_result(f"Demo Item: {demo_id}", item_with_id, f"{router_prefix}/demorouter?format=ui")
+    return html_result(f"Demo Item: {item_id}", item_with_id, f"{router_prefix}/demorouter?format=ui")
   
   logger.log_function_footer()
   return json_result(False, f"Format '{format_param}' not supported. Use: json, html", {})
@@ -269,15 +270,17 @@ async def demorouter_create_docs():
   
   Method: POST
   
-  Parameters (query or body):
-  - demo_id: ID for the new item (required)
-  - data: JSON object with item data (optional, default: {{}})
+  Body (JSON or form data):
+  - item_id: ID for the new item (required)
+  - [other fields]: Additional item data
+  
+  Query params:
   - format: Response format - json (default), html, stream
   - dry_run: If true, validate only without creating (optional)
   
   Examples:
-  POST {router_prefix}/demorouter/create?demo_id=example
-  POST {router_prefix}/demorouter/create with body {{"demo_id": "example", "name": "Test"}}
+  POST {router_prefix}/demorouter/create with JSON body {{"item_id": "example", "name": "Test"}}
+  POST {router_prefix}/demorouter/create with form data: item_id=example&name=Test
   """
   return PlainTextResponse(demorouter_create_docs.__doc__.replace("{router_prefix}", router_prefix), media_type="text/plain; charset=utf-8")
 
@@ -286,33 +289,47 @@ async def demorouter_create(request: Request):
   logger = MiddlewareLogger.create()
   logger.log_function_header("demorouter_create")
   
-  # Parse params from query and body
-  request_params = dict(request.query_params)
+  # Control params from query string only
+  query_params = dict(request.query_params)
+  format_param = query_params.get("format", "json")
+  dry_run = str(query_params.get("dry_run", "false")).lower() == "true"
+  
+  # Data from body only (JSON or form) per DD-E005
+  body_data = {}
+  content_type = request.headers.get("content-type", "")
   try:
-    body = await request.json()
-    if isinstance(body, dict): request_params.update(body)
+    if "application/json" in content_type:
+      body_data = await request.json()
+    elif "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
+      form = await request.form()
+      body_data = dict(form)
+    else:
+      # Try JSON first, then form
+      try:
+        body_data = await request.json()
+      except:
+        form = await request.form()
+        body_data = dict(form)
   except: pass
   
-  demo_id = request_params.get("demo_id", None)
-  format_param = request_params.get("format", "json")
-  dry_run = str(request_params.get("dry_run", "false")).lower() == "true"
+  item_id = body_data.get("item_id", None)
   
-  # Validate demo_id
-  if not demo_id:
+  # Validate item_id
+  if not item_id:
     logger.log_function_footer()
-    return json_result(False, "Missing 'demo_id' parameter.", {})
+    return json_result(False, "Missing 'item_id' in request body.", {})
   
   # Check if already exists
-  if load_demo_item(demo_id) is not None:
+  if load_demo_item(item_id) is not None:
     logger.log_function_footer()
-    return json_result(False, f"Demo item '{demo_id}' already exists.", {"demo_id": demo_id})
+    return json_result(False, f"Demo item '{item_id}' already exists.", {"item_id": item_id})
   
   # Build item data (exclude control params)
-  item_data = {k: v for k, v in request_params.items() if k not in ["demo_id", "format", "dry_run"]}
+  item_data = {k: v for k, v in body_data.items() if k not in ["item_id", "format", "dry_run"]}
   
   if dry_run:
     logger.log_function_footer()
-    return json_result(True, "", {"demo_id": demo_id, "dry_run": True, "would_create": item_data})
+    return json_result(True, "", {"item_id": item_id, "dry_run": True, "would_create": item_data})
   
   # format=stream - uses StreamingJobWriter for dual output (STREAM-FR-01)
   if format_param == "stream":
@@ -320,7 +337,7 @@ async def demorouter_create(request: Request):
       persistent_storage_path=get_persistent_storage_path(),
       router_name="demorouter",
       action="create",
-      object_id=demo_id,
+      object_id=item_id,
       source_url=str(request.url),
       router_prefix=router_prefix
     )
@@ -330,24 +347,24 @@ async def demorouter_create(request: Request):
     async def stream_create():
       try:
         yield writer.emit_start()
-        sse = stream_logger.log_function_output(f"Creating demo item '{demo_id}'...")
+        sse = stream_logger.log_function_output(f"Creating demo item '{item_id}'...")
         if sse: yield sse
-        save_demo_item(demo_id, item_data)
+        save_demo_item(item_id, item_data)
         sse = stream_logger.log_function_output("  OK.")
         if sse: yield sse
         stream_logger.log_function_footer()
-        yield writer.emit_end(ok=True, data={"demo_id": demo_id, **item_data})
+        yield writer.emit_end(ok=True, data={"item_id": item_id, **item_data})
       finally:
         writer.finalize()
     return StreamingResponse(stream_create(), media_type="text/event-stream")
   
   # Create item
-  save_demo_item(demo_id, item_data)
-  result = {"demo_id": demo_id, **item_data}
+  save_demo_item(item_id, item_data)
+  result = {"item_id": item_id, **item_data}
   
   if format_param == "html":
     logger.log_function_footer()
-    return html_result(f"Created: {demo_id}", result, f"{router_prefix}/demorouter?format=ui")
+    return html_result(f"Created: {item_id}", result, f"{router_prefix}/demorouter?format=ui")
   
   logger.log_function_footer()
   return json_result(True, "", result)
@@ -364,15 +381,17 @@ async def demorouter_update_docs():
   
   Method: PUT
   
-  Parameters (query or body):
-  - demo_id: ID of the item to update (required)
+  Query params:
+  - item_id: ID of the item to update (required)
   - format: Response format - json (default), html, stream
   - dry_run: If true, validate only without updating (optional)
-  - Other fields: Will be merged into existing item data
+  
+  Body (JSON or form data):
+  - [fields]: Fields to merge into existing item data
   
   Examples:
-  PUT {router_prefix}/demorouter/update?demo_id=example&name=NewName
-  PUT {router_prefix}/demorouter/update with body {{"demo_id": "example", "name": "NewName"}}
+  PUT {router_prefix}/demorouter/update?item_id=example with JSON body {{"name": "NewName"}}
+  PUT {router_prefix}/demorouter/update?item_id=example with form data: name=NewName
   """
   return PlainTextResponse(demorouter_update_docs.__doc__.replace("{router_prefix}", router_prefix), media_type="text/plain; charset=utf-8")
 
@@ -381,35 +400,48 @@ async def demorouter_update(request: Request):
   logger = MiddlewareLogger.create()
   logger.log_function_header("demorouter_update")
   
-  # Parse params from query and body
-  request_params = dict(request.query_params)
+  # Identifier and control params from query string per DD-E011
+  query_params = dict(request.query_params)
+  item_id = query_params.get("item_id", None)
+  format_param = query_params.get("format", "json")
+  dry_run = str(query_params.get("dry_run", "false")).lower() == "true"
+  
+  # Validate item_id
+  if not item_id:
+    logger.log_function_footer()
+    return json_result(False, "Missing 'item_id' query parameter.", {})
+  
+  # Update data from body (JSON or form) per DD-E005
+  body_data = {}
+  content_type = request.headers.get("content-type", "")
   try:
-    body = await request.json()
-    if isinstance(body, dict): request_params.update(body)
+    if "application/json" in content_type:
+      body_data = await request.json()
+    elif "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
+      form = await request.form()
+      body_data = dict(form)
+    else:
+      # Try JSON first, then form
+      try:
+        body_data = await request.json()
+      except:
+        form = await request.form()
+        body_data = dict(form)
   except: pass
   
-  demo_id = request_params.get("demo_id", None)
-  format_param = request_params.get("format", "json")
-  dry_run = str(request_params.get("dry_run", "false")).lower() == "true"
-  
-  # Validate demo_id
-  if not demo_id:
-    logger.log_function_footer()
-    return json_result(False, "Missing 'demo_id' parameter.", {})
-  
   # Check if exists
-  existing = load_demo_item(demo_id)
+  existing = load_demo_item(item_id)
   if existing is None:
     logger.log_function_footer()
-    return JSONResponse({"ok": False, "error": f"Demo item '{demo_id}' not found.", "data": {}}, status_code=404)
+    return JSONResponse({"ok": False, "error": f"Demo item '{item_id}' not found.", "data": {}}, status_code=404)
   
   # Build update data (exclude control params)
-  update_data = {k: v for k, v in request_params.items() if k not in ["demo_id", "format", "dry_run"]}
+  update_data = {k: v for k, v in body_data.items() if k not in ["item_id", "format", "dry_run"]}
   merged_data = {**existing, **update_data}
   
   if dry_run:
     logger.log_function_footer()
-    return json_result(True, "", {"demo_id": demo_id, "dry_run": True, "would_update": merged_data})
+    return json_result(True, "", {"item_id": item_id, "dry_run": True, "would_update": merged_data})
   
   # format=stream - uses StreamingJobWriter for dual output (STREAM-FR-01)
   if format_param == "stream":
@@ -417,7 +449,7 @@ async def demorouter_update(request: Request):
       persistent_storage_path=get_persistent_storage_path(),
       router_name="demorouter",
       action="update",
-      object_id=demo_id,
+      object_id=item_id,
       source_url=str(request.url),
       router_prefix=router_prefix
     )
@@ -427,24 +459,24 @@ async def demorouter_update(request: Request):
     async def stream_update():
       try:
         yield writer.emit_start()
-        sse = stream_logger.log_function_output(f"Updating demo item '{demo_id}'...")
+        sse = stream_logger.log_function_output(f"Updating demo item '{item_id}'...")
         if sse: yield sse
-        save_demo_item(demo_id, merged_data)
+        save_demo_item(item_id, merged_data)
         sse = stream_logger.log_function_output("  OK.")
         if sse: yield sse
         stream_logger.log_function_footer()
-        yield writer.emit_end(ok=True, data={"demo_id": demo_id, **merged_data})
+        yield writer.emit_end(ok=True, data={"item_id": item_id, **merged_data})
       finally:
         writer.finalize()
     return StreamingResponse(stream_update(), media_type="text/event-stream")
   
   # Update item
-  save_demo_item(demo_id, merged_data)
-  result = {"demo_id": demo_id, **merged_data}
+  save_demo_item(item_id, merged_data)
+  result = {"item_id": item_id, **merged_data}
   
   if format_param == "html":
     logger.log_function_footer()
-    return html_result(f"Updated: {demo_id}", result, f"{router_prefix}/demorouter?format=ui")
+    return html_result(f"Updated: {item_id}", result, f"{router_prefix}/demorouter?format=ui")
   
   logger.log_function_footer()
   return json_result(True, "", result)
@@ -462,13 +494,13 @@ async def demorouter_delete_docs(request: Request):
   Method: DELETE or GET
   
   Parameters:
-  - demo_id: ID of the item to delete (required)
+  - item_id: ID of the item to delete (required)
   - format: Response format - json (default), html, stream
   - dry_run: If true, validate only without deleting (optional)
   
   Examples:
-  DELETE {router_prefix}/demorouter/delete?demo_id=example
-  GET {router_prefix}/demorouter/delete?demo_id=example
+  DELETE {router_prefix}/demorouter/delete?item_id=example
+  GET {router_prefix}/demorouter/delete?item_id=example
   """
   # Return self-documentation if no params
   if len(request.query_params) == 0:
@@ -486,24 +518,24 @@ async def demorouter_delete_impl(request: Request):
   logger.log_function_header("demorouter_delete")
   
   request_params = dict(request.query_params)
-  demo_id = request_params.get("demo_id", None)
+  item_id = request_params.get("item_id", None)
   format_param = request_params.get("format", "json")
   dry_run = str(request_params.get("dry_run", "false")).lower() == "true"
   
-  # Validate demo_id
-  if not demo_id:
+  # Validate item_id
+  if not item_id:
     logger.log_function_footer()
-    return json_result(False, "Missing 'demo_id' parameter.", {})
+    return json_result(False, "Missing 'item_id' parameter.", {})
   
   # Check if exists
-  existing = load_demo_item(demo_id)
+  existing = load_demo_item(item_id)
   if existing is None:
     logger.log_function_footer()
-    return JSONResponse({"ok": False, "error": f"Demo item '{demo_id}' not found.", "data": {}}, status_code=404)
+    return JSONResponse({"ok": False, "error": f"Demo item '{item_id}' not found.", "data": {}}, status_code=404)
   
   if dry_run:
     logger.log_function_footer()
-    return json_result(True, "", {"demo_id": demo_id, "dry_run": True, "would_delete": existing})
+    return json_result(True, "", {"item_id": item_id, "dry_run": True, "would_delete": existing})
   
   # format=stream - uses StreamingJobWriter for dual output (STREAM-FR-01)
   if format_param == "stream":
@@ -511,7 +543,7 @@ async def demorouter_delete_impl(request: Request):
       persistent_storage_path=get_persistent_storage_path(),
       router_name="demorouter",
       action="delete",
-      object_id=demo_id,
+      object_id=item_id,
       source_url=str(request.url),
       router_prefix=router_prefix
     )
@@ -521,24 +553,24 @@ async def demorouter_delete_impl(request: Request):
     async def stream_delete():
       try:
         yield writer.emit_start()
-        sse = stream_logger.log_function_output(f"Deleting demo item '{demo_id}'...")
+        sse = stream_logger.log_function_output(f"Deleting demo item '{item_id}'...")
         if sse: yield sse
-        delete_demo_item(demo_id)
+        delete_demo_item(item_id)
         sse = stream_logger.log_function_output("  OK.")
         if sse: yield sse
         stream_logger.log_function_footer()
-        yield writer.emit_end(ok=True, data={"demo_id": demo_id})
+        yield writer.emit_end(ok=True, data={"item_id": item_id})
       finally:
         writer.finalize()
     return StreamingResponse(stream_delete(), media_type="text/event-stream")
   
   # Delete item
-  deleted_data = {"demo_id": demo_id, **existing}
-  delete_demo_item(demo_id)
+  deleted_data = {"item_id": item_id, **existing}
+  delete_demo_item(item_id)
   
   if format_param == "html":
     logger.log_function_footer()
-    return html_result(f"Deleted: {demo_id}", deleted_data, f"{router_prefix}/demorouter?format=ui")
+    return html_result(f"Deleted: {item_id}", deleted_data, f"{router_prefix}/demorouter?format=ui")
   
   logger.log_function_footer()
   return json_result(True, "", deleted_data)
@@ -580,6 +612,9 @@ async def demorouter_selftest(request: Request):
   if format_param != "stream":
     return json_result(False, "Selftest only supports format=stream", {})
   
+  # Get base URL for HTTP calls to self
+  base_url = str(request.base_url).rstrip("/")
+  
   # Create StreamingJobWriter for job file
   writer = StreamingJobWriter(
     persistent_storage_path=get_persistent_storage_path(),
@@ -589,8 +624,8 @@ async def demorouter_selftest(request: Request):
     source_url=str(request.url),
     router_prefix=router_prefix
   )
-  logger = MiddlewareLogger.create(stream_job_writer=writer)
-  logger.log_function_header("demorouter_selftest")
+  stream_logger = MiddlewareLogger.create(stream_job_writer=writer)
+  stream_logger.log_function_header("demorouter_selftest")
   
   # Test item data
   test_id = f"selftest_{uuid.uuid4().hex[:8]}"
@@ -603,7 +638,7 @@ async def demorouter_selftest(request: Request):
     
     def log(msg: str):
       nonlocal passed, failed
-      sse = logger.log_function_output(msg)
+      sse = stream_logger.log_function_output(msg)
       return sse
     
     def check(condition: bool, pass_msg: str, fail_msg: str):
@@ -618,89 +653,230 @@ async def demorouter_selftest(request: Request):
     try:
       yield writer.emit_start()
       
-      # ===== TEST 1: Create item =====
-      sse = log(f"[Test 1] Creating item '{test_id}'...")
-      if sse: yield sse
-      
-      # 1a) Create using direct function (simulates JSON body)
-      save_demo_item(test_id, test_data_v1)
-      created = load_demo_item(test_id)
-      sse = check(created is not None, f"Item created successfully", f"Item creation failed")
-      if sse: yield sse
-      
-      # ===== TEST 2: Get item =====
-      sse = log(f"[Test 2] Getting item '{test_id}'...")
-      if sse: yield sse
-      
-      # 2a) Get without format (defaults to json)
-      item = load_demo_item(test_id)
-      sse = check(item is not None, "Get item (no format) returned data", "Get item returned None")
-      if sse: yield sse
-      
-      # 2b) Verify content matches
-      content_match = (item.get("name") == test_data_v1["name"] and item.get("version") == test_data_v1["version"])
-      sse = check(content_match, f"Content matches: name='{item.get('name')}', version={item.get('version')}", f"Content mismatch: expected {test_data_v1}, got {item}")
-      if sse: yield sse
-      
-      # ===== TEST 3: List all items =====
-      sse = log(f"[Test 3] Listing all items...")
-      if sse: yield sse
-      
-      items = list_demo_items()
-      item_ids = [i.get("demo_id") for i in items]
-      sse = check(test_id in item_ids, f"Item '{test_id}' found in list ({len(items)} total items)", f"Item '{test_id}' NOT found in list")
-      if sse: yield sse
-      
-      # ===== TEST 4: Update item =====
-      sse = log(f"[Test 4] Updating item '{test_id}'...")
-      if sse: yield sse
-      
-      # 4a) Update using direct function (simulates PUT with JSON body)
-      existing = load_demo_item(test_id)
-      merged = {**existing, **test_data_v2}
-      save_demo_item(test_id, merged)
-      
-      # 4b) Get and verify update
-      updated = load_demo_item(test_id)
-      update_ok = (updated.get("name") == test_data_v2["name"] and updated.get("version") == test_data_v2["version"])
-      sse = check(update_ok, f"Update verified: name='{updated.get('name')}', version={updated.get('version')}", f"Update failed: expected {test_data_v2}, got {updated}")
-      if sse: yield sse
-      
-      # Verify original field preserved
-      created_preserved = updated.get("created") == test_data_v1["created"]
-      sse = check(created_preserved, f"Original 'created' field preserved", f"Original 'created' field lost")
-      if sse: yield sse
-      
-      # ===== TEST 5: Delete with dry_run, then actual delete =====
-      sse = log(f"[Test 5] Deleting item '{test_id}'...")
-      if sse: yield sse
-      
-      # 5a) Dry run - item should still exist
-      before_dry = load_demo_item(test_id)
-      sse = check(before_dry is not None, "dry_run=true: Item still exists before simulated delete", "Item missing before dry_run")
-      if sse: yield sse
-      
-      # 5b) Actual delete
-      delete_result = delete_demo_item(test_id)
-      sse = check(delete_result, "Actual delete returned True", "Actual delete returned False")
-      if sse: yield sse
-      
-      # ===== TEST 6: Get deleted item - expect None =====
-      sse = log(f"[Test 6] Getting deleted item '{test_id}'...")
-      if sse: yield sse
-      
-      deleted_item = load_demo_item(test_id)
-      sse = check(deleted_item is None, "Get deleted item correctly returned None (404)", f"Get deleted item unexpectedly returned data: {deleted_item}")
-      if sse: yield sse
-      
-      # ===== TEST 7: List all - verify item removed =====
-      sse = log(f"[Test 7] Listing all items (verify removal)...")
-      if sse: yield sse
-      
-      items_after = list_demo_items()
-      item_ids_after = [i.get("demo_id") for i in items_after]
-      sse = check(test_id not in item_ids_after, f"Item '{test_id}' correctly removed from list", f"Item '{test_id}' still in list after delete!")
-      if sse: yield sse
+      async with httpx.AsyncClient(timeout=30.0) as client:
+        create_url = f"{base_url}{router_prefix}/demorouter/create"
+        update_url = f"{base_url}{router_prefix}/demorouter/update"
+        get_url = f"{base_url}{router_prefix}/demorouter/get?item_id={test_id}&format=json"
+        list_url = f"{base_url}{router_prefix}/demorouter?format=json"
+        delete_url = f"{base_url}{router_prefix}/demorouter/delete?item_id={test_id}"
+        
+        # ===== TEST 1: Error cases =====
+        sse = log(f"[Test 1] Error cases...")
+        if sse: yield sse
+        
+        # 1a) POST /create without body -> error
+        r = await client.post(create_url)
+        sse = check(r.json().get("ok") == False, "POST /create without body returns error", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        # 1b) PUT /update without body -> error
+        r = await client.put(update_url)
+        sse = check(r.json().get("ok") == False, "PUT /update without body returns error", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        # 1c) GET /get without item_id -> error
+        r = await client.get(f"{base_url}{router_prefix}/demorouter/get?format=json")
+        sse = check(r.json().get("ok") == False, "GET /get without item_id returns error", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        # 1d) DELETE /delete without item_id -> error
+        r = await client.delete(f"{base_url}{router_prefix}/demorouter/delete")
+        sse = check(r.json().get("ok") == False, "DELETE /delete without item_id returns error", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        # 1e) PUT /update non-existent item -> 404
+        r = await client.put(f"{update_url}?item_id=nonexistent_item_xyz", json={})
+        sse = check(r.status_code == 404, "PUT /update non-existent returns 404", f"Expected 404, got: {r.status_code}")
+        if sse: yield sse
+        
+        # 1f) DELETE /delete non-existent item -> 404
+        r = await client.delete(f"{base_url}{router_prefix}/demorouter/delete?item_id=nonexistent_item_xyz")
+        sse = check(r.status_code == 404, "DELETE /delete non-existent returns 404", f"Expected 404, got: {r.status_code}")
+        if sse: yield sse
+        
+        # 1g) PUT /update without item_id query param -> error
+        r = await client.put(f"{update_url}?format=json", json={"name": "Test"})
+        sse = check(r.json().get("ok") == False, "PUT /update without item_id query param returns error", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        # 1h) POST /create with empty body {} -> missing item_id error
+        r = await client.post(create_url, json={})
+        sse = check(r.json().get("ok") == False and "item_id" in r.json().get("error", "").lower(), 
+                    "POST /create with {} body returns item_id error", f"Expected item_id error, got: {r.json()}")
+        if sse: yield sse
+        
+        # ===== TEST 2: Create with JSON body =====
+        sse = log(f"[Test 2] POST /create with JSON body - Creating '{test_id}'...")
+        if sse: yield sse
+        
+        r = await client.post(create_url, json={"item_id": test_id, **test_data_v1})
+        result = r.json()
+        sse = check(r.status_code == 200, "POST /create returns HTTP 200", f"Expected 200, got: {r.status_code}")
+        if sse: yield sse
+        sse = check(result.get("ok") == True and result.get("error") == "" and "data" in result,
+                    "Response has {ok:true, error:'', data:...} structure", f"Bad structure: {result}")
+        if sse: yield sse
+        
+        # 2b) Create duplicate -> error
+        r = await client.post(create_url, json={"item_id": test_id, "name": "Duplicate"})
+        sse = check(r.json().get("ok") == False, "POST /create duplicate returns error", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        # ===== TEST 3: Get item =====
+        sse = log(f"[Test 3] GET /get - Verifying created item...")
+        if sse: yield sse
+        
+        r = await client.get(get_url)
+        result = r.json()
+        sse = check(r.status_code == 200, "GET /get returns HTTP 200", f"Expected 200, got: {r.status_code}")
+        if sse: yield sse
+        sse = check(result.get("ok") == True and "data" in result, "GET /get returned ok=true with data", f"Failed: {result}")
+        if sse: yield sse
+        
+        item_data = result.get("data", {})
+        match = (item_data.get("name") == test_data_v1["name"] and item_data.get("version") == test_data_v1["version"])
+        sse = check(match, f"Content matches: name='{item_data.get('name')}', version={item_data.get('version')}", f"Mismatch: {item_data}")
+        if sse: yield sse
+        
+        # ===== TEST 4: List all items =====
+        sse = log(f"[Test 4] GET / - Listing all items...")
+        if sse: yield sse
+        
+        r = await client.get(list_url)
+        list_result = r.json()
+        sse = check(r.status_code == 200, "GET / returns HTTP 200", f"Expected 200, got: {r.status_code}")
+        if sse: yield sse
+        sse = check(isinstance(list_result.get("data"), list), "List data is array", f"Expected array, got: {type(list_result.get('data'))}")
+        if sse: yield sse
+        items = list_result.get("data", [])
+        item_ids = [i.get("item_id") for i in items]
+        sse = check(test_id in item_ids, f"Item found in list ({len(items)} total)", f"Item NOT found in list")
+        if sse: yield sse
+        
+        # ===== TEST 5: dry_run for create =====
+        sse = log(f"[Test 5] POST /create?dry_run=true...")
+        if sse: yield sse
+        
+        test_id_dry = f"{test_id}_dry"
+        r = await client.post(f"{create_url}?dry_run=true", json={"item_id": test_id_dry, "name": "DryRun"})
+        result = r.json()
+        sse = check(result.get("ok") == True and result.get("data", {}).get("dry_run") == True, 
+                    "dry_run=true returns ok with dry_run flag", f"Failed: {result}")
+        if sse: yield sse
+        
+        # Verify item was NOT created
+        r = await client.get(f"{base_url}{router_prefix}/demorouter/get?item_id={test_id_dry}&format=json")
+        sse = check(r.status_code == 404, "dry_run did NOT create item (404)", f"Item was created! Status: {r.status_code}")
+        if sse: yield sse
+        
+        # ===== TEST 6: Update with JSON body =====
+        sse = log(f"[Test 6] PUT /update with JSON body...")
+        if sse: yield sse
+        
+        r = await client.put(f"{update_url}?item_id={test_id}", json=test_data_v2)
+        sse = check(r.json().get("ok") == True, "PUT /update ok=true", f"Failed: {r.json().get('error')}")
+        if sse: yield sse
+        
+        # Verify update
+        r = await client.get(get_url)
+        updated = r.json().get("data", {})
+        sse = check(updated.get("name") == test_data_v2["name"] and updated.get("version") == test_data_v2["version"],
+                    f"Update verified: name='{updated.get('name')}', version={updated.get('version')}", f"Mismatch: {updated}")
+        if sse: yield sse
+        
+        # Verify original field preserved
+        sse = check(updated.get("created") == test_data_v1["created"], "Original 'created' field preserved", "Field lost")
+        if sse: yield sse
+        
+        # ===== TEST 7: dry_run for update =====
+        sse = log(f"[Test 7] PUT /update?dry_run=true...")
+        if sse: yield sse
+        
+        r = await client.put(f"{update_url}?item_id={test_id}&dry_run=true", json={"name": "ShouldNotChange"})
+        result = r.json()
+        sse = check(result.get("ok") == True and result.get("data", {}).get("dry_run") == True,
+                    "dry_run=true returns ok with dry_run flag", f"Failed: {result}")
+        if sse: yield sse
+        
+        # Verify item was NOT changed
+        r = await client.get(get_url)
+        sse = check(r.json().get("data", {}).get("name") == test_data_v2["name"], 
+                    "dry_run did NOT change item", f"Item was changed! Name: {r.json().get('data', {}).get('name')}")
+        if sse: yield sse
+        
+        # ===== TEST 8: Create with form data =====
+        sse = log(f"[Test 8] POST /create with form data...")
+        if sse: yield sse
+        
+        test_id_form = f"{test_id}_form"
+        r = await client.post(create_url, data={"item_id": test_id_form, "name": "FormItem", "source": "form"})
+        sse = check(r.json().get("ok") == True, "POST /create with form data ok=true", f"Failed: {r.json().get('error')}")
+        if sse: yield sse
+        
+        # Verify form-created item
+        r = await client.get(f"{base_url}{router_prefix}/demorouter/get?item_id={test_id_form}&format=json")
+        form_item = r.json().get("data", {})
+        sse = check(form_item.get("name") == "FormItem" and form_item.get("source") == "form",
+                    f"Form item verified: name='{form_item.get('name')}', source='{form_item.get('source')}'", f"Mismatch: {form_item}")
+        if sse: yield sse
+        
+        # ===== TEST 9: Update with form data =====
+        sse = log(f"[Test 9] PUT /update with form data...")
+        if sse: yield sse
+        
+        r = await client.put(f"{update_url}?item_id={test_id_form}", data={"name": "UpdatedFormItem"})
+        sse = check(r.json().get("ok") == True, "PUT /update with form data ok=true", f"Failed: {r.json().get('error')}")
+        if sse: yield sse
+        
+        # Verify update
+        r = await client.get(f"{base_url}{router_prefix}/demorouter/get?item_id={test_id_form}&format=json")
+        sse = check(r.json().get("data", {}).get("name") == "UpdatedFormItem", "Form update verified", f"Mismatch: {r.json()}")
+        if sse: yield sse
+        
+        # Cleanup form item
+        await client.delete(f"{base_url}{router_prefix}/demorouter/delete?item_id={test_id_form}")
+        
+        # ===== TEST 10: Delete with dry_run =====
+        sse = log(f"[Test 10] DELETE /delete?dry_run=true...")
+        if sse: yield sse
+        
+        r = await client.delete(f"{delete_url}&dry_run=true")
+        result = r.json()
+        sse = check(result.get("ok") == True and result.get("data", {}).get("dry_run") == True,
+                    "dry_run=true returns ok with dry_run flag", f"Failed: {result}")
+        if sse: yield sse
+        
+        # Verify item still exists
+        r = await client.get(get_url)
+        sse = check(r.status_code == 200, "Item still exists after dry_run", "Item was deleted!")
+        if sse: yield sse
+        
+        # ===== TEST 11: Actual delete =====
+        sse = log(f"[Test 11] DELETE /delete - Actual delete...")
+        if sse: yield sse
+        
+        r = await client.delete(delete_url)
+        sse = check(r.json().get("ok") == True, "DELETE ok=true", f"Failed: {r.json().get('error')}")
+        if sse: yield sse
+        
+        # ===== TEST 12: Verify deletion =====
+        sse = log(f"[Test 12] Verifying deletion...")
+        if sse: yield sse
+        
+        r = await client.get(get_url)
+        sse = check(r.status_code == 404, "GET deleted item returns 404", f"Got: {r.status_code}")
+        if sse: yield sse
+        
+        r = await client.get(list_url)
+        items_after = r.json().get("data", [])
+        item_ids_after = [i.get("item_id") for i in items_after]
+        sse = check(test_id not in item_ids_after, "Item removed from list", "Item still in list!")
+        if sse: yield sse
+        
+        # Verify empty list returns [] (if no other items)
+        if len(items_after) == 0:
+          sse = check(isinstance(items_after, list), "Empty list returns [] not error", f"Expected [], got: {items_after}")
+          if sse: yield sse
       
       # ===== Summary =====
       sse = log(f"")
@@ -710,20 +886,21 @@ async def demorouter_selftest(request: Request):
       sse = log(f"Passed: {passed}, Failed: {failed}")
       if sse: yield sse
       
-      logger.log_function_footer()
+      stream_logger.log_function_footer()
       
       ok = (failed == 0)
-      yield writer.emit_end(ok=ok, error="" if ok else f"{failed} test(s) failed", data={"passed": passed, "failed": failed, "test_id": test_id})
+      yield writer.emit_end(ok=ok, error="" if ok else f"{failed} test(s) failed", data={"passed": passed, "failed": failed})
       
     except Exception as e:
       sse = log(f"ERROR: {type(e).__name__}: {str(e)}")
       if sse: yield sse
-      logger.log_function_footer()
+      stream_logger.log_function_footer()
       yield writer.emit_end(ok=False, error=str(e), data={"passed": passed, "failed": failed, "test_id": test_id})
     finally:
-      # Cleanup: ensure test item is deleted
+      # Cleanup: ensure test item is deleted via HTTP
       try:
-        delete_demo_item(test_id)
+        async with httpx.AsyncClient(timeout=10.0) as cleanup_client:
+          await cleanup_client.delete(f"{base_url}{router_prefix}/demorouter/delete?item_id={test_id}")
       except:
         pass
       writer.finalize()

@@ -135,6 +135,10 @@ Example `end_json`:
 - [DD-E008] Semantic entity identifyers for interally created ids like `jb_[JOB_NUMBER]` for a job. Self-explanatory system: disambiguates object types, simplifies support. Exceptions: Domain ids (used as folder names and `domain.json`) and source ids (used in `domain.json`)
 - [DD-E009] Plural naming for resources: `/domains`, `/vector_stores`. Exceptions possible: `/crawler`
 - [DD-E010] HTTP semantics exception for `/resource/delete` endpoints: `GET [R]/delete`
+- [DD-E011] Control parameters (`format`, `dry_run`) are always passed via query string.
+- [DD-E012] `/create` endpoints receive all resource data including the identifier from the request body.
+- [DD-E013] `/get` and `/delete` endpoints receive the resource identifier via query string.
+- [DD-E014] `/update` endpoints receive the identifier via query string and update data from the body (any identifier in the body is ignored).
 
 ### Why Action-Suffixed over RESTful?
 
@@ -195,12 +199,12 @@ Version 2 routers (as specified in this document):
 **Actions**
 - `GET /v2/resource` -> Self-documentation (UTF-8 text)
 - `GET /v2/resource?format=json` - Get all
-- `GET /v2/resource/get?resource_id={id}` - Get single
-  - Example variant: `GET /v2/resource/get_content?resource_id={id}` - Retrieve content of single item
+- `GET /v2/resource/get?item_id={id}` - Get single
+  - Example variant: `GET /v2/resource/get_content?item_id={id}` - Retrieve content of single item
 - `POST /v2/resource/create` - Create
-- `PUT /v2/resource/update?resource_id={id}` - Update
-  - Example variant: `PUT /v2/resource/ensure_attributes?resource_id={id}` - Create or update item attributes
-- `DELETE, GET /v2/resource/delete?resource_id={id}` - Delete
+- `PUT /v2/resource/update?item_id={id}` - Update
+  - Example variant: `PUT /v2/resource/ensure_attributes?item_id={id}` - Create or update item attributes
+- `DELETE, GET /v2/resource/delete?item_id={id}` - Delete
 
 ### Query params syntax uses explicit query params for ids and data format:
 
@@ -212,10 +216,10 @@ Version 2 routers (as specified in this document):
 
 **/resource/get** - Get single
 - `GET /v2/resource/get` -> -> Self-documentation (UTF-8 text)
-- `GET /v2/resource/get?resource_id={id}` -> JSON result with `"data": {...}`
-- `GET /v2/resource/get?resource_id={id}&format=json` -> JSON result with `"data": {...}`
-- `GET /v2/resource/get?resource_id={id}&format=html` -> HTML detail view
-- `GET /v2/resource/get?format=json` -> HTTP 400: JSON error result "Missing 'resource_id'."
+- `GET /v2/resource/get?item_id={id}` -> JSON result with `"data": {...}`
+- `GET /v2/resource/get?item_id={id}&format=json` -> JSON result with `"data": {...}`
+- `GET /v2/resource/get?item_id={id}&format=html` -> HTML detail view
+- `GET /v2/resource/get?format=json` -> HTTP 400: JSON error result "Missing 'item_id'."
 - `GET /v2/resource/get?format=ui` -> HTTP 400: "Format 'ui' not supported".
 
 ### Common query params
@@ -238,7 +242,41 @@ Version 2 routers (as specified in this document):
 - Available options:
   - `false` (default) - Allowed to delete or modify data: perform the action as specified.
   - `true` - NOT allowed to delete or modify data: simulate the action and its outcome.
-  
+
+### LCGUD Endpoint Examples (format=json)
+
+**L - List** `GET /v2/resource?format=json`
+```
+GET /v2/resource?format=json
+Response: {"ok": true, "error": "", "data": [{...}, {...}]}
+```
+
+**C - Create** `POST /v2/resource/create` with body
+```
+POST /v2/resource/create?format=json
+Body: {"item_id": "item1", "name": "New Item"}
+Response: {"ok": true, "error": "", "data": {"item_id": "item1", "name": "New Item"}}
+```
+
+**G - Get** `GET /v2/resource/get?item_id={id}&format=json`
+```
+GET /v2/resource/get?item_id=item1&format=json
+Response: {"ok": true, "error": "", "data": {"item_id": "item1", "name": "New Item"}}
+```
+
+**U - Update** `PUT /v2/resource/update?item_id={id}` with body
+```
+PUT /v2/resource/update?item_id=item1&format=json
+Body: {"name": "Updated Item"}
+Response: {"ok": true, "error": "", "data": {"item_id": "item1", "name": "Updated Item"}}
+```
+
+**D - Delete** `DELETE /v2/resource/delete?item_id={id}&format=json`
+```
+DELETE /v2/resource/delete?item_id=item1&format=json
+Response: {"ok": true, "error": "", "data": {"item_id": "item1", "name": "Updated Item"}}
+```
+
 ### Use HTTP status codes for high-level success/failure
 
 - 2xx – the operation was successfully processed (even if result is 'no-op').
@@ -281,7 +319,6 @@ or
 or 
 { "ok": false, "error": "<error_message>", "data": [ {"vector_store_id": "vs_2343453245", ... }, {"vector_store_id": "vs_3872455464", ... }, ... } }
 ```
-
 
 ### Streaming and job files
 
@@ -1467,14 +1504,25 @@ async def demorouter_create(request: Request):
   logger = MiddlewareLogger.create()
   logger.log_function_header("demorouter_create")
   
-  request_params = dict(request.query_params)
-  demo_id = request_params.get("demo_id", None)
-  format_param = request_params.get("format", "json")
+  # Control params from query string per DD-E011
+  query_params = dict(request.query_params)
+  format_param = query_params.get("format", "json")
+  
+  # All data from body per DD-E012
+  item_data = {}
+  content_type = request.headers.get("content-type", "")
+  if "application/json" in content_type:
+    item_data = await request.json()
+  elif "application/x-www-form-urlencoded" in content_type:
+    form = await request.form()
+    item_data = dict(form)
+  
+  item_id = item_data.get("item_id", None)
   
   # Validation (non-streaming logger for early returns)
-  if not demo_id:
+  if not item_id:
     logger.log_function_footer()
-    return JSONResponse({"ok": False, "error": "Missing demo_id", "data": {}})
+    return JSONResponse({"ok": False, "error": "Missing 'item_id' in request body.", "data": {}})
   
   # format=stream - uses StreamingJobWriter for dual output
   if format_param == "stream":
@@ -1482,7 +1530,7 @@ async def demorouter_create(request: Request):
       persistent_storage_path=get_persistent_storage_path(),
       router_name="demorouter",
       action="create",
-      object_id=demo_id,
+      object_id=item_id,
       source_url=str(request.url),
       router_prefix=router_prefix
     )
@@ -1494,16 +1542,16 @@ async def demorouter_create(request: Request):
         yield writer.emit_start()
         
         # No check_control() - operation is instantaneous
-        sse = stream_logger.log_function_output(f"Creating item '{demo_id}'...")
+        sse = stream_logger.log_function_output(f"Creating item '{item_id}'...")
         if sse: yield sse
         
-        save_demo_item(demo_id, item_data)  # Single operation
+        save_demo_item(item_id, item_data)  # Single operation
         
         sse = stream_logger.log_function_output("  OK.")
         if sse: yield sse
         
         stream_logger.log_function_footer()
-        yield writer.emit_end(ok=True, data={"demo_id": demo_id})
+        yield writer.emit_end(ok=True, data={"item_id": item_id, **item_data})
         
       except Exception as e:
         stream_logger.log_function_footer()
@@ -1514,9 +1562,9 @@ async def demorouter_create(request: Request):
     return StreamingResponse(stream_create(), media_type="text/event-stream")
   
   # Non-streaming formats (json, html)
-  save_demo_item(demo_id, item_data)
+  save_demo_item(item_id, item_data)
   logger.log_function_footer()
-  return JSONResponse({"ok": True, "error": "", "data": {"demo_id": demo_id}})
+  return JSONResponse({"ok": True, "error": "", "data": {"item_id": item_id, **item_data}})
 ```
 
 **When to use control file checking:**
