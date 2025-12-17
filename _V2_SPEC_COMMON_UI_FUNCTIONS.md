@@ -1022,13 +1022,21 @@ Routers implement these as `additional_js` parameter or in separate JS files.
 
 ## Spec Changes
 
-| Date | Change |
-|------|--------|
-| 2024-12-17 | Initial specification created |
-| 2024-12-17 | Added Key Mechanisms section with call patterns, declarative button pattern |
-| 2024-12-17 | Standardized placeholder to `{itemId}` (camelCase) |
-| 2024-12-17 | Clarified confirm is inline onclick, not data-* attribute |
-| 2024-12-17 | Added console visible by default, error handling, HTTP headers |
-| 2024-12-17 | Fixed Modal OK button calls to use correct signature |
-| 2024-12-17 | Replaced `enable_console` with `console_initially_hidden` to prevent broken state |
-| 2024-12-17 | Added UI-IG-11/12 for required endpoints, DD-UI-11/12/13 for edge cases |
+**[2024-12-17 12:00]**
+- Added: UI-IG-11/12 for required endpoints validation
+- Added: DD-UI-11/12/13 for edge cases (single stream, XSS, row ID sanitization)
+
+**[2024-12-17 11:30]**
+- Changed: Replaced `enable_console` with `console_initially_hidden` to prevent broken state
+- Fixed: Modal OK button calls to use correct signature `callEndpoint(btn, itemId, bodyData)`
+
+**[2024-12-17 11:00]**
+- Added: Console visible by default, error handling, HTTP headers
+- Changed: Standardized placeholder to `{itemId}` (camelCase)
+- Fixed: Clarified confirm is inline onclick, not data-* attribute
+
+**[2024-12-17 10:30]**
+- Added: Key Mechanisms section with call patterns, declarative button pattern
+
+**[2024-12-17 10:00]**
+- Initial specification created

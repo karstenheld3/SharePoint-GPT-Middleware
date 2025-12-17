@@ -54,7 +54,7 @@ Implementation specifications should include these sections when relevant:
 11. **Action Flow**: Step-by-step event sequences
 12. **Data Structures**: HTML/DOM, API contracts, file formats
 13. **Implementation Details**: Code organization, function signatures
-14. **Spec Changes**: Table of changes
+14. **Spec Changes**: Timestamped changelog
 
 ## Formatting Conventions
 
@@ -157,19 +157,19 @@ When spec relates to or differs from existing implementation, add "Differences f
 |  | 41 | crawler | update   | done    | [Monitor]        |   |
 |  +----+---------+----------+---------+------------------+   |
 |                                                             |
-|  +-------------------------------------------------------------+
-|  | [Resize Handle - Draggable]                             |
-|  | Console Output                                   [Clear]|
+|  +----------------------------------------------------------+
+|  | [Resize Handle - Draggable]                              |
+|  | Console Output                                   [Clear] |
 |  | ---------------------------------------------------------|
-|  | [ 1 / 20 ] Processing 'document_001.pdf'...             |
-|  |   OK.                                                   |
-|  | [ 2 / 20 ] Processing 'document_002.pdf'...             |
-|  |   OK.                                                   |
-|  +-------------------------------------------------------------+
+|  | [ 1 / 20 ] Processing 'document_001.pdf'...              |
+|  |   OK.                                                    |
+|  | [ 2 / 20 ] Processing 'document_002.pdf'...              |
+|  |   OK.                                                    |
+|  +----------------------------------------------------------+
 |                                                             |
-|  +-------------------------------------------------------------+
-|  | Job Started | ID: 42 | Total: 20 items              [x] | <- Toast
-|  +-------------------------------------------------------------+
+|  +----------------------------------------------------------+
+|  | Job Started | ID: 42 | Total: 20 items               [x] | <- Toast
+|  +----------------------------------------------------------+
 +-------------------------------------------------------------+
 ```
 
@@ -321,13 +321,36 @@ User clicks [Pause] or [Resume]
 
 ### Provide a 'Spec Changes'
 
-**GOOD:**
-```
-## Spec Changes
+Use timestamped changelog format with grouped changes per session. Avoid tables - use nested lists instead.
 
+**BAD:**
+```
 | Date | Change |
 |------|--------|
 | 2024-12-17 | Initial specification created |
 | 2024-12-17 | Added Key Mechanisms section |
-| 2024-12-17 | Fixed placeholder to use `{itemId}` |
 ```
+
+**GOOD:**
+```
+## Spec Changes
+
+**[2024-12-17 14:30]**
+- Added: "Scenario" section with Problem/Solution/What we don't want
+- Added: Spec Changes section
+
+**[2024-12-17 11:45]**
+- Added: "Key Mechanisms" section with declarative button pattern
+- Changed: Placeholder standardized to `{itemId}` (camelCase)
+- Fixed: Modal OK button signature to match `callEndpoint(btn, itemId, bodyData)`
+
+**[2024-12-17 10:00]**
+- Initial specification created
+```
+
+**Format rules:**
+- Timestamp in brackets: `**[YYYY-MM-DD HH:MM]**`
+- Group related changes under same timestamp
+- Prefix with action: Added, Changed, Fixed, Removed, Moved
+- Most recent changes at top
+- Brief, single-line descriptions

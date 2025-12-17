@@ -9,6 +9,22 @@ This document describes the design and implemenation of the **second generation*
 - Document design decisions and why they have been made
 - Provide enough context to AI so code can be generated and verified
 
+## Scenario
+
+**Problem:** The V1 routers evolved organically, leading to inconsistent endpoint patterns, duplicated code, and limited UI capabilities. Administrators need a simple way to manage domains, crawl SharePoint content, and monitor jobs without programming skills.
+
+**Solution:** A unified V2 router architecture with:
+- Consistent action-suffixed endpoints (`/resource/get`, `/resource/create`, etc.)
+- Self-documenting endpoints (bare GET returns documentation)
+- Interactive UI via `format=ui` parameter
+- Streaming support for long-running jobs via SSE
+
+**What we don't want:**
+- Major changes to V1 endpoints philosophy
+- Complex client-side state management (server renders initial data)
+- Multiple endpoint patterns for the same action
+- Separate API and UI codebases (single endpoint serves both)
+
 ## Context
 
 **Project:** SharePoint-GPT-Middleware
@@ -1692,4 +1708,11 @@ def create_control_file(persistent_storage_path: str, job_id: str, action: str) 
 
 def delete_job(persistent_storage_path: str, job_id: str) -> bool:
   """Delete job file. Returns True if deleted."""
-```
+
+---
+
+## Spec Changes
+
+**[2024-12-17 12:10]**
+- Added: "Scenario" section with Problem/Solution/What we don't want
+- Added: Spec Changes section
