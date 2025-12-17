@@ -184,7 +184,7 @@ async def demorouter_root(request: Request):
         <td>{version}</td>
         <td class="actions">
           <button class="btn-small" onclick="showUpdateForm('{item_id}')">Edit</button>
-          <button class="btn-small btn-delete" data-url="{router_prefix}/demorouter/delete?item_id={{itemId}}" data-method="DELETE" data-format="json" onclick="if(confirm('Delete {item_id}?')) callItemEndpoint(this, '{item_id}')">Delete</button>
+          <button class="btn-small btn-delete" data-url="{router_prefix}/demorouter/delete?item_id={{itemId}}" data-method="DELETE" data-format="json" onclick="if(confirm('Delete {item_id}?')) callEndpoint(this, '{item_id}')">Delete</button>
         </td>
       </tr>"""
     if not items: rows_html = '<tr><td colspan="5" class="empty-state">No demo items found</td></tr>'
@@ -199,8 +199,8 @@ async def demorouter_root(request: Request):
   <script src="/static/js/htmx.js"></script>
 </head>
 <body class="has-console">
-  <!-- Toast Container -->
-  <div id="toast-container"></div>
+  <!-- Toast Container (z-index above modal) -->
+  <div id="toast-container" style="z-index: 10001;"></div>
   
   <!-- Modal -->
   <div id="modal" class="modal-overlay">
@@ -216,10 +216,10 @@ async def demorouter_root(request: Request):
     <p><a href="{router_prefix}/demorouter">← Back to Demo Router</a></p>
     
     <div class="toolbar">
-      <button class="btn-primary" onclick="showCreateForm()">Create</button>
+      <button class="btn-primary" onclick="showNewItemForm()">New Item</button>
       <button class="btn-primary" onclick="showCreateDemoItemsForm()">Create Demo Items</button>
-      <button class="btn-primary" onclick="runSelftest()">Run Selftest</button>
-      <button id="btn-delete-selected" class="btn-primary btn-delete" onclick="bulkDelete()" disabled>Delete (0)</button>
+      <button class="btn-primary" data-url="{router_prefix}/demorouter/selftest?format=stream" data-format="stream" data-show-result="modal" onclick="callEndpoint(this)">Run Selftest</button>
+      <button id="btn-delete-selected" class="btn-primary btn-delete" onclick="bulkDelete()" disabled>Delete (<span id="selected-count">0</span>)</button>
     </div>
     
     <table>
@@ -246,7 +246,6 @@ async def demorouter_root(request: Request):
 // ============================================
 // CONSOLE STATE
 // ============================================
-let currentEventSource = null;
 let currentStreamUrl = null;
 let currentJobId = null;
 let isPaused = false;
@@ -281,6 +280,8 @@ function openModal() {{
 function closeModal() {{
   document.getElementById('modal').classList.remove('visible');
   document.removeEventListener('keydown', handleEscapeKey);
+  // Reset modal width to default
+  document.querySelector('#modal .modal-content').style.maxWidth = '';
 }}
 
 
@@ -289,64 +290,124 @@ function handleEscapeKey(event) {{
 }}
 
 // ============================================
-// CONSOLE STREAMING (SSE)
+// CONSOLE STREAMING (SSE) - Unified fetch-based implementation
 // ============================================
-function connectStream(url) {{
-  if (currentEventSource) {{
-    currentEventSource.close();
-    currentEventSource = null;
-  }}
+function connectStream(url, options = {{}}) {{
+  const method = options.method || 'GET';
+  const bodyData = options.bodyData || null;
+  const clearConsoleFirst = options.clearConsole !== false;  // default true
+  const reloadOnFinish = options.reloadOnFinish !== false;   // default true
+  const showResultIn = options.showResult || 'toast';        // 'toast', 'modal', 'none'
+  
   showConsole();
+  if (clearConsoleFirst) clearConsole();
   currentStreamUrl = url;
   updateConsoleStatus('connecting', url);
   
-  currentEventSource = new EventSource(url);
+  const fetchOptions = {{ method }};
+  if (bodyData && (method === 'POST' || method === 'PUT')) {{
+    fetchOptions.headers = {{ 'Content-Type': 'application/json' }};
+    fetchOptions.body = JSON.stringify(bodyData);
+  }}
   
-  currentEventSource.onopen = function() {{
+  let lastEndJson = null;
+  
+  fetch(url, fetchOptions).then(response => {{
     updateConsoleStatus('connected', url);
-  }};
-  
-  currentEventSource.onerror = function(e) {{
-    if (currentEventSource.readyState === EventSource.CLOSED) {{
-      updateConsoleStatus('disconnected');
-    }} else {{
-      showToast('Connection Error', 'Job connection failed', 'error');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let currentEvent = 'log';
+    
+    function read() {{
+      reader.read().then(({{ done, value }}) => {{
+        if (done) {{
+          const finishedJobId = currentJobId;
+          currentJobId = null;
+          isPaused = false;
+          updatePauseResumeButton();
+          updateConsoleStatus('disconnected');
+          
+          // Show result based on showResult option
+          if (showResultIn === 'modal' && lastEndJson) {{
+            showResultModal(lastEndJson);
+          }} else if (showResultIn === 'toast') {{
+            const resultType = lastEndJson?.result?.ok ? 'success' : 'error';
+            showToast('Job Finished', finishedJobId || '', resultType);
+          }}
+          
+          if (reloadOnFinish) reloadItems();
+          return;
+        }}
+        const text = decoder.decode(value);
+        const lines = text.split('\\n');
+        for (const line of lines) {{
+          if (line.startsWith('event: ')) {{
+            currentEvent = line.substring(7).trim();
+          }} else if (line.startsWith('data: ')) {{
+            const data = line.substring(6);
+            if (currentEvent === 'end_json') {{
+              try {{ lastEndJson = JSON.parse(data); }} catch (e) {{}}
+            }}
+            handleSSEData(currentEvent, data);
+            currentEvent = 'log';
+          }}
+        }}
+        read();
+      }});
     }}
-    currentEventSource = null;
-  }};
-  
-  // Handle start_json event
-  currentEventSource.addEventListener('start_json', function(e) {{
-    try {{
-      const data = JSON.parse(e.data);
-      currentJobId = data.job_id || null;
-      isPaused = false;
-      updatePauseResumeButton();
-      showToast('Job started', data.job_id || '', 'info');
-    }} catch (err) {{ }}
-  }});
-  
-  // Handle log event
-  currentEventSource.addEventListener('log', function(e) {{
-    appendToConsole(e.data);
-  }});
-  
-  // Handle end_json event
-  currentEventSource.addEventListener('end_json', function(e) {{
-    try {{
-      const data = JSON.parse(e.data);
-      const resultType = data.result?.ok ? 'success' : 'error';
-      showToast('Job finished', data.job_id || '', resultType);
-    }} catch (err) {{ }}
-    if (currentEventSource) {{
-      currentEventSource.close();
-      currentEventSource = null;
-    }}
+    read();
+  }}).catch(err => {{
     currentJobId = null;
     isPaused = false;
     updatePauseResumeButton();
+    showToast('Job Error', err.message, 'error');
     updateConsoleStatus('disconnected');
   }});
+}}
+
+// Show result in modal dialog (falls back to toast if modal already open)
+function showResultModal(data) {{
+  // Fall back to toast if modal is already open
+  if (document.getElementById('modal').classList.contains('visible')) {{
+    const resultType = data?.result?.ok !== false ? 'success' : 'error';
+    showToast('Job Finished', data?.job_id || '', resultType);
+    return;
+  }}
+  
+  // Determine OK/FAIL status - check both direct .ok and nested .result.ok (end_json format)
+  const isOk = data?.ok !== false && data?.result?.ok !== false;
+  const state = data?.state || '';
+  const statusText = isOk ? '(OK' + (state ? ', ' + state : '') + ')' : '(FAIL' + (state ? ', ' + state : '') + ')';
+  
+  // Build title - for end_json, include job_id
+  let title = 'Result ' + statusText;
+  let endpoint = '';
+  if (data?.job_id) {{
+    title += " - '" + data.job_id + "'";
+    // Extract endpoint path from source_url (remove host part)
+    endpoint = data.source_url || '';
+    try {{ endpoint = new URL(endpoint).pathname + new URL(endpoint).search; }} catch (e) {{}}
+  }}
+  
+  // Build endpoint and error labels
+  const endpointHtml = endpoint ? '<p style="margin: 0 0 0.5rem 0; font-size: 0.8rem"><strong>Endpoint:</strong> ' + escapeHtml(endpoint) + '</p>' : '';
+  const errorMsg = data?.error || data?.result?.error || '';
+  const errorHtml = errorMsg ? '<p style="color: #dc3545; margin: 0 0 0.5rem 0; font-weight: 500;">' + escapeHtml(errorMsg) + '</p>' : '';
+  
+  const modalContent = document.querySelector('#modal .modal-content');
+  modalContent.style.maxWidth = '800px';
+  const body = document.querySelector('#modal .modal-body');
+  const formatted = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  body.innerHTML = `
+    <h3>${{title}}</h3>
+    ${{endpointHtml}}
+    ${{errorHtml}}
+    <pre class="result-output" style="max-height: 400px; overflow: auto; background: #f5f5f5; border: 1px solid #ddd; padding: 1rem; border-radius: 4px; margin: 0 0 1rem 0;">${{escapeHtml(formatted)}}</pre>
+    <div class="form-actions">
+      <button type="button" class="btn-primary" onclick="closeModal()">OK</button>
+    </div>
+  `;
+  openModal();
 }}
 
 // ============================================
@@ -458,14 +519,19 @@ function initConsoleResize() {{
 // GENERIC ENDPOINT CALLERS
 // ============================================
 
-// Call item-independent endpoint (Create, Selftest) - reloads full table on success
-async function callEndpoint(btn, bodyData = null) {{
-  const url = btn.dataset.url;
+// Unified endpoint caller - handles both item-level and item-independent calls
+// Reads data-url, data-method, data-format, data-show-result, data-reload-on-finish from button
+async function callEndpoint(btn, itemId = null, bodyData = null) {{
+  let url = btn.dataset.url;
+  if (itemId) url = url.replace('{{itemId}}', itemId);
+  
   const method = (btn.dataset.method || 'GET').toUpperCase();
   const format = btn.dataset.format || 'json';
+  const showResult = btn.dataset.showResult || 'toast';
+  const reloadOnFinish = btn.dataset.reloadOnFinish !== 'false';
   
   if (format === 'stream') {{
-    streamRequest(method, url, bodyData, null);
+    connectStream(url, {{ method, bodyData, reloadOnFinish, showResult }});
   }} else {{
     try {{
       const options = {{ method }};
@@ -476,43 +542,19 @@ async function callEndpoint(btn, bodyData = null) {{
       const response = await fetch(url, options);
       const result = await response.json();
       if (result.ok) {{
-        showToast('OK', '', 'success');
-        reloadItems();
-      }} else {{
-        showToast('Failed', result.error, 'error');
-      }}
-    }} catch (e) {{
-      showToast('Error', e.message, 'error');
-    }}
-  }}
-}}
-
-// Call item-level endpoint (Update, Delete) - updates/removes specific row on success
-async function callItemEndpoint(btn, itemId, bodyData = null) {{
-  const url = btn.dataset.url.replace('{{itemId}}', itemId);
-  const method = (btn.dataset.method || 'GET').toUpperCase();
-  const format = btn.dataset.format || 'json';
-  
-  if (format === 'stream') {{
-    streamRequest(method, url, bodyData, itemId);
-  }} else {{
-    try {{
-      const options = {{ method }};
-      if (bodyData && (method === 'POST' || method === 'PUT')) {{
-        options.headers = {{ 'Content-Type': 'application/json' }};
-        options.body = JSON.stringify(bodyData);
-      }}
-      const response = await fetch(url, options);
-      const result = await response.json();
-      if (result.ok) {{
-        if (method === 'DELETE') {{
+        if (method === 'DELETE' && itemId) {{
           const row = document.getElementById('item-' + itemId);
           if (row) row.remove();
-          showToast('Deleted', itemId, 'success');
           updateItemCount();
-        }} else {{
-          showToast('Updated', itemId, 'success');
+        }} else if (reloadOnFinish) {{
           reloadItems();
+        }}
+        // Show result based on data-show-result
+        if (showResult === 'modal') {{
+          showResultModal(result);
+        }} else if (showResult === 'toast') {{
+          const msg = itemId ? (method === 'DELETE' ? 'Deleted' : 'Updated') : 'OK';
+          showToast(msg, itemId || '', 'success');
         }}
       }} else {{
         showToast('Failed', result.error, 'error');
@@ -523,68 +565,6 @@ async function callItemEndpoint(btn, itemId, bodyData = null) {{
   }}
 }}
 
-// Generic stream request - handles both item-independent and item-level
-function streamRequest(method, url, bodyData, itemId) {{
-  streamRequestWithOptions(url, {{ method, bodyData, itemId, reloadOnFinish: true }});
-}}
-
-// Stream request with options object
-function streamRequestWithOptions(url, options = {{}}) {{
-  const method = options.method || 'GET';
-  const bodyData = options.bodyData || null;
-  const reloadOnFinish = options.reloadOnFinish !== false;  // default true
-  
-  showConsole();
-  clearConsole();
-  updateConsoleStatus('connecting', url);
-  
-  const fetchOptions = {{ method }};
-  if (bodyData && (method === 'POST' || method === 'PUT')) {{
-    fetchOptions.headers = {{ 'Content-Type': 'application/json' }};
-    fetchOptions.body = JSON.stringify(bodyData);
-  }}
-  
-  fetch(url, fetchOptions).then(response => {{
-    updateConsoleStatus('connected', url);
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let currentEvent = 'log';
-    
-    function read() {{
-      reader.read().then(({{ done, value }}) => {{
-        if (done) {{
-          const finishedJobId = currentJobId;
-          currentJobId = null;
-          isPaused = false;
-          updatePauseResumeButton();
-          updateConsoleStatus('disconnected');
-          showToast('Job Finished', finishedJobId || '', 'success');
-          if (reloadOnFinish) reloadItems();
-          return;
-        }}
-        const text = decoder.decode(value);
-        const lines = text.split('\\n');
-        for (const line of lines) {{
-          if (line.startsWith('event: ')) {{
-            currentEvent = line.substring(7).trim();
-          }} else if (line.startsWith('data: ')) {{
-            const data = line.substring(6);
-            handleSSEData(currentEvent, data);
-            currentEvent = 'log';
-          }}
-        }}
-        read();
-      }});
-    }}
-    read();
-  }}).catch(err => {{
-    currentJobId = null;
-    isPaused = false;
-    updatePauseResumeButton();
-    showToast('Job Error', err.message, 'error');
-    updateConsoleStatus('disconnected');
-  }});
-}}
 
 // Format SSE events for human-readable console output
 function handleSSEData(eventType, data) {{
@@ -652,7 +632,7 @@ function renderItemRow(item) {{
     <td>${{version}}</td>
     <td class="actions">
       <button class="btn-small" onclick="showUpdateForm('${{itemId}}')">Edit</button>
-      <button class="btn-small btn-delete" data-url="{router_prefix}/demorouter/delete?item_id={{itemId}}" data-method="DELETE" data-format="json" onclick="if(confirm('Delete ${{itemId}}?')) callItemEndpoint(this, '${{itemId}}')">Delete</button>
+      <button class="btn-small btn-delete" data-url="{router_prefix}/demorouter/delete?item_id={{itemId}}" data-method="DELETE" data-format="json" onclick="if(confirm('Delete ${{itemId}}?')) callEndpoint(this, '${{itemId}}')">Delete</button>
     </td>
   </tr>`;
 }}
@@ -674,7 +654,7 @@ function updateSelectedCount() {{
   const selected = document.querySelectorAll('.item-checkbox:checked');
   const total = document.querySelectorAll('.item-checkbox');
   const btn = document.getElementById('btn-delete-selected');
-  btn.textContent = 'Delete (' + selected.length + ')';
+  document.getElementById('selected-count').textContent = selected.length;
   btn.disabled = selected.length === 0;
   const selectAll = document.getElementById('select-all');
   if (selectAll) selectAll.checked = total.length > 0 && selected.length === total.length;
@@ -726,13 +706,13 @@ async function bulkDelete() {{
 }}
 
 // ============================================
-// CREATE FORM
+// NEW ITEM FORM
 // ============================================
-function showCreateForm() {{
+function showNewItemForm() {{
   const body = document.querySelector('#modal .modal-body');
   body.innerHTML = `
-    <h3>Create Demo Item</h3>
-    <form id="create-form">
+    <h3>New Item</h3>
+    <form id="new-item-form">
       <div class="form-group">
         <label>Item ID *</label>
         <input type="text" name="item_id" required>
@@ -746,7 +726,7 @@ function showCreateForm() {{
         <input type="number" name="version" value="1">
       </div>
       <div class="form-actions">
-        <button type="button" class="btn-primary" data-url="{router_prefix}/demorouter/create" data-method="POST" data-format="json" onclick="submitCreateForm(this)">Create</button>
+        <button type="button" class="btn-primary" data-url="{router_prefix}/demorouter/create" data-method="POST" data-format="json" onclick="submitNewItemForm(this)">OK</button>
         <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
       </div>
     </form>
@@ -754,8 +734,8 @@ function showCreateForm() {{
   openModal();
 }}
 
-function submitCreateForm(btn) {{
-  const form = document.getElementById('create-form');
+function submitNewItemForm(btn) {{
+  const form = document.getElementById('new-item-form');
   const formData = new FormData(form);
   const data = Object.fromEntries(formData.entries());
   if (data.version) data.version = parseInt(data.version);
@@ -822,7 +802,7 @@ async function showUpdateForm(itemId) {{
           <input type="number" name="version" value="${{item.version || ''}}">
         </div>
         <div class="form-actions">
-          <button type="button" class="btn-primary" data-url="{router_prefix}/demorouter/update?item_id={{itemId}}" data-method="PUT" data-format="json" onclick="submitUpdateForm(this, '${{itemId}}')">Save</button>
+          <button type="button" class="btn-primary" data-url="{router_prefix}/demorouter/update?item_id={{itemId}}" data-method="PUT" data-format="json" onclick="submitUpdateForm(this, '${{itemId}}')">OK</button>
           <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
         </div>
       </form>
@@ -861,22 +841,18 @@ function submitUpdateForm(btn, sourceItemId) {{
   }}
   
   closeModal();
-  callItemEndpoint(btn, sourceItemId, data);
+  callEndpoint(btn, sourceItemId, data);
 }}
 
 // ============================================
 // SELFTEST & DEMO
 // ============================================
-function runSelftest() {{
-  clearConsole();
-  const url = '{router_prefix}/demorouter/selftest?format=stream';
-  connectStream(url);
-}}
 
 function showCreateDemoItemsForm() {{
   const body = document.querySelector('#modal .modal-body');
   body.innerHTML = `
     <h3>Create Demo Items</h3>
+    <p>This will create a number of demo items as a background job.</p>
     <form id="create-demo-items-form">
       <div class="form-group">
         <label>Count (1-100)</label>
@@ -887,7 +863,7 @@ function showCreateDemoItemsForm() {{
         <input type="number" name="delay_ms" value="300" min="0" max="10000">
       </div>
       <div class="form-actions">
-        <button type="button" class="btn-primary" data-url="{router_prefix}/demorouter/create_demo_items?format=stream&count={{count}}&delay_ms={{delay_ms}}" data-format="stream" data-reload-on-finish="true" onclick="submitCreateDemoItemsForm(this)">Start</button>
+        <button type="button" class="btn-primary" data-url="{router_prefix}/demorouter/create_demo_items?format=stream&count={{count}}&delay_ms={{delay_ms}}" data-format="stream" data-reload-on-finish="true" data-show-result="modal" onclick="submitCreateDemoItemsForm(this)">OK</button>
         <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
       </div>
     </form>
@@ -915,9 +891,10 @@ function submitCreateDemoItemsForm(btn) {{
   const urlTemplate = btn.dataset.url;
   const url = urlTemplate.replace('{{count}}', count).replace('{{delay_ms}}', delayMs);
   const reloadOnFinish = btn.dataset.reloadOnFinish === 'true';
+  const showResult = btn.dataset.showResult || 'toast';
   
   closeModal();
-  streamRequestWithOptions(url, {{ reloadOnFinish }});
+  connectStream(url, {{ reloadOnFinish, showResult }});
 }}
 
 // Initialize on load

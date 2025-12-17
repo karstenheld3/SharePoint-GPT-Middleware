@@ -10,7 +10,7 @@ A reactive web UI for managing demo items with CRUD operations and streaming job
 
 **Key Technologies:**
 - HTMX for declarative HTTP interactions (included but minimally used)
-- Native JavaScript for SSE streaming via `EventSource` and `fetch()` with `ReadableStream`
+- Native JavaScript for SSE streaming via unified `fetch()` with `ReadableStream`
 - CSS for styling (reuses `/static/css/styles.css` with inline additions)
 - Modal dialogs for Create/Edit forms
 
@@ -55,7 +55,7 @@ A reactive web UI for managing demo items with CRUD operations and streaming job
 
 1. **View item list** - Page load: server returns HTML with pre-rendered table rows
 2. **Reload items** - Click [Reload] to fetch items via JSON and re-render table
-3. **Create item** - Click [Create] to open modal form, submit to create new item
+3. **New item** - Click [New Item] to open modal form, submit to create new item
 4. **Edit item** - Click [Edit] on row to open modal form with current values, submit to update
 5. **Delete item** - Click [Delete] on row with confirmation dialog
 6. **Select items** - Click checkbox to select items for bulk operations
@@ -75,7 +75,7 @@ Main Page: /v2/demorouter?format=ui
 | Demo Items (3)  [Reload]                                                                  |
 | <- Back to Demo Router                                                                    |
 |                                                                                           |
-| [Create] [Create Demo Items] [Run Selftest] [Delete (0)]                                  |
+| [New Item] [Create Demo Items] [Run Selftest] [Delete (0)]                                |
 |                                                                                           |
 | +---+-------------+------------+---------+-------------------+                            |
 | |[x]| ID          | Name       | Version | Actions           |                            |
@@ -101,10 +101,10 @@ Toast Container (top-right, fixed position):
 | Job Finished | jb_42                     [x]  |
 +-----------------------------------------------+
 
-Modal (Create Item):
+Modal (New Item):
 +-----------------------------------------------+
 |                                          [x]  |
-| Create Demo Item                              |
+| New Item                                      |
 |                                               |
 | Item ID *                                     |
 | [________________________]                    |
@@ -115,7 +115,7 @@ Modal (Create Item):
 | Version                                       |
 | [_1_______________________]                   |
 |                                               |
-|                      [Create] [Cancel]        |
+|                          [OK] [Cancel]        |
 +-----------------------------------------------+
 
 Modal (Create Demo Items):
@@ -123,39 +123,115 @@ Modal (Create Demo Items):
 |                                          [x]  |
 | Create Demo Items                             |
 |                                               |
+| This will create a number of demo items as    |
+| a background job.                             |
+|                                               |
 | Count (1-100)                                 |
 | [_10______________________]                   |
 |                                               |
 | Delay per item (ms)                           |
 | [_300_____________________]                   |
 |                                               |
-|                       [Start] [Cancel]        |
+|                          [OK] [Cancel]        |
 +-----------------------------------------------+
+
+Modal (Result - Success):
++---------------------------------------------------------------+
+|                                                          [x]  |
+| Result (OK, completed) - 'jb_57'                              |
+|                                                               |
+| Endpoint: /v2/demorouter/selftest?format=stream               |
+|                                                               |
+| +-----------------------------------------------------------+ |
+| | {                                                         | |
+| |   "job_id": "jb_57",                                      | |
+| |   "state": "completed",                                   | |
+| |   "result": {                                             | |
+| |     "ok": true,                                           | |
+| |     "data": { "ok": 42, "fail": 0 }                       | |
+| |   }                                                       | |
+| | }                                                         | |
+| +-----------------------------------------------------------+ |
+|                                                               |
+|                                                         [OK]  |
++---------------------------------------------------------------+
+
+Modal (Result - Failure with error):
++---------------------------------------------------------------+
+|                                                          [x]  |
+| Result (FAIL, failed) - 'jb_58'                               |
+|                                                               |
+| Endpoint: /v2/demorouter/create?format=stream                 |
+|                                                               |
+| Item already exists: 'demo_001'                <- error (red) |
+|                                                               |
+| +-----------------------------------------------------------+ |
+| | {                                                         | |
+| |   "job_id": "jb_58",                                      | |
+| |   "state": "failed",                                      | |
+| |   "result": {                                             | |
+| |     "ok": false,                                          | |
+| |     "error": "Item already exists: 'demo_001'"            | |
+| |   }                                                       | |
+| | }                                                         | |
+| +-----------------------------------------------------------+ |
+|                                                               |
+|                                                         [OK]  |
++---------------------------------------------------------------+
 ```
 
 ## Key Mechanisms and Design Decisions
 
-### SSE Implementation: Dual Approach
+### Modal Dialog Button Pattern
 
-The demorouter uses two SSE approaches depending on the use case:
+Modal dialogs use the **OK / Cancel** pattern. The dialog title already describes the action, so buttons should not repeat it.
 
-**1. Native EventSource** - For monitoring existing jobs via `connectStream()`:
+**This follows the Windows and Android design philosophy:** The order is typically OK, Apply, Cancel (or just OK, Cancel if "Apply" is absent). This is based on the philosophy that the primary, affirmative action should be encountered first in a left-to-right reading flow. The "Apply" button is usually included in property dialogs and allows users to save changes without closing the window, whereas "OK" saves changes and closes the window.
+
+**BAD:**
+```
+[Cancel] [OK]
+[Create Demo Items]  [Cancel]
+[Start]  [Cancel]
+[Delete]  [Cancel]
+[Save]  [Cancel]
+[Save]  [Close]
+```
+
+**GOOD:**
+```
+[OK]  [Cancel]
+[OK] [Apply] [Cancel]  (for settings dialogs)
+```
+
+Benefits:
+- Reduces cognitive load (title says what happens)
+- Consistent across all dialogs
+- Follows established UI conventions
+
+### SSE Implementation: Unified Fetch-Based
+
+All SSE streaming uses a single `connectStream()` function with fetch and ReadableStream:
+
 ```javascript
-function connectStream(url) {
-  currentEventSource = new EventSource(url);
-  currentEventSource.addEventListener('start_json', ...);
-  currentEventSource.addEventListener('log', ...);
-  currentEventSource.addEventListener('end_json', ...);
+function connectStream(url, options = {}) {
+  const method = options.method || 'GET';
+  const bodyData = options.bodyData || null;
+  const reloadOnFinish = options.reloadOnFinish !== false;
+  const showResultIn = options.showResult || 'toast';  // 'toast', 'modal', 'none'
+  
+  fetch(url, fetchOptions).then(response => {
+    const reader = response.body.getReader();
+    // Manual SSE parsing of event:/data: lines
+    // On end_json: show result based on showResultIn option
+  });
 }
 ```
 
-**2. Fetch with ReadableStream** - For POST/PUT endpoints via `streamRequestWithOptions()`:
-```javascript
-fetch(url, fetchOptions).then(response => {
-  const reader = response.body.getReader();
-  // Manual SSE parsing of event:/data: lines
-});
-```
+Benefits:
+- Single implementation for all HTTP methods (GET, POST, PUT)
+- Supports request bodies for POST/PUT
+- Configurable result display (toast or modal)
 
 ### Console Panel Behavior
 
@@ -236,7 +312,7 @@ Single modal element reused for all forms:
 **Functions:**
 - `openModal()` - Shows modal, adds ESC key listener
 - `closeModal()` - Hides modal, removes ESC key listener
-- `showCreateForm()` - Injects create form HTML
+- `showNewItemForm()` - Injects new item form HTML
 - `showUpdateForm(itemId)` - Fetches item data, injects edit form HTML
 - `showCreateDemoItemsForm()` - Injects streaming config form HTML
 
@@ -269,6 +345,44 @@ function showToast(title, message, type = 'info', autoDismiss = 5000) {
 
 **Security:** Uses `escapeHtml()` for all user-provided content.
 
+**Z-Index:** Toast container uses `z-index: 10001` to appear above modal dialogs.
+
+### Result Modal
+
+Streaming endpoints with `data-show-result="modal"` display results in a modal dialog:
+
+```javascript
+function showResultModal(data) {
+  // Fall back to toast if modal already open
+  if (document.getElementById('modal').classList.contains('visible')) {
+    showToast('Job Finished', data?.job_id || '', resultType);
+    return;
+  }
+  
+  // Build title with status, state, and job_id
+  const isOk = data?.ok !== false && data?.result?.ok !== false;
+  const state = data?.state || '';
+  const statusText = isOk ? '(OK, ' + state + ')' : '(FAIL, ' + state + ')';
+  let title = 'Result ' + statusText + " - '" + data.job_id + "'";
+  
+  // Show endpoint and error if present
+  const endpointHtml = endpoint ? '<p>Endpoint: ' + endpoint + '</p>' : '';
+  const errorHtml = errorMsg ? '<p style="color: red;">' + errorMsg + '</p>' : '';
+  
+  // Display JSON in scrollable pre with 800px width
+  body.innerHTML = `<h3>${title}</h3>${endpointHtml}${errorHtml}<pre>...</pre>`;
+}
+```
+
+**Title format:** `Result (OK, completed) - 'jb_57'`
+
+**Features:**
+- Shows OK/FAIL based on `result.ok` field
+- Includes job state (completed, failed, cancelled)
+- Displays endpoint URL as label below title
+- Shows error message in red if present
+- Falls back to toast if another modal is already open
+
 ### Bulk Delete
 
 Single summary toast instead of per-item toasts:
@@ -289,6 +403,28 @@ async function bulkDelete() {
 }
 ```
 
+### Dynamic Text Updates
+
+Use dedicated `<span>` elements for values that change dynamically. Avoid replacing entire element text content which duplicates static labels in JavaScript.
+
+**BAD:**
+```javascript
+btn.textContent = 'Delete (' + count + ')';  // Duplicates "Delete" label in JS
+```
+
+**GOOD:**
+```html
+<button>Delete (<span id="selected-count">0</span>)</button>
+```
+```javascript
+document.getElementById('selected-count').textContent = count;  // Updates only the dynamic part
+```
+
+This pattern:
+- Keeps static UI text in HTML only (single source of truth)
+- Simplifies i18n/localization (change HTML only)
+- Reduces JavaScript complexity
+
 ### Declarative Data Attributes
 
 Buttons use `data-*` attributes for endpoint configuration:
@@ -297,20 +433,22 @@ Buttons use `data-*` attributes for endpoint configuration:
 <button data-url="/v2/demorouter/delete?item_id={itemId}" 
         data-method="DELETE" 
         data-format="json"
-        onclick="callItemEndpoint(this, 'demo_001')">Delete</button>
+        data-show-result="toast"
+        onclick="callEndpoint(this, 'demo_001')">Delete</button>
 ```
 
 - `data-url` - Endpoint URL with `{itemId}` placeholder
 - `data-method` - HTTP method (GET, POST, PUT, DELETE)
 - `data-format` - Response format (json, stream)
 - `data-reload-on-finish` - If true, reload items after stream completes
+- `data-show-result` - How to display result: 'toast' (default), 'modal', 'none'
 
 ### Reload on Stream Finish
 
 Streaming operations can trigger item list reload on completion:
 
 ```javascript
-function streamRequestWithOptions(url, options = {}) {
+function connectStream(url, options = {}) {
   const reloadOnFinish = options.reloadOnFinish !== false;
   // ... on stream complete:
   if (reloadOnFinish) reloadItems();
@@ -330,7 +468,7 @@ function renderItemRow(item) {
     <td>${item.version || '-'}</td>
     <td class="actions">
       <button onclick="showUpdateForm('${item.item_id}')">Edit</button>
-      <button onclick="callItemEndpoint(this, '${item.item_id}')">Delete</button>
+      <button onclick="callEndpoint(this, '${item.item_id}')">Delete</button>
     </td>
   </tr>`;
 }
@@ -345,13 +483,13 @@ When no items exist:
 
 ## Action Flow
 
-### Create Item
+### New Item
 ```
-User clicks [Create]
-  |-> showCreateForm() injects form HTML into modal
+User clicks [New Item]
+  |-> showNewItemForm() injects form HTML into modal
   |-> openModal() shows modal
-  |-> User fills form, clicks [Create]
-  |-> submitCreateForm() validates, extracts data
+  |-> User fills form, clicks [OK]
+  |-> submitNewItemForm() validates, extracts data
   |-> callEndpoint() sends POST to /demorouter/create
   |-> On success: showToast('OK'), reloadItems()
   |-> On error: showToast('Failed', error)
@@ -362,27 +500,27 @@ User clicks [Create]
 User clicks [Edit] on row (item_id = demo_001)
   |-> showUpdateForm('demo_001') fetches item data
   |-> Modal shows with current values
-  |-> User modifies fields, clicks [Save]
+  |-> User modifies fields, clicks [OK]
   |-> submitUpdateForm() checks if item_id changed
       |-> If changed: includes item_id in body (triggers rename per DD-E014)
       |-> If same: omits item_id from body
-  |-> callItemEndpoint() sends PUT to /demorouter/update?item_id=demo_001
+  |-> callEndpoint() sends PUT to /demorouter/update?item_id=demo_001
   |-> On success: showToast('Updated'), reloadItems()
 ```
 
 ### Run Streaming Endpoint
 ```
 User clicks [Run Selftest]
-  |-> clearConsole()
-  |-> connectStream('/demorouter/selftest?format=stream')
-  |-> EventSource receives start_json
+  |-> callEndpoint(this) reads data-url, data-format, data-show-result
+  |-> connectStream(url, {showResult: 'modal'})
+  |-> fetch receives start_json
       |-> Set currentJobId, enable Pause button
       |-> Append "===== START..." to console
-  |-> EventSource receives log events
+  |-> fetch receives log events
       |-> Append each line to console
-  |-> EventSource receives end_json
+  |-> fetch receives end_json
       |-> Append "===== END..." to console
-      |-> showToast('Job finished')
+      |-> showResultModal(data) displays result dialog
       |-> Reset currentJobId, disable Pause button
 ```
 
@@ -420,7 +558,7 @@ User clicks [Pause] in console header
   
   <div class="container">
     <h1>Demo Items (<span id="item-count">3</span>)</h1> [Reload]
-    <div class="toolbar">[Create] [Create Demo Items] [Run Selftest] [Delete (0)]</div>
+    <div class="toolbar">[New Item] [Create Demo Items] [Run Selftest] [Delete (0)]</div>
     <table>
       <thead><tr><th></th><th>ID</th><th>Name</th><th>Version</th><th>Actions</th></tr></thead>
       <tbody id="items-tbody"><!-- Item rows --></tbody>
@@ -460,7 +598,7 @@ All V2 UI component styles are defined in `/static/css/styles.css` under the "V2
 
 | Aspect | Jobs UI | Demorouter UI |
 |--------|---------|---------------|
-| SSE Method | HTMX SSE extension | Native EventSource / fetch |
+| SSE Method | HTMX SSE extension | Unified fetch / ReadableStream |
 | Pause/Resume | Per-row buttons | Console header button |
 | Console Close | [Disconnect] | [X] (hide) |
 | JSON Events | Hidden from console | Formatted as readable lines |
