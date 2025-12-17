@@ -70,10 +70,10 @@ A reactive web UI for monitoring and controlling long-running jobs using HTMX SS
 Note: Started and Finished columns display datetime in ISO format (YYYY-MM-DD HH:MM:SS), shown as "..." below for brevity.
 
 ```
-Main Page: /v2/jobs?format=ui
+main page: /v2/jobs?format=ui
 +-------------------------------------------------------------------------------------------------------------------------------------+
 | Jobs (4)                                                                                            [Delete Selected (0)] [Refresh] |
-| <- Back to Main Page                                                                                                                |
+| <- Back to main page                                                                                                                |
 |                                                                                                                                     |
 | +---+-------+-----------+---------------------+----------+-----------+---------+----------+---------------------------------------+ |
 | |[ ]| ID    | Router    | Endpoint            | Objects  | State     | Started | Finished | Actions                               | |
@@ -584,7 +584,7 @@ User clicks [Disconnect]
       </tbody>
     </table>
     
-    <p><a href="/">← Back to Main Page</a></p>
+    <p><a href="/">← Back to main page</a></p>
   </div>
   
   <!-- Modal for View/Result -->

@@ -70,9 +70,15 @@ def json_result(ok: bool, error: str, data: Any) -> JSONResponse:
   status_code = 200 if ok else 400
   return JSONResponse({"ok": ok, "error": error, "data": data}, status_code=status_code)
 
-def html_result(title: str, data: Any, back_link: str = None, router_prefix: str = "") -> HTMLResponse:
-  """Generate simple HTML page with data table."""
-  back_html = f'<p><a href="{back_link}">Back</a> | <a href="/">Main Page</a></p>' if back_link else '<p><a href="/">Main Page</a></p>'
+def html_result(title: str, data: Any, navigation_html: str = "") -> HTMLResponse:
+  """
+  Generate simple HTML page with data table.
+  
+  Args:
+    title: Page title
+    data: Data to display in table
+    navigation_html: Raw HTML for navigation links (e.g., '<a href="...">Back</a> | <a href="/">Back to Main Page</a>')
+  """
   table_html = convert_to_flat_html_table(data) if data else '<p>No data</p>'
   return HTMLResponse(f"""<!doctype html><html lang="en">
 <head>
@@ -83,8 +89,8 @@ def html_result(title: str, data: Any, back_link: str = None, router_prefix: str
 </head>
 <body>
   <h1>{_escape_html(title)}</h1>
+  {navigation_html}
   {table_html}
-  {back_html}
 </body>
 </html>""")
 
@@ -971,7 +977,7 @@ document.addEventListener('DOMContentLoaded', () => {
 </body>
 </html>"""
 
-def generate_router_docs_page(title: str, description: str, router_prefix: str, endpoints: List[Dict], back_link: str = "/") -> str:
+def generate_router_docs_page(title: str, description: str, router_prefix: str, endpoints: List[Dict], navigation_html: str = "") -> str:
   """
   Generate router root documentation page (HTML).
   
@@ -980,7 +986,7 @@ def generate_router_docs_page(title: str, description: str, router_prefix: str, 
     description: Router description
     router_prefix: API prefix
     endpoints: List of endpoint configs [{"path": "/get", "desc": "Get item", "formats": ["json", "html"]}]
-    back_link: Back navigation URL
+    navigation_html: Raw HTML for navigation links (e.g., '<a href="/">Back to Main Page</a>')
   """
   endpoints_html = []
   for ep in endpoints:
@@ -1004,14 +1010,13 @@ def generate_router_docs_page(title: str, description: str, router_prefix: str, 
 </head>
 <body>
   <h1>{_escape_html(title)}</h1>
+  {navigation_html}
   <p>{_escape_html(description)}</p>
 
   <h4>Available Endpoints</h4>
   <ul>
     {"".join(endpoints_html)}
   </ul>
-
-  <p><a href="{_escape_html(back_link)}">&larr; Back</a></p>
 </body>
 </html>"""
 

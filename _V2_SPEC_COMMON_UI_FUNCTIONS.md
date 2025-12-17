@@ -121,7 +121,7 @@ This specification defines a reusable UI library for V2 routers, following the p
 **DD-UI-11:** Single active stream. Only one streaming job at a time per page - `currentJobId` is overwritten if new stream starts. Intentional simplification.
 **DD-UI-12:** XSS prevention. All user data in `renderItemRow()` must be escaped via `escapeHtml()` before inserting into HTML.
 **DD-UI-13:** Row ID sanitization. Row IDs derived from `row_id_field` must be sanitized (alphanumeric + underscore only) to prevent broken `id` attributes.
-**DD-UI-14:** Router-level navigation. Each router defines navigation constant (e.g., `MAIN_PAGE_NAV_HTML`) as raw HTML string, passed to `generate_ui_page(navigation_html=...)`. Keeps navigation logic in router, not UI library.
+**DD-UI-14:** Router-level navigation. Each router defines navigation constant (e.g., `main_page_nav_html`) as raw HTML string, passed to `generate_ui_page(navigation_html=...)`. Keeps navigation logic in router, not UI library.
 
 ---
 
@@ -702,8 +702,7 @@ def generate_ui_page(
   columns: List[Dict],
   row_id_field: str,
   row_id_prefix: str = "item",
-  back_link: Optional[str] = None,
-  back_text: str = "Back",
+  navigation_html: str = "",
   toolbar_buttons: List[Dict] = None,
   enable_selection: bool = True,
   enable_bulk_delete: bool = True,
@@ -725,8 +724,7 @@ def generate_ui_page(
     columns: Column configuration (see below)
     row_id_field: Field name for row ID (e.g., "item_id")
     row_id_prefix: Prefix for row ID attribute (e.g., "item" -> id="item-123")
-    back_link: URL for back navigation
-    back_text: Text for back link
+    navigation_html: Raw HTML for navigation links (e.g., '<a href="/">Back to Main Page</a>')
     toolbar_buttons: List of toolbar button configs
     enable_selection: Show checkboxes for selection
     enable_bulk_delete: Show bulk delete button
@@ -753,15 +751,16 @@ def generate_router_docs_page(
   description: str,
   router_prefix: str,
   endpoints: List[Dict],      # [{"path": "/get", "desc": "Get item", "formats": ["json", "html"]}]
-  back_link: str = "/"
+  navigation_html: str = ""
 ) -> str:
   """
   Generate router root documentation page (HTML).
   
   Returns minimalistic HTML with:
-  - Title and description
+  - Title
+  - Navigation links (under title)
+  - Description
   - List of endpoints with links to each supported format
-  - Back navigation link
   - Standard CSS/JS includes
   """
 
@@ -925,10 +924,18 @@ def json_result(ok: bool, error: str, data: Any) -> JSONResponse:
 def html_result(
   title: str,
   data: Any,
-  back_link: str = None,
-  router_prefix: str = ""
+  navigation_html: str = ""
 ) -> HTMLResponse:
-  """Generate simple HTML page with data table."""
+  """
+  Generate simple HTML page with data table.
+  
+  Args:
+    title: Page title
+    data: Data to display in table
+    navigation_html: Raw HTML for navigation links (e.g., '<a href="...">Back</a> | <a href="/">Back to Main Page</a>')
+  
+  Navigation is placed under the title, before the data table.
+  """
 ```
 
 ---
@@ -983,6 +990,7 @@ function showCreateDemoItemsForm() { /* ... router-specific form ... */ }
       items=items,
       columns=columns,
       row_id_field="item_id",
+      navigation_html=main_page_nav_html,
       toolbar_buttons=toolbar,
       list_endpoint=f"{router_prefix}/demorouter1?format=json",
       delete_endpoint=f"{router_prefix}/demorouter1/delete?item_id={{itemId}}",
@@ -1003,7 +1011,10 @@ The following remain router-specific (only styles are shared):
 3. **Router-specific dialogs** - e.g., `showCreateDemoItemsForm()`
 4. **Data validation logic** - Field-specific validation rules
 5. **Custom result displays** - Router-specific result formatting
-6. **Navigation HTML** - Defined via router-level constant (e.g., `MAIN_PAGE_NAV_HTML`), passed to `generate_ui_page(navigation_html=...)`. Example: `'<a href="/">Main Page</a>'`
+6. **Navigation HTML** - Defined via router-level constant (e.g., `main_page_nav_html`), passed to page generators. Example: `main_page_nav_html = '<a href="/">Back to Main Page</a>'`
+   - Router root: `generate_router_docs_page(..., navigation_html=main_page_nav_html)`
+   - format=ui: `generate_ui_page(..., navigation_html=main_page_nav_html)`
+   - format=html: `html_result(..., navigation_html=f'<a href="...">Back</a> | {main_page_nav_html}')`
 
 Routers implement 1-5 as `additional_js` parameter or in separate JS files.
 

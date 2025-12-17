@@ -154,7 +154,7 @@ Example `end_json`:
 **DD-E011:** Control parameters (`format`, `dry_run`) are always passed via query string.
 **DD-E012:** `/create` endpoints receive all resource data including the identifier from the request body.
 **DD-E013:** `/get` and `/delete` endpoints receive the resource identifier via query string.
-**DD-E014:** `/update` endpoints receive the identifier via query string and update data from the body. If the endpoint supports identifier modification and the body contains a different identifier than the query string, this triggers a rename operation: the resource is renamed from the query string identifier to the body identifier, then updated with the remaining body data. Otherwise, any identifier in the body is ignored.
+**DD-E014:** `/update` endpoints receive the identifier via query string and update data from the body. If the endpoint supports identifier modification and the body contains a different identifier than the query string, this triggers an ID change: the resource identifier changes from the query string value to the body value, then remaining body fields are applied. Otherwise, any identifier in the body is ignored.
 
 ### Why Action-Suffixed over RESTful?
 
@@ -286,6 +286,27 @@ PUT /v2/resource/update?item_id=item1&format=json
 Body: {"name": "Updated Item"}
 Response: {"ok": true, "error": "", "data": {"item_id": "item1", "name": "Updated Item"}}
 ```
+
+**U - Update with ID change** `PUT /v2/resource/update?item_id={old_id}` with `item_id` in body
+
+Per DD-E014, if the body contains a different `item_id` than the query string, this triggers an ID change.
+
+```
+PUT /v2/resource/update?item_id=old_item&format=json
+Body: {"item_id": "new_item", "name": "Updated Name"}
+Response: {"ok": true, "error": "", "data": {"item_id": "new_item", "name": "Updated Name"}}
+```
+
+**ID change flow:**
+1. Query string `item_id` = current identifier
+2. Body `item_id` = new identifier
+3. If current == new: normal update (no ID change)
+4. If current != new:
+   - Validate current exists (404 if not)
+   - Validate new does not exist (400 if collision)
+   - Change item identifier from current to new
+   - Apply remaining body fields to item
+5. Response contains final `item_id`
 
 **D - Delete** `DELETE /v2/resource/delete?item_id={id}&format=json`
 ```
@@ -640,7 +661,7 @@ async def demorouter_root(request: Request):
     <li><a href="{router_prefix}/demorouter1/demo_endpoint">{router_prefix}/demorouter1/demo_endpoint</a> - Process files (<a href="{router_prefix}/demorouter1/demo_endpoint?format=stream&files=5">Stream</a>)</li>
   </ul>
 
-  <p><a href="/">← Back to Main Page</a></p>
+  <p><a href="/">← Back to main page</a></p>
 </body>
 </html>
 """)
@@ -648,9 +669,19 @@ async def demorouter_root(request: Request):
 
 **Action endpoint pattern (plain text):**
 ```python
+import textwrap
 from fastapi.responses import PlainTextResponse
 
-@router.get('/demorouter1/demo_endpoint')
+# Module-level example data for self-documentation
+example_item_json = """
+{
+  "item_id": "demo_abc123",
+  "name": "Example Item",
+  "version": 1
+}
+"""
+
+@router.get(f'/{router_name}/demo_endpoint')
 async def demo_endpoint(request: Request):
   """
   Description of the endpoint.
@@ -660,12 +691,15 @@ async def demo_endpoint(request: Request):
   - format: Response format (json, html)
   
   Examples:
-  {router_prefix}/demorouter1/demo_endpoint?param1=value&format=json
+  {router_prefix}/{router_name}/demo_endpoint?param1=value&format=json
+
+  Example item:
+  {example_item_json}
   """
   # Return documentation if no params
   if len(request.query_params) == 0:
-    endpoint_documentation = demo_endpoint.__doc__.replace("{router_prefix}", router_prefix)
-    return PlainTextResponse(endpoint_documentation, media_type="text/plain; charset=utf-8")
+    doc = textwrap.dedent(demo_endpoint.__doc__).replace("{router_prefix}", router_prefix).replace("{router_name}", router_name).replace("{example_item_json}", example_item_json.strip())
+    return PlainTextResponse(doc, media_type="text/plain; charset=utf-8")
   # ... handle request
 ```
 

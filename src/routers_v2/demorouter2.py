@@ -3,15 +3,12 @@
 # This router demonstrates the use of common_ui_functions_v2.py
 # Same functionality as demorouter1 but UI generated via shared library
 
-import json, os
+import json, os, textwrap
 import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 
-from routers_v2.common_ui_functions_v2 import (
-  generate_ui_page, generate_router_docs_page, generate_endpoint_docs,
-  json_result, html_result
-)
+from routers_v2.common_ui_functions_v2 import generate_ui_page, generate_router_docs_page, generate_endpoint_docs, json_result, html_result
 from routers_v2.common_logging_functions_v2 import MiddlewareLogger
 from routers_v2.common_job_functions_v2 import StreamingJobWriter, ControlAction
 
@@ -19,7 +16,14 @@ router = APIRouter()
 config = None
 router_prefix = None
 router_name = "demorouter2"
-MAIN_PAGE_NAV_HTML = '<a href="/">Main Page</a>'
+main_page_nav_html = '<a href="/">Back to Main Page</a>'
+example_item_json = """
+{
+  "item_id": "demo_7b50d184",
+  "name": "Demo Item 3",
+  "version": 3
+}
+"""
 
 def set_config(app_config, prefix):
   global config, router_prefix
@@ -284,7 +288,7 @@ async def demorouter_root(request: Request):
       description=f"CRUD operations on JSON files using common_ui_functions_v2.py. Storage: PERSISTENT_STORAGE_PATH/{router_name}/",
       router_prefix=f"{router_prefix}/{router_name}",
       endpoints=endpoints,
-      back_link="/"
+      navigation_html=main_page_nav_html
     ))
   
   format_param = request_params.get("format", "json")
@@ -296,7 +300,7 @@ async def demorouter_root(request: Request):
   
   if format_param == "html":
     logger.log_function_footer()
-    return html_result("Demo Items", items, f"{router_prefix}/{router_name}")
+    return html_result("Demo Items", items, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html}')
   
   if format_param == "ui":
     logger.log_function_footer()
@@ -342,7 +346,7 @@ async def demorouter_root(request: Request):
       columns=columns,
       row_id_field="item_id",
       row_id_prefix="item",
-      navigation_html=MAIN_PAGE_NAV_HTML,
+      navigation_html=main_page_nav_html,
       toolbar_buttons=toolbar_buttons,
       enable_selection=True,
       enable_bulk_delete=True,
@@ -373,13 +377,16 @@ async def demorouter_get(request: Request):
   Examples:
   {router_prefix}/{router_name}/get?item_id=example
   {router_prefix}/{router_name}/get?item_id=example&format=html
+
+  Example item:
+  {example_item_json}
   """
   logger = MiddlewareLogger.create()
   logger.log_function_header("demorouter2_get")
   
   if len(request.query_params) == 0:
     logger.log_function_footer()
-    doc = demorouter_get.__doc__.replace("{router_prefix}", router_prefix).replace("{router_name}", router_name)
+    doc = textwrap.dedent(demorouter_get.__doc__).replace("{router_prefix}", router_prefix).replace("{router_name}", router_name).replace("{example_item_json}", example_item_json.strip())
     return PlainTextResponse(generate_endpoint_docs(doc, router_prefix), media_type="text/plain; charset=utf-8")
   
   request_params = dict(request.query_params)
@@ -388,13 +395,13 @@ async def demorouter_get(request: Request):
   
   if not item_id:
     logger.log_function_footer()
-    if format_param == "html": return html_result("Error", {"error": "Missing 'item_id' parameter."}, f"{router_prefix}/{router_name}")
+    if format_param == "html": return html_result("Error", {"error": "Missing 'item_id' parameter."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html}')
     return json_result(False, "Missing 'item_id' parameter.", {})
   
   item = load_demo_item(item_id)
   if item is None:
     logger.log_function_footer()
-    if format_param == "html": return html_result("Not Found", {"error": f"Demo item '{item_id}' not found."}, f"{router_prefix}/{router_name}")
+    if format_param == "html": return html_result("Not Found", {"error": f"Demo item '{item_id}' not found."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html}')
     return JSONResponse({"ok": False, "error": f"Demo item '{item_id}' not found.", "data": {}}, status_code=404)
   
   item_with_id = {"item_id": item_id, **item}
@@ -405,7 +412,7 @@ async def demorouter_get(request: Request):
   
   if format_param == "html":
     logger.log_function_footer()
-    return html_result(f"Demo Item: {item_id}", item_with_id, f"{router_prefix}/{router_name}?format=ui")
+    return html_result(f"Demo Item: {item_id}", item_with_id, f'<a href="{router_prefix}/{router_name}?format=ui">Back</a> | {main_page_nav_html}')
   
   logger.log_function_footer()
   return json_result(False, f"Format '{format_param}' not supported. Use: json, html", {})
@@ -432,8 +439,12 @@ async def demorouter_create_docs():
   
   Examples:
   POST {router_prefix}/{router_name}/create with JSON body {"item_id": "example", "name": "Test"}
+  POST {router_prefix}/{router_name}/create with form data: item_id=example&name=Test
+
+  Example item:
+  {example_item_json}
   """
-  doc = demorouter_create_docs.__doc__.replace("{router_prefix}", router_prefix).replace("{router_name}", router_name)
+  doc = textwrap.dedent(demorouter_create_docs.__doc__).replace("{router_prefix}", router_prefix).replace("{router_name}", router_name).replace("{example_item_json}", example_item_json.strip())
   return PlainTextResponse(generate_endpoint_docs(doc, router_prefix), media_type="text/plain; charset=utf-8")
 
 @router.post(f"/{router_name}/create")
@@ -508,7 +519,7 @@ async def demorouter_create(request: Request):
   
   if format_param == "html":
     logger.log_function_footer()
-    return html_result(f"Created: {item_id}", result, f"{router_prefix}/{router_name}?format=ui")
+    return html_result(f"Created: {item_id}", result, f'<a href="{router_prefix}/{router_name}?format=ui">Back</a> | {main_page_nav_html}')
   
   logger.log_function_footer()
   return json_result(True, "", result)
@@ -532,11 +543,22 @@ async def demorouter_update_docs():
   
   Body (JSON or form data):
   - [fields]: Fields to merge into existing item data
+  - item_id: Optional new ID (triggers ID change if different from query string)
+  
+  ID change: If body contains item_id different from query string:
+  1. Validate current item exists (404 if not)
+  2. Validate new ID does not exist (400 if collision)
+  3. Change item identifier from current to new
+  4. Apply remaining body fields
   
   Examples:
   PUT {router_prefix}/{router_name}/update?item_id=example with JSON body {"name": "NewName"}
+  PUT {router_prefix}/{router_name}/update?item_id=old_id with JSON body {"item_id": "new_id"} (ID change)
+
+  Example item:
+  {example_item_json}
   """
-  doc = demorouter_update_docs.__doc__.replace("{router_prefix}", router_prefix).replace("{router_name}", router_name)
+  doc = textwrap.dedent(demorouter_update_docs.__doc__).replace("{router_prefix}", router_prefix).replace("{router_name}", router_name).replace("{example_item_json}", example_item_json.strip())
   return PlainTextResponse(generate_endpoint_docs(doc, router_prefix), media_type="text/plain; charset=utf-8")
 
 @router.put(f"/{router_name}/update")
@@ -640,7 +662,7 @@ async def demorouter_update(request: Request):
   
   if format_param == "html":
     logger.log_function_footer()
-    return html_result(f"Updated: {item_id}", result, f"{router_prefix}/{router_name}?format=ui")
+    return html_result(f"Updated: {item_id}", result, f'<a href="{router_prefix}/{router_name}?format=ui">Back</a> | {main_page_nav_html}')
   
   logger.log_function_footer()
   return json_result(True, "", result)
@@ -665,9 +687,12 @@ async def demorouter_delete_docs(request: Request):
   Examples:
   DELETE {router_prefix}/{router_name}/delete?item_id=example
   GET {router_prefix}/{router_name}/delete?item_id=example
+
+  Example item:
+  {example_item_json}
   """
   if len(request.query_params) == 0:
-    doc = demorouter_delete_docs.__doc__.replace("{router_prefix}", router_prefix).replace("{router_name}", router_name)
+    doc = textwrap.dedent(demorouter_delete_docs.__doc__).replace("{router_prefix}", router_prefix).replace("{router_name}", router_name).replace("{example_item_json}", example_item_json.strip())
     return PlainTextResponse(generate_endpoint_docs(doc, router_prefix), media_type="text/plain; charset=utf-8")
   return await demorouter_delete_impl(request)
 
@@ -728,7 +753,7 @@ async def demorouter_delete_impl(request: Request):
   
   if format_param == "html":
     logger.log_function_footer()
-    return html_result(f"Deleted: {item_id}", deleted_data, f"{router_prefix}/{router_name}?format=ui")
+    return html_result(f"Deleted: {item_id}", deleted_data, f'<a href="{router_prefix}/{router_name}?format=ui">Back</a> | {main_page_nav_html}')
   
   logger.log_function_footer()
   return json_result(True, "", deleted_data)
@@ -756,13 +781,16 @@ async def demorouter_selftest(request: Request):
   
   Example:
   GET {router_prefix}/{router_name}/selftest?format=stream
+
+  Example item:
+  {example_item_json}
   """
   import uuid, datetime
   
   request_params = dict(request.query_params)
   
   if len(request_params) == 0:
-    doc = demorouter_selftest.__doc__.replace("{router_prefix}", router_prefix).replace("{router_name}", router_name)
+    doc = textwrap.dedent(demorouter_selftest.__doc__).replace("{router_prefix}", router_prefix).replace("{router_name}", router_name).replace("{example_item_json}", example_item_json.strip())
     return PlainTextResponse(generate_endpoint_docs(doc, router_prefix), media_type="text/plain; charset=utf-8")
   
   format_param = request_params.get("format", "")
@@ -784,7 +812,7 @@ async def demorouter_selftest(request: Request):
   stream_logger.log_function_header("demorouter2_selftest")
   
   test_id = f"selftest_{uuid.uuid4().hex[:8]}"
-  test_data_v1 = {"name": "Test Item", "created": datetime.datetime.now().isoformat(), "version": 1}
+  test_data_v1 = {"name": "Test Item", "version": 1}
   test_data_v2 = {"name": "Updated Item", "version": 2}
   
   async def run_selftest():
@@ -972,13 +1000,16 @@ async def demorouter_create_demo_items(request: Request):
   Examples:
   GET {router_prefix}/{router_name}/create_demo_items?format=stream
   GET {router_prefix}/{router_name}/create_demo_items?format=stream&count=5&delay_ms=500
+
+  Example item:
+  {example_item_json}
   """
   import asyncio, uuid, datetime
   
   request_params = dict(request.query_params)
   
   if len(request_params) == 0:
-    doc = demorouter_create_demo_items.__doc__.replace("{router_prefix}", router_prefix).replace("{router_name}", router_name)
+    doc = textwrap.dedent(demorouter_create_demo_items.__doc__).replace("{router_prefix}", router_prefix).replace("{router_name}", router_name).replace("{example_item_json}", example_item_json.strip())
     return PlainTextResponse(generate_endpoint_docs(doc, router_prefix), media_type="text/plain; charset=utf-8")
   
   format_param = request_params.get("format", "")
@@ -1028,9 +1059,7 @@ async def demorouter_create_demo_items(request: Request):
         item_id = f"demo_{batch_id}_{i+1:03d}"
         item_data = {
           "name": f"Demo Item {i+1}",
-          "batch_id": batch_id,
-          "sequence": i + 1,
-          "created_utc": datetime.datetime.now(datetime.timezone.utc).isoformat()
+          "version": 1
         }
         
         sse = stream_logger.log_function_output(f"[ {i+1} / {count} ] Creating item '{item_id}'...")
