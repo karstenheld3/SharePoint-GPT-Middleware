@@ -128,9 +128,10 @@ def generate_modal_structure() -> str:
     </div>
   </div>"""
 
-def generate_console_panel(title: str = "Console Output", include_pause_resume: bool = True) -> str:
+def generate_console_panel(title: str = "Console Output", include_pause_resume_cancel: bool = True) -> str:
   """Generate console panel with resize handle and controls."""
-  pause_btn = '<button id="btn-pause-resume" onclick="togglePauseResume()" class="btn-small" disabled>Pause</button>' if include_pause_resume else ''
+  pause_btn = '<button id="btn-pause-resume" onclick="togglePauseResume()" class="btn-small" disabled>Pause</button>' if include_pause_resume_cancel else ''
+  cancel_btn = '<button id="btn-cancel" onclick="cancelCurrentJob()" class="btn-small" disabled>Cancel</button>' if include_pause_resume_cancel else ''
   
   return f"""<div id="console-panel" class="console-panel">
     <div class="console-resize-handle" id="console-resize-handle"></div>
@@ -138,6 +139,7 @@ def generate_console_panel(title: str = "Console Output", include_pause_resume: 
       <div><span id="console-title">{_escape_html(title)}</span> <span id="console-status" class="console-status">(disconnected)</span></div>
       <div class="console-controls">
         {pause_btn}
+        {cancel_btn}
         <button onclick="clearConsole()" class="btn-small">Clear</button>
         <button onclick="hideConsole()" class="console-close">&times;</button>
       </div>
@@ -399,19 +401,26 @@ function handleSSEData(eventType, data) {{
 }}
 
 // ============================================
-// PAUSE / RESUME
+// PAUSE / RESUME / CANCEL
 // ============================================
-function updatePauseResumeButton() {{
-  const btn = document.getElementById('btn-pause-resume');
-  if (!btn) return;
-  if (!currentJobId) {{
-    btn.disabled = true;
-    btn.textContent = 'Pause';
-  }} else {{
-    btn.disabled = false;
-    btn.textContent = isPaused ? 'Resume' : 'Pause';
+function updatePauseResumeCancelButtons() {{
+  const pauseBtn = document.getElementById('btn-pause-resume');
+  const cancelBtn = document.getElementById('btn-cancel');
+  if (pauseBtn) {{
+    if (!currentJobId) {{
+      pauseBtn.disabled = true;
+      pauseBtn.textContent = 'Pause';
+    }} else {{
+      pauseBtn.disabled = false;
+      pauseBtn.textContent = isPaused ? 'Resume' : 'Pause';
+    }}
+  }}
+  if (cancelBtn) {{
+    cancelBtn.disabled = !currentJobId;
   }}
 }}
+
+function updatePauseResumeButton() {{ updatePauseResumeCancelButtons(); }}
 
 async function togglePauseResume() {{
   if (!currentJobId) return;
@@ -433,7 +442,29 @@ async function togglePauseResume() {{
     showToast('Error', e.message, 'error');
   }}
   
-  updatePauseResumeButton();
+  updatePauseResumeCancelButtons();
+}}
+
+async function cancelCurrentJob() {{
+  if (!currentJobId) return;
+  if (!confirm('Cancel job ' + currentJobId + '?')) return;
+  
+  const cancelBtn = document.getElementById('btn-cancel');
+  if (cancelBtn) cancelBtn.disabled = true;
+  
+  try {{
+    const response = await fetch(`{jobs_control_endpoint}?job_id=${{currentJobId}}&action=cancel`);
+    const result = await response.json();
+    if (result.ok) {{
+      showToast('Cancelled', currentJobId, 'info');
+    }} else {{
+      showToast('Cancel Failed', result.error, 'error');
+    }}
+  }} catch (e) {{
+    showToast('Error', e.message, 'error');
+  }}
+  
+  updatePauseResumeCancelButtons();
 }}
 
 function updateConsoleStatus(state) {{

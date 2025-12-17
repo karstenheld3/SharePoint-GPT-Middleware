@@ -71,8 +71,9 @@ A reactive web UI for managing demo items with CRUD operations and streaming job
 9. **Create demo items** - Click [Create Demo Items] to open modal with count/delay params, start streaming creation
 10. **Pause job** - Click [Pause] in console header to pause current streaming job
 11. **Resume job** - Click [Resume] in console header to resume paused job
-12. **Clear console** - Click [Clear] to empty console output
-13. **Close console** - Click [X] to hide console panel
+12. **Cancel job** - Click [Cancel] in console header to cancel current streaming job
+13. **Clear console** - Click [Clear] to empty console output
+14. **Close console** - Click [X] to hide console panel
 
 ## UX Design
 
@@ -92,7 +93,7 @@ main page: /v2/demorouter1?format=ui
 | +---+-------------+------------+---------+-------------------+                            |
 |                                                                                           |
 +-- [Resize Handle] ------------------------------------------------------------------------+
-| Console Output (connected)                                            [Pause] [Clear] [X] |
+| Console Output (connected)                                   [Pause] [Cancel] [Clear] [X] |
 |-------------------------------------------------------------------------------------------|
 | ===== START: Job ID='jb_42'                                                               |
 | Creating 10 demo items (batch ID='abc123', delay=300ms each)...                           |

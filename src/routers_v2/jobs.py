@@ -382,7 +382,7 @@ def _generate_jobs_ui_page(jobs: list) -> str:
   head = generate_html_head("Jobs", include_htmx=True, include_v2_css=True)
   toast_container = generate_toast_container()
   modal = generate_modal_structure()
-  console = generate_console_panel("Console Output", include_pause_resume=True)
+  console = generate_console_panel("Console Output", include_pause_resume_cancel=True)
   
   core_js = generate_core_js()
   console_js = generate_console_js(router_prefix, f"{router_prefix}/{router_name}/control")
