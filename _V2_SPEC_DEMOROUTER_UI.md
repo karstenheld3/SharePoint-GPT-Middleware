@@ -2,7 +2,12 @@
 
 This document specifies the interactive UI for the `/v2/demorouter?format=ui` endpoint.
 
-**Depends on:** `_V2_SPEC_ROUTERS.md` for endpoint design, streaming job infrastructure, and SSE format.
+**Depends on:**
+- `_V2_SPEC_ROUTERS.md` for endpoint design, streaming job infrastructure, and SSE format.
+
+**Does not depend on:**
+- `_V1_SPEC_COMMON_UI_FUNCTIONS.md`
+- `_V2_SPEC_COMMON_UI_FUNCTIONS.md`
 
 ## Overview
 
@@ -237,7 +242,7 @@ Benefits:
 
 - Fixed position at bottom of viewport
 - Resizable via drag handle (min: 45px, max: viewport height - 30px)
-- Hidden by default, shown when streaming starts
+- Visible by default on UI pages (body has `has-console` class)
 - [X] button hides console (keeps content)
 - [Clear] empties console output
 - [Pause]/[Resume] button controls current streaming job

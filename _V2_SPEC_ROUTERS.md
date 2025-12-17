@@ -125,20 +125,20 @@ Example `end_json`:
 
 ### Endpoint design decisions
 
-- [DD-E001] Self-documentation on bare GET (no query params, including `format`). When documentation is needed, it's where the developer is working.
-- [DD-E002] Action-suffixed endpoints: `/resource`, `/resource/get`, `/resource/create`, `/resource/update`, `/resource/delete`. Allows self-documentation.
-- [DD-E003] Backend ships simple interactive UI. Admins need no programming skills. Changes can be implemented and tested fast and in one place.
-- [DD-E004] Format param controls response: `json`, `html`, `ui` (resource root only), `stream` (long-running jobs). 
-- [DD-E005] Body accepts JSON or form data (content-type detection). Principle of least surprise: No need to look up documentation, it just works.
-- [DD-E006] Triggering, monitoring and management of crawling and other jobs via HTTP GET requests. Allows automation via single URL calls (low technology barrier).
-- [DD-E007] Semantic identifier names like `job_id`, `domain_id`, `source_id` that explicitly name the resource. Disambiguates object types and allow for actions that require multiple ids.
-- [DD-E008] Semantic entity identifyers for interally created ids like `jb_[JOB_NUMBER]` for a job. Self-explanatory system: disambiguates object types, simplifies support. Exceptions: Domain ids (used as folder names and `domain.json`) and source ids (used in `domain.json`)
-- [DD-E009] Plural naming for resources: `/domains`, `/vector_stores`. Exceptions possible: `/crawler`
-- [DD-E010] HTTP semantics exception for `/resource/delete` endpoints: `GET [R]/delete`
-- [DD-E011] Control parameters (`format`, `dry_run`) are always passed via query string.
-- [DD-E012] `/create` endpoints receive all resource data including the identifier from the request body.
-- [DD-E013] `/get` and `/delete` endpoints receive the resource identifier via query string.
-- [DD-E014] `/update` endpoints receive the identifier via query string and update data from the body. If the endpoint supports identifier modification and the body contains a different identifier than the query string, this triggers a rename operation: the resource is renamed from the query string identifier to the body identifier, then updated with the remaining body data. Otherwise, any identifier in the body is ignored.
+**DD-E001:** Self-documentation on bare GET (no query params, including `format`). When documentation is needed, it's where the developer is working.
+**DD-E002:** Action-suffixed endpoints: `/resource`, `/resource/get`, `/resource/create`, `/resource/update`, `/resource/delete`. Allows self-documentation.
+**DD-E003:** Backend ships simple interactive UI. Admins need no programming skills. Changes can be implemented and tested fast and in one place.
+**DD-E004:** Format param controls response: `json`, `html`, `ui` (resource root only), `stream` (long-running jobs). 
+**DD-E005:** Body accepts JSON or form data (content-type detection). Principle of least surprise: No need to look up documentation, it just works.
+**DD-E006:** Triggering, monitoring and management of crawling and other jobs via HTTP GET requests. Allows automation via single URL calls (low technology barrier).
+**DD-E007:** Semantic identifier names like `job_id`, `domain_id`, `source_id` that explicitly name the resource. Disambiguates object types and allow for actions that require multiple ids.
+**DD-E008:** Semantic entity identifyers for interally created ids like `jb_[JOB_NUMBER]` for a job. Self-explanatory system: disambiguates object types, simplifies support. Exceptions: Domain ids (used as folder names and `domain.json`) and source ids (used in `domain.json`)
+**DD-E009:** Plural naming for resources: `/domains`, `/vector_stores`. Exceptions possible: `/crawler`
+**DD-E010:** HTTP semantics exception for `/resource/delete` endpoints: `GET [R]/delete`
+**DD-E011:** Control parameters (`format`, `dry_run`) are always passed via query string.
+**DD-E012:** `/create` endpoints receive all resource data including the identifier from the request body.
+**DD-E013:** `/get` and `/delete` endpoints receive the resource identifier via query string.
+**DD-E014:** `/update` endpoints receive the identifier via query string and update data from the body. If the endpoint supports identifier modification and the body contains a different identifier than the query string, this triggers a rename operation: the resource is renamed from the query string identifier to the body identifier, then updated with the remaining body data. Otherwise, any identifier in the body is ignored.
 
 ### Why Action-Suffixed over RESTful?
 
