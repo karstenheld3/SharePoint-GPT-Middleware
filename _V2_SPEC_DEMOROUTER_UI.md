@@ -80,8 +80,7 @@ A reactive web UI for managing demo items with CRUD operations and streaming job
 main page: /v2/demorouter1?format=ui
 +-------------------------------------------------------------------------------------------+
 | Demo Items (3)  [Reload]                                                                  |
-| <- Back to Demo Router                                                                    |
-|                                                                                           |
+| Back to Demo Router                                                                       |
 | [New Item] [Create Demo Items] [Run Selftest] [Delete (0)]                                |
 |                                                                                           |
 | +---+-------------+------------+---------+-------------------+                            |

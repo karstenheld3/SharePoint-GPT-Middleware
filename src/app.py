@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from routers_v1.common_openai_functions_v1 import create_async_azure_openai_client_with_api_key, create_async_azure_openai_client_with_credential, create_async_openai_client
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from routers_v1 import crawler, inventory, domains, testrouter3
-from routers_v2 import demorouter1, demorouter2
+from routers_v2 import demorouter1, demorouter2, jobs
 from routers_static import openai_proxy, sharepoint_search
 from routers_static.sharepoint_search import build_domains_and_metadata_cache
 from common_utility_functions import ZipExtractionMode, acquire_startup_lock, convert_to_flat_html_table, extract_zip_files, format_config_for_displaying, format_filesize, clear_folder
@@ -495,6 +495,14 @@ def create_app() -> FastAPI:
     log_function_output(log_data, f"Demo router 2 included at {v2_router_prefix}")
   except Exception as e:
     initialization_errors.append({"component": "Demo Router 2", "error": str(e)})
+  
+  # Include Jobs router under /v2
+  try:
+    app.include_router(jobs.router, tags=["Jobs"], prefix=v2_router_prefix)
+    jobs.set_config(config, v2_router_prefix)
+    log_function_output(log_data, f"Jobs router included at {v2_router_prefix}")
+  except Exception as e:
+    initialization_errors.append({"component": "Jobs Router", "error": str(e)})
 
   # Mount static files directory
   static_path = os.path.join(os.path.dirname(__file__), "static")
@@ -587,6 +595,7 @@ def root() -> str:
     <p>Version 2 Routers</p>
     <li><a href="/v2/demorouter1">/v2/demorouter1</a> - Demo Router 1 (inline UI) (<a href="/v2/demorouter1?format=json">JSON</a> + <a href="/v2/demorouter1?format=html">HTML</a> + <a href="/v2/demorouter1?format=ui">UI</a>)</li>
     <li><a href="/v2/demorouter2">/v2/demorouter2</a> - Demo Router 2 (common_ui_functions_v2) (<a href="/v2/demorouter2?format=json">JSON</a> + <a href="/v2/demorouter2?format=html">HTML</a> + <a href="/v2/demorouter2?format=ui">UI</a>)</li>
+    <li><a href="/v2/jobs">/v2/jobs</a> - Jobs Monitoring (<a href="/v2/jobs?format=json">JSON</a> + <a href="/v2/jobs?format=html">HTML</a> + <a href="/v2/jobs?format=ui">UI</a>)</li>
   </ul>
 
   <div class="section">

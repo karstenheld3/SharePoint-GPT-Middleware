@@ -2,17 +2,19 @@
 
 This document specifies the HTMX-based User Interface for the `/v2/jobs?format=ui` endpoint.
 
-**Depends on:** `_V2_SPEC_ROUTERS.md` for streaming job infrastructure, SSE format, and job file specifications.
+**Depends on:**
+- `_V2_SPEC_ROUTERS.md` for streaming job infrastructure, SSE format, and job file specifications.
+- `_V2_SPEC_COMMON_UI_FUNCTIONS.md` for shared UI patterns and `common_ui_functions_v2.py` library.
 
 ## Overview
 
-A reactive web UI for monitoring and controlling long-running jobs using HTMX SSE extension for real-time streaming updates. The UI displays a job list table with actions and a resizable console panel for viewing job output streams.
+A reactive web UI for monitoring and controlling long-running jobs. Uses the unified fetch/ReadableStream SSE pattern from `common_ui_functions_v2.py` for real-time streaming updates. The UI displays a job list table with actions and a resizable console panel for viewing job output streams.
 
 **Key Technologies:**
 - HTMX core for declarative HTTP interactions
-- HTMX SSE extension (`sse.js`) for Server-Sent Events
-- Minimal JavaScript for state management and JSON parsing
-- CSS for styling (reuses `/static/css/styles.css`)
+- Native JavaScript with fetch/ReadableStream for SSE streaming (unified pattern from `common_ui_functions_v2.py`)
+- Declarative `data-*` button attributes with `callEndpoint()` pattern
+- CSS for styling (reuses `/static/css/styles.css` and `/static/css/routers_v2.css`)
 
 ## Scenario
 
@@ -25,9 +27,9 @@ A reactive web UI for monitoring and controlling long-running jobs using HTMX SS
 - Shows toast notifications for job state changes
 
 **What we don't want:**
-- Custom JavaScript fetch/streaming implementation (use HTMX SSE instead)
 - Polling-based updates (use SSE push)
 - Multiple simultaneous job monitors (one console, one active stream)
+- HTMX SSE extension (use unified fetch/ReadableStream pattern from `common_ui_functions_v2.py`)
 
 ## Domain Object Model
 
@@ -72,16 +74,17 @@ Note: Started and Finished columns display datetime in ISO format (YYYY-MM-DD HH
 ```
 main page: /v2/jobs?format=ui
 +-------------------------------------------------------------------------------------------------------------------------------------+
-| Jobs (4)                                                                                            [Delete Selected (0)] [Refresh] |
-| <- Back to main page                                                                                                                |
+| Jobs (4) [Reload]                                                                                                                   |
+| Back to main page                                                                                                                   |
+| [Delete (0)]                                                                                                                        |         
 |                                                                                                                                     |
 | +---+-------+-----------+---------------------+----------+-----------+---------+----------+---------------------------------------+ |
 | |[ ]| ID    | Router    | Endpoint            | Objects  | State     | Started | Finished | Actions                               | |
 | +---+-------+-----------+---------------------+----------+-----------+---------+----------+---------------------------------------+ |
 | |[ ]| jb_44 | crawler   | crawl               | DOMAIN01 | running   | ...     | -        | [Monitor] [Pause] [Cancel]            | |
 | |[ ]| jb_43 | crawler   | crawl               | DOMAIN02 | paused    | ...     | -        | [Monitor] [Resume] [Cancel]           | |
-| |[x]| jb_42 | crawler   | crawl               | DOMAIN01 | completed | ...     | ...      | [View] [Result] [Monitor]             | |
-| |[ ]| jb_41 | inventory | vector_stores/files | vs_123   | completed | ...     | ...      | [View] [Result] [Monitor]             | |
+| |[x]| jb_42 | crawler   | crawl               | DOMAIN01 | completed | ...     | ...      | [Result] [Monitor]                    | |
+| |[ ]| jb_41 | inventory | vector_stores/files | vs_123   | completed | ...     | ...      | [Result] [Monitor]                    | |
 | |   |       |           |                     | file_abc |           |         |          |                                       | |
 | +---+-------+-----------+---------------------+----------+-----------+---------+----------+---------------------------------------+ |
 |                                                                                                                                     |
@@ -130,37 +133,42 @@ data: {"job_id": "jb_42", "state": "completed", "source_url": "...", "monitor_ur
 
 ```
 
-### HTMX SSE Connection
+### SSE Streaming (Unified Pattern)
 
-The console panel uses HTMX SSE extension for connection management:
-```html
-<div id="sse-container" hx-ext="sse">
-  <!-- sse-connect attribute added dynamically when user clicks Monitor -->
-  <pre id="console-output" sse-swap="log" hx-swap="beforeend"></pre>
-</div>
+The console panel uses the unified fetch/ReadableStream pattern from `common_ui_functions_v2.py`:
+```javascript
+// Uses connectStream() from common_ui_functions_v2.py
+function monitorJob(jobId) {
+  const url = `/v2/jobs/monitor?job_id=${jobId}&format=stream`;
+  connectStream(url, {
+    reloadOnFinish: false,  // Don't reload table on stream end
+    showResult: 'none'      // Don't show toast/modal, job row updates instead
+  });
+}
 ```
 
 ### Connection Lifecycle
 
-1. **Connect** - User clicks [Monitor] -> JavaScript sets `sse-connect` attribute -> HTMX establishes EventSource
-2. **Receive** - `log` events automatically appended to console via `sse-swap`
-3. **JSON events** - `start_json`/`end_json` intercepted via `htmx:sseBeforeMessage` for parsing
+1. **Connect** - User clicks [Monitor] -> `monitorJob(jobId)` calls `connectStream()`
+2. **Receive** - `handleSSEData()` parses events, appends log lines to console
+3. **JSON events** - `start_json`/`end_json` handled by `handleSSEData()`, updates job row state
 4. **Disconnect** - Any of:
-   - User clicks [Disconnect] -> JavaScript removes `sse-connect` attribute
-   - `end_json` received -> Auto-disconnect after processing
-   - User navigates away -> HTMX cleans up EventSource
+   - `end_json` received -> Stream completes naturally
+   - User clicks [X] on console -> `hideConsole()` (stream continues in background)
+   - User navigates away -> Browser cleans up fetch
 
 ### Action Buttons Per State
 
 ```
-running:   [View] [Monitor] [Pause] [Cancel]
-paused:    [View] [Monitor] [Resume] [Cancel]
-completed: [View] [Result] [Monitor]
-cancelled: [View] [Result] [Monitor]
+running:   [Monitor] [Pause] [Cancel]
+paused:    [Monitor] [Resume] [Cancel]
+completed: [Result] [Monitor]
+cancelled: [Result] [Monitor]
 ```
 
-- `[Result]` always available for terminal states (completed/cancelled) - shows JSON from `/v2/jobs/results`
+- `[Result]` available for terminal states (completed/cancelled) - shows JSON from `/v2/jobs/results` in modal
 - `[Monitor]` available for all states - shows historical log for completed/cancelled jobs
+- Console header has [Pause]/[Resume] button for the currently monitored job
 
 ### Job Table Data Source
 
@@ -185,13 +193,34 @@ cancelled: [View] [Result] [Monitor]
 For completed/failed/cancelled jobs, the job object contains `finished_utc` and `result`.
 For running/paused jobs, `finished_utc` and `result` are null.
 
-### Job Control via HTMX
+### Job Control via callEndpoint
 
-Control buttons use standard HTMX GET requests:
+Control buttons use declarative `data-*` attributes with `callEndpoint()` pattern:
 ```html
-<button hx-get="/v2/jobs/control?job_id=jb_44&action=pause" 
-        hx-swap="none"
-        hx-on::after-request="handleControlResponse(event)">Pause</button>
+<button class="btn-small"
+        data-url="/v2/jobs/control?job_id=jb_44&action=pause"
+        data-method="GET"
+        data-format="json"
+        onclick="callJobControl(this, 'jb_44')">Pause</button>
+```
+
+```javascript
+async function callJobControl(btn, jobId) {
+  const url = btn.dataset.url;
+  try {
+    const response = await fetch(url);
+    const result = await response.json();
+    if (result.ok) {
+      const action = result.data?.action;
+      updateJobState(jobId, action);  // Update row based on action
+      showToast(action + ' requested', jobId, 'info');
+    } else {
+      showErrorModal(result);  // Modal for errors
+    }
+  } catch (e) {
+    showToast('Error', e.message, 'error');
+  }
+}
 ```
 
 ### Toast Notifications
@@ -239,7 +268,7 @@ Modal populated from response JSON:
 
 ### Modal Dialog Behavior
 
-The `#modal` element is used by [View], [Result] buttons and error dialogs.
+The `#modal` element is used by [Result] buttons and error dialogs.
 
 **HTML Structure:**
 ```html
@@ -253,14 +282,25 @@ The `#modal` element is used by [View], [Result] buttons and error dialogs.
 </div>
 ```
 
-**[View] Button Example:**
-```html
-<button class="btn-small" hx-get="/v2/jobs/get?job_id=jb_44&format=html" hx-target="#modal .modal-body" hx-swap="innerHTML" onclick="openModal()">View</button>
-```
-
 **[Result] Button Example:**
 ```html
-<button class="btn-small" hx-get="/v2/jobs/results?job_id=jb_44&format=html" hx-target="#modal .modal-body" hx-swap="innerHTML" onclick="openModal()">Result</button>
+<button class="btn-small" onclick="showJobResult('jb_44')">Result</button>
+```
+
+```javascript
+async function showJobResult(jobId) {
+  try {
+    const response = await fetch(`/v2/jobs/results?job_id=${jobId}&format=json`);
+    const result = await response.json();
+    if (result.ok) {
+      showResultModal(result.data);  // Uses common_ui_functions_v2.py modal
+    } else {
+      showToast('Error', result.error, 'error');
+    }
+  } catch (e) {
+    showToast('Error', e.message, 'error');
+  }
+}
 ```
 
 **JavaScript Functions:**
@@ -313,20 +353,17 @@ Job table rows are updated in two scenarios:
 
 When `/v2/jobs/control` returns `ok: true`, optimistically update the row:
 ```javascript
-function handleControlResponse(event) {
-  const response = JSON.parse(event.detail.xhr.responseText);
-  if (response.ok) {
-    const { job_id, action } = response.data;
-    // Optimistic state update based on action
-    const newState = action === 'pause' ? 'paused' 
-                   : action === 'resume' ? 'running' 
-                   : action === 'cancel' ? 'cancelled' : null;
-    if (newState) {
-      updateJob(job_id, { state: newState });
+function updateJobState(jobId, action) {
+  // Optimistic state update based on action
+  const newState = action === 'pause' ? 'paused' 
+                 : action === 'resume' ? 'running' 
+                 : action === 'cancel' ? 'cancelled' : null;
+  if (newState) {
+    const job = jobsState.get(jobId);
+    if (job) {
+      job.state = newState;
+      renderAllJobs();
     }
-    showToast(`${action} requested`, job_id, 'info');
-  } else {
-    showErrorModal(response);  // Modal for errors
   }
 }
 ```
@@ -335,30 +372,39 @@ Note: This is optimistic - the actual state change happens when the job processe
 
 **2. Monitored job state change (start_json/end_json received)**
 
-When SSE events arrive, update the corresponding job row:
+The Jobs UI extends `handleSSEData()` from `common_ui_functions_v2.py` to also update job rows:
 ```javascript
-function handleSseEvent(event) {
-  const eventType = event.detail.type;  // 'start_json' or 'end_json'
-  const data = JSON.parse(event.detail.data);
+// Override handleSSEData to also update job state
+const baseHandleSSEData = handleSSEData;
+function handleSSEData(eventType, data) {
+  baseHandleSSEData(eventType, data);  // Console output
   
   if (eventType === 'start_json') {
-    updateJob(data.job_id, { state: data.state });
-    showToast('Job Started', data.job_id, 'info');
+    try {
+      const json = JSON.parse(data);
+      updateJobInTable(json.job_id, { state: json.state });
+    } catch (e) {}
   }
   
   if (eventType === 'end_json') {
-    updateJob(data.job_id, { 
-      state: data.state, 
-      finished_utc: data.finished_utc,
-      result: data.result 
-    });
-    showToast('Job Finished', data.job_id, data.result?.ok ? 'success' : 'error');
-    disconnectStream();  // Auto-disconnect on completion
+    try {
+      const json = JSON.parse(data);
+      updateJobInTable(json.job_id, { 
+        state: json.state, 
+        finished_utc: json.finished_utc,
+        result: json.result 
+      });
+    } catch (e) {}
   }
 }
 
-// Register handler
-document.body.addEventListener('htmx:sseBeforeMessage', handleSseEvent);
+function updateJobInTable(jobId, updates) {
+  const job = jobsState.get(jobId);
+  if (job) {
+    Object.assign(job, updates);
+    renderAllJobs();
+  }
+}
 ```
 
 **Row re-rendering on update:**
@@ -592,17 +638,16 @@ User clicks [Disconnect]
   
   <!-- Console Panel (always visible, fixed bottom) -->
   <div id="console-panel" class="console-panel">
-    <div class="console-resize-handle"></div>
+    <div class="console-resize-handle" id="console-resize-handle"></div>
     <div class="console-header">
-      <span id="console-title">Console Output (disconnected)</span>
+      <div><span id="console-title">Console Output</span> <span id="console-status" class="console-status">(disconnected)</span></div>
       <div class="console-controls">
-        <button onclick="disconnectStream()" class="btn-small" id="btn-disconnect" disabled>Disconnect</button>
+        <button id="btn-pause-resume" onclick="togglePauseResume()" class="btn-small" disabled>Pause</button>
         <button onclick="clearConsole()" class="btn-small">Clear</button>
+        <button onclick="hideConsole()" class="console-close">&times;</button>
       </div>
     </div>
-    <div id="sse-container" hx-ext="sse">
-      <pre id="console-output" class="console-output" sse-swap="log" hx-swap="beforeend"></pre>
-    </div>
+    <pre id="console-output" class="console-output"></pre>
   </div>
   
   <script>
@@ -639,10 +684,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   <td>2025-01-15 14:20:30</td>
   <td>-</td>
   <td class="actions">
-    <button class="btn-small" hx-get="/v2/jobs/get?job_id=jb_44&format=html" hx-target="#modal" hx-swap="innerHTML">View</button>
     <button class="btn-small" onclick="monitorJob('jb_44')">Monitor</button>
-    <button class="btn-small" hx-get="/v2/jobs/control?job_id=jb_44&action=pause" hx-swap="none" hx-on::after-request="handleControlResponse(event)">Pause</button>
-    <button class="btn-small btn-delete" hx-get="/v2/jobs/control?job_id=jb_44&action=cancel" hx-swap="none" hx-confirm="Cancel job jb_44?" hx-on::after-request="handleControlResponse(event)">Cancel</button>
+    <button class="btn-small" data-url="/v2/jobs/control?job_id=jb_44&action=pause" onclick="callJobControl(this, 'jb_44')">Pause</button>
+    <button class="btn-small btn-delete" onclick="if(confirm('Cancel job jb_44?')) callJobControl(this, 'jb_44')" data-url="/v2/jobs/control?job_id=jb_44&action=cancel">Cancel</button>
   </td>
 </tr>
 ```
@@ -692,10 +736,18 @@ async def generate_sse_stream(job_id: str, ...):
 
 ### JavaScript: Core Functions
 
+The Jobs UI uses functions from `common_ui_functions_v2.py` and adds job-specific extensions:
+
+**From common_ui_functions_v2.py (included automatically):**
+- `showToast()`, `escapeHtml()`, `openModal()`, `closeModal()`, `showResultModal()`
+- `connectStream()`, `handleSSEData()`, `appendToConsole()`, `clearConsole()`, `hideConsole()`
+- `togglePauseResume()`, `updatePauseResumeButton()`, `updateConsoleStatus()`
+- `initConsoleResize()`
+
+**Jobs-specific functions:**
 ```javascript
-// Connection state
-let currentJobId = null;
-let isConnected = false;
+// Job state management
+const jobsState = new Map();
 
 // Fetch jobs and re-render table (preserves console state)
 async function refreshJobs() {
@@ -705,67 +757,57 @@ async function refreshJobs() {
     jobsState.clear();
     result.data.forEach(job => jobsState.set(job.job_id, job));
     renderAllJobs();
+    showToast('Refreshed', result.data.length + ' jobs', 'info');
   }
 }
 
-// Connect to job stream
-function monitorJob(jobId) { ... }
-
-// Disconnect current stream
-function disconnectStream() { ... }
-
-// Clear console output
-function clearConsole() { ... }
-
-// Show toast notification
-function showToast(title, message, type = 'info', autoDismiss = 5000) { ... }
-
-// Update job in state Map and re-render table
-function updateJob(jobId, updates) {
-  const job = jobsState.get(jobId);
-  if (job) {
-    Object.assign(job, updates);  // Merge updates: state, finished, etc.
-    renderAllJobs();              // Re-render entire table
-  }
+// Connect to job stream via unified connectStream()
+function monitorJob(jobId) {
+  const url = `/v2/jobs/monitor?job_id=${jobId}&format=stream`;
+  connectStream(url, { reloadOnFinish: false, showResult: 'none' });
 }
 
-// Handle SSE events (htmx:sseBeforeMessage listener)
-function handleSseEvent(event) { ... }
+// Show job result in modal
+async function showJobResult(jobId) { ... }
 
-// Handle control action response
-function handleControlResponse(event) { ... }
+// Call job control endpoint (pause/resume/cancel)
+async function callJobControl(btn, jobId) { ... }
 
-// Initialize console resize
-function initConsoleResize() { ... }
+// Update job state after control action
+function updateJobState(jobId, action) { ... }
+
+// Render all jobs into table
+function renderAllJobs() { ... }
+
+// Render single job row with state-dependent buttons
+function renderJobRow(job) { ... }
+
+// Parse source_url for display columns
+function parseSourceUrl(source_url) { ... }
 ```
 
-### CSS: Console and Toast Styles
+### CSS: Styles from routers_v2.css
 
-```css
-/* Toast container - fixed top-right */
-#toast-container { position: fixed; top: 1rem; right: 1rem; z-index: 1000; }
+The Jobs UI uses `/static/css/routers_v2.css` which provides all V2 UI component styles:
+- Toast notifications (`.toast`, `.toast-info`, `.toast-success`, etc.)
+- Modal overlay (`.modal-overlay`, `.modal-content`, `.modal-close`)
+- Console panel (`.console-panel`, `.console-header`, `.console-output`)
+- Form elements (`.form-group`, `.form-error`)
+- Page layout (`body.has-console`, `.page-header`, `.toolbar`)
 
-/* Toast notification with colored left border */
-.toast { /* Light background, border-left indicates type */ }
-.toast.toast-info { border-left-color: #0078d4; }
-.toast.toast-success { border-left-color: #28a745; }
-.toast.toast-error { border-left-color: #dc3545; }
-.toast.toast-warning { border-left-color: #ffc107; }
-
-/* Console panel - fixed bottom, always visible */
-.console-panel { position: fixed; bottom: 0; left: 0; right: 0; height: 232px; display: flex; flex-direction: column; }
-
-/* Main content padding to avoid console overlap */
-.container { padding-bottom: 250px; }
-
-/* Resize handle */
-.console-resize-handle { height: 4px; cursor: ns-resize; }
-
-/* Console output - monospace, dark background */
-.console-output { font-family: 'Consolas', monospace; background: #012456; color: #fff; }
-```
+No additional inline CSS required - all styles are shared with other V2 routers.
 
 ## Spec Changes
+
+**[2025-12-17 19:00]**
+- Changed: Added dependency on `_V2_SPEC_COMMON_UI_FUNCTIONS.md`
+- Changed: Replaced HTMX SSE extension with unified fetch/ReadableStream pattern from `common_ui_functions_v2.py`
+- Changed: Button configuration now uses declarative `data-*` attributes with `callEndpoint()` pattern
+- Changed: Console header now includes [Pause]/[Resume] button for currently monitored job (in addition to per-row controls)
+- Removed: [View] buttons from all job states (kept [Result] for terminal states)
+- Updated: Job Row HTML to use data-* pattern instead of HTMX attributes
+- Updated: JavaScript Core Functions to show which come from common_ui_functions_v2.py vs jobs-specific
+- Updated: CSS section to reference shared routers_v2.css
 
 **[2025-12-15 13:57]**
 - Added: "Empty State" section - "No jobs found" message row

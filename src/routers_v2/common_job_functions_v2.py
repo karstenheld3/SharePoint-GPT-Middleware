@@ -345,11 +345,12 @@ def find_job_file(persistent_storage_path: str, job_id: str) -> Optional[str]:
   if not os.path.exists(jobs_folder): return None
   
   for ext in JOB_STATES:
-    pattern = os.path.join(jobs_folder, "**", f"*[{job_id}]*.{ext}")
+    # Pattern: *_[{job_id}]_*.{ext} or *_[{job_id}].{ext}
+    pattern = os.path.join(jobs_folder, "**", f"*[[]{ job_id }[]]*.{ext}")
     files = glob.glob(pattern, recursive=True)
     if files: return files[0]
     
-    pattern = os.path.join(jobs_folder, "**", f"*[{job_id}].{ext}")
+    pattern = os.path.join(jobs_folder, "**", f"*[[]{ job_id }[]].{ext}")
     files = glob.glob(pattern, recursive=True)
     if files: return files[0]
   
