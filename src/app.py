@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from routers_v1.common_openai_functions_v1 import create_async_azure_openai_client_with_api_key, create_async_azure_openai_client_with_credential, create_async_openai_client
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from routers_v1 import crawler, inventory, domains, testrouter3
-from routers_v2 import demorouter1
+from routers_v2 import demorouter1, demorouter2
 from routers_static import openai_proxy, sharepoint_search
 from routers_static.sharepoint_search import build_domains_and_metadata_cache
 from common_utility_functions import ZipExtractionMode, acquire_startup_lock, convert_to_flat_html_table, extract_zip_files, format_config_for_displaying, format_filesize, clear_folder
@@ -480,13 +480,21 @@ def create_app() -> FastAPI:
   # Include V2 routers
   v2_router_prefix = "/v2"
   
-  # Include Demo router under /v2
+  # Include Demo router 1 under /v2
   try:
     app.include_router(demorouter1.router, tags=["Demo"], prefix=v2_router_prefix)
     demorouter1.set_config(config, v2_router_prefix)
-    log_function_output(log_data, f"Demo router included at {v2_router_prefix}")
+    log_function_output(log_data, f"Demo router 1 included at {v2_router_prefix}")
   except Exception as e:
-    initialization_errors.append({"component": "Demo Router", "error": str(e)})
+    initialization_errors.append({"component": "Demo Router 1", "error": str(e)})
+  
+  # Include Demo router 2 under /v2 (uses common_ui_functions_v2)
+  try:
+    app.include_router(demorouter2.router, tags=["Demo"], prefix=v2_router_prefix)
+    demorouter2.set_config(config, v2_router_prefix)
+    log_function_output(log_data, f"Demo router 2 included at {v2_router_prefix}")
+  except Exception as e:
+    initialization_errors.append({"component": "Demo Router 2", "error": str(e)})
 
   # Mount static files directory
   static_path = os.path.join(os.path.dirname(__file__), "static")
@@ -577,7 +585,8 @@ def root() -> str:
     <li><a href="/v1/crawler">/v1/crawler</a> - Crawler Endpoints (<a href="/v1/crawler/localstorage">Local Storage</a> + <a href="/v1/crawler/updatemaps">Update Maps</a> + <a href="/v1/crawler/getlogfile">Get Logfile</a>)</li>
     <li><a href="/v1/testrouter3/jobs">/v1/testrouter3/jobs</a> - Streaming Test with UI (<a href="/v1/testrouter3/streaming01?format=stream">Stream</a> + <a href="/v1/testrouter3/jobs?format=ui">Jobs UI</a>)</li>
     <p>Version 2 Routers</p>
-    <li><a href="/v2/demorouter1">/v2/demorouter1</a> - Demo Router (<a href="/v2/demorouter1?format=json">JSON</a> + <a href="/v2/demorouter1?format=html">HTML</a> + <a href="/v2/demorouter1?format=ui">UI</a>)</li>
+    <li><a href="/v2/demorouter1">/v2/demorouter1</a> - Demo Router 1 (inline UI) (<a href="/v2/demorouter1?format=json">JSON</a> + <a href="/v2/demorouter1?format=html">HTML</a> + <a href="/v2/demorouter1?format=ui">UI</a>)</li>
+    <li><a href="/v2/demorouter2">/v2/demorouter2</a> - Demo Router 2 (common_ui_functions_v2) (<a href="/v2/demorouter2?format=json">JSON</a> + <a href="/v2/demorouter2?format=html">HTML</a> + <a href="/v2/demorouter2?format=ui">UI</a>)</li>
   </ul>
 
   <div class="section">

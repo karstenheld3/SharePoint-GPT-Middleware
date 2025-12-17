@@ -121,6 +121,7 @@ This specification defines a reusable UI library for V2 routers, following the p
 **DD-UI-11:** Single active stream. Only one streaming job at a time per page - `currentJobId` is overwritten if new stream starts. Intentional simplification.
 **DD-UI-12:** XSS prevention. All user data in `renderItemRow()` must be escaped via `escapeHtml()` before inserting into HTML.
 **DD-UI-13:** Row ID sanitization. Row IDs derived from `row_id_field` must be sanitized (alphanumeric + underscore only) to prevent broken `id` attributes.
+**DD-UI-14:** Router-level navigation. Each router defines navigation constant (e.g., `MAIN_PAGE_NAV_HTML`) as raw HTML string, passed to `generate_ui_page(navigation_html=...)`. Keeps navigation logic in router, not UI library.
 
 ---
 
@@ -1002,8 +1003,9 @@ The following remain router-specific (only styles are shared):
 3. **Router-specific dialogs** - e.g., `showCreateDemoItemsForm()`
 4. **Data validation logic** - Field-specific validation rules
 5. **Custom result displays** - Router-specific result formatting
+6. **Navigation HTML** - Defined via router-level constant (e.g., `MAIN_PAGE_NAV_HTML`), passed to `generate_ui_page(navigation_html=...)`. Example: `'<a href="/">Main Page</a>'`
 
-Routers implement these as `additional_js` parameter or in separate JS files.
+Routers implement 1-5 as `additional_js` parameter or in separate JS files.
 
 ---
 
@@ -1017,6 +1019,82 @@ Routers implement these as `additional_js` parameter or in separate JS files.
 6. Extend `/static/css/routers_v2.css` with missing styles
 7. Create `demorouter2.py` using the library (refactored from demorouter1.py)
 8. Verify all features work identically to current implementation
+
+---
+
+## Implementation Details
+
+### Button JS Generation - Escaping for Nested Contexts
+
+When generating button HTML inside a JS string literal, there are multiple nested contexts requiring careful escaping:
+
+```
+Context layers (outside → inside):
+1. Python string
+2. JS string literal (single quotes)
+3. HTML attribute value (double quotes)
+4. JS code inside onclick (may have string literals)
+```
+
+**Escaping constants:**
+- `esc_dq = '\\"'` - escaped double quote for HTML attributes inside JS string
+- `esc_sq = "\\'"` - escaped single quote for JS strings inside onclick
+
+**Template-based approach:**
+```python
+template = "<button [CLASS][DATA_URL][DATA_METHOD][DATA_FORMAT][ONCLICK]>[TEXT]</button>"
+
+# Step by step replacement - if attribute exists, replace with value; else empty string
+if btn_class:
+  template = template.replace("[CLASS]", f'class={esc_dq}{btn_class}{esc_dq} ')
+else:
+  template = template.replace("[CLASS]", "")
+```
+
+**itemId placeholder replacement:**
+
+Two patterns depending on context:
+- Function arguments (need quoted string in output): `'{itemId}'` → `\'' + itemId + \'`
+- String concatenation (confirm message): `'{itemId}'` → `' + itemId + '`
+
+**confirm() escaping:**
+
+Since confirm() is inside a JS string literal, its quotes must be escaped:
+```python
+# Wrong: if(confirm('text'))  - inner ' closes outer JS string
+# Right: if(confirm(\'text\')) - escaped quotes stay inside string
+onclick_value = f"if(confirm({esc_sq}{confirm_text}{esc_sq})) {call_endpoint}"
+```
+
+**renderItemRow step-by-step structure:**
+
+Generated JS uses arrays for maintainability:
+```javascript
+function renderItemRow(item) {
+  const itemId = item.item_id || '';
+  const rowId = escapeHtml(String(itemId).replace(/[^a-zA-Z0-9_]/g, '_'));
+  const cells = [];
+  
+  cells.push('<td>...</td>');  // checkbox
+  cells.push('<td>...</td>');  // each data column
+  
+  const btns = [];
+  btns.push('<button ...>Edit</button>');
+  btns.push('<button ...>Delete</button>');
+  cells.push('<td class="actions">' + btns.join('') + '</td>');
+  
+  return '<tr id="item-' + rowId + '">' + cells.join('') + '</tr>';
+}
+```
+
+**Docstring Placeholder Replacement:**
+
+Endpoint docstrings use `{router_prefix}` and `{router_name}` placeholders for self-documentation. Since docstrings are regular strings (not f-strings), placeholders must be replaced at runtime:
+
+```python
+doc = func.__doc__.replace("{router_prefix}", router_prefix).replace("{router_name}", router_name)
+return PlainTextResponse(generate_endpoint_docs(doc, router_prefix), ...)
+```
 
 ---
 

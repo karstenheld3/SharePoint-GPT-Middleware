@@ -171,3 +171,108 @@
 
 /* Body margin when console is visible */
 body.has-console { margin-bottom: 250px; }
+
+/* Toolbar */
+.toolbar {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+/* Page header with inline reload */
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.page-header h1 {
+  margin: 0;
+}
+
+/* Table enhancements */
+table th input[type="checkbox"],
+table td input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+}
+
+td.actions {
+  white-space: nowrap;
+}
+
+td.actions button {
+  margin-right: 0.25rem;
+}
+
+td.actions button:last-child {
+  margin-right: 0;
+}
+
+/* Form groups (for modal forms) */
+.form-group {
+  margin-bottom: 1rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-weight: 500;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: #0078d4;
+  box-shadow: 0 0 0 2px rgba(0,120,212,0.2);
+}
+
+/* Form actions (button row) */
+.form-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+/* Button variants */
+.btn-secondary {
+  background: #6c757d;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  background: #5a6268;
+}
+
+/* Result output in modal */
+.result-output {
+  max-height: 400px;
+  overflow: auto;
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  padding: 1rem;
+  border-radius: 4px;
+  margin: 0 0 1rem 0;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 0.875rem;
+  white-space: pre-wrap;
+}
