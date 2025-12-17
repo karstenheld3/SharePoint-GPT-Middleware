@@ -1,19 +1,24 @@
-# Demo Router - V2 router for demonstrating CRUD operations with streaming
-# Spec: L(jhu)C(jhs)G(jh)U(jhs)D(jhs): /v2/demorouter
-# See _V2_SPEC_ROUTERS.md for specification
+# Demo Router 1 - V2 router for demonstrating CRUD operations with streaming
+# Spec: L(jhu)C(jhs)G(jh)U(jhs)D(jhs): /v2/demorouter1
+# Does apply:  _V2_SPEC_ROUTERS.md, _V2_SPEC_DEMOROUTER_UI.md
+# Does not apply: _V2_SPEC_COMMON_UI_FUNCTIONS.md
+# This is a self-contained prototype to demonstrate implementation details.
+# All used UI and Javascript should remain in this file.
+# Dependencies are allowed for jobs and logging. 
 
 import json, os
 import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 
-from utils import convert_to_flat_html_table
-from logging_v2 import MiddlewareLogger
-from streaming_jobs_v2 import StreamingJobWriter, ControlAction
+from common_utils import convert_to_flat_html_table
+from routers_v2.common_logging_functions_v2 import MiddlewareLogger
+from routers_v2.common_job_functions_v2 import StreamingJobWriter, ControlAction
 
 router = APIRouter()
 config = None
 router_prefix = None
+router_name = "demorouter1"  # Used for job file folder naming
 
 def set_config(app_config, prefix):
   global config, router_prefix
@@ -27,7 +32,7 @@ def get_persistent_storage_path() -> str:
 # Get the demorouter storage folder path
 def get_demorouter_folder() -> str:
   persistent_path = get_persistent_storage_path()
-  return os.path.join(persistent_path, 'demorouter')
+  return os.path.join(persistent_path, router_name)
 
 # Ensure demorouter folder exists
 def ensure_demorouter_folder():
@@ -106,7 +111,7 @@ def html_result(title: str, data, back_link: str = None) -> HTMLResponse:
 
 # ----------------------------------------- START: L(jhu) - Router root / List -------------------------------------------------
 
-@router.get("/demorouter")
+@router.get(f"/{router_name}")
 async def demorouter_root(request: Request):
   """
   Demo Router - CRUD operations on JSON files in local storage.
@@ -114,12 +119,12 @@ async def demorouter_root(request: Request):
   Spec: L(jhu)C(jhs)G(jh)U(jhs)D(jhs)
   
   Endpoints:
-  - {router_prefix}/demorouter - List all demo items (json, html, ui)
-  - {router_prefix}/demorouter/get?item_id={id} - Get single item (json, html)
-  - {router_prefix}/demorouter/create - Create item (json, html, stream)
-  - {router_prefix}/demorouter/update?item_id={id} - Update item (json, html, stream)
-  - {router_prefix}/demorouter/delete?item_id={id} - Delete item (json, html, stream)
-  - {router_prefix}/demorouter/selftest - Run CRUD self-test (stream only)
+  - {router_prefix}/{router_name} - List all demo items (json, html, ui)
+  - {router_prefix}/{router_name}/get?item_id={id} - Get single item (json, html)
+  - {router_prefix}/{router_name}/create - Create item (json, html, stream)
+  - {router_prefix}/{router_name}/update?item_id={id} - Update item (json, html, stream)
+  - {router_prefix}/{router_name}/delete?item_id={id} - Delete item (json, html, stream)
+  - {router_prefix}/{router_name}/selftest - Run CRUD self-test (stream only)
   """
   logger = MiddlewareLogger.create()
   logger.log_function_header("demorouter_root")
@@ -139,17 +144,17 @@ async def demorouter_root(request: Request):
 <body>
   <h1>Demo Router</h1>
   <p>CRUD operations on JSON files in local storage.</p>
-  <p>Storage: <code>PERSISTENT_STORAGE_PATH/demorouter/</code></p>
+  <p>Storage: <code>PERSISTENT_STORAGE_PATH/{router_name}/</code></p>
 
   <h4>Available Endpoints</h4>
   <ul>
-    <li><a href="{router_prefix}/demorouter">{router_prefix}/demorouter</a> - List all (<a href="{router_prefix}/demorouter?format=json">JSON</a> | <a href="{router_prefix}/demorouter?format=html">HTML</a> | <a href="{router_prefix}/demorouter?format=ui">UI</a>)</li>
-    <li><a href="{router_prefix}/demorouter/get">{router_prefix}/demorouter/get</a> - Get single item (<a href="{router_prefix}/demorouter/get?item_id=example&format=json">JSON</a> | <a href="{router_prefix}/demorouter/get?item_id=example&format=html">HTML</a>)</li>
-    <li><a href="{router_prefix}/demorouter/create">{router_prefix}/demorouter/create</a> - Create item (POST)</li>
-    <li><a href="{router_prefix}/demorouter/update">{router_prefix}/demorouter/update</a> - Update item (PUT)</li>
-    <li><a href="{router_prefix}/demorouter/delete">{router_prefix}/demorouter/delete</a> - Delete item (DELETE/GET)</li>
-    <li><a href="{router_prefix}/demorouter/selftest">{router_prefix}/demorouter/selftest</a> - Self-test (<a href="{router_prefix}/demorouter/selftest?format=stream">stream</a>)</li>
-    <li><a href="{router_prefix}/demorouter/create_demo_items">{router_prefix}/demorouter/create_demo_items</a> - Create demo items (<a href="{router_prefix}/demorouter/create_demo_items?format=stream">stream</a>)</li>
+    <li><a href="{router_prefix}/{router_name}">{router_prefix}/{router_name}</a> - List all (<a href="{router_prefix}/{router_name}?format=json">JSON</a> | <a href="{router_prefix}/{router_name}?format=html">HTML</a> | <a href="{router_prefix}/{router_name}?format=ui">UI</a>)</li>
+    <li><a href="{router_prefix}/{router_name}/get">{router_prefix}/{router_name}/get</a> - Get single item (<a href="{router_prefix}/{router_name}/get?item_id=example&format=json">JSON</a> | <a href="{router_prefix}/{router_name}/get?item_id=example&format=html">HTML</a>)</li>
+    <li><a href="{router_prefix}/{router_name}/create">{router_prefix}/{router_name}/create</a> - Create item (POST)</li>
+    <li><a href="{router_prefix}/{router_name}/update">{router_prefix}/{router_name}/update</a> - Update item (PUT)</li>
+    <li><a href="{router_prefix}/{router_name}/delete">{router_prefix}/{router_name}/delete</a> - Delete item (DELETE/GET)</li>
+    <li><a href="{router_prefix}/{router_name}/selftest">{router_prefix}/{router_name}/selftest</a> - Self-test (<a href="{router_prefix}/{router_name}/selftest?format=stream">stream</a>)</li>
+    <li><a href="{router_prefix}/{router_name}/create_demo_items">{router_prefix}/{router_name}/create_demo_items</a> - Create demo items (<a href="{router_prefix}/{router_name}/create_demo_items?format=stream">stream</a>)</li>
   </ul>
 
   <p><a href="/">← Back to Main Page</a></p>
@@ -167,7 +172,7 @@ async def demorouter_root(request: Request):
   # format=html
   if format_param == "html":
     logger.log_function_footer()
-    return html_result("Demo Items", items, f"{router_prefix}/demorouter")
+    return html_result("Demo Items", items, f"{router_prefix}/{router_name}")
   
   # format=ui
   if format_param == "ui":
@@ -184,7 +189,7 @@ async def demorouter_root(request: Request):
         <td>{version}</td>
         <td class="actions">
           <button class="btn-small" onclick="showUpdateForm('{item_id}')">Edit</button>
-          <button class="btn-small btn-delete" data-url="{router_prefix}/demorouter/delete?item_id={{itemId}}" data-method="DELETE" data-format="json" onclick="if(confirm('Delete {item_id}?')) callEndpoint(this, '{item_id}')">Delete</button>
+          <button class="btn-small btn-delete" data-url="{router_prefix}/{router_name}/delete?item_id={{itemId}}" data-method="DELETE" data-format="json" onclick="if(confirm('Delete {item_id}?')) callEndpoint(this, '{item_id}')">Delete</button>
         </td>
       </tr>"""
     if not items: rows_html = '<tr><td colspan="5" class="empty-state">No demo items found</td></tr>'
@@ -213,12 +218,12 @@ async def demorouter_root(request: Request):
   <!-- Main Content -->
   <div class="container">
     <div style="display: flex; align-items: center; gap: 0.75rem;"><h1 style="margin: 0;">Demo Items (<span id="item-count">{len(items)}</span>)</h1> <button class="btn-small" style="align-self: center;" onclick="reloadItems()">Reload</button></div>
-    <p><a href="{router_prefix}/demorouter">← Back to Demo Router</a></p>
+    <p><a href="{router_prefix}/{router_name}">← Back to Demo Router</a></p>
     
     <div class="toolbar">
       <button class="btn-primary" onclick="showNewItemForm()">New Item</button>
       <button class="btn-primary" onclick="showCreateDemoItemsForm()">Create Demo Items</button>
-      <button class="btn-primary" data-url="{router_prefix}/demorouter/selftest?format=stream" data-format="stream" data-show-result="modal" onclick="callEndpoint(this)">Run Selftest</button>
+      <button class="btn-primary" data-url="{router_prefix}/{router_name}/selftest?format=stream" data-format="stream" data-show-result="modal" onclick="callEndpoint(this)">Run Selftest</button>
       <button id="btn-delete-selected" class="btn-primary btn-delete" onclick="bulkDelete()" disabled>Delete (<span id="selected-count">0</span>)</button>
     </div>
     
@@ -599,7 +604,7 @@ function handleSSEData(eventType, data) {{
 // ============================================
 async function reloadItems() {{
   try {{
-    const response = await fetch('{router_prefix}/demorouter?format=json');
+    const response = await fetch('{router_prefix}/{router_name}?format=json');
     const result = await response.json();
     if (result.ok) {{
       renderItemsTable(result.data);
@@ -632,7 +637,7 @@ function renderItemRow(item) {{
     <td>${{version}}</td>
     <td class="actions">
       <button class="btn-small" onclick="showUpdateForm('${{itemId}}')">Edit</button>
-      <button class="btn-small btn-delete" data-url="{router_prefix}/demorouter/delete?item_id={{itemId}}" data-method="DELETE" data-format="json" onclick="if(confirm('Delete ${{itemId}}?')) callEndpoint(this, '${{itemId}}')">Delete</button>
+      <button class="btn-small btn-delete" data-url="{router_prefix}/{router_name}/delete?item_id={{itemId}}" data-method="DELETE" data-format="json" onclick="if(confirm('Delete ${{itemId}}?')) callEndpoint(this, '${{itemId}}')">Delete</button>
     </td>
   </tr>`;
 }}
@@ -682,7 +687,7 @@ async function bulkDelete() {{
   
   for (const itemId of itemIds) {{
     try {{
-      const response = await fetch(`{router_prefix}/demorouter/delete?item_id=${{itemId}}`, {{ method: 'DELETE' }});
+      const response = await fetch(`{router_prefix}/{router_name}/delete?item_id=${{itemId}}`, {{ method: 'DELETE' }});
       const result = await response.json();
       if (result.ok) {{
         const row = document.getElementById('item-' + itemId);
@@ -726,7 +731,7 @@ function showNewItemForm() {{
         <input type="number" name="version" value="1">
       </div>
       <div class="form-actions">
-        <button type="button" class="btn-primary" data-url="{router_prefix}/demorouter/create" data-method="POST" data-format="json" onclick="submitNewItemForm(this)">OK</button>
+        <button type="button" class="btn-primary" data-url="{router_prefix}/{router_name}/create" data-method="POST" data-format="json" onclick="submitNewItemForm(this)">OK</button>
         <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
       </div>
     </form>
@@ -778,7 +783,7 @@ async function showUpdateForm(itemId) {{
   openModal();
   
   try {{
-    const response = await fetch('{router_prefix}/demorouter/get?item_id=' + itemId + '&format=json');
+    const response = await fetch('{router_prefix}/{router_name}/get?item_id=' + itemId + '&format=json');
     const result = await response.json();
     if (!result.ok) {{
       body.innerHTML = '<p>Error loading item: ' + result.error + '</p>';
@@ -802,7 +807,7 @@ async function showUpdateForm(itemId) {{
           <input type="number" name="version" value="${{item.version || ''}}">
         </div>
         <div class="form-actions">
-          <button type="button" class="btn-primary" data-url="{router_prefix}/demorouter/update?item_id={{itemId}}" data-method="PUT" data-format="json" onclick="submitUpdateForm(this, '${{itemId}}')">OK</button>
+          <button type="button" class="btn-primary" data-url="{router_prefix}/{router_name}/update?item_id={{itemId}}" data-method="PUT" data-format="json" onclick="submitUpdateForm(this, '${{itemId}}')">OK</button>
           <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
         </div>
       </form>
@@ -863,7 +868,7 @@ function showCreateDemoItemsForm() {{
         <input type="number" name="delay_ms" value="300" min="0" max="10000">
       </div>
       <div class="form-actions">
-        <button type="button" class="btn-primary" data-url="{router_prefix}/demorouter/create_demo_items?format=stream&count={{count}}&delay_ms={{delay_ms}}" data-format="stream" data-reload-on-finish="true" data-show-result="modal" onclick="submitCreateDemoItemsForm(this)">OK</button>
+        <button type="button" class="btn-primary" data-url="{router_prefix}/{router_name}/create_demo_items?format=stream&count={{count}}&delay_ms={{delay_ms}}" data-format="stream" data-reload-on-finish="true" data-show-result="modal" onclick="submitCreateDemoItemsForm(this)">OK</button>
         <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
       </div>
     </form>
@@ -914,7 +919,7 @@ document.addEventListener('DOMContentLoaded', function() {{
 
 # ----------------------------------------- START: G(jh) - Get single ----------------------------------------------------------
 
-@router.get("/demorouter/get")
+@router.get(f"/{router_name}/get")
 async def demorouter_get(request: Request):
   """
   Get a single demo item by ID.
@@ -924,8 +929,8 @@ async def demorouter_get(request: Request):
   - format: Response format - json (default), html
   
   Examples:
-  {router_prefix}/demorouter/get?item_id=example
-  {router_prefix}/demorouter/get?item_id=example&format=html
+  {router_prefix}/{router_name}/get?item_id=example
+  {router_prefix}/{router_name}/get?item_id=example&format=html
   """
   logger = MiddlewareLogger.create()
   logger.log_function_header("demorouter_get")
@@ -942,14 +947,14 @@ async def demorouter_get(request: Request):
   # Validate item_id
   if not item_id:
     logger.log_function_footer()
-    if format_param == "html": return html_result("Error", {"error": "Missing 'item_id' parameter."}, f"{router_prefix}/demorouter")
+    if format_param == "html": return html_result("Error", {"error": "Missing 'item_id' parameter."}, f"{router_prefix}/{router_name}")
     return json_result(False, "Missing 'item_id' parameter.", {})
   
   # Load item
   item = load_demo_item(item_id)
   if item is None:
     logger.log_function_footer()
-    if format_param == "html": return html_result("Not Found", {"error": f"Demo item '{item_id}' not found."}, f"{router_prefix}/demorouter")
+    if format_param == "html": return html_result("Not Found", {"error": f"Demo item '{item_id}' not found."}, f"{router_prefix}/{router_name}")
     return JSONResponse({"ok": False, "error": f"Demo item '{item_id}' not found.", "data": {}}, status_code=404)
   
   item_with_id = {"item_id": item_id, **item}
@@ -960,7 +965,7 @@ async def demorouter_get(request: Request):
   
   if format_param == "html":
     logger.log_function_footer()
-    return html_result(f"Demo Item: {item_id}", item_with_id, f"{router_prefix}/demorouter?format=ui")
+    return html_result(f"Demo Item: {item_id}", item_with_id, f"{router_prefix}/{router_name}?format=ui")
   
   logger.log_function_footer()
   return json_result(False, f"Format '{format_param}' not supported. Use: json, html", {})
@@ -970,7 +975,7 @@ async def demorouter_get(request: Request):
 
 # ----------------------------------------- START: C(jhs) - Create -------------------------------------------------------------
 
-@router.get("/demorouter/create")
+@router.get(f"/{router_name}/create")
 async def demorouter_create_docs():
   """
   Create a new demo item.
@@ -986,12 +991,12 @@ async def demorouter_create_docs():
   - dry_run: If true, validate only without creating (optional)
   
   Examples:
-  POST {router_prefix}/demorouter/create with JSON body {{"item_id": "example", "name": "Test"}}
-  POST {router_prefix}/demorouter/create with form data: item_id=example&name=Test
+  POST {router_prefix}/{router_name}/create with JSON body {{"item_id": "example", "name": "Test"}}
+  POST {router_prefix}/{router_name}/create with form data: item_id=example&name=Test
   """
   return PlainTextResponse(demorouter_create_docs.__doc__.replace("{router_prefix}", router_prefix), media_type="text/plain; charset=utf-8")
 
-@router.post("/demorouter/create")
+@router.post(f"/{router_name}/create")
 async def demorouter_create(request: Request):
   logger = MiddlewareLogger.create()
   logger.log_function_header("demorouter_create")
@@ -1042,7 +1047,7 @@ async def demorouter_create(request: Request):
   if format_param == "stream":
     writer = StreamingJobWriter(
       persistent_storage_path=get_persistent_storage_path(),
-      router_name="demorouter",
+      router_name=router_name,
       action="create",
       object_id=item_id,
       source_url=str(request.url),
@@ -1071,7 +1076,7 @@ async def demorouter_create(request: Request):
   
   if format_param == "html":
     logger.log_function_footer()
-    return html_result(f"Created: {item_id}", result, f"{router_prefix}/demorouter?format=ui")
+    return html_result(f"Created: {item_id}", result, f"{router_prefix}/{router_name}?format=ui")
   
   logger.log_function_footer()
   return json_result(True, "", result)
@@ -1081,7 +1086,7 @@ async def demorouter_create(request: Request):
 
 # ----------------------------------------- START: U(jhs) - Update -------------------------------------------------------------
 
-@router.get("/demorouter/update")
+@router.get(f"/{router_name}/update")
 async def demorouter_update_docs():
   """
   Update an existing demo item.
@@ -1097,12 +1102,12 @@ async def demorouter_update_docs():
   - [fields]: Fields to merge into existing item data
   
   Examples:
-  PUT {router_prefix}/demorouter/update?item_id=example with JSON body {{"name": "NewName"}}
-  PUT {router_prefix}/demorouter/update?item_id=example with form data: name=NewName
+  PUT {router_prefix}/{router_name}/update?item_id=example with JSON body {{"name": "NewName"}}
+  PUT {router_prefix}/{router_name}/update?item_id=example with form data: name=NewName
   """
   return PlainTextResponse(demorouter_update_docs.__doc__.replace("{router_prefix}", router_prefix), media_type="text/plain; charset=utf-8")
 
-@router.put("/demorouter/update")
+@router.put(f"/{router_name}/update")
 async def demorouter_update(request: Request):
   logger = MiddlewareLogger.create()
   logger.log_function_header("demorouter_update")
@@ -1168,7 +1173,7 @@ async def demorouter_update(request: Request):
     final_item_id = target_item_id if rename_requested else source_item_id
     writer = StreamingJobWriter(
       persistent_storage_path=get_persistent_storage_path(),
-      router_name="demorouter",
+      router_name=router_name,
       action="update",
       object_id=final_item_id,
       source_url=str(request.url),
@@ -1214,7 +1219,7 @@ async def demorouter_update(request: Request):
   
   if format_param == "html":
     logger.log_function_footer()
-    return html_result(f"Updated: {item_id}", result, f"{router_prefix}/demorouter?format=ui")
+    return html_result(f"Updated: {item_id}", result, f"{router_prefix}/{router_name}?format=ui")
   
   logger.log_function_footer()
   return json_result(True, "", result)
@@ -1224,7 +1229,7 @@ async def demorouter_update(request: Request):
 
 # ----------------------------------------- START: D(jhs) - Delete -------------------------------------------------------------
 
-@router.get("/demorouter/delete")
+@router.get(f"/{router_name}/delete")
 async def demorouter_delete_docs(request: Request):
   """
   Delete a demo item.
@@ -1237,8 +1242,8 @@ async def demorouter_delete_docs(request: Request):
   - dry_run: If true, validate only without deleting (optional)
   
   Examples:
-  DELETE {router_prefix}/demorouter/delete?item_id=example
-  GET {router_prefix}/demorouter/delete?item_id=example
+  DELETE {router_prefix}/{router_name}/delete?item_id=example
+  GET {router_prefix}/{router_name}/delete?item_id=example
   """
   # Return self-documentation if no params
   if len(request.query_params) == 0:
@@ -1247,7 +1252,7 @@ async def demorouter_delete_docs(request: Request):
   # Handle GET with params as delete operation
   return await demorouter_delete_impl(request)
 
-@router.delete("/demorouter/delete")
+@router.delete(f"/{router_name}/delete")
 async def demorouter_delete(request: Request):
   return await demorouter_delete_impl(request)
 
@@ -1279,7 +1284,7 @@ async def demorouter_delete_impl(request: Request):
   if format_param == "stream":
     writer = StreamingJobWriter(
       persistent_storage_path=get_persistent_storage_path(),
-      router_name="demorouter",
+      router_name=router_name,
       action="delete",
       object_id=item_id,
       source_url=str(request.url),
@@ -1308,7 +1313,7 @@ async def demorouter_delete_impl(request: Request):
   
   if format_param == "html":
     logger.log_function_footer()
-    return html_result(f"Deleted: {item_id}", deleted_data, f"{router_prefix}/demorouter?format=ui")
+    return html_result(f"Deleted: {item_id}", deleted_data, f"{router_prefix}/{router_name}?format=ui")
   
   logger.log_function_footer()
   return json_result(True, "", deleted_data)
@@ -1318,7 +1323,7 @@ async def demorouter_delete_impl(request: Request):
 
 # ----------------------------------------- START: Selftest --------------------------------------------------------------------
 
-@router.get("/demorouter/selftest")
+@router.get(f"/{router_name}/selftest")
 async def demorouter_selftest(request: Request):
   """
   Self-test for demorouter CRUD operations.
@@ -1335,7 +1340,7 @@ async def demorouter_selftest(request: Request):
   7. List all - verify item removed
   
   Example:
-  GET {router_prefix}/demorouter/selftest?format=stream
+  GET {router_prefix}/{router_name}/selftest?format=stream
   """
   import uuid, datetime
   
@@ -1356,7 +1361,7 @@ async def demorouter_selftest(request: Request):
   # Create StreamingJobWriter for job file
   writer = StreamingJobWriter(
     persistent_storage_path=get_persistent_storage_path(),
-    router_name="demorouter",
+    router_name=router_name,
     action="selftest",
     object_id=None,
     source_url=str(request.url),
@@ -1374,9 +1379,10 @@ async def demorouter_selftest(request: Request):
     ok_count = 0
     fail_count = 0
     test_num = 0
+    passed_tests = []
+    failed_tests = []
     
     def log(msg: str):
-      nonlocal ok_count, fail_count
       sse = stream_logger.log_function_output(msg)
       return sse
     
@@ -1389,20 +1395,22 @@ async def demorouter_selftest(request: Request):
       nonlocal ok_count, fail_count
       if condition:
         ok_count += 1
+        passed_tests.append(ok_msg)
         return log(f"  OK: {ok_msg}")
       else:
         fail_count += 1
+        failed_tests.append(fail_msg)
         return log(f"  FAIL: {fail_msg}")
     
     try:
       yield writer.emit_start()
       
       async with httpx.AsyncClient(timeout=30.0) as client:
-        create_url = f"{base_url}{router_prefix}/demorouter/create"
-        update_url = f"{base_url}{router_prefix}/demorouter/update"
-        get_url = f"{base_url}{router_prefix}/demorouter/get?item_id={test_id}&format=json"
-        list_url = f"{base_url}{router_prefix}/demorouter?format=json"
-        delete_url = f"{base_url}{router_prefix}/demorouter/delete?item_id={test_id}"
+        create_url = f"{base_url}{router_prefix}/{router_name}/create"
+        update_url = f"{base_url}{router_prefix}/{router_name}/update"
+        get_url = f"{base_url}{router_prefix}/{router_name}/get?item_id={test_id}&format=json"
+        list_url = f"{base_url}{router_prefix}/{router_name}?format=json"
+        delete_url = f"{base_url}{router_prefix}/{router_name}/delete?item_id={test_id}"
         
         # ===== Error cases =====
         sse = next_test("Error cases...")
@@ -1419,12 +1427,12 @@ async def demorouter_selftest(request: Request):
         if sse: yield sse
         
         # c) GET /get without item_id -> error
-        r = await client.get(f"{base_url}{router_prefix}/demorouter/get?format=json")
+        r = await client.get(f"{base_url}{router_prefix}/{router_name}/get?format=json")
         sse = check(r.json().get("ok") == False, "GET /get without item_id returns error", f"Expected error, got: {r.json()}")
         if sse: yield sse
         
         # d) DELETE /delete without item_id -> error
-        r = await client.delete(f"{base_url}{router_prefix}/demorouter/delete")
+        r = await client.delete(f"{base_url}{router_prefix}/{router_name}/delete")
         sse = check(r.json().get("ok") == False, "DELETE /delete without item_id returns error", f"Expected error, got: {r.json()}")
         if sse: yield sse
         
@@ -1434,7 +1442,7 @@ async def demorouter_selftest(request: Request):
         if sse: yield sse
         
         # f) DELETE /delete non-existent item -> 404
-        r = await client.delete(f"{base_url}{router_prefix}/demorouter/delete?item_id=nonexistent_item_xyz")
+        r = await client.delete(f"{base_url}{router_prefix}/{router_name}/delete?item_id=nonexistent_item_xyz")
         sse = check(r.status_code == 404, "DELETE /delete non-existent returns 404", f"Expected 404, got: {r.status_code}")
         if sse: yield sse
         
@@ -1516,7 +1524,7 @@ async def demorouter_selftest(request: Request):
         if sse: yield sse
         
         # b) Item was NOT created
-        r = await client.get(f"{base_url}{router_prefix}/demorouter/get?item_id={test_id_dry}&format=json")
+        r = await client.get(f"{base_url}{router_prefix}/{router_name}/get?item_id={test_id_dry}&format=json")
         sse = check(r.status_code == 404, "dry_run did NOT create item (404)", f"Item was created! Status: {r.status_code}")
         if sse: yield sse
         
@@ -1558,19 +1566,19 @@ async def demorouter_selftest(request: Request):
         if sse: yield sse
         
         # c) Verify source no longer exists
-        r = await client.get(f"{base_url}{router_prefix}/demorouter/get?item_id={test_id_rename_src}&format=json")
+        r = await client.get(f"{base_url}{router_prefix}/{router_name}/get?item_id={test_id_rename_src}&format=json")
         sse = check(r.status_code == 404, "Source item no longer exists (404)", f"Source still exists: {r.status_code}")
         if sse: yield sse
         
         # d) Verify target exists with updated data
-        r = await client.get(f"{base_url}{router_prefix}/demorouter/get?item_id={test_id_rename_tgt}&format=json")
+        r = await client.get(f"{base_url}{router_prefix}/{router_name}/get?item_id={test_id_rename_tgt}&format=json")
         renamed_item = r.json().get("data", {})
         sse = check(r.status_code == 200 and renamed_item.get("name") == "RenamedItem", 
                     f"Target item exists with name='RenamedItem'", f"Failed: {r.json()}")
         if sse: yield sse
         
         # Cleanup rename target
-        await client.delete(f"{base_url}{router_prefix}/demorouter/delete?item_id={test_id_rename_tgt}")
+        await client.delete(f"{base_url}{router_prefix}/{router_name}/delete?item_id={test_id_rename_tgt}")
         
         # ===== Rename conflict (target exists) =====
         sse = next_test("PUT /update rename conflict (target exists)...")
@@ -1596,20 +1604,20 @@ async def demorouter_selftest(request: Request):
         if sse: yield sse
         
         # d) Verify source unchanged
-        r = await client.get(f"{base_url}{router_prefix}/demorouter/get?item_id={test_id_conflict_src}&format=json")
+        r = await client.get(f"{base_url}{router_prefix}/{router_name}/get?item_id={test_id_conflict_src}&format=json")
         sse = check(r.status_code == 200 and r.json().get("data", {}).get("name") == "ConflictSource",
                     "Source item unchanged after failed rename", f"Source changed: {r.json()}")
         if sse: yield sse
         
         # e) Verify target unchanged
-        r = await client.get(f"{base_url}{router_prefix}/demorouter/get?item_id={test_id_conflict_tgt}&format=json")
+        r = await client.get(f"{base_url}{router_prefix}/{router_name}/get?item_id={test_id_conflict_tgt}&format=json")
         sse = check(r.status_code == 200 and r.json().get("data", {}).get("name") == "ConflictTarget",
                     "Target item unchanged after failed rename", f"Target changed: {r.json()}")
         if sse: yield sse
         
         # Cleanup conflict test items
-        await client.delete(f"{base_url}{router_prefix}/demorouter/delete?item_id={test_id_conflict_src}")
-        await client.delete(f"{base_url}{router_prefix}/demorouter/delete?item_id={test_id_conflict_tgt}")
+        await client.delete(f"{base_url}{router_prefix}/{router_name}/delete?item_id={test_id_conflict_src}")
+        await client.delete(f"{base_url}{router_prefix}/{router_name}/delete?item_id={test_id_conflict_tgt}")
         
         # ===== dry_run for update =====
         sse = next_test("PUT /update?dry_run=true...")
@@ -1639,7 +1647,7 @@ async def demorouter_selftest(request: Request):
         if sse: yield sse
         
         # b) Verify form-created item
-        r = await client.get(f"{base_url}{router_prefix}/demorouter/get?item_id={test_id_form}&format=json")
+        r = await client.get(f"{base_url}{router_prefix}/{router_name}/get?item_id={test_id_form}&format=json")
         form_item = r.json().get("data", {})
         sse = check(form_item.get("name") == "FormItem" and form_item.get("source") == "form",
                     f"Form item verified: name='{form_item.get('name')}', source='{form_item.get('source')}'", f"Mismatch: {form_item}")
@@ -1655,12 +1663,12 @@ async def demorouter_selftest(request: Request):
         if sse: yield sse
         
         # b) Verify update
-        r = await client.get(f"{base_url}{router_prefix}/demorouter/get?item_id={test_id_form}&format=json")
+        r = await client.get(f"{base_url}{router_prefix}/{router_name}/get?item_id={test_id_form}&format=json")
         sse = check(r.json().get("data", {}).get("name") == "UpdatedFormItem", "Form update verified", f"Mismatch: {r.json()}")
         if sse: yield sse
         
         # Cleanup form item
-        await client.delete(f"{base_url}{router_prefix}/demorouter/delete?item_id={test_id_form}")
+        await client.delete(f"{base_url}{router_prefix}/{router_name}/delete?item_id={test_id_form}")
         
         # ===== Delete with dry_run =====
         sse = next_test("DELETE /delete?dry_run=true...")
@@ -1707,6 +1715,13 @@ async def demorouter_selftest(request: Request):
           sse = check(isinstance(items_after, list), "Empty list returns [] not error", f"Expected [], got: {items_after}")
           if sse: yield sse
       
+      # ===== Intentional failure for endpoint testing =====
+      sse = next_test("Intentional failure for endpoint testing...")
+      if sse: yield sse
+      
+      sse = check(False, "This test always fails (for endpoint testing)", "Intentional failure - remove this test in production")
+      if sse: yield sse
+      
       # ===== Summary =====
       sse = log(f"")
       if sse: yield sse
@@ -1718,18 +1733,18 @@ async def demorouter_selftest(request: Request):
       stream_logger.log_function_footer()
       
       ok = (fail_count == 0)
-      yield writer.emit_end(ok=ok, error="" if ok else f"{fail_count} test(s) failed", data={"ok": ok_count, "fail": fail_count})
+      yield writer.emit_end(ok=ok, error="" if ok else f"{fail_count} test(s) failed", data={"passed": ok_count, "failed": fail_count, "passed_tests": passed_tests, "failed_tests": failed_tests})
       
     except Exception as e:
       sse = log(f"ERROR: {type(e).__name__}: {str(e)}")
       if sse: yield sse
       stream_logger.log_function_footer()
-      yield writer.emit_end(ok=False, error=str(e), data={"ok": ok_count, "fail": fail_count, "test_id": test_id})
+      yield writer.emit_end(ok=False, error=str(e), data={"passed": ok_count, "failed": fail_count, "passed_tests": passed_tests, "failed_tests": failed_tests, "test_id": test_id})
     finally:
       # Cleanup: ensure test item is deleted via HTTP
       try:
         async with httpx.AsyncClient(timeout=10.0) as cleanup_client:
-          await cleanup_client.delete(f"{base_url}{router_prefix}/demorouter/delete?item_id={test_id}")
+          await cleanup_client.delete(f"{base_url}{router_prefix}/{router_name}/delete?item_id={test_id}")
       except:
         pass
       writer.finalize()
@@ -1741,7 +1756,7 @@ async def demorouter_selftest(request: Request):
 
 # ----------------------------------------- START: Create Demo Items (long-running demo) ------------------------------------
 
-@router.get("/demorouter/create_demo_items")
+@router.get(f"/{router_name}/create_demo_items")
 async def demorouter_create_demo_items(request: Request):
   """
   Create multiple demo items as a long-running operation demo.
@@ -1753,8 +1768,8 @@ async def demorouter_create_demo_items(request: Request):
   - delay_ms: Delay per item in milliseconds (default: 300)
   
   Examples:
-  GET {router_prefix}/demorouter/create_demo_items?format=stream
-  GET {router_prefix}/demorouter/create_demo_items?format=stream&count=5&delay_ms=500
+  GET {router_prefix}/{router_name}/create_demo_items?format=stream
+  GET {router_prefix}/{router_name}/create_demo_items?format=stream&count=5&delay_ms=500
   """
   import asyncio, uuid, datetime
   
@@ -1789,7 +1804,7 @@ async def demorouter_create_demo_items(request: Request):
   # Create StreamingJobWriter for job file
   writer = StreamingJobWriter(
     persistent_storage_path=get_persistent_storage_path(),
-    router_name="demorouter",
+    router_name=router_name,
     action="create_demo_items",
     object_id=None,
     source_url=str(request.url),
@@ -1834,7 +1849,7 @@ async def demorouter_create_demo_items(request: Request):
           sse = stream_logger.log_function_output(f"Cancelled after creating {len(created_items)} items.")
           if sse: yield sse
           stream_logger.log_function_footer()
-          yield writer.emit_end(ok=False, error="Cancelled by user.", data={"created": len(created_items), "items": created_items})
+          yield writer.emit_end(ok=False, error="Cancelled by user.", data={"created": len(created_items), "items": created_items}, cancelled=True)
           return
         
         # Create the item

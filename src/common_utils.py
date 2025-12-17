@@ -4,7 +4,7 @@ from dataclasses import asdict, is_dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
-from logging_v1 import log_function_output
+from routers_v1.common_logging_functions_v1 import log_function_output
 
 def include_exclude_attributes(data: Union[List[Dict], Dict, List[Any], Any], include_attributes: Optional[str] = None, exclude_attributes: Optional[str] = None) -> Union[List[Dict], Dict]:
   """

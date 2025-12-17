@@ -118,7 +118,7 @@ async def vectorstores(request: Request):
 - **Router-specific wrappers** - Each router still needs `_generate_ui_response_for_X()` boilerplate
 - **No state management** - No JavaScript state; relies on server re-render
 
-## Comparison: V1 vs V2 (demorouter.py)
+## Comparison: V1 vs V2 (demorouter1.py)
 
 - **V1 (common_ui_functions)**
   - HTML generation: Python functions
@@ -127,7 +127,7 @@ async def vectorstores(request: Request):
   - Reusability: High (library)
   - Complexity: Simple CRUD tables
 
-- **V2 (demorouter inline)**
+- **V2 (demorouter1 inline, self-contained)**
   - HTML generation: Inline f-strings with full page
   - JavaScript: Full state management (SSE, toasts, modals)
   - Streaming: Full SSE integration with job control
@@ -142,4 +142,4 @@ V1's `common_ui_functions.py` is a well-designed library for simple CRUD table U
 - Automatic HTMX attribute generation
 - Consistent HTML structure
 
-It works well for listing/deleting resources but lacks the streaming, SSE, and rich interactivity that V2's demorouter implements with inline JavaScript. The V2 approach sacrifices reusability for richer UI capabilities.
+It works well for listing/deleting resources but lacks the streaming, SSE, and rich interactivity that V2's demorouter1.py (self-contained version) implements with inline JavaScript. The V2 approach sacrifices reusability for richer UI capabilities.

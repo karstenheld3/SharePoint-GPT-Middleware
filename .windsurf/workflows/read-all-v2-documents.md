@@ -9,7 +9,7 @@ Read these files.
 
 Then read:
 - /: _V2_SPEC_JOBS_UI.md, _V2_SPEC_ROUTERS.md, SOPS.md
-- /src/: app.py, logging_v2.py, utils.py, hardcoded_config.py, common_sharepoint_functions.py, common_openai_functions.py
-- /src/routers_v2/: demorouter.py
+- /src/: app.py, common_utils.py, hardcoded_config.py
+- /src/routers_v2/: demorouter1.py, common_job_functions_v2.py, common_logging_functions_v2.py
 
 Return only a single line: "Read [x] md files, [z]k context tokens"

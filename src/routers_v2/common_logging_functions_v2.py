@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
-  from streaming_jobs_v2 import StreamingJobWriter
+  from routers_v2.common_job_functions_v2 import StreamingJobWriter
 
 # Configure logging for multi-worker environment
 logging.basicConfig(level=logging.INFO, format='%(message)s', handlers=[logging.StreamHandler(sys.stdout)])

@@ -7,7 +7,7 @@ See COMMON_UI_FUNCTIONS.md for comprehensive documentation with examples.
 from typing import Any, Dict, List, Optional
 
 from fastapi.responses import HTMLResponse, JSONResponse
-from utils import convert_to_nested_html_table
+from common_utils import convert_to_nested_html_table
 
 TAB = "  "
 TEXT_BACK_TO_MAIN_PAGE = "← Back to Main Page"

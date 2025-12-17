@@ -4,10 +4,10 @@ from dataclasses import asdict, dataclass
 from typing import Any, Dict, List
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
-from utils import normalize_long_path
-from logging_v1 import log_function_output
-from common_sharepoint_functions import connect_to_site_using_client_id_and_certificate, try_get_document_library, get_document_library_files
-from common_openai_functions import get_vector_store_files_with_filenames_as_dict, create_vector_store, try_get_vector_store_by_id, replicate_vector_store_content
+from common_utils import normalize_long_path
+from routers_v1.common_logging_functions_v1 import log_function_output
+from routers_v1.common_sharepoint_functions_v1 import connect_to_site_using_client_id_and_certificate, try_get_document_library, get_document_library_files
+from routers_v1.common_openai_functions_v1 import get_vector_store_files_with_filenames_as_dict, create_vector_store, try_get_vector_store_by_id, replicate_vector_store_content
 @dataclass
 class FileSource:
     """Represents a SharePoint document library source."""

@@ -584,7 +584,7 @@ Returns full stream (from start) as Server-Sent Events (SSE), MIME type: `Conten
 
 Two types of self-documentation exist:
 
-1. **Router root endpoints** (e.g., `/v2/demorouter`, `/v2/inventory`) return **minimalistic HTML** with:
+1. **Router root endpoints** (e.g., `/v2/demorouter1`, `/v2/inventory`) return **minimalistic HTML** with:
    - Title and description
    - List of available endpoints with links to each supported format
    - Back navigation link
@@ -594,16 +594,33 @@ Two types of self-documentation exist:
      - Standard HTML5 doctype: `<!doctype html><html lang="en">`
      - Viewport meta tag for responsive design
 
-2. **Action endpoints** (e.g., `/v2/demorouter/demo_endpoint`, `/v2/domains/get`) return **plain text (UTF-8)** with:
+2. **Action endpoints** (e.g., `/v2/demorouter1/demo_endpoint`, `/v2/domains/get`) return **plain text (UTF-8)** with:
    - Docstring content with `{router_prefix}` placeholder replaced at runtime
 
 The `router_prefix` variable is set via `set_config()` when the router is initialized.
+
+**Recommended module-level constants:**
+
+```python
+router = APIRouter()
+config = None
+router_prefix = None
+router_name = "demorouter1"  # Used for job file folder naming and route decorators
+```
+
+- `router_prefix` - Injected via `set_config()`, used for URL generation in self-documentation and UI links
+- `router_name` - Constant matching the router's identity, used for:
+  - Route decorators: `@router.get(f"/{router_name}")` (f-string required)
+  - `StreamingJobWriter` parameter to organize job files by router (e.g., `jobs/demorouter1/`)
+  - Self-documentation f-strings: `f"{router_prefix}/{router_name}"`
+
+Using a `router_name` constant avoids hardcoding the router name in multiple places and ensures consistency.
 
 **Router root endpoint pattern (HTML):**
 ```python
 from fastapi.responses import HTMLResponse
 
-@router.get('/demorouter')
+@router.get(f"/{router_name}")
 async def demorouter_root(request: Request):
   """Router root docstring for reference."""
   return HTMLResponse(f"""
@@ -620,7 +637,7 @@ async def demorouter_root(request: Request):
 
   <h4>Available Endpoints</h4>
   <ul>
-    <li><a href="{router_prefix}/demorouter/demo_endpoint">{router_prefix}/demorouter/demo_endpoint</a> - Process files (<a href="{router_prefix}/demorouter/demo_endpoint?format=stream&files=5">Stream</a>)</li>
+    <li><a href="{router_prefix}/demorouter1/demo_endpoint">{router_prefix}/demorouter1/demo_endpoint</a> - Process files (<a href="{router_prefix}/demorouter1/demo_endpoint?format=stream&files=5">Stream</a>)</li>
   </ul>
 
   <p><a href="/">← Back to Main Page</a></p>
@@ -633,7 +650,7 @@ async def demorouter_root(request: Request):
 ```python
 from fastapi.responses import PlainTextResponse
 
-@router.get('/demorouter/demo_endpoint')
+@router.get('/demorouter1/demo_endpoint')
 async def demo_endpoint(request: Request):
   """
   Description of the endpoint.
@@ -643,7 +660,7 @@ async def demo_endpoint(request: Request):
   - format: Response format (json, html)
   
   Examples:
-  {router_prefix}/demorouter/demo_endpoint?param1=value&format=json
+  {router_prefix}/demorouter1/demo_endpoint?param1=value&format=json
   """
   # Return documentation if no params
   if len(request.query_params) == 0:
@@ -1048,8 +1065,10 @@ Map file types:
 - `file_size` - number - size in bytes (e.g., 864368)
 - `last_modified_utc` - string (ISO 8601 / RFC3339) - UTC timestamp (e.g., "2024-01-15T10:30:00.000000Z")
 - `last_modified_timestamp` - number - Unix timestamp in seconds (e.g., 1705319400)
-- `downloaded_utc` - string (ISO 8601 / RFC3339) - Download UTC timestamp (e.g., "2024-01-15T10:30:00.000000Z")
-- `downloaded_timestamp` - number - Download Unix timestamp in seconds (e.g., 1705319400)
+- `downloaded_utc` - string (ISO 8601 / RFC3339) - `created_at` Open AI UTC timestamp returned by file upload (e.g., "2024-01-15T10:30:00.000000Z")
+  - empty if file could not be uploaded or embedded
+- `downloaded_timestamp` - number - `created_at` Open AI UTC timestamp returned by file upload (e.g., 1705319400)
+  - empty if file could not be uploaded or embedded
 - `uploaded_utc` - string (ISO 8601 / RFC3339) - `created_at` Open AI UTC timestamp returned by file upload (e.g., "2024-01-15T10:30:00.000000Z")
   - empty if file could not be uploaded or embedded
 - `uploaded_timestamp` - number - `created_at` Open AI UTC timestamp returned by file upload (e.g., 1705319400)
@@ -1361,7 +1380,7 @@ This section specifies the server-side implementation for streaming endpoints an
 ### File Organization
 
 V2 router files are located in `src/routers_v2/`:
-- `demorouter.py` - Demo router implementation
+- `demorouter1.py` - Demo router implementation
 - `router_job_functions.py` - Shared streaming job infrastructure (StreamingJobWriter, ControlAction, job file operations)
 
 ### Example: Non-Streaming Endpoint
@@ -1406,7 +1425,7 @@ async def fetch_items(logger: MiddlewareLogger):
 Shows MiddlewareLogger with StreamingJobWriter integration:
 
 ```python
-# routers_v2/demorouter.py
+# routers_v2/demorouter1.py
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from utils import MiddlewareLogger
@@ -1421,7 +1440,7 @@ def set_config(app_config, prefix):
   config = app_config
   router_prefix = prefix
 
-@router.get("/demorouter/process_files")
+@router.get("/demorouter1/process_files")
 async def process_files(request: Request):
   """
   Demo streaming endpoint - simulates file processing with streaming output.
@@ -1431,8 +1450,8 @@ async def process_files(request: Request):
   - files: Number of files to simulate (default: 20)
   
   Examples:
-  {router_prefix}/demorouter/process_files?format=stream
-  {router_prefix}/demorouter/process_files?format=stream&files=10
+  {router_prefix}/demorouter1/process_files?format=stream
+  {router_prefix}/demorouter1/process_files?format=stream&files=10
   """
   function_name = "process_files()"
   request_params = dict(request.query_params)
@@ -1446,13 +1465,13 @@ async def process_files(request: Request):
   file_count = int(request_params.get("files", "20"))
   
   if format != "stream": return JSONResponse({"ok": False, "error": "Use format=stream", "data": {}})
-  source_url = f"{router_prefix}/demorouter/process_files?format=stream&files={file_count}"
+  source_url = f"{router_prefix}/demorouter1/process_files?format=stream&files={file_count}"
   
   async def stream_generator():
     # Create writer first (no logging dependency)
     writer = StreamingJobWriter(
       persistent_storage_path=config.persistent_storage_path,
-      router_name="demorouter",
+      router_name="demorouter1",
       action=endpoint,
       object_id=None,
       source_url=source_url,
@@ -1513,9 +1532,9 @@ async def process_files(request: Request):
 For quick single-operation endpoints (create, update, delete), control file checking is unnecessary since the operation completes before any control action could be processed:
 
 ```python
-# routers_v2/demorouter.py - Instantaneous streaming (no control file checking)
+# routers_v2/demorouter1.py - Instantaneous streaming (no control file checking)
 
-@router.post("/demorouter/create")
+@router.post("/demorouter1/create")
 async def demorouter_create(request: Request):
   """Create a new demo item. Supports format=json, html, stream."""
   logger = MiddlewareLogger.create()

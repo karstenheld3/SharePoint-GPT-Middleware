@@ -10,7 +10,7 @@ from office365.sharepoint.client_context import ClientContext
 from office365.sharepoint.lists.list import List as DocumentLibrary
 from cryptography.hazmat.primitives.serialization import pkcs12, Encoding, PrivateFormat, NoEncryption
 from cryptography.hazmat.backends import default_backend
-from logging_v1 import log_function_output
+from routers_v1.common_logging_functions_v1 import log_function_output
 
 
 @dataclass

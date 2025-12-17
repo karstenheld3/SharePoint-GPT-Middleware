@@ -1,6 +1,8 @@
 # V2 Demo Router UI Specification
 
-This document specifies the interactive UI for the `/v2/demorouter?format=ui` endpoint.
+This document specifies the interactive UI for the `/v2/demorouter1?format=ui` endpoint.
+
+**Note:** `demorouter1.py` is the self-contained version with all UI code inline.
 
 **Depends on:**
 - `_V2_SPEC_ROUTERS.md` for endpoint design, streaming job infrastructure, and SSE format.
@@ -75,7 +77,7 @@ A reactive web UI for managing demo items with CRUD operations and streaming job
 ## UX Design
 
 ```
-Main Page: /v2/demorouter?format=ui
+Main Page: /v2/demorouter1?format=ui
 +-------------------------------------------------------------------------------------------+
 | Demo Items (3)  [Reload]                                                                  |
 | <- Back to Demo Router                                                                    |
@@ -145,7 +147,7 @@ Modal (Result - Success):
 |                                                          [x]  |
 | Result (OK, completed) - 'jb_57'                              |
 |                                                               |
-| Endpoint: /v2/demorouter/selftest?format=stream               |
+| Endpoint: /v2/demorouter1/selftest?format=stream               |
 |                                                               |
 | +-----------------------------------------------------------+ |
 | | {                                                         | |
@@ -166,7 +168,7 @@ Modal (Result - Failure with error):
 |                                                          [x]  |
 | Result (FAIL, failed) - 'jb_58'                               |
 |                                                               |
-| Endpoint: /v2/demorouter/create?format=stream                 |
+| Endpoint: /v2/demorouter1/create?format=stream                 |
 |                                                               |
 | Item already exists: 'demo_001'                <- error (red) |
 |                                                               |
@@ -435,7 +437,7 @@ This pattern:
 Buttons use `data-*` attributes for endpoint configuration:
 
 ```html
-<button data-url="/v2/demorouter/delete?item_id={itemId}" 
+<button data-url="/v2/demorouter1/delete?item_id={itemId}" 
         data-method="DELETE" 
         data-format="json"
         data-show-result="toast"
@@ -495,7 +497,7 @@ User clicks [New Item]
   |-> openModal() shows modal
   |-> User fills form, clicks [OK]
   |-> submitNewItemForm() validates, extracts data
-  |-> callEndpoint() sends POST to /demorouter/create
+  |-> callEndpoint() sends POST to /demorouter1/create
   |-> On success: showToast('OK'), reloadItems()
   |-> On error: showToast('Failed', error)
 ```
@@ -509,7 +511,7 @@ User clicks [Edit] on row (item_id = demo_001)
   |-> submitUpdateForm() checks if item_id changed
       |-> If changed: includes item_id in body (triggers rename per DD-E014)
       |-> If same: omits item_id from body
-  |-> callEndpoint() sends PUT to /demorouter/update?item_id=demo_001
+  |-> callEndpoint() sends PUT to /demorouter1/update?item_id=demo_001
   |-> On success: showToast('Updated'), reloadItems()
 ```
 

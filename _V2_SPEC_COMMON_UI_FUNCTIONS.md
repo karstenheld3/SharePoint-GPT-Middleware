@@ -2,7 +2,7 @@
 
 ## Overview
 
-This specification defines a reusable UI library for V2 routers, following the pattern established by V1's `common_ui_functions.py` but extended to support the richer feature set demonstrated in `demorouter.py`.
+This specification defines a reusable UI library for V2 routers, following the pattern established by V1's `common_ui_functions.py` but extended to support the richer feature set demonstrated in `demorouter1.py` (the self-contained version).
 
 **Goal**: Enable any V2 router to provide a full-featured interactive UI with minimal boilerplate code by calling shared Python functions that generate consistent HTML/JavaScript.
 
@@ -479,7 +479,7 @@ Some operations bypass `callEndpoint()` and call `fetch()` directly:
 
 **`reloadItems()`** - Fetches list endpoint, re-renders table
 ```javascript
-const response = await fetch(listEndpoint);  // e.g., /v2/demorouter?format=json
+const response = await fetch(listEndpoint);  // e.g., /v2/demorouter1?format=json
 const result = await response.json();
 renderItemsTable(result.data);
 ```
@@ -512,7 +512,7 @@ const result = await response.json();
 Buttons use `data-*` attributes for endpoint configuration instead of inline JavaScript logic:
 
 ```html
-<button data-url="/v2/demorouter/delete?item_id={itemId}" 
+<button data-url="/v2/demorouter1/delete?item_id={itemId}" 
         data-method="DELETE" 
         data-format="json"
         data-show-result="toast"
@@ -707,8 +707,8 @@ def generate_ui_page(
   enable_selection: bool = True,
   enable_bulk_delete: bool = True,
   console_initially_hidden: bool = False,  # True = hidden until stream starts
-  list_endpoint: str = None,           # e.g., "{router_prefix}/demorouter?format=json"
-  delete_endpoint: str = None,         # e.g., "{router_prefix}/demorouter/delete?item_id={itemId}"
+  list_endpoint: str = None,           # e.g., "{router_prefix}/demorouter1?format=json"
+  delete_endpoint: str = None,         # e.g., "{router_prefix}/demorouter1/delete?item_id={itemId}"
   jobs_control_endpoint: str = None,   # e.g., "{router_prefix}/jobs/control"
   render_row_js: str = None,           # Custom renderItemRow function body
   additional_js: str = "",             # Router-specific JS
@@ -941,7 +941,7 @@ from routers_v2.common_ui_functions_v2 import (
   generate_ui_page, json_result, html_result
 )
 
-@router.get("/demorouter")
+@router.get("/demorouter1")
 async def demorouter_root(request: Request):
   # ... logging, param handling ...
   
@@ -955,7 +955,7 @@ async def demorouter_root(request: Request):
         "header": "Actions",
         "buttons": [
           {"text": "Edit", "onclick": "showUpdateForm('{itemId}')", "class": "btn-small"},
-          {"text": "Delete", "data_url": f"{router_prefix}/demorouter/delete?item_id={{itemId}}", 
+          {"text": "Delete", "data_url": f"{router_prefix}/demorouter1/delete?item_id={{itemId}}", 
            "data_method": "DELETE", "data_format": "json", "confirm_message": "Delete {itemId}?",
            "class": "btn-small btn-delete"}
         ]
@@ -965,7 +965,7 @@ async def demorouter_root(request: Request):
     toolbar = [
       {"text": "New Item", "onclick": "showNewItemForm()", "class": "btn-primary"},
       {"text": "Create Demo Items", "onclick": "showCreateDemoItemsForm()", "class": "btn-primary"},
-      {"text": "Run Selftest", "data_url": f"{router_prefix}/demorouter/selftest?format=stream",
+      {"text": "Run Selftest", "data_url": f"{router_prefix}/demorouter1/selftest?format=stream",
        "data_format": "stream", "data_show_result": "modal", "class": "btn-primary"}
     ]
     
@@ -983,8 +983,8 @@ function showCreateDemoItemsForm() { /* ... router-specific form ... */ }
       columns=columns,
       row_id_field="item_id",
       toolbar_buttons=toolbar,
-      list_endpoint=f"{router_prefix}/demorouter?format=json",
-      delete_endpoint=f"{router_prefix}/demorouter/delete?item_id={{itemId}}",
+      list_endpoint=f"{router_prefix}/demorouter1?format=json",
+      delete_endpoint=f"{router_prefix}/demorouter1/delete?item_id={{itemId}}",
       jobs_control_endpoint=f"{router_prefix}/jobs/control",
       additional_js=custom_js
     )
@@ -1015,7 +1015,7 @@ Routers implement these as `additional_js` parameter or in separate JS files.
 4. Implement JavaScript generators (core, console, table, selection, form)
 5. Implement high-level `generate_ui_page()`
 6. Extend `/static/css/routers_v2.css` with missing styles
-7. Refactor `demorouter.py` to use the library
+7. Create `demorouter2.py` using the library (refactored from demorouter1.py)
 8. Verify all features work identically to current implementation
 
 ---

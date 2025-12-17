@@ -160,14 +160,16 @@ class StreamingJobWriter:
     self._write_buffered(sse)
     return sse
   
-  def emit_end(self, ok: bool, error: str = "", data: dict = None) -> str:
+  def emit_end(self, ok: bool, error: str = "", data: dict = None, cancelled: bool = False) -> str:
     """
     Emit end_json event. Immediate flush to file (STREAM-FR-03, STREAM-FR-07, STREAM-IG-02).
     Sets finished_utc timestamp.
+    - cancelled=False (default): state="completed", result.ok indicates success/failure
+    - cancelled=True: state="cancelled" (for user-initiated cancellation)
     Returns SSE-formatted string for HTTP response.
     """
     self._finished_utc = datetime.datetime.utcnow()
-    self._final_state = "completed" if ok else "cancelled"
+    self._final_state = "cancelled" if cancelled else "completed"
     
     result = {"ok": ok, "error": error, "data": data if data is not None else {}}
     metadata = self._get_job_metadata(self._final_state, result)

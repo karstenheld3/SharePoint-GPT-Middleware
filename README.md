@@ -26,10 +26,10 @@ A FastAPI-based middleware application that bridges SharePoint content with Open
 src/
 ├── app.py                          # FastAPI application entry point
 ├── hardcoded_config.py             # Configuration constants
-├── common_openai_functions.py      # OpenAI client utilities
+├── routers_v1/common_openai_functions_v1.py  # OpenAI client utilities (in routers_v1/)
 ├── common_crawler_functions.py     # SharePoint crawler utilities
-├── common_sharepoint_functions.py  # SharePoint access utilities
-├── utils.py                        # Helper functions
+├── routers_v1/common_sharepoint_functions_v1.py  # SharePoint access utilities (in routers_v1/)
+├── common_utils.py                 # Helper functions
 ├── routers_static/                 # Static routers (no version prefix)
 │   ├── openai_proxy.py             # OpenAI API proxy endpoints
 │   └── sharepoint_search.py        # AI-powered search endpoints
@@ -37,8 +37,8 @@ src/
     ├── crawler.py                  # SharePoint crawler endpoints
     ├── domains.py                  # Domain management endpoints
     ├── inventory.py                # Vector store inventory endpoints
-    ├── common_ui_functions.py      # Shared UI generation functions
-    └── common_job_functions.py     # Shared job management functions
+    ├── common_ui_functions_v1.py   # Shared UI generation functions
+    └── common_job_functions_v1.py  # Shared job management functions
 ```
 
 ### Storage Structure
