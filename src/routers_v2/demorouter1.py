@@ -1830,7 +1830,7 @@ async def demorouter_create_demo_items(request: Request):
           "name": f"Demo Item {i+1}",
           "batch_id": batch_id,
           "sequence": i + 1,
-          "created_utc": datetime.datetime.utcnow().isoformat() + "Z"
+          "created_utc": datetime.datetime.now(datetime.timezone.utc).isoformat()
         }
         
         sse = stream_logger.log_function_output(f"[ {i+1} / {count} ] Creating item '{item_id}'...")

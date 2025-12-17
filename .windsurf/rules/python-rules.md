@@ -34,6 +34,7 @@ trigger: manual
 - Avoid `lambda`, `map`, `filter`, `reduce` and similar helpers for control flow; use explicit `for` loops. Exception: string / list joins.
 - Prefer standard library over third-party packages; add dependencies only if a helper function would be unreasonably complex.
 - No emojis in the code or logging. UI may occasionally use ✅=OK, ❌=FAIL, ⚠️=WARNING
+- Use `datetime.datetime.now(datetime.timezone.utc)` instead of deprecated `datetime.datetime.utcnow()`.
 
 ## Code documentation principles
 

@@ -68,7 +68,7 @@ class StreamingJobWriter:
     self._router_prefix = router_prefix
     self._buffer_size = buffer_size if buffer_size is not None else CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_LOG_EVENTS_PER_WRITE
     
-    self._started_utc = datetime.datetime.utcnow()
+    self._started_utc = datetime.datetime.now(datetime.timezone.utc)
     self._finished_utc: Optional[datetime.datetime] = None
     self._final_state: Optional[JobState] = None
     self._buffer: list[str] = []
@@ -168,7 +168,7 @@ class StreamingJobWriter:
     - cancelled=True: state="cancelled" (for user-initiated cancellation)
     Returns SSE-formatted string for HTTP response.
     """
-    self._finished_utc = datetime.datetime.utcnow()
+    self._finished_utc = datetime.datetime.now(datetime.timezone.utc)
     self._final_state = "cancelled" if cancelled else "completed"
     
     result = {"ok": ok, "error": error, "data": data if data is not None else {}}
@@ -460,7 +460,7 @@ def create_control_file(persistent_storage_path: str, job_id: str, action: str) 
   
   try:
     with open(control_filepath, 'w', encoding='utf-8') as f:
-      f.write(f"{action}\n{datetime.datetime.utcnow().isoformat()}Z\n")
+      f.write(f"{action}\n{datetime.datetime.now(datetime.timezone.utc).isoformat()}\n")
     return True
   except Exception:
     return False

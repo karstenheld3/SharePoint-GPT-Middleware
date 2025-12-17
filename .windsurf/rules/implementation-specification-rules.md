@@ -30,6 +30,7 @@ Usage scenarios:
 - For documentation or UI output, avoid "typographic quotes" and use typewriter / ASCII "double quotes" or 'single quotes'
 - No emojis in the documentation. Use extended ASCII characters only.
 - Avoid Markdown tables when possible for enumerations use simple unnumberred lists with indented properties
+- When creating hierarchies and maps, use "└─" for indenting
 
 **For the user:**
 - If the implementation idea is not very clear at the beginning, ask the agent for at least 3 implementation options.
