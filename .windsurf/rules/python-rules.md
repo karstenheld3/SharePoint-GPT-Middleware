@@ -35,6 +35,7 @@ trigger: manual
 - Prefer standard library over third-party packages; add dependencies only if a helper function would be unreasonably complex.
 - No emojis in the code or logging. UI may occasionally use ✅=OK, ❌=FAIL, ⚠️=WARNING
 - Use `datetime.datetime.now(datetime.timezone.utc)` instead of deprecated `datetime.datetime.utcnow()`.
+- Handle singular and plural correctly. `0 files found.`, `1 file`, `2 files`. Avoid `1 file(s)`
 
 ## Code documentation principles
 
@@ -275,3 +276,15 @@ import random
 ```
 import asyncio, datetime, json, random
 ```
+
+### Singular/Plural Messages
+*BAD*:
+```
+print(f"{count} file(s) found.")
+```
+
+*GOOD*:
+```
+print(f"{count} file(s)".replace("(s)", "s" if count != 1 else "") + " found.")
+```
+

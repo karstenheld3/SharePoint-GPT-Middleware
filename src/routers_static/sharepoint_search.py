@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from routers_v1.common_openai_functions_v1 import CoaiSearchParams, get_search_results_using_responses_api, get_search_results_using_search_api, try_get_vector_store_by_id
 from routers_v1.router_crawler_functions import is_files_metadata_v2_format, convert_file_metadata_item_from_v2_to_v3
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
-from common_utils import convert_to_nested_html_table, remove_linebreaks
+from common_utility_functions import convert_to_nested_html_table, remove_linebreaks
 from routers_v1.common_logging_functions_v1 import log_function_footer, log_function_header, log_function_output, log_function_footer_sync, sanitize_queries_and_responses, truncate_string
 
 router = APIRouter()

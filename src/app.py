@@ -15,7 +15,7 @@ from routers_v1 import crawler, inventory, domains, testrouter3
 from routers_v2 import demorouter1
 from routers_static import openai_proxy, sharepoint_search
 from routers_static.sharepoint_search import build_domains_and_metadata_cache
-from common_utils import ZipExtractionMode, acquire_startup_lock, convert_to_flat_html_table, extract_zip_files, format_config_for_displaying, format_filesize, clear_folder
+from common_utility_functions import ZipExtractionMode, acquire_startup_lock, convert_to_flat_html_table, extract_zip_files, format_config_for_displaying, format_filesize, clear_folder
 from routers_v1.common_logging_functions_v1 import log_function_footer, log_function_header, log_function_output, log_function_footer_sync
 
 # Load environment variables from a local .env file if present

@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from routers_v1.common_openai_functions_v1 import get_all_vector_stores, get_all_files, get_all_assistants, convert_openai_timestamps_to_utc, delete_vector_store_by_id, get_vector_store_files_with_filenames_as_dict, try_get_vector_store_by_id, remove_file_from_vector_store, delete_file_from_vector_store_and_storage, delete_file_by_id, delete_assistant_by_id
 from routers_v1.common_ui_functions_v1 import generate_html_head, generate_simple_page, generate_table_page, generate_table_with_headers, generate_update_count_script, generate_ui_table_page
-from common_utils import convert_to_flat_html_table, include_exclude_attributes
+from common_utility_functions import convert_to_flat_html_table, include_exclude_attributes
 from routers_v1.common_logging_functions_v1 import log_function_footer, log_function_header, log_function_output
 
 router = APIRouter()

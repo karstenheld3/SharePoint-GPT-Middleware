@@ -11,7 +11,7 @@ import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 
-from common_utils import convert_to_flat_html_table
+from common_utility_functions import convert_to_flat_html_table
 from routers_v2.common_logging_functions_v2 import MiddlewareLogger
 from routers_v2.common_job_functions_v2 import StreamingJobWriter, ControlAction
 
@@ -1733,7 +1733,7 @@ async def demorouter_selftest(request: Request):
       stream_logger.log_function_footer()
       
       ok = (fail_count == 0)
-      yield writer.emit_end(ok=ok, error="" if ok else f"{fail_count} test(s) failed", data={"passed": ok_count, "failed": fail_count, "passed_tests": passed_tests, "failed_tests": failed_tests})
+      yield writer.emit_end(ok=ok, error="" if ok else f"{fail_count} test(s)".replace("(s)", "s" if fail_count != 1 else "") + " failed.", data={"passed": ok_count, "failed": fail_count, "passed_tests": passed_tests, "failed_tests": failed_tests})
       
     except Exception as e:
       sse = log(f"ERROR: {type(e).__name__}: {str(e)}")
@@ -1874,7 +1874,7 @@ async def demorouter_create_demo_items(request: Request):
       ok = len(failed_items) == 0
       yield writer.emit_end(
         ok=ok,
-        error="" if ok else f"{len(failed_items)} item(s) failed.",
+        error="" if ok else f"{len(failed_items)} item(s)".replace("(s)", "s" if len(failed_items) != 1 else "") + " failed.",
         data={"batch_id": batch_id, "created": len(created_items), "failed": len(failed_items), "items": created_items}
       )
       

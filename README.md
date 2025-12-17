@@ -29,7 +29,7 @@ src/
 ├── routers_v1/common_openai_functions_v1.py  # OpenAI client utilities (in routers_v1/)
 ├── common_crawler_functions.py     # SharePoint crawler utilities
 ├── routers_v1/common_sharepoint_functions_v1.py  # SharePoint access utilities (in routers_v1/)
-├── common_utils.py                 # Helper functions
+├── common_utility_functions.py                 # Helper functions
 ├── routers_static/                 # Static routers (no version prefix)
 │   ├── openai_proxy.py             # OpenAI API proxy endpoints
 │   └── sharepoint_search.py        # AI-powered search endpoints

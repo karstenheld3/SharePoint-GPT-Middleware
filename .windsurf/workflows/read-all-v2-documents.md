@@ -8,8 +8,8 @@ Find all .md files in the workspace but ONLY in the /.windsurf/rules folder and 
 Read these files.
 
 Then read:
-- /: _V2_SPEC_JOBS_UI.md, _V2_SPEC_ROUTERS.md, SOPS.md
-- /src/: app.py, common_utils.py, hardcoded_config.py
+- /: SOPS.md, _V2_SPEC_ROUTERS.md, _V2_SPEC_JOBS_UI.md, _V2_SPEC_COMMON_UI_FUNCTIONS.md
+- /src/: app.py, common_utility_functions.py, hardcoded_config.py
 - /src/routers_v2/: demorouter1.py, common_job_functions_v2.py, common_logging_functions_v2.py
 
 Return only a single line: "Read [x] md files, [z]k context tokens"

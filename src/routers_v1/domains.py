@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from routers_v1.common_ui_functions_v1 import generate_html_head, generate_table_page, generate_table_with_headers, generate_error_html, generate_error_response, generate_success_response, generate_toolbar_button, generate_nested_data_page, generate_documentation_page
-from common_utils import convert_to_flat_html_table, convert_to_nested_html_table
+from common_utility_functions import convert_to_flat_html_table, convert_to_nested_html_table
 from routers_v1.common_logging_functions_v1 import log_function_footer, log_function_header, log_function_output
 from routers_v1.router_crawler_functions import ( DomainConfig, FileSource, SitePageSource, ListSource, load_all_domains, domain_config_to_dict, save_domain_to_file, delete_domain_folder, validate_domain_config )
 
