@@ -64,7 +64,7 @@ const jobsState = new Map();
 const STALE_THRESHOLD_MS = 300000; // 5 minutes
 
 function isStalled(job) {{
-  if (job.state !== 'running') return false;
+  if (job.state !== 'running' && job.state !== 'paused') return false;
   if (!job.last_modified_utc) return false;
   const mtime = new Date(job.last_modified_utc).getTime();
   const age = Date.now() - mtime;
@@ -166,8 +166,12 @@ function renderJobActions(job, stalled) {{
       actions.push('<button class="btn-small" onclick="if(confirm(\\'Cancel job ' + jobId + '?\\')) callJobControl(this, \\'' + jobId + '\\')" data-url="{router_prefix}/{router_name}/control?job_id=' + jobId + '&action=cancel">Cancel</button>');
     }}
   }} else if (state === 'paused') {{
-    actions.push('<button class="btn-small" data-url="{router_prefix}/{router_name}/control?job_id=' + jobId + '&action=resume" onclick="callJobControl(this, \\'' + jobId + '\\')">Resume</button>');
-    actions.push('<button class="btn-small" onclick="if(confirm(\\'Cancel job ' + jobId + '?\\')) callJobControl(this, \\'' + jobId + '\\')" data-url="{router_prefix}/{router_name}/control?job_id=' + jobId + '&action=cancel">Cancel</button>');
+    if (stalled) {{
+      actions.push('<button class="btn-small" onclick="if(confirm(\\'Force cancel stalled job ' + jobId + '?\\')) callJobControl(this, \\'' + jobId + '\\')" data-url="{router_prefix}/{router_name}/control?job_id=' + jobId + '&action=cancel&force=true">Force Cancel</button>');
+    }} else {{
+      actions.push('<button class="btn-small" data-url="{router_prefix}/{router_name}/control?job_id=' + jobId + '&action=resume" onclick="callJobControl(this, \\'' + jobId + '\\')">Resume</button>');
+      actions.push('<button class="btn-small" onclick="if(confirm(\\'Cancel job ' + jobId + '?\\')) callJobControl(this, \\'' + jobId + '\\')" data-url="{router_prefix}/{router_name}/control?job_id=' + jobId + '&action=cancel">Cancel</button>');
+    }}
   }}
   
   return actions.join(' ');
@@ -682,8 +686,8 @@ async def jobs_control(request: Request):
     logger.log_function_footer()
     return json_result(False, f"Cannot cancel {job.state} job '{job_id}'.", {"job_id": job_id, "action": action})
   
-  # Force cancel: directly rename .running -> .cancelled (for stalled jobs)
-  if action == "cancel" and force and job.state == "running":
+  # Force cancel: directly rename .running/.paused -> .cancelled (for stalled jobs)
+  if action == "cancel" and force and job.state in ["running", "paused"]:
     success = force_cancel_job(get_persistent_storage_path(), job_id)
     if not success:
       logger.log_function_footer()
