@@ -25,6 +25,7 @@ class JobMetadata:
   monitor_url: str
   started_utc: str
   finished_utc: Optional[str]
+  last_modified_utc: Optional[str]
   result: Optional[dict]
 
 class ControlAction(Enum):
@@ -227,6 +228,7 @@ class StreamingJobWriter:
       timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
       sse = self.emit_log(f"[{timestamp}] Pause requested, pausing...")
       log_events.append(sse)
+      self._flush_buffer()
       
       # Rename to .paused
       paused_path = self._job_file_path.replace(".running", ".paused")
@@ -254,6 +256,7 @@ class StreamingJobWriter:
           timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
           sse = self.emit_log(f"[{timestamp}] Resume requested, resuming...")
           log_events.append(sse)
+          self._flush_buffer()
           
           # Rename to .running
           running_path = self._job_file_path.replace(".paused", ".running")
@@ -360,6 +363,10 @@ def _parse_job_file(filepath: str) -> Optional[JobMetadata]:
   """Parse job file and extract metadata from start_json and end_json events."""
   if not os.path.exists(filepath): return None
   
+  # Get file modification time for stale job detection
+  mtime = os.path.getmtime(filepath)
+  last_modified_utc = datetime.datetime.fromtimestamp(mtime, tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+  
   with open(filepath, 'r', encoding='utf-8') as f:
     content = f.read()
   
@@ -392,6 +399,7 @@ def _parse_job_file(filepath: str) -> Optional[JobMetadata]:
     monitor_url=start_data.get("monitor_url", ""),
     started_utc=start_data.get("started_utc", ""),
     finished_utc=end_data.get("finished_utc") if end_data else None,
+    last_modified_utc=last_modified_utc,
     result=end_data.get("result") if end_data else None
   )
 
@@ -473,6 +481,37 @@ def delete_job(persistent_storage_path: str, job_id: str) -> bool:
   
   try:
     os.unlink(filepath)
+    return True
+  except Exception:
+    return False
+
+def force_cancel_job(persistent_storage_path: str, job_id: str) -> bool:
+  """Force cancel a stalled/paused job by directly renaming to .cancelled. Returns True if successful."""
+  filepath = find_job_file(persistent_storage_path, job_id)
+  if not filepath: return False
+  
+  # Determine current extension and validate
+  if filepath.endswith('.running'):
+    old_ext_len = 8  # len('.running')
+  elif filepath.endswith('.paused'):
+    old_ext_len = 7  # len('.paused')
+  else:
+    return False  # Can only force cancel running or paused jobs
+  
+  jobs_folder = os.path.dirname(filepath)
+  
+  # Delete any lingering control files for this job
+  for control_ext in CONTROL_STATES:
+    control_filepath = os.path.join(jobs_folder, f"[{job_id}].{control_ext}")
+    if os.path.exists(control_filepath):
+      try:
+        os.unlink(control_filepath)
+      except Exception:
+        pass
+  
+  new_filepath = filepath[:-old_ext_len] + '.cancelled'
+  try:
+    os.rename(filepath, new_filepath)
     return True
   except Exception:
     return False

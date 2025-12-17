@@ -211,6 +211,9 @@ td.actions button:last-child {
   margin-right: 0;
 }
 
+/* Cancelled or failed result row highlighting */
+tr.row-cancel-or-fail { color: #b03030; }
+
 /* Form groups (for modal forms) */
 .form-group {
   margin-bottom: 1rem;

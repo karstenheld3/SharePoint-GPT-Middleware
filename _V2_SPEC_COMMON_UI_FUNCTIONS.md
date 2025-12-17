@@ -22,6 +22,8 @@ This specification defines a reusable UI library for V2 routers, following the p
 **UI-FR-02: Modal Dialogs**
 - Overlay with centered content panel
 - Close on Escape key or X button
+- ENTER key submits form (use `type="submit"` on OK button, `onsubmit` on form)
+- Auto-focus first visible input field when modal opens
 - Width configurable per modal instance
 - Scrollable content when exceeds max-height
 
@@ -613,7 +615,7 @@ All JavaScript functions are generated as part of the UI page. The library provi
 - `escapeHtml(text)` - Sanitize text for HTML
 
 #### 2. Modal Functions
-- `openModal()` - Show modal overlay
+- `openModal()` - Show modal overlay, auto-focus first input field
 - `closeModal()` - Hide modal, reset width
 - `handleEscapeKey(event)` - Close on Escape key
 - `showResultModal(data)` - Display job result in modal

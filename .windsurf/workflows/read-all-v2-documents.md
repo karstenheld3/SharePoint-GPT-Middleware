@@ -10,6 +10,6 @@ Read these files.
 Then read:
 - /: SOPS.md, _V2_SPEC_ROUTERS.md, _V2_SPEC_DEMOROUTER_UI.md, _V2_SPEC_COMMON_UI_FUNCTIONS.md
 - /src/: app.py, common_utility_functions.py, hardcoded_config.py
-- /src/routers_v2/: demorouter2.py, common_job_functions_v2.py, common_logging_functions_v2.py
+- /src/routers_v2/: demorouter2.py, jobs.py, common_job_functions_v2.py, common_logging_functions_v2.py
 
 Return only a single line: "Read [x] md files, [z]k context tokens"

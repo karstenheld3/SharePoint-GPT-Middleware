@@ -147,7 +147,7 @@ Modal (Result - Success):
 |                                                          [x]  |
 | Result (OK, completed) - 'jb_57'                              |
 |                                                               |
-| Endpoint: /v2/demorouter1/selftest?format=stream               |
+| Endpoint: /v2/demorouter1/selftest?format=stream              |
 |                                                               |
 | +-----------------------------------------------------------+ |
 | | {                                                         | |
@@ -168,7 +168,7 @@ Modal (Result - Failure with error):
 |                                                          [x]  |
 | Result (FAIL, failed) - 'jb_58'                               |
 |                                                               |
-| Endpoint: /v2/demorouter1/create?format=stream                 |
+| Endpoint: /v2/demorouter1/create?format=stream                |
 |                                                               |
 | Item already exists: 'demo_001'                <- error (red) |
 |                                                               |

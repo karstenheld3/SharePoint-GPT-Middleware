@@ -40,6 +40,7 @@ A reactive web UI for monitoring and controlling long-running jobs. Uses the uni
 - `monitor_url` - URL to monitor this job's stream
 - `started_utc` - ISO timestamp when job started
 - `finished_utc` - ISO timestamp when job finished (null if running)
+- `last_modified_utc` - ISO timestamp of last job file modification (used for stale job detection)
 - `result` - Result object with `{ok, error, data}` (null if running)
 
 **SSE Event Types**
@@ -78,15 +79,15 @@ main page: /v2/jobs?format=ui
 | Back to main page                                                                                                                   |
 | [Delete (0)]                                                                                                                        |         
 |                                                                                                                                     |
-| +---+-------+-----------+---------------------+----------+-----------+---------+----------+---------------------------------------+ |
-| |[ ]| ID    | Router    | Endpoint            | Objects  | State     | Started | Finished | Actions                               | |
-| +---+-------+-----------+---------------------+----------+-----------+---------+----------+---------------------------------------+ |
-| |[ ]| jb_44 | crawler   | crawl               | DOMAIN01 | running   | ...     | -        | [Monitor] [Pause] [Cancel]            | |
-| |[ ]| jb_43 | crawler   | crawl               | DOMAIN02 | paused    | ...     | -        | [Monitor] [Resume] [Cancel]           | |
-| |[x]| jb_42 | crawler   | crawl               | DOMAIN01 | completed | ...     | ...      | [Result] [Monitor]                    | |
-| |[ ]| jb_41 | inventory | vector_stores/files | vs_123   | completed | ...     | ...      | [Result] [Monitor]                    | |
-| |   |       |           |                     | file_abc |           |         |          |                                       | |
-| +---+-------+-----------+---------------------+----------+-----------+---------+----------+---------------------------------------+ |
+| +---+-------+-----------+---------------------+----------+-----------+--------+---------+----------+---------------------------------------+ |
+| |[ ]| ID    | Router    | Endpoint            | Objects  | State     | Result | Started | Finished | Actions                               | |
+| +---+-------+-----------+---------------------+----------+-----------+--------+---------+----------+---------------------------------------+ |
+| |[ ]| jb_44 | crawler   | crawl               | DOMAIN01 | running   | -      | ...     | -        | [Monitor] [Pause] [Cancel]            | |
+| |[ ]| jb_43 | crawler   | crawl               | DOMAIN02 | paused    | -      | ...     | -        | [Monitor] [Resume] [Cancel]           | |
+| |[x]| jb_42 | crawler   | crawl               | DOMAIN01 | completed | OK     | ...     | ...      | [Result] [Monitor]                    | |
+| |[ ]| jb_41 | inventory | vector_stores/files | vs_123   | cancelled | FAIL   | ...     | ...      | [Result] [Monitor]                    | |
+| |   |       |           |                     | file_abc |           |        |         |          |                                       | |
+| +---+-------+-----------+---------------------+----------+-----------+--------+---------+----------+---------------------------------------+ |
 |                                                                                                                                     |
 +-- [Resize Handle] ------------------------------------------------------------------------------------------------------------------+
 | Console Output (connected): Job ID='jb_44'                                                                     [Pause] [Clear]  [X] |
@@ -412,11 +413,25 @@ function updateJobInTable(jobId, updates) {
 - Calls `renderAllJobs()` which re-renders entire table
 - Action buttons change based on new state (see "Action Buttons Per State")
 
+### Result Column
+
+The Result column displays the outcome of completed jobs:
+- `-` for running/paused jobs (no result yet)
+- `OK` if `job.result.ok === true`
+- `FAIL` if `job.result.ok === false`
+
+### Row Styling for Cancelled/Failed Jobs
+
+Rows with `state === 'cancelled'` OR `result.ok === false` get class `row-cancel-or-fail`:
+```css
+tr.row-cancel-or-fail { color: #b03030; }
+```
+
 ### Empty State
 
 When no jobs exist, show message row:
 ```html
-<tr><td colspan="9" class="empty-state">No jobs found</td></tr>
+<tr><td colspan="10" class="empty-state">No jobs found</td></tr>
 ```
 
 ### Console Behavior

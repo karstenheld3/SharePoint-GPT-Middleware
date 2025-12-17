@@ -235,6 +235,10 @@ function escapeHtml(text) {
 function openModal() {
   document.getElementById('modal').classList.add('visible');
   document.addEventListener('keydown', handleEscapeKey);
+  setTimeout(() => {
+    const firstInput = document.querySelector('#modal input:not([type="hidden"]), #modal textarea, #modal select');
+    if (firstInput) firstInput.focus();
+  }, 50);
 }
 
 function closeModal() {

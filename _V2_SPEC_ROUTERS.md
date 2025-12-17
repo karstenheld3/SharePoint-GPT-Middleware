@@ -122,6 +122,7 @@ Example `start_json`:
   "monitor_url": "/v2/jobs/monitor?job_id=jb_42",
   "started_utc": "2024-01-15T10:30:00.000000Z",
   "finished_utc": null,
+  "last_modified_utc": "2024-01-15T10:30:05.000000Z",
   "result": null
 }
 ```
@@ -135,6 +136,7 @@ Example `end_json`:
   "monitor_url": "/v2/jobs/monitor?job_id=jb_42",
   "started_utc": "2024-01-15T10:30:00.000000Z",
   "finished_utc": "2024-01-15T12:23:34.000000Z",
+  "last_modified_utc": "2024-01-15T12:23:34.000000Z",
   "result": { "ok": true, "error": "", "data": {...} }
 }
 ```
@@ -255,9 +257,10 @@ Version 2 routers (as specified in this document):
 - Specifies if an action is allowed to delete or modify data.
 - Used to verify the configuration and predict the result of actions that can't be undone.
 - Supported by Create, Update, Delete, and endpoints that trigger long-running jobs.
+- Response uses the same schema as normal operation (no special `dry_run` flag or `would_create` fields).
 - Available options:
   - `false` (default) - Allowed to delete or modify data: perform the action as specified.
-  - `true` - NOT allowed to delete or modify data: simulate the action and its outcome.
+  - `true` - NOT allowed to delete or modify data: simulate the action, return same response schema.
 
 ### LCGUD Endpoint Examples (format=json)
 
@@ -378,7 +381,7 @@ Long-running jobs can be monitored, paused, resumed, cancelled by independent pr
 Example *stream output* for `start_json` event with job metadata as JSON
 ```
 event: start_json
-data: { "job_id": 'jb_2', "source_url": "/v2/crawler/crawl?domain_id=TEST01&format=stream", "state": "running"}
+data: { "job_id": "jb_2", "state": "running", "source_url": "/v2/crawler/crawl?domain_id=TEST01&format=stream", "last_modified_utc": "..."}
 
 ```
 
@@ -443,7 +446,7 @@ Note: Format `[ current / total ]` after `data:` is mandatory when logging steps
 
 ```
 event: start_json
-data: {"job_id": "jb_42", "state": "running", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": null, "result": null}
+data: {"job_id": "jb_42", "state": "running", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": null, "last_modified_utc": "...", "result": null}
 
 event: log
 data: [ 1 / 2 ] Processing file 'document1.pdf'...
@@ -458,7 +461,7 @@ event: log
 data:   OK.
 
 event: end_json
-data: {"job_id": "jb_42", "state": "completed", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": "...", "result": {"ok": true, "error": "", "data": {...}}}
+data: {"job_id": "jb_42", "state": "completed", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": "...", "last_modified_utc": "...", "result": {"ok": true, "error": "", "data": {...}}}
 
 ```
 
@@ -879,6 +882,7 @@ Create, Update, Delete operations usually support the `format=stream` query para
   - `GET /v2/jobs/control?job_id={id}&action=pause` - Requests the job to be paused
   - `GET /v2/jobs/control?job_id={id}&action=resume` - Requests the job to be resumed
   - `GET /v2/jobs/control?job_id={id}&action=cancel` - Requests the job to be cancelled
+  - `GET /v2/jobs/control?job_id={id}&action=cancel&force=true` - Force cancels a stalled job (directly renames .running -> .cancelled)
   - Error handling:
     - HTTP 404 if `job_id` does not exist: "Job 'jb_42' does not exist."
     - HTTP 400 if `action` is missing or invalid: "Param 'action' is missing." or "Invalid value '<value>' for 'action' param."
@@ -900,8 +904,8 @@ Returns standard JSON result where `data` is an array of job objects:
   "ok": true,
   "error": "",
   "data": [
-    {"job_id": "jb_44", "state": "running", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": null, "result": null},
-    {"job_id": "jb_42", "state": "completed", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": "...", "result": {"ok": true, "error": "", "data": {...}}}
+    {"job_id": "jb_44", "state": "running", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": null, "last_modified_utc": "...", "result": null},
+    {"job_id": "jb_42", "state": "completed", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": "...", "last_modified_utc": "...", "result": {"ok": true, "error": "", "data": {...}}}
   ]
 }
 ```
@@ -924,6 +928,7 @@ Returns standard JSON result where `data` is a single job object:
     "monitor_url": "/v2/jobs/monitor?job_id=jb_42",
     "started_utc": "2025-01-15T14:00:00.000000Z",
     "finished_utc": null,
+    "last_modified_utc": "2025-01-15T14:00:05.000000Z",
     "result": null
   }
 }
@@ -936,6 +941,14 @@ Returns standard JSON result confirming the control action was requested:
 {"ok": true, "error": "", "data": {"job_id": "jb_42", "action": "pause", "message": "Pause requested for job 'jb_42'."}}
 ```
 
+#### `/v2/jobs/control?job_id={id}&action=cancel&force=true`
+
+Force cancels a stalled job by directly renaming the job file from `.running` to `.cancelled`. Used when the job process has crashed and is no longer checking for control files. Also cleans up any lingering control files.
+
+```json
+{"ok": true, "error": "", "data": {"job_id": "jb_42", "action": "cancel", "force": true, "message": "Job 'jb_42' force cancelled."}}
+```
+
 #### `/v2/jobs/monitor?job_id={id}&format=json`
 
 - Returns standard JSON result with job metadata and last log line.
@@ -943,22 +956,22 @@ Returns standard JSON result confirming the control action was requested:
 
 **Running job:**
 ```json
-{"ok": true, "error": "", "data": {"job_id": "jb_42", "state": "running", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": null, "result": null, "log": "[ 15 / 20 ] Processing 'document_015.pdf'..."}}
+{"ok": true, "error": "", "data": {"job_id": "jb_42", "state": "running", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": null, "last_modified_utc": "...", "result": null, "log": "[ 15 / 20 ] Processing 'document_015.pdf'..."}}
 ```
 
 **Paused job:**
 ```json
-{"ok": true, "error": "", "data": {"job_id": "jb_42", "state": "paused", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": null, "result": null, "log": "  Pause requested, pausing..."}}
+{"ok": true, "error": "", "data": {"job_id": "jb_42", "state": "paused", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": null, "last_modified_utc": "...", "result": null, "log": "  Pause requested, pausing..."}}
 ```
 
 **Completed job:**
 ```json
-{"ok": true, "error": "", "data": {"job_id": "jb_42", "state": "completed", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": "...", "result": {"ok": true, "error": "", "data": {...}}, "log": "  OK."}}
+{"ok": true, "error": "", "data": {"job_id": "jb_42", "state": "completed", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": "...", "last_modified_utc": "...", "result": {"ok": true, "error": "", "data": {...}}, "log": "  OK."}}
 ```
 
 **Cancelled job:**
 ```json
-{"ok": true, "error": "", "data": {"job_id": "jb_42", "state": "cancelled", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": "...", "result": {"ok": false, "error": "Cancelled by user.", "data": {...}}, "log": "  Cancel requested, stopping..."}}
+{"ok": true, "error": "", "data": {"job_id": "jb_42", "state": "cancelled", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": "...", "last_modified_utc": "...", "result": {"ok": false, "error": "Cancelled by user.", "data": {...}}, "log": "  Cancel requested, stopping..."}}
 ```
 
 #### `/v2/jobs/monitor?job_id={id}&format=stream`
@@ -966,7 +979,7 @@ Returns standard JSON result confirming the control action was requested:
 Returns Server-Sent Events stream (Content-Type: `text/event-stream`):
 ```
 event: start_json
-data: {"job_id": "jb_42", "state": "running", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": null, "result": null}
+data: {"job_id": "jb_42", "state": "running", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": null, "last_modified_utc": "...", "result": null}
 
 event: log
 data: [ 1 / 20 ] Processing 'document_001.pdf'...
@@ -978,7 +991,7 @@ event: log
 data: [ 2 / 20 ] Processing 'document_002.pdf'...
 
 event: end_json
-data: {"job_id": "jb_42", "state": "completed", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": "...", "result": {"ok": true, "error": "", "data": {...}}}
+data: {"job_id": "jb_42", "state": "completed", "source_url": "...", "monitor_url": "...", "started_utc": "...", "finished_utc": "...", "last_modified_utc": "...", "result": {"ok": true, "error": "", "data": {...}}}
 
 ```
 
@@ -986,7 +999,7 @@ data: {"job_id": "jb_42", "state": "completed", "source_url": "...", "monitor_ur
 
 Returns standard JSON result where `data` is the `result` object from `end_json`:
 ```json
-{"ok": true, "error": "", "data": {"ok": true, "error": "", "data": {...}}}
+{"ok": true, "error": "", "data": {...}}
 ```
 
 Returns error if job is not in terminal state ('completed' or 'cancelled'):
@@ -1712,7 +1725,7 @@ class StreamingJobWriter:
     """
     Emit end_json event. Immediate flush to file. (STREAM-FR-03, STREAM-FR-07)
     Sets finished_utc timestamp.
-    Returns SSE-formatted string for HTTP response.
+    Returns SSE event string for HTTP response.
     """
   
   async def check_control(self) -> tuple[list[str], Optional[ControlAction]]:
@@ -1762,9 +1775,11 @@ def create_control_file(persistent_storage_path: str, job_id: str, action: str) 
 def delete_job(persistent_storage_path: str, job_id: str) -> bool:
   """Delete job file. Returns True if deleted."""
 
----
+def force_cancel_job(persistent_storage_path: str, job_id: str) -> bool:
+  """Force cancel stalled job by renaming .running -> .cancelled. Cleans up control files."""
+```
 
-## Spec Changes
+### Spec Changes
 
 **[2024-12-17 12:10]**
 - Added: "Scenario" section with Problem/Solution/What we don't want

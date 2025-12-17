@@ -1,5 +1,5 @@
 # Jobs Router V2 - Job monitoring and control UI
-# Spec: L(jhu)G(jh)D(j): /v2/jobs
+# Spec: L(jhu)G(jh)D(jh): /v2/jobs
 # Implements _V2_SPEC_JOBS_UI.md specification
 
 import textwrap
@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Str
 
 from routers_v2.common_ui_functions_v2 import generate_router_docs_page, generate_endpoint_docs, json_result, html_result, generate_html_head, generate_toast_container, generate_modal_structure, generate_console_panel, generate_core_js, generate_console_js, generate_form_js
 from routers_v2.common_logging_functions_v2 import MiddlewareLogger
-from routers_v2.common_job_functions_v2 import list_jobs, find_job_by_id, read_job_log, read_job_result, create_control_file, delete_job, JobMetadata
+from routers_v2.common_job_functions_v2 import list_jobs, find_job_by_id, read_job_log, read_job_result, create_control_file, delete_job, force_cancel_job, JobMetadata
 
 router = APIRouter()
 config = None
@@ -24,6 +24,7 @@ example_item_json = """
   "monitor_url": "/v2/jobs/monitor?job_id=jb_42&format=stream",
   "started_utc": "2025-01-15T14:20:30.000000Z",
   "finished_utc": "2025-01-15T14:25:45.000000Z",
+  "last_modified_utc": "2025-01-15T14:25:45.000000Z",
   "result": {"ok": true, "error": "", "data": {}}
 }
 """
@@ -60,6 +61,15 @@ def get_router_specific_js() -> str:
 // JOB STATE MANAGEMENT
 // ============================================
 const jobsState = new Map();
+const STALE_THRESHOLD_MS = 300000; // 5 minutes
+
+function isStalled(job) {{
+  if (job.state !== 'running') return false;
+  if (!job.last_modified_utc) return false;
+  const mtime = new Date(job.last_modified_utc).getTime();
+  const age = Date.now() - mtime;
+  return age > STALE_THRESHOLD_MS;
+}}
 
 // ============================================
 // PAGE INITIALIZATION
@@ -100,7 +110,7 @@ function renderAllJobs() {{
   const tbody = document.getElementById('items-tbody');
   
   if (jobs.length === 0) {{
-    tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No jobs found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan=\"10\" class=\"empty-state\">No jobs found</td></tr>';
   }} else {{
     tbody.innerHTML = jobs.map(job => renderJobRow(job)).join('');
   }}
@@ -115,24 +125,29 @@ function renderJobRow(job) {{
   const started = formatTimestamp(job.started_utc);
   const finished = formatTimestamp(job.finished_utc);
   const objectsHtml = parsed.objectIds.length > 0 ? escapeHtml(parsed.objectIds.join(', ')) : '-';
+  const stalled = isStalled(job);
+  const stateDisplay = stalled ? job.state + ' (stalled)' : job.state;
+  const resultDisplay = job.result ? (job.result.ok ? 'OK' : 'FAIL') : '-';
+  const isCancelOrFail = job.state === 'cancelled' || (job.result && !job.result.ok);
   
-  const actions = renderJobActions(job);
+  const actions = renderJobActions(job, stalled);
   const rowId = escapeHtml(job.job_id.replace(/[^a-zA-Z0-9_]/g, '_'));
   
-  return '<tr id="job-' + rowId + '">' +
+  return '<tr id="job-' + rowId + '"' + (isCancelOrFail ? ' class="row-cancel-or-fail"' : '') + '>' +
     '<td><input type="checkbox" class="item-checkbox" data-item-id="' + escapeHtml(job.job_id) + '" onchange="updateSelectedCount()"></td>' +
     '<td>' + escapeHtml(job.job_id) + '</td>' +
     '<td>' + escapeHtml(parsed.router) + '</td>' +
     '<td>' + escapeHtml(parsed.endpoint) + '</td>' +
     '<td>' + objectsHtml + '</td>' +
-    '<td>' + escapeHtml(job.state) + '</td>' +
+    '<td>' + escapeHtml(stateDisplay) + '</td>' +
+    '<td>' + escapeHtml(resultDisplay) + '</td>' +
     '<td>' + escapeHtml(started) + '</td>' +
     '<td>' + escapeHtml(finished) + '</td>' +
     '<td class="actions">' + actions + '</td>' +
     '</tr>';
 }}
 
-function renderJobActions(job) {{
+function renderJobActions(job, stalled) {{
   const jobId = job.job_id;
   const state = job.state;
   let actions = [];
@@ -144,11 +159,15 @@ function renderJobActions(job) {{
   actions.push('<button class="btn-small" onclick="monitorJob(\\'' + jobId + '\\')">Monitor</button>');
   
   if (state === 'running') {{
-    actions.push('<button class="btn-small" data-url="{router_prefix}/{router_name}/control?job_id=' + jobId + '&action=pause" onclick="callJobControl(this, \\'' + jobId + '\\')">Pause</button>');
-    actions.push('<button class="btn-small btn-delete" onclick="if(confirm(\\'Cancel job ' + jobId + '?\\')) callJobControl(this, \\'' + jobId + '\\')" data-url="{router_prefix}/{router_name}/control?job_id=' + jobId + '&action=cancel">Cancel</button>');
+    if (stalled) {{
+      actions.push('<button class="btn-small" onclick="if(confirm(\\'Force cancel stalled job ' + jobId + '?\\')) callJobControl(this, \\'' + jobId + '\\')" data-url="{router_prefix}/{router_name}/control?job_id=' + jobId + '&action=cancel&force=true">Force Cancel</button>');
+    }} else {{
+      actions.push('<button class="btn-small" data-url="{router_prefix}/{router_name}/control?job_id=' + jobId + '&action=pause" onclick="callJobControl(this, \\'' + jobId + '\\')">Pause</button>');
+      actions.push('<button class="btn-small" onclick="if(confirm(\\'Cancel job ' + jobId + '?\\')) callJobControl(this, \\'' + jobId + '\\')" data-url="{router_prefix}/{router_name}/control?job_id=' + jobId + '&action=cancel">Cancel</button>');
+    }}
   }} else if (state === 'paused') {{
     actions.push('<button class="btn-small" data-url="{router_prefix}/{router_name}/control?job_id=' + jobId + '&action=resume" onclick="callJobControl(this, \\'' + jobId + '\\')">Resume</button>');
-    actions.push('<button class="btn-small btn-delete" onclick="if(confirm(\\'Cancel job ' + jobId + '?\\')) callJobControl(this, \\'' + jobId + '\\')" data-url="{router_prefix}/{router_name}/control?job_id=' + jobId + '&action=cancel">Cancel</button>');
+    actions.push('<button class="btn-small" onclick="if(confirm(\\'Cancel job ' + jobId + '?\\')) callJobControl(this, \\'' + jobId + '\\')" data-url="{router_prefix}/{router_name}/control?job_id=' + jobId + '&action=cancel">Cancel</button>');
   }}
   
   return actions.join(' ');
@@ -200,7 +219,7 @@ function formatTimestamp(ts) {{
 function monitorJob(jobId) {{
   const url = '{router_prefix}/{router_name}/monitor?job_id=' + jobId + '&format=stream';
   currentJobId = jobId;
-  connectStream(url, {{ reloadOnFinish: false, showResult: 'none', clearConsole: true }});
+  connectStream(url, {{ reloadOnFinish: true, showResult: 'none', clearConsole: true }});
 }}
 
 // ============================================
@@ -416,13 +435,14 @@ def _generate_jobs_ui_page(jobs: list) -> str:
           <th>Endpoint</th>
           <th>Objects</th>
           <th>State</th>
+          <th>Result</th>
           <th>Started</th>
           <th>Finished</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody id="items-tbody">
-        <tr><td colspan="9" class="empty-state">Loading...</td></tr>
+        <tr><td colspan="10" class="empty-state">Loading...</td></tr>
       </tbody>
     </table>
   </div>
@@ -507,12 +527,12 @@ async def jobs_monitor(request: Request):
   
   Parameters:
   - job_id: ID of the job to monitor (required)
-  - format: Response format - json, html, stream (default)
+  - format: Response format - json (default), html, stream
   
   Examples:
-  {router_prefix}/{router_name}/monitor?job_id=jb_42&format=stream
-  {router_prefix}/{router_name}/monitor?job_id=jb_42&format=json
+  {router_prefix}/{router_name}/monitor?job_id=jb_42
   {router_prefix}/{router_name}/monitor?job_id=jb_42&format=html
+  {router_prefix}/{router_name}/monitor?job_id=jb_42&format=stream
   
   Response (json - includes job metadata and last log line):
   {{"ok": true, "error": "", "data": {{"job_id": "jb_42", "state": "running", ..., "log": "[ 15 / 20 ] Processing..."}}}}
@@ -527,7 +547,7 @@ async def jobs_monitor(request: Request):
   
   request_params = dict(request.query_params)
   job_id = request_params.get("job_id", None)
-  format_param = request_params.get("format", "stream")
+  format_param = request_params.get("format", "json")
   
   if not job_id:
     logger.log_function_footer()
@@ -543,8 +563,32 @@ async def jobs_monitor(request: Request):
   
   if format_param == "stream":
     logger.log_function_footer()
+    import asyncio
     async def stream_log():
-      yield log_content if log_content else ""
+      # Yield existing content
+      last_len = 0
+      if log_content:
+        yield log_content
+        last_len = len(log_content)
+      
+      # For running/paused jobs, poll for new content
+      while True:
+        current_job = find_job_by_id(get_persistent_storage_path(), job_id)
+        if current_job is None or current_job.state in ["completed", "cancelled"]:
+          # Job finished - yield any remaining content and exit
+          final_content = read_job_log(get_persistent_storage_path(), job_id) or ""
+          if len(final_content) > last_len:
+            yield final_content[last_len:]
+          break
+        
+        # Check for new content
+        current_content = read_job_log(get_persistent_storage_path(), job_id) or ""
+        if len(current_content) > last_len:
+          yield current_content[last_len:]
+          last_len = len(current_content)
+        
+        await asyncio.sleep(0.5)
+    
     return StreamingResponse(stream_log(), media_type="text/event-stream")
   
   if format_param == "json":
@@ -577,11 +621,13 @@ async def jobs_control(request: Request):
   Parameters:
   - job_id: ID of the job (required)
   - action: Control action - pause, resume, cancel (required)
+  - force: Force cancel stalled job (optional, only for action=cancel)
   
   Examples:
   {router_prefix}/{router_name}/control?job_id=jb_42&action=pause
   {router_prefix}/{router_name}/control?job_id=jb_42&action=resume
   {router_prefix}/{router_name}/control?job_id=jb_42&action=cancel
+  {router_prefix}/{router_name}/control?job_id=jb_42&action=cancel&force=true
   
   Response:
   {{"ok": true, "error": "", "data": {{"job_id": "jb_42", "action": "pause", "message": "Pause requested for job 'jb_42'."}}}}
@@ -597,6 +643,7 @@ async def jobs_control(request: Request):
   request_params = dict(request.query_params)
   job_id = request_params.get("job_id", None)
   action = request_params.get("action", None)
+  force = request_params.get("force", "false").lower() == "true"
   
   if not job_id:
     logger.log_function_footer()
@@ -635,6 +682,16 @@ async def jobs_control(request: Request):
     logger.log_function_footer()
     return json_result(False, f"Cannot cancel {job.state} job '{job_id}'.", {"job_id": job_id, "action": action})
   
+  # Force cancel: directly rename .running -> .cancelled (for stalled jobs)
+  if action == "cancel" and force and job.state == "running":
+    success = force_cancel_job(get_persistent_storage_path(), job_id)
+    if not success:
+      logger.log_function_footer()
+      return json_result(False, f"Failed to force cancel job '{job_id}'.", {"job_id": job_id, "action": action, "force": True})
+    logger.log_function_footer()
+    return json_result(True, "", {"job_id": job_id, "action": action, "force": True, "message": f"Job '{job_id}' force cancelled."})
+  
+  # Normal control: create control file for running job process to pick up
   success = create_control_file(get_persistent_storage_path(), job_id, action)
   if not success:
     logger.log_function_footer()
@@ -725,10 +782,11 @@ async def jobs_delete_docs(request: Request):
   
   Parameters:
   - job_id: ID of the job to delete (required)
+  - format: Response format - json (default), html
   
   Examples:
   DELETE {router_prefix}/{router_name}/delete?job_id=jb_42
-  GET {router_prefix}/{router_name}/delete?job_id=jb_42
+  GET {router_prefix}/{router_name}/delete?job_id=jb_42&format=html
   """
   if len(request.query_params) == 0:
     doc = textwrap.dedent(jobs_delete_docs.__doc__).replace("{router_prefix}", router_prefix).replace("{router_name}", router_name)
@@ -745,26 +803,32 @@ async def jobs_delete_impl(request: Request):
   
   request_params = dict(request.query_params)
   job_id = request_params.get("job_id", None)
+  format_param = request_params.get("format", "json")
   
   if not job_id:
     logger.log_function_footer()
+    if format_param == "html": return html_result("Error", {"error": "Missing 'job_id' parameter."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html}')
     return json_result(False, "Missing 'job_id' parameter.", {})
   
   job = find_job_by_id(get_persistent_storage_path(), job_id)
   if job is None:
     logger.log_function_footer()
+    if format_param == "html": return html_result("Not Found", {"error": f"Job '{job_id}' not found."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html}')
     return JSONResponse({"ok": False, "error": f"Job '{job_id}' not found.", "data": {}}, status_code=404)
   
   if job.state in ["running", "paused"]:
     logger.log_function_footer()
+    if format_param == "html": return html_result("Cannot Delete", {"error": f"Cannot delete active job '{job_id}' (state: {job.state}). Cancel it first."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html}')
     return json_result(False, f"Cannot delete active job '{job_id}' (state: {job.state}). Cancel it first.", {"job_id": job_id, "state": job.state})
   
   success = delete_job(get_persistent_storage_path(), job_id)
   if not success:
     logger.log_function_footer()
+    if format_param == "html": return html_result("Delete Failed", {"error": f"Failed to delete job '{job_id}'."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html}')
     return json_result(False, f"Failed to delete job '{job_id}'.", {"job_id": job_id})
   
   logger.log_function_footer()
+  if format_param == "html": return html_result("Job Deleted", {"job_id": job_id, "message": f"Job '{job_id}' deleted successfully."}, f'<a href="{router_prefix}/{router_name}?format=ui">Back to Jobs</a> | {main_page_nav_html}')
   return json_result(True, "", {"job_id": job_id})
 
-# ----------------------------------------- END: D(j) - Delete -------------------------------------------------------------
+# ----------------------------------------- END: D(jh) - Delete ------------------------------------------------------------
