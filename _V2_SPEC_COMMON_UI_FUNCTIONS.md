@@ -22,10 +22,11 @@ This specification defines a reusable UI library for V2 routers, following the p
 **UI-FR-02: Modal Dialogs**
 - Overlay with centered content panel
 - Close on Escape key or X button
-- ENTER key submits form (use `type="submit"` on OK button, `onsubmit` on form)
+- ENTER key submits form (use `type="submit"` on OK button with `form="formId"`, `onsubmit` on form)
 - Auto-focus first visible input field when modal opens
-- Width configurable per modal instance
-- Scrollable content when exceeds max-height
+- Width configurable per modal instance (default 900px, `openModal(width)` or `setModalWidth(width)`)
+- Internal structure: `.modal-header` (fixed title), `.modal-scroll` (scrollable form), `.modal-footer` (fixed buttons)
+- Only `.modal-scroll` area scrolls when content exceeds max-height; title and buttons remain fixed
 
 **UI-FR-03: Console Panel**
 - Fixed position at bottom of viewport
@@ -136,6 +137,9 @@ This specification defines a reusable UI library for V2 routers, following the p
 │  Page Shell                                                                 │
 │  ├─ Toast Container (#toast-container)                                      │
 │  ├─ Modal Overlay (#modal > .modal-content > .modal-body)                   │
+│  │   ├─ Modal Header (.modal-header > h3)                                   │
+│  │   ├─ Modal Scroll (.modal-scroll) - scrollable form content              │
+│  │   └─ Modal Footer (.modal-footer) - fixed OK/Cancel buttons              │
 │  ├─ Main Content (.container)                                               │
 │  │   ├─ Page Header (h1 + reload button)                                    │
 │  │   ├─ Back Link                                                           │
@@ -165,7 +169,7 @@ This specification defines a reusable UI library for V2 routers, following the p
 
 **Existing styles** (keep as-is):
 - Toast: `#toast-container`, `.toast`, `.toast-info/success/error/warning`, `.toast-content`, `.toast-title`, `.toast-close`, `@keyframes toast-slide-in`
-- Modal: `.modal-overlay`, `.modal-overlay.visible`, `.modal-content`, `.modal-close`
+- Modal: `.modal-overlay`, `.modal-overlay.visible`, `.modal-content`, `.modal-close`, `.modal-body`, `.modal-header`, `.modal-scroll`, `.modal-footer`
 - Console: `.console-panel`, `.console-panel.hidden`, `.console-resize-handle`, `.console-resize-handle.dragging`, `.console-header`, `.console-status`, `.console-controls`, `.console-close`, `.console-output`
 - Form: `.form-error`
 - Table: `.empty-state`

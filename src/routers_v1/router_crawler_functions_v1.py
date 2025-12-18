@@ -105,7 +105,7 @@ def load_domain(storage_path: str, domain_id: str, log_data: Dict[str, Any] = No
       list_sources = [ListSource(**src) for src in domain_data.get('list_sources', [])]
       
       domain_config = DomainConfig(
-        domain_id=domain_data['domain_id'],
+        domain_id=domain_id,  # Derived from folder name, not stored in JSON
         vector_store_name=domain_data['vector_store_name'],
         vector_store_id=domain_data['vector_store_id'],
         name=domain_data['name'],
@@ -285,7 +285,7 @@ def validate_domain_config(domain_data: Dict[str, Any]) -> tuple[bool, str]:
   Returns:
     Tuple of (is_valid, error_message)
   """
-  required_fields = ['domain_id', 'name', 'vector_store_name', 'description']
+  required_fields = ['name', 'vector_store_name', 'description']  # domain_id derived from folder name
   
   # Check required fields
   for field in required_fields:
@@ -331,6 +331,7 @@ def save_domain_to_file(storage_path: str, domain_config: DomainConfig, log_data
   
   # Convert dataclass to dictionary
   domain_dict = domain_config_to_dict(domain_config)
+  domain_dict.pop('domain_id', None)  # Don't store domain_id in JSON - derived from folder name
   
   # Write to file with pretty formatting
   with open(domain_json_path, 'w', encoding='utf-8') as f:

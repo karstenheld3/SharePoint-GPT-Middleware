@@ -3,7 +3,7 @@
 # This router demonstrates the use of common_ui_functions_v2.py
 # Same functionality as demorouter1 but UI generated via shared library
 
-import json, os, textwrap
+import asyncio, datetime, json, os, textwrap, uuid
 import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
@@ -93,25 +93,27 @@ def get_router_specific_js() -> str:
 function showNewItemForm() {{
   const body = document.querySelector('#modal .modal-body');
   body.innerHTML = `
-    <h3>New Item</h3>
-    <form id="new-item-form" onsubmit="return submitNewItemForm(event)">
-      <div class="form-group">
-        <label>Item ID (required)</label>
-        <input type="text" name="item_id" required>
-      </div>
-      <div class="form-group">
-        <label>Name</label>
-        <input type="text" name="name">
-      </div>
-      <div class="form-group">
-        <label>Version</label>
-        <input type="number" name="version" value="1">
-      </div>
-      <div class="form-actions">
-        <button type="submit" class="btn-primary" data-url="{router_prefix}/{router_name}/create" data-method="POST" data-format="json" data-reload-on-finish="true">OK</button>
-        <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
-      </div>
-    </form>
+    <div class="modal-header"><h3>New Item</h3></div>
+    <div class="modal-scroll">
+      <form id="new-item-form" onsubmit="return submitNewItemForm(event)">
+        <div class="form-group">
+          <label>Item ID (required)</label>
+          <input type="text" name="item_id" required>
+        </div>
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" name="name">
+        </div>
+        <div class="form-group">
+          <label>Version</label>
+          <input type="number" name="version" value="1">
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button type="submit" form="new-item-form" class="btn-primary" data-url="{router_prefix}/{router_name}/create" data-method="POST" data-format="json" data-reload-on-finish="true">OK</button>
+      <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
+    </div>
   `;
   openModal();
 }}
@@ -119,7 +121,7 @@ function showNewItemForm() {{
 function submitNewItemForm(event) {{
   event.preventDefault();
   const form = document.getElementById('new-item-form');
-  const btn = form.querySelector('button[type="submit"]');
+  const btn = document.querySelector('.modal-footer button[type="submit"]');
   const formData = new FormData(form);
   const data = {{}};
   
@@ -156,27 +158,29 @@ async function showUpdateForm(itemId) {{
     const item = result.data;
     
     body.innerHTML = `
-      <h3>Update Item</h3>
-      <form id="update-item-form" onsubmit="return submitUpdateForm(event)">
-        <input type="hidden" name="source_item_id" value="${{itemId}}">
-        <div class="form-group">
-          <label>Item ID</label>
-          <input type="text" name="item_id" value="${{escapeHtml(itemId)}}">
-          <small style="color: #666;">Change to rename the item</small>
-        </div>
-        <div class="form-group">
-          <label>Name</label>
-          <input type="text" name="name" value="${{escapeHtml(item.name || '')}}">
-        </div>
-        <div class="form-group">
-          <label>Version</label>
-          <input type="number" name="version" value="${{item.version || 1}}">
-        </div>
-        <div class="form-actions">
-          <button type="submit" class="btn-primary" data-url="{router_prefix}/{router_name}/update?item_id=${{itemId}}" data-method="PUT" data-format="json" data-reload-on-finish="true">OK</button>
-          <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
-        </div>
-      </form>
+      <div class="modal-header"><h3>Update Item</h3></div>
+      <div class="modal-scroll">
+        <form id="update-item-form" onsubmit="return submitUpdateForm(event)">
+          <input type="hidden" name="source_item_id" value="${{itemId}}">
+          <div class="form-group">
+            <label>Item ID</label>
+            <input type="text" name="item_id" value="${{escapeHtml(itemId)}}">
+            <small style="color: #666;">Change to rename the item</small>
+          </div>
+          <div class="form-group">
+            <label>Name</label>
+            <input type="text" name="name" value="${{escapeHtml(item.name || '')}}">
+          </div>
+          <div class="form-group">
+            <label>Version</label>
+            <input type="number" name="version" value="${{item.version || 1}}">
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="submit" form="update-item-form" class="btn-primary" data-url="{router_prefix}/{router_name}/update?item_id=${{itemId}}" data-method="PUT" data-format="json" data-reload-on-finish="true">OK</button>
+        <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
+      </div>
     `;
   }} catch (e) {{
     body.innerHTML = '<h3>Error</h3><p>' + escapeHtml(e.message) + '</p><div class="form-actions"><button class="btn-secondary" onclick="closeModal()">Close</button></div>';
@@ -186,7 +190,7 @@ async function showUpdateForm(itemId) {{
 function submitUpdateForm(event) {{
   event.preventDefault();
   const form = document.getElementById('update-item-form');
-  const btn = form.querySelector('button[type="submit"]');
+  const btn = document.querySelector('.modal-footer button[type="submit"]');
   const formData = new FormData(form);
   const data = {{}};
   
@@ -218,22 +222,24 @@ function submitUpdateForm(event) {{
 function showCreateDemoItemsForm() {{
   const body = document.querySelector('#modal .modal-body');
   body.innerHTML = `
-    <h3>Create Demo Items</h3>
-    <p>This will create a number of demo items as a background job.</p>
-    <form id="create-demo-items-form" onsubmit="return submitCreateDemoItemsForm(event)">
-      <div class="form-group">
-        <label>Count (1-100)</label>
-        <input type="number" name="count" value="10" min="1" max="100">
-      </div>
-      <div class="form-group">
-        <label>Delay per item (ms)</label>
-        <input type="number" name="delay_ms" value="300" min="0" max="10000">
-      </div>
-      <div class="form-actions">
-        <button type="submit" class="btn-primary" data-url="{router_prefix}/{router_name}/create_demo_items?format=stream&count={{count}}&delay_ms={{delay_ms}}" data-format="stream" data-reload-on-finish="true" data-show-result="modal">OK</button>
-        <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
-      </div>
-    </form>
+    <div class="modal-header"><h3>Create Demo Items</h3></div>
+    <div class="modal-scroll">
+      <p>This will create a number of demo items as a background job.</p>
+      <form id="create-demo-items-form" onsubmit="return submitCreateDemoItemsForm(event)">
+        <div class="form-group">
+          <label>Count (1-100)</label>
+          <input type="number" name="count" value="10" min="1" max="100">
+        </div>
+        <div class="form-group">
+          <label>Delay per item (ms)</label>
+          <input type="number" name="delay_ms" value="300" min="0" max="10000">
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button type="submit" form="create-demo-items-form" class="btn-primary" data-url="{router_prefix}/{router_name}/create_demo_items?format=stream&count={{count}}&delay_ms={{delay_ms}}" data-format="stream" data-reload-on-finish="true" data-show-result="modal">OK</button>
+      <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
+    </div>
   `;
   openModal();
 }}
@@ -241,7 +247,7 @@ function showCreateDemoItemsForm() {{
 function submitCreateDemoItemsForm(event) {{
   event.preventDefault();
   const form = document.getElementById('create-demo-items-form');
-  const btn = form.querySelector('button[type="submit"]');
+  const btn = document.querySelector('.modal-footer button[type="submit"]');
   const formData = new FormData(form);
   const count = parseInt(formData.get('count')) || 10;
   const delayMs = parseInt(formData.get('delay_ms')) || 300;
@@ -783,8 +789,6 @@ async def demorouter_selftest(request: Request):
   Example item:
   {example_item_json}
   """
-  import uuid, datetime
-  
   request_params = dict(request.query_params)
   
   if len(request_params) == 0:
@@ -1023,8 +1027,6 @@ async def demorouter_create_demo_items(request: Request):
   Example item:
   {example_item_json}
   """
-  import asyncio, uuid, datetime
-  
   request_params = dict(request.query_params)
   
   if len(request_params) == 0:

@@ -78,9 +78,12 @@ In the following sections `resource` acts as a placeholder for the individual do
 ### Domain object schemas
 
 **Domain (`domain.json`)**
+
+Note: `domain_id` is not stored in the JSON file. It is derived from the containing folder name at runtime.
+Path: `PERSISTENT_STORAGE_PATH/domains/{domain_id}/domain.json`
+
 ```json
 {
-  "domain_id": "DOMAIN01",
   "vector_store_name": "SharePoint-DOMAIN01",
   "vector_store_id": "vs_xxxxxxxxxxxxxxxxxxxxx",
   "name": "Example Domain 01",
@@ -150,7 +153,7 @@ Example `end_json`:
 **DD-E005:** Body accepts JSON or form data (content-type detection). Principle of least surprise: No need to look up documentation, it just works.
 **DD-E006:** Triggering, monitoring and management of crawling and other jobs via HTTP GET requests. Allows automation via single URL calls (low technology barrier).
 **DD-E007:** Semantic identifier names like `job_id`, `domain_id`, `source_id` that explicitly name the resource. Disambiguates object types and allow for actions that require multiple ids.
-**DD-E008:** Semantic entity identifyers for interally created ids like `jb_[JOB_NUMBER]` for a job. Self-explanatory system: disambiguates object types, simplifies support. Exceptions: Domain ids (used as folder names and `domain.json`) and source ids (used in `domain.json`)
+**DD-E008:** Semantic entity identifyers for interally created ids like `jb_[JOB_NUMBER]` for a job. Self-explanatory system: disambiguates object types, simplifies support. Exceptions: Domain ids (derived from folder name, not stored in `domain.json`) and source ids (user-defined in `domain.json`)
 **DD-E009:** Plural naming for resources: `/domains`, `/vector_stores`. Exceptions possible: `/crawler`
 **DD-E010:** HTTP semantics exception for `/resource/delete` endpoints: `GET [R]/delete`
 **DD-E011:** Control parameters (`format`, `dry_run`) are always passed via query string.
@@ -312,10 +315,10 @@ Response: {"ok": true, "error": "", "data": {"item_id": "new_item", "name": "Upd
    - Apply remaining body fields to item
 5. Response contains final `item_id`
 
-**D - Delete** `DELETE /v2/resource/delete?item_id={id}&format=json`
+**D - Delete** `DELETE, GET /v2/resource/delete?item_id={id}&format=json`
 ```
-DELETE /v2/resource/delete?item_id=item1&format=json
-Response: {"ok": true, "error": "", "data": {"item_id": "item1", "name": "Updated Item"}}
+DELETE, GET /v2/resource/delete?item_id=item1&format=json
+Response: {"ok": true, "error": "", "data": {"item_id": "item1", "name": "Deleted Item"}}
 ```
 
 ### Use HTTP status codes for high-level success/failure
@@ -807,7 +810,7 @@ Create, Update, Delete operations usually support the `format=stream` query para
     - `source_vector_store_ids={id1},{id2},...` - one or many source vector stores
 	- `target_vector_store_ids={id3},{id4},...` - one or many target vector stores
 	- `remove_target_files_not_in_sources=false` (default) - only adds missing files to the target vector stores
-	- `remove_target_files_not_in_sources=true` - after adding missing files, removes all files in the targets that are not part of the files collected from sources  	
+	- `remove_target_files_not_in_sources=true` - after adding missing files, removes all files in the targets that are not part of the files collected from sources
 - L(jh)G(jh)D(jhs): `/v2/inventory/vector_stores/files` - Embedded files in vector stores in the connected Open AI backend
   - `DELETE, GET /v2/inventory/vector_stores/files/delete?vector_store_id={id}&file_id={id}&mode=[default|delete_globally]`
     - `mode=default` (default) - removes file reference from vector store
@@ -896,9 +899,21 @@ Create, Update, Delete operations usually support the `format=stream` query para
   - `GET /v2/jobs/monitor?job_id={id}&format=stream` -> Full stream (from first event) as Server-Sent Events
 - L(jh): `/v2/jobs/results?job_id={id}` - Return `result` JSON from `end_json` event of the stream
 
+
+**Local Storage**
+- L(jhu)G(j): `/v2/local_storage` - Browse files and folders in the persistent storage path
+  - `GET /v2/local_storage` -> Self-documentation (UTF-8 text)
+  - `GET /v2/local_storage?format=json` -> JSON result with root directory listing `{"ok": true, "error": "", "data": [...]}`
+  - `GET /v2/local_storage?format=html` -> HTML table with root directory listing
+  - `GET /v2/local_storage?format=ui` -> Interactive UI with folder tree navigation
+  - `GET /v2/local_storage/get` -> Self-documentation (UTF-8 text)
+  - `GET /v2/local_storage/get?path={relative_path}&format=json` -> JSON listing of file/folder at path (contents if folder, metadata if file)
+  - Note: Read-only. No create, update, or delete operations exposed via this router
+
 ### Endpoint return formats
 
 #### `/v2/jobs?format=json`
+
 
 Returns standard JSON result where `data` is an array of job objects:
 ```json

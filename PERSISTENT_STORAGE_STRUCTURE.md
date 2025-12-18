@@ -36,11 +36,10 @@ domains/
 
 ### Domain JSON File Format (`domain.json`)
 
-Each domain has a `domain.json` file with the following structure:
+Each domain has a `domain.json` file. Note: `domain_id` is not stored in the JSON - it is derived from the containing folder name at runtime.
 
 ```json
 {
-  "domain_id": "DOMAIN01",
   "vector_store_name": "SharePoint-DOMAIN01",
   "vector_store_id": "vs_xxxxxxxxxxxxxxxxxxxxx",
   "name": "Example Domain 01",

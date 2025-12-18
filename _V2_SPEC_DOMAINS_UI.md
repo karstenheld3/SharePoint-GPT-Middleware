@@ -239,7 +239,7 @@ Modal (Edit Domain):
 ## Implementation Guarantees
 
 **DOM-IG-01:** Use `common_ui_functions_v2.py` for all UI generation (html_head, toast, modal, core_js, form_js)
-**DOM-IG-02:** Domain data stored in folder-per-domain at `{persistent_storage}/domains/{domain_id}/domain.json`
+**DOM-IG-02:** Domain data stored in folder-per-domain at `PERSISTENT_STORAGE_PATH/domains/{domain_id}/domain.json`
 **DOM-IG-03:** All endpoints follow V2 router patterns with `format` parameter support (json, html, ui)
 **DOM-IG-04:** JavaScript rendering follows same pattern as demorouter2.py
 
@@ -279,7 +279,7 @@ Modal (Edit Domain):
 |  +-> domain_config_to_dict()             # Convert to dict                |
 +---------------------------------------------------------------------------+
 |  Storage                                                                  |
-|  +-> {persistent_storage}/domains/{domain_id}/domain.json                 |
+|  +-> PERSISTENT_STORAGE_PATH/domains/{domain_id}/domain.json                 |
 +---------------------------------------------------------------------------+
 ```
 
@@ -287,11 +287,12 @@ Modal (Edit Domain):
 
 ### Domain Data File Format
 
-Each domain stored at `{persistent_storage}/domains/{domain_id}/domain.json`:
+Each domain stored at `PERSISTENT_STORAGE_PATH/domains/{domain_id}/domain.json`.
+
+Note: `domain_id` is not stored in the JSON file - it is derived from the containing folder name at runtime.
 
 ```json
 {
-  "domain_id": "DOMAIN01",
   "name": "Sales Documents",
   "description": "Sales team documentation and resources",
   "vector_store_name": "sales-vectorstore",
