@@ -338,41 +338,60 @@ Contains SharePoint site pages (modern pages, wiki pages), organized by source_i
 </html>
 ```
 
-## 3. Logs Subfolder
+## 3. Jobs Subfolder
 
-**Path**: `PERSISTENT_STORAGE_PATH/logs/`
+**Path**: `PERSISTENT_STORAGE_PATH/jobs/`
 
-Contains application log files created by various endpoints.
+Contains job files for streaming endpoints. Each job file captures metadata and log output.
 
 ### Structure
 
 ```
-logs/
-├── crawler_DOMAIN01_20240115_120000.log
-├── update_maps_DOMAIN01.log
-├── update_maps_DOMAIN02.log
-├── error_log.txt
-└── ...
+jobs/
+├── inventory/
+│   └── vector_stores/
+│       ├── 2025-01-15_14-20-30_[create]_[jb_1]_[VS01].completed
+│       ├── 2025-01-15_14-21-00_[replicate]_[jb_2]_[vs_123].cancelled
+│       └── 2025-01-15_14-22-00_[delete_failed_files]_[jb_3]_[vs_456].running
+└── crawler/
+    ├── 2025-01-15_14-25-00_[crawl]_[jb_5]_[DOMAIN01].completed
+    ├── 2025-01-15_14-25-00_[crawl]_[jb_6]_[DOMAIN01].paused
+    └── [jb_6].resume_requested
 ```
 
-### Log File Format
+### Job Filename Format
 
-Log files are plain text (UTF-8 encoded) with timestamped entries:
+**Format:** `[TIMESTAMP]_[[ENDPOINT_ACTION]]_[[JB_ID]]_[[OBJECT_ID]].[state]`
+
+**Components:**
+- `[TIMESTAMP]` - Job creation time (YYYY-MM-DD_HH-MM-SS)
+- `[ENDPOINT_ACTION]` - Name of the streaming endpoint action
+- `[JB_ID]` - Global sequential job ID (e.g., `jb_42`)
+- `[OBJECT_ID]` - Optional: ID of object being processed
+
+**Job States (file extensions):**
+- `.running` - Job is actively processing
+- `.paused` - Job is paused, waiting for resume
+- `.completed` - Job finished successfully
+- `.cancelled` - Job was cancelled
+
+**Control Files:**
+- `[jb_ID].pause_requested` - Signal to pause
+- `[jb_ID].resume_requested` - Signal to resume
+- `[jb_ID].cancel_requested` - Signal to cancel
+
+### Job File Content Format
+
+Job files are plain text (UTF-8) with JSON header/footer and timestamped log entries:
 
 ```
-Log file created at 2024-01-15T12:00:00.123456
-Domain ID: DOMAIN01
-Logfile: update_maps_DOMAIN01.log
-
-[2024-01-15 12:00:01] Starting crawler for domain: DOMAIN01
-[2024-01-15 12:00:05] Scanning document libraries...
-[2024-01-15 12:00:10] Found 150 files in library: Documents
-[2024-01-15 12:00:12] Found 45 files in library: Shared Documents
-[2024-01-15 12:00:15] Processing lists...
-[2024-01-15 12:00:18] Found 3 lists to process
-[2024-01-15 12:00:20] Processing site pages...
-[2024-01-15 12:00:25] Found 20 site pages
-[2024-01-15 12:00:30] Processing complete
+{"job_id": "jb_42", "state": "running", "source_url": "/v2/crawler/crawl?domain_id=DOMAIN01&format=stream", ...}
+[2025-01-15 12:00:01] START: crawl()...
+[2025-01-15 12:00:05] Scanning document libraries...
+[2025-01-15 12:00:10] [ 1 / 150 ] Processing 'Document1.docx'...
+[2025-01-15 12:00:12]   OK.
+[2025-01-15 12:00:30] END: crawl() (29.0 secs).
+{"job_id": "jb_42", "state": "completed", "result": {"ok": true, "error": "", "data": {...}}, ...}
 ```
 
 ## Hardcoded Configuration
@@ -385,7 +404,7 @@ class CrawlerHardcodedConfig:
   # Root subfolders
   PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER: str = "domains"
   PERSISTENT_STORAGE_PATH_CRAWLER_SUBFOLDER: str = "crawler"
-  PERSISTENT_STORAGE_PATH_LOGS_SUBFOLDER: str = "logs"
+  PERSISTENT_STORAGE_PATH_JOBS_SUBFOLDER: str = "jobs"
   
   # Crawler structure - main folders
   PERSISTENT_STORAGE_PATH_DOCUMENTS_FOLDER: str = "01_files"
@@ -404,7 +423,7 @@ class CrawlerHardcodedConfig:
 |------------------|-------|-------------|
 | `PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER` | `"domains"` | Root folder for domain configurations |
 | `PERSISTENT_STORAGE_PATH_CRAWLER_SUBFOLDER` | `"crawler"` | Root folder for crawler data |
-| `PERSISTENT_STORAGE_PATH_LOGS_SUBFOLDER` | `"logs"` | Root folder for log files |
+| `PERSISTENT_STORAGE_PATH_JOBS_SUBFOLDER` | `"jobs"` | Root folder for streaming job files |
 | `PERSISTENT_STORAGE_PATH_DOCUMENTS_FOLDER` | `"01_files"` | Folder for SharePoint document libraries |
 | `PERSISTENT_STORAGE_PATH_LISTS_FOLDER` | `"02_lists"` | Folder for SharePoint lists |
 | `PERSISTENT_STORAGE_PATH_SITEPAGES_FOLDER` | `"03_sitepages"` | Folder for SharePoint site pages |

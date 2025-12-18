@@ -1145,48 +1145,74 @@ Map file types:
 - `processing_error` - string - Any error that might have occurred during the processing of the file
 - `embedding_error` - string - Any error that might have occurred during the upload to the Open AI backend or the embedding
 
-#### Crawling process for SharePoint `file_sources`
+#### Source-specific processing
+
+**file_sources:**
+- Download target: `02_embedded/` folder
+- Process step: Skipped (files embedded directly)
+- `file_relative_path` set by: Download step
+
+**list_sources:**
+- Download target: `01_originals/` folder (exports SharePoint list to CSV)
+- Process step: Converts each CSV row to individual Markdown file in `02_embedded/`
+- `file_relative_path` set by: Process step (points to `02_embedded/`)
+
+**sitepage_sources:**
+- Download target: `01_originals/` folder (fetches page HTML)
+- Process step: Extracts content, cleans HTML, writes to `02_embedded/`
+- `file_relative_path` set by: Process step (points to `02_embedded/`)
+
+#### Crawling process for SharePoint sources
+
+Applies to: `file_sources`, `list_sources`, `sitepage_sources`
 
 **Parameters:**
   - `domain_id={id}` - The domain id
   - `mode=[full|incremental]` - Full or incremental crawl
+  - `source_type=[file_sources|list_sources|sitepage_sources]` - Type of sources to crawl
   - Optional: `source_id={id}` - Process only a single source
   - `dry_run=false` (default) - performs action as specified
-  - `dry_run=true` - simulates action without writing / modifying data
+  - `dry_run=true` - simulates action, producing previewable stream output but not modifying persistent data:
+    - Creates temporary `sharepoint_map_[ID].csv` and `files_map_[ID].csv` files (ID = JOB_ID for streaming, random ID for json/html)
+    - All map comparisons and change detection run against temporary files
+    - No files are downloaded, uploaded, or deleted
+    - No vector store modifications
+    - Temporary files are deleted at end of job
 
 **Download data:**
-1. Crawler loads domain config for `domain_id` and loads all `file_sources` (404 for missing domain)
+1. Crawler loads domain config for `domain_id` and loads all sources of specified `source_type` (404 for missing domain)
 2. If optional `source_id` is given, filters out all other sources (404 for missing source)
 3. Crawler connects to SharePoint source using credentials from config (downstream HTTP errors are logged but do not terminate action)
 4. [For each connected source]
-    - Loads files list from document library as defined in source (with filter if configured)
+    - Loads item list from SharePoint as defined in source (with filter if configured)
     - Writes `sharepoint_map.csv` file gracefully (retries on concurrency problems)
     - If `mode=incremental`:
 	    - Loads `files_map.csv` to internal `file_map` (fallback to `mode=full` if file not exists)
 	    - Identifies 1) added files, 2) removed files, 3) changed files (based on  `file_size` and `last_modified_utc`)
-	    - REMOVED: Deletes all removed files from `02_embedded/` and `03_failed/` folders and from `file_map`. Writes `files_map.csv` gracefully.
-	    - ADDED: Downloads added files to `02_embedded/` folder, applying SharePoint last modified timestamp. Writes updated `files_map.csv` gracefully.
-	    - CHANGED: Deletes all changed files from `02_embedded/` and `03_failed/` folders.
-	    - CHANGED: Downloads changed files to `02_embedded/` folder, applying SharePoint last modified timestamp. Writes updated `files_map.csv` gracefully.
+	    - REMOVED: Deletes all removed files from target folders and from `file_map`. Writes `files_map.csv` gracefully.
+	    - ADDED: Downloads added items to target folder, applying SharePoint last modified timestamp. Writes updated `files_map.csv` gracefully.
+	    - CHANGED: Deletes all changed items from target folders.
+	    - CHANGED: Downloads changed items to target folder, applying SharePoint last modified timestamp. Writes updated `files_map.csv` gracefully.
     - If `mode=full`:
-	    - Deletes all subfolders in `02_embedded/` and `03_failed/` folders
+	    - Deletes all subfolders in `01_originals/`, `02_embedded/`, and `03_failed/` folders (fresh start)
 	    - Deletes `files_map.csv` and creates new internal `file_map`
-	    - ADDED: Downloads added files to `02_embedded/` folder, applying SharePoint last modified timestamp. Writes updated `files_map.csv` gracefully.
+	    - ALL: Downloads all items to target folder, applying SharePoint last modified timestamp. Writes updated `files_map.csv` gracefully.
 
 Expected outcome:
-- `sharepoint_map.csv` contains all files (rows) that could be identified in SharePoint
-- `sharepoint_map.csv` does not contain files not existing in SharePoint
-- `files_map.csv` contains all files (rows) as `sharepoint_map.csv` with additional column data
+- `sharepoint_map.csv` contains all items (rows) that could be identified in SharePoint
+- `sharepoint_map.csv` does not contain items not existing in SharePoint
+- `files_map.csv` contains all items (rows) as `sharepoint_map.csv` with additional column data
 - `files_map.csv` > `file_relative_path` column is empty if download failed
-- `02_embedded/` folder does not contain files not existing in SharePoint
-- `02_embedded/` folder might missing files that could not be downloaded from SharePoint
-- `03_failed/` folder does not contain files not existing in SharePoint
+- Target folders do not contain items not existing in SharePoint
+- Target folders might be missing items that could not be downloaded from SharePoint
 
 **Process data:**
-- This step is skipped for SharePoint files
+- Source-type specific processing (see "Source-specific processing" above)
+- For list/sitepage sources: Updates `file_relative_path` in `files_map.csv` to point to processed file in `02_embedded/`
+- Writes updated `files_map.csv` gracefully
 
 **Embed data:**
-1. Crawler loads domain config for `domain_id` and loads all `file_sources` (404 for missing domain)
+1. Crawler loads domain config for `domain_id` and loads all sources of specified `source_type` (404 for missing domain)
 2. If optional `source_id` is given, filters out all other sources (404 for missing source)
 3. Get target vector store
     - If `vector_store_id`is given, sets this vector store as target (404 for missing)
@@ -1194,7 +1220,7 @@ Expected outcome:
     - Load all vector store files 
 4. [For each source]
     - Loads `files_map.csv` (skip source if not found)
-    - Loads `vectorstore_map.csv` (skip source if not found)
+    - Loads `vectorstore_map.csv` (create empty internal map if not found)
     - Cleanup `vectorstore_map.csv`: Removes all files with `openai_file_id` not found in the vector store. Writes `vectorstore_map.csv` gracefully.
     - If `mode=incremental`:
         - Compares the content of `files_map.csv` and `vectorstore_map.csv` while ignoring all files in `03_failed/` folders
@@ -1202,23 +1228,22 @@ Expected outcome:
 		- All changes must be reflected in internal `vectorstore_map`
         - REMOVED: Removes all files from the vector store. Writes updated `vectorstore_map.csv` gracefully.
         - ADDED: For each file, uploads the file to the global file storage and adds it to the vector store. Writes updated `vectorstore_map.csv` gracefully.
-        - CHANGED: For each file, removes the file from the vector store, uploads the file to the global file storage and adds it to the vector store. Writes updated `vectorstore_map.csv` gracefully.
+        - CHANGED: For each file, removes the file from the vector store (if still exists), uploads the file to the global file storage and adds it to the vector store. Writes updated `vectorstore_map.csv` gracefully.
     - If `mode=full`:
-		- All changes must be reflected in internal `vectorstore_map`
-        - Removes all files in `vectorstore_map.csv` from the vector store but leaves file in global storage (other vector stores might still use it)
-		- ADD: For each file in `files_map.csv`, uploads the file to the global file storage and adds it to the vector store
+		- Clears internal `vectorstore_map`
+        - REMOVED: Removes all files from this source in the vector store but leaves files in global storage (other vector stores might still use it). Writes updated `vectorstore_map.csv` gracefully.
+		- ALL: For each file in `files_map.csv`, uploads the file to the global file storage and adds it to the vector store. Writes updated `vectorstore_map.csv` gracefully.
 	- After modifying the target vector store:
         - WAIT: Waits until the vector store has no files with status = 'in_progress'
 		- CLEANUP: Removes files where embedding has failed
 		    - Loads all vector store files
-			- Filters out files not in scope: neither in added files list, nor in changed files lists
+			- Filters to only files that were added or changed in this run
 			- Identify files with status != 'completed'
 			- For each file
 			    - Removes file from vector store and deletes file in the global storage
 			    - Moves file from `02_embedded/` to `03_failed/` folder
 				- Updates file properties like `embedding_error` and `file_relative_path` in `vectorstore_map`
 			- Writes updated `vectorstore_map.csv` gracefully
-
 
 ## MiddlewareLogger specification
 
