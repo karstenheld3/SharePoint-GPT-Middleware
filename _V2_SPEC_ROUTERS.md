@@ -1179,6 +1179,20 @@ Applies to: `file_sources`, `list_sources`, `sitepage_sources`
     - No vector store modifications
     - Temporary files are deleted at end of job
 
+**Parallel-safe design:**
+- All crawl actions can run in parallel (different sources, different actions, or same source + different action)
+- No locking mechanism - parallelism achieved via lock-free eventual consistency:
+    - **Graceful write**: Write to temp file, then atomic rename. Retry on concurrency error.
+    - **Graceful read**: Retry on locked file.
+    - **Precondition check**: Each action verifies item state before processing.
+- Preconditions by action:
+    - Download: (none)
+    - Process: `file_relative_path` exists in `01_originals/` on disk
+    - Embed: `file_relative_path` exists in `02_embedded/` on disk
+- Items not meeting preconditions are skipped (logged as warning). Re-running the action picks them up.
+- Result includes count of skipped items so caller knows if re-run is needed.
+- For guaranteed sequential processing, run actions one at a time or use the combined `/crawl` endpoint.
+
 **Download data:**
 1. Crawler loads domain config for `domain_id` and loads all sources of specified `source_type` (404 for missing domain)
 2. If optional `source_id` is given, filters out all other sources (404 for missing source)
@@ -1188,7 +1202,8 @@ Applies to: `file_sources`, `list_sources`, `sitepage_sources`
     - Writes `sharepoint_map.csv` file gracefully (retries on concurrency problems)
     - If `mode=incremental`:
 	    - Loads `files_map.csv` to internal `file_map` (fallback to `mode=full` if file not exists)
-	    - Identifies 1) added files, 2) removed files, 3) changed files (based on  `file_size` and `last_modified_utc`)
+	    - Verifies each `file_relative_path` in `file_map` exists on disk (if missing: treat as ADDED for re-download)
+	    - Identifies 1) added files, 2) removed files, 3) changed files (based on `file_size` and `last_modified_utc`)
 	    - REMOVED: Deletes all removed files from target folders and from `file_map`. Writes `files_map.csv` gracefully.
 	    - ADDED: Downloads added items to target folder, applying SharePoint last modified timestamp. Writes updated `files_map.csv` gracefully.
 	    - CHANGED: Deletes all changed items from target folders.
@@ -1208,7 +1223,10 @@ Expected outcome:
 
 **Process data:**
 - Source-type specific processing (see "Source-specific processing" above)
-- For list/sitepage sources: Updates `file_relative_path` in `files_map.csv` to point to processed file in `02_embedded/`
+- For list/sitepage sources:
+    - Verifies each `file_relative_path` in `files_map.csv` exists in `01_originals/` (if missing: log warning, mark for re-download by clearing `file_relative_path`)
+    - Converts original files to `02_embedded/`
+    - Updates `file_relative_path` in `files_map.csv` to point to processed file in `02_embedded/`
 - Writes updated `files_map.csv` gracefully
 
 **Embed data:**
@@ -1223,6 +1241,7 @@ Expected outcome:
     - Loads `vectorstore_map.csv` (create empty internal map if not found)
     - Cleanup `vectorstore_map.csv`: Removes all files with `openai_file_id` not found in the vector store. Writes `vectorstore_map.csv` gracefully.
     - If `mode=incremental`:
+        - Verifies each `file_relative_path` in `files_map.csv` exists on disk (if missing: skip file, log warning)
         - Compares the content of `files_map.csv` and `vectorstore_map.csv` while ignoring all files in `03_failed/` folders
         - Identifies 1) added files, 2) removed files, 3) changed files (based on `file_size` and `last_modified_utc`)
 		- All changes must be reflected in internal `vectorstore_map`
