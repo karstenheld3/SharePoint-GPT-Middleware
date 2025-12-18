@@ -129,11 +129,13 @@ function renderJobRow(job) {{
   const stateDisplay = stalled ? job.state + ' (stalled)' : job.state;
   const resultDisplay = job.result ? (job.result.ok ? 'OK' : 'FAIL') : '-';
   const isCancelOrFail = job.state === 'cancelled' || (job.result && !job.result.ok);
+  const isRunning = job.state === 'running';
   
   const actions = renderJobActions(job, stalled);
   const rowId = escapeHtml(job.job_id.replace(/[^a-zA-Z0-9_]/g, '_'));
+  const rowClass = isRunning ? 'row-running' : (isCancelOrFail ? 'row-cancel-or-fail' : '');
   
-  return '<tr id="job-' + rowId + '"' + (isCancelOrFail ? ' class="row-cancel-or-fail"' : '') + '>' +
+  return '<tr id="job-' + rowId + '"' + (rowClass ? ' class="' + rowClass + '"' : '') + '>' +
     '<td><input type="checkbox" class="item-checkbox" data-item-id="' + escapeHtml(job.job_id) + '" onchange="updateSelectedCount()"></td>' +
     '<td>' + escapeHtml(job.job_id) + '</td>' +
     '<td>' + escapeHtml(parsed.router) + '</td>' +
@@ -414,6 +416,9 @@ def _generate_jobs_ui_page(jobs: list) -> str:
   
   return f"""<!doctype html><html lang="en">
 {head}
+<style>
+.row-running {{ font-weight: bold; }}
+</style>
 <body class="has-console">
   {toast_container}
   {modal}
