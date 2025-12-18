@@ -100,6 +100,17 @@
   padding-right: 2rem;
 }
 
+.modal-error {
+  color: #dc3545;
+  font-weight: 500;
+  margin: 0;
+  flex: 1;
+}
+
+.modal-error:empty {
+  display: none;
+}
+
 .modal-scroll {
   padding: 0.5rem 2rem;
   overflow-y: auto;

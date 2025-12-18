@@ -1,5 +1,7 @@
 # V2 Demo Router UI Specification
 
+> **Historical Reference:** This specification documents the original self-contained implementation in `demorouter1.py`. The UI patterns described here have been consolidated into `_V2_SPEC_COMMON_UI_FUNCTIONS.md` and implemented in `common_ui_functions_v2.py`. For new routers, use `demorouter2.py` as the reference implementation which uses the common UI library.
+
 This document specifies the interactive UI for the `/v2/demorouter1?format=ui` endpoint.
 
 **Note:** `demorouter1.py` is the self-contained version with all UI code inline.
@@ -320,7 +322,7 @@ Single modal element reused for all forms:
 - `openModal()` - Shows modal, adds ESC key listener
 - `closeModal()` - Hides modal, removes ESC key listener
 - `showNewItemForm()` - Injects new item form HTML
-- `showUpdateForm(itemId)` - Fetches item data, injects edit form HTML
+- `showEditItemForm(itemId)` - Fetches item data, injects edit form HTML
 - `showCreateDemoItemsForm()` - Injects streaming config form HTML
 
 ### Form Validation
@@ -474,7 +476,7 @@ function renderItemRow(item) {
     <td>${item.name || '-'}</td>
     <td>${item.version || '-'}</td>
     <td class="actions">
-      <button onclick="showUpdateForm('${item.item_id}')">Edit</button>
+      <button onclick="showEditItemForm('${item.item_id}')">Edit</button>
       <button onclick="callEndpoint(this, '${item.item_id}')">Delete</button>
     </td>
   </tr>`;
@@ -505,10 +507,10 @@ User clicks [New Item]
 ### Edit Item (with rename support)
 ```
 User clicks [Edit] on row (item_id = demo_001)
-  |-> showUpdateForm('demo_001') fetches item data
+  |-> showEditItemForm('demo_001') fetches item data
   |-> Modal shows with current values
   |-> User modifies fields, clicks [OK]
-  |-> submitUpdateForm() checks if item_id changed
+  |-> submitEditItemForm() checks if item_id changed
       |-> If changed: includes item_id in body (triggers rename per DD-E014)
       |-> If same: omits item_id from body
   |-> callEndpoint() sends PUT to /demorouter1/update?item_id=demo_001
@@ -603,12 +605,23 @@ All V2 UI component styles are defined in `/static/css/styles.css` under the "V2
 
 ## Differences from Jobs UI
 
-| Aspect | Jobs UI | Demorouter UI |
-|--------|---------|---------------|
-| SSE Method | HTMX SSE extension | Unified fetch / ReadableStream |
-| Pause/Resume | Per-row buttons | Console header button |
-| Console Close | [Disconnect] | [X] (hide) |
-| JSON Events | Hidden from console | Formatted as readable lines |
-| Bulk Toast | Per-item toasts | Single summary toast |
-| Data Source | Fetch on DOMContentLoaded | Server-rendered initial |
-| Item Actions | View, Monitor, Pause, Cancel | Edit, Delete |
+**Differences from Jobs UI:**
+- SSE Method: Unified fetch/ReadableStream (Jobs uses same now)
+- Pause/Resume: Console header button (Jobs has per-row + console)
+- Console Close: [X] hides (Jobs same)
+- JSON Events: Formatted as readable lines (Jobs same)
+- Bulk Toast: Single summary toast (Jobs same)
+- Data Source: Server-rendered initial (Jobs uses client-side fetch)
+- Item Actions: Edit, Delete (Jobs has Monitor, Pause, Resume, Cancel, Result)
+
+---
+
+## Spec Changes
+
+**[2025-12-18 19:55]**
+- Fixed: `showUpdateForm()` → `showEditItemForm()` throughout spec
+- Fixed: `submitUpdateForm()` → `submitEditItemForm()` throughout spec
+
+**[2025-12-18 19:48]**
+- Added: "Historical Reference" note at top - patterns now consolidated into common UI functions
+- Changed: "Differences from Jobs UI" converted from table to list format

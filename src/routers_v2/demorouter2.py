@@ -111,7 +111,8 @@ function showNewItemForm() {{
       </form>
     </div>
     <div class="modal-footer">
-      <button type="submit" form="new-item-form" class="btn-primary" data-url="{router_prefix}/{router_name}/create" data-method="POST" data-format="json" data-reload-on-finish="true">OK</button>
+      <p class="modal-error"></p>
+      <button type="submit" form="new-item-form" class="btn-primary" data-url="{router_prefix}/{router_name}/create" data-method="POST" data-format="json" data-reload-on-finish="true" data-close-on-success="true">OK</button>
       <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
     </div>
   `;
@@ -139,11 +140,11 @@ function submitNewItemForm(event) {{
     }}
   }}
   
-  closeModal();
+  clearModalError();
   callEndpoint(btn, null, data);
 }}
 
-async function showUpdateForm(itemId) {{
+async function showEditItemForm(itemId) {{
   const body = document.querySelector('#modal .modal-body');
   body.innerHTML = '<h3>Loading...</h3>';
   openModal();
@@ -152,15 +153,15 @@ async function showUpdateForm(itemId) {{
     const response = await fetch(`{router_prefix}/{router_name}/get?item_id=${{itemId}}&format=json`);
     const result = await response.json();
     if (!result.ok) {{
-      body.innerHTML = '<h3>Error</h3><p>' + escapeHtml(result.error) + '</p><div class="form-actions"><button class="btn-secondary" onclick="closeModal()">Close</button></div>';
+      body.innerHTML = '<div class="modal-header"><h3>Error</h3></div><div class="modal-scroll"><p>' + escapeHtml(result.error) + '</p></div><div class="modal-footer"><button class="btn-secondary" onclick="closeModal()">Close</button></div>';
       return;
     }}
     const item = result.data;
     
     body.innerHTML = `
-      <div class="modal-header"><h3>Update Item</h3></div>
+      <div class="modal-header"><h3>Edit Item</h3></div>
       <div class="modal-scroll">
-        <form id="update-item-form" onsubmit="return submitUpdateForm(event)">
+        <form id="edit-item-form" onsubmit="return submitEditItemForm(event)">
           <input type="hidden" name="source_item_id" value="${{itemId}}">
           <div class="form-group">
             <label>Item ID</label>
@@ -178,18 +179,19 @@ async function showUpdateForm(itemId) {{
         </form>
       </div>
       <div class="modal-footer">
-        <button type="submit" form="update-item-form" class="btn-primary" data-url="{router_prefix}/{router_name}/update?item_id=${{itemId}}" data-method="PUT" data-format="json" data-reload-on-finish="true">OK</button>
+        <p class="modal-error"></p>
+        <button type="submit" form="edit-item-form" class="btn-primary" data-url="{router_prefix}/{router_name}/update?item_id=${{itemId}}" data-method="PUT" data-format="json" data-reload-on-finish="true" data-close-on-success="true">OK</button>
         <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
       </div>
     `;
   }} catch (e) {{
-    body.innerHTML = '<h3>Error</h3><p>' + escapeHtml(e.message) + '</p><div class="form-actions"><button class="btn-secondary" onclick="closeModal()">Close</button></div>';
+    body.innerHTML = '<div class="modal-header"><h3>Error</h3></div><div class="modal-scroll"><p>' + escapeHtml(e.message) + '</p></div><div class="modal-footer"><button class="btn-secondary" onclick="closeModal()">Close</button></div>';
   }}
 }}
 
-function submitUpdateForm(event) {{
+function submitEditItemForm(event) {{
   event.preventDefault();
-  const form = document.getElementById('update-item-form');
+  const form = document.getElementById('edit-item-form');
   const btn = document.querySelector('.modal-footer button[type="submit"]');
   const formData = new FormData(form);
   const data = {{}};
@@ -215,7 +217,7 @@ function submitUpdateForm(event) {{
     }}
   }}
   
-  closeModal();
+  clearModalError();
   callEndpoint(btn, sourceItemId, data);
 }}
 
@@ -326,7 +328,7 @@ async def demorouter_root(request: Request):
         "field": "actions",
         "header": "Actions",
         "buttons": [
-          {"text": "Edit", "onclick": "showUpdateForm('{itemId}')", "class": "btn-small"},
+          {"text": "Edit", "onclick": "showEditItemForm('{itemId}')", "class": "btn-small"},
           {
             "text": "Delete",
             "data_url": f"{router_prefix}/{router_name}/delete?item_id={{itemId}}",

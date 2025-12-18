@@ -283,11 +283,15 @@ async function showJobResult(jobId) {{
 // ============================================
 function showErrorModal(response) {{
   const body = document.querySelector('#modal .modal-body');
-  body.innerHTML = '<h3>Control Action Failed</h3>' +
-    '<p><strong>Action:</strong> ' + escapeHtml(response.data?.action || 'unknown') + '</p>' +
-    '<p><strong>Job:</strong> ' + escapeHtml(response.data?.job_id || 'unknown') + '</p>' +
-    '<p style="color: #dc3545;"><strong>Error:</strong> ' + escapeHtml(response.error) + '</p>' +
-    '<div class="form-actions"><button type="button" class="btn-primary" onclick="closeModal()">OK</button></div>';
+  body.innerHTML = `
+    <div class="modal-header"><h3>Control Action Failed</h3></div>
+    <div class="modal-scroll">
+      <p><strong>Action:</strong> ${{escapeHtml(response.data?.action || 'unknown')}}</p>
+      <p><strong>Job:</strong> ${{escapeHtml(response.data?.job_id || 'unknown')}}</p>
+      <p style="color: #dc3545;"><strong>Error:</strong> ${{escapeHtml(response.error)}}</p>
+    </div>
+    <div class="modal-footer"><button type="button" class="btn-primary" onclick="closeModal()">OK</button></div>
+  `;
   openModal();
 }}
 

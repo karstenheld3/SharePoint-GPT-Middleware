@@ -38,6 +38,8 @@ def get_router_specific_js() -> str:
 // ROUTER-SPECIFIC FORMS - DOMAINS
 // ============================================
 
+const DOMAIN_MODAL_WIDTH = '900px';
+
 const demoSourcesJson = {{
   "file_sources": [
     {{
@@ -140,11 +142,12 @@ function showNewDomainForm() {{
       </form>
     </div>
     <div class="modal-footer">
-      <button type="submit" form="new-domain-form" class="btn-primary" data-url="{router_prefix}/{router_name}/create" data-method="POST" data-format="json" data-reload-on-finish="true">OK</button>
+      <p class="modal-error"></p>
+      <button type="submit" form="new-domain-form" class="btn-primary" data-url="{router_prefix}/{router_name}/create" data-method="POST" data-format="json" data-reload-on-finish="true" data-close-on-success="true">OK</button>
       <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
     </div>
   `;
-  openModal();
+  openModal(DOMAIN_MODAL_WIDTH);
 }}
 
 function submitNewDomainForm(event) {{
@@ -168,20 +171,20 @@ function submitNewDomainForm(event) {{
     }}
   }}
   
-  closeModal();
+  clearModalError();
   callEndpoint(btn, null, data);
 }}
 
-async function showUpdateDomainForm(domainId) {{
+async function showEditDomainForm(domainId) {{
   const body = document.querySelector('#modal .modal-body');
   body.innerHTML = '<h3>Loading...</h3>';
-  openModal();
+  openModal(DOMAIN_MODAL_WIDTH);
   
   try {{
     const response = await fetch(`{router_prefix}/{router_name}/get?domain_id=${{domainId}}&format=json`);
     const result = await response.json();
     if (!result.ok) {{
-      body.innerHTML = '<h3>Error</h3><p>' + escapeHtml(result.error) + '</p><div class="form-actions"><button class="btn-secondary" onclick="closeModal()">Close</button></div>';
+      body.innerHTML = '<div class="modal-header"><h3>Error</h3></div><div class="modal-scroll"><p>' + escapeHtml(result.error) + '</p></div><div class="modal-footer"><button class="btn-secondary" onclick="closeModal()">Close</button></div>';
       return;
     }}
     const domain = result.data;
@@ -197,7 +200,7 @@ async function showUpdateDomainForm(domainId) {{
     body.innerHTML = `
       <div class="modal-header"><h3>Edit Domain: ${{escapeHtml(domainId)}}</h3></div>
       <div class="modal-scroll">
-        <form id="update-domain-form" onsubmit="return submitUpdateDomainForm(event)">
+        <form id="edit-domain-form" onsubmit="return submitEditDomainForm(event)">
           <input type="hidden" name="domain_id" value="${{escapeHtml(domainId)}}">
           <div class="form-group">
             <label>Domain ID</label>
@@ -231,18 +234,19 @@ async function showUpdateDomainForm(domainId) {{
         </form>
       </div>
       <div class="modal-footer">
-        <button type="submit" form="update-domain-form" class="btn-primary" data-url="{router_prefix}/{router_name}/update?domain_id=${{domainId}}" data-method="PUT" data-format="json" data-reload-on-finish="true">OK</button>
+        <p class="modal-error"></p>
+        <button type="submit" form="edit-domain-form" class="btn-primary" data-url="{router_prefix}/{router_name}/update?domain_id=${{domainId}}" data-method="PUT" data-format="json" data-reload-on-finish="true" data-close-on-success="true">OK</button>
         <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
       </div>
     `;
   }} catch (e) {{
-    body.innerHTML = '<h3>Error</h3><p>' + escapeHtml(e.message) + '</p><div class="form-actions"><button class="btn-secondary" onclick="closeModal()">Close</button></div>';
+    body.innerHTML = '<div class="modal-header"><h3>Error</h3></div><div class="modal-scroll"><p>' + escapeHtml(e.message) + '</p></div><div class="modal-footer"><button class="btn-secondary" onclick="closeModal()">Close</button></div>';
   }}
 }}
 
-function submitUpdateDomainForm(event) {{
+function submitEditDomainForm(event) {{
   event.preventDefault();
-  const form = document.getElementById('update-domain-form');
+  const form = document.getElementById('edit-domain-form');
   const btn = document.querySelector('.modal-footer button[type="submit"]');
   const formData = new FormData(form);
   const data = {{}};
@@ -254,7 +258,7 @@ function submitUpdateDomainForm(event) {{
     }}
   }}
   
-  closeModal();
+  clearModalError();
   callEndpoint(btn, null, data);
 }}
 """
@@ -319,7 +323,7 @@ async def domains_root(request: Request):
         "field": "actions",
         "header": "Actions",
         "buttons": [
-          {"text": "Edit", "onclick": "showUpdateDomainForm('{itemId}')", "class": "btn-small"},
+          {"text": "Edit", "onclick": "showEditDomainForm('{itemId}')", "class": "btn-small"},
           {
             "text": "Delete",
             "data_url": f"{router_prefix}/{router_name}/delete?domain_id={{itemId}}",

@@ -237,14 +237,7 @@ Toasts shown for:
 - Prevents toast spam when loading historical logs
 - Implementation: `suppressToasts` flag, set `true` on monitor, `false` on live stream
 
-**Security:** Use `escapeHtml()` for toast content:
-```javascript
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-```
+**Security:** Use `escapeHtml()` for toast content (see `_V2_SPEC_COMMON_UI_FUNCTIONS.md`).
 
 ### Error Handling for Control Actions
 
@@ -269,32 +262,18 @@ Modal populated from response JSON:
 
 ### Modal Dialog Behavior
 
-The `#modal` element is used by [Result] buttons and error dialogs.
+Modal structure and core functions (`openModal()`, `closeModal()`, `showResultModal()`) are provided by `common_ui_functions_v2.py`. See `_V2_SPEC_COMMON_UI_FUNCTIONS.md` for details.
 
-**HTML Structure:**
-```html
-<div id="modal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
-  <div class="modal-content">
-    <button class="modal-close" onclick="closeModal()">×</button>
-    <div class="modal-body">
-      <!-- Content injected by HTMX or JavaScript -->
-    </div>
-  </div>
-</div>
-```
-
-**[Result] Button Example:**
-```html
-<button class="btn-small" onclick="showJobResult('jb_44')">Result</button>
-```
+**Jobs-specific modal functions:**
 
 ```javascript
+// Show job result in modal (calls common showResultModal)
 async function showJobResult(jobId) {
   try {
     const response = await fetch(`/v2/jobs/results?job_id=${jobId}&format=json`);
     const result = await response.json();
     if (result.ok) {
-      showResultModal(result.data);  // Uses common_ui_functions_v2.py modal
+      showResultModal(result.data);
     } else {
       showToast('Error', result.error, 'error');
     }
@@ -302,48 +281,19 @@ async function showJobResult(jobId) {
     showToast('Error', e.message, 'error');
   }
 }
-```
 
-**JavaScript Functions:**
-```javascript
-function openModal() {
-  document.getElementById('modal').classList.add('visible');
-  document.addEventListener('keydown', handleEscapeKey);
-}
-
-function closeModal() {
-  document.getElementById('modal').classList.remove('visible');
-  document.removeEventListener('keydown', handleEscapeKey);
-}
-
-function closeModalOnBackdrop(event) {
-  if (event.target.classList.contains('modal-overlay')) closeModal();
-}
-
-function handleEscapeKey(event) {
-  if (event.key === 'Escape') closeModal();
-}
-
-// For error modals (control action failures)
+// Show error modal for control action failures
 function showErrorModal(response) {
   const body = document.querySelector('#modal .modal-body');
   body.innerHTML = `
     <h3>Control Action Failed</h3>
-    <p><strong>Action:</strong> ${response.data?.action || 'unknown'}</p>
-    <p><strong>Job:</strong> ${response.data?.job_id || 'unknown'}</p>
-    <p><strong>Error:</strong> ${response.error}</p>
-    <button class="btn-small" onclick="closeModal()">OK</button>
+    <p><strong>Action:</strong> ${escapeHtml(response.data?.action || 'unknown')}</p>
+    <p><strong>Job:</strong> ${escapeHtml(response.data?.job_id || 'unknown')}</p>
+    <p style="color: #dc3545;"><strong>Error:</strong> ${escapeHtml(response.error)}</p>
+    <div class="form-actions"><button class="btn-primary" onclick="closeModal()">OK</button></div>
   `;
   openModal();
 }
-```
-
-**CSS (added to inline styles):**
-```css
-.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1100; }
-.modal-overlay.visible { display: flex; justify-content: center; align-items: center; }
-.modal-content { background: #fff; padding: 1.5rem; border-radius: 8px; max-width: 600px; max-height: 80vh; overflow: auto; position: relative; }
-.modal-close { position: absolute; top: 0.5rem; right: 0.5rem; background: none; border: none; font-size: 1.5rem; cursor: pointer; }
 ```
 
 ### Job Row Updates
@@ -436,13 +386,11 @@ When no jobs exist, show message row:
 
 ### Console Behavior
 
-- Single console panel, one active stream at a time
-- Console output truncation: max 1,000,000 characters, prefix with "...[truncated]\n" when exceeded
+Console panel structure and core functions are provided by `common_ui_functions_v2.py`. See `_V2_SPEC_COMMON_UI_FUNCTIONS.md` for details.
+
+**Jobs-specific behavior:**
 - Clicking [Monitor] on different job disconnects current stream, connects to new one
-- Console title shows connection state and job: "Console Output (connected): Job ID='jb_44'"
-- [Clear] empties console but keeps connection
-- [Disconnect] closes connection and clears console title (content remains until next [Monitor] click)
-- Auto-scroll to bottom on new log lines during active streaming
+- Console title shows job ID: "Console Output (connected): Job ID='jb_44'"
 
 ### Timestamp Formatting
 
@@ -813,6 +761,12 @@ The Jobs UI uses `/static/css/routers_v2.css` which provides all V2 UI component
 No additional inline CSS required - all styles are shared with other V2 routers.
 
 ## Spec Changes
+
+**[2025-12-18 19:48]**
+- Changed: Removed duplicated `escapeHtml()` implementation - reference common spec
+- Changed: Removed duplicated modal HTML/CSS/JS - reference common spec
+- Changed: Removed duplicated console behavior details - reference common spec
+- Kept: Jobs-specific functions (`showJobResult`, `showErrorModal`, `formatTimestamp`, `parseSourceUrl`)
 
 **[2025-12-17 19:00]**
 - Changed: Added dependency on `_V2_SPEC_COMMON_UI_FUNCTIONS.md`

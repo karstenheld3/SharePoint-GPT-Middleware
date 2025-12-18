@@ -232,7 +232,7 @@ function escapeHtml(text) {
 // ============================================
 // MODAL FUNCTIONS
 // ============================================
-const DEFAULT_MODAL_WIDTH = '900px';
+const DEFAULT_MODAL_WIDTH = '600px';
 
 function setModalWidth(width) {
   document.querySelector('#modal .modal-content').style.maxWidth = width || DEFAULT_MODAL_WIDTH;
@@ -258,6 +258,16 @@ function handleEscapeKey(event) {
   if (event.key === 'Escape') closeModal();
 }
 
+function showModalError(message) {
+  const errorEl = document.querySelector('#modal .modal-error');
+  if (errorEl) errorEl.textContent = message;
+}
+
+function clearModalError() {
+  const errorEl = document.querySelector('#modal .modal-error');
+  if (errorEl) errorEl.textContent = '';
+}
+
 function showResultModal(data) {
   if (document.getElementById('modal').classList.contains('visible')) {
     const resultType = data?.result?.ok !== false ? 'success' : 'error';
@@ -277,22 +287,18 @@ function showResultModal(data) {
     try { endpoint = new URL(endpoint).pathname + new URL(endpoint).search; } catch (e) {}
   }
   
-  const endpointHtml = endpoint ? '<p style="margin: 0 0 0.5rem 0; font-size: 0.8rem"><strong>Endpoint:</strong> ' + escapeHtml(endpoint) + '</p>' : '';
+  const endpointHtml = endpoint ? '<p style="margin: 0; font-size: 0.85rem;"><strong>Endpoint:</strong> ' + escapeHtml(endpoint) + '</p>' : '';
   const errorMsg = data?.error || data?.result?.error || '';
-  const errorHtml = errorMsg ? '<p style="color: #dc3545; margin: 0 0 0.5rem 0; font-weight: 500;">' + escapeHtml(errorMsg) + '</p>' : '';
+  const errorHtml = errorMsg ? '<p style="color: #dc3545; margin: 0.5rem 0 0 0; font-weight: 500;">' + escapeHtml(errorMsg) + '</p>' : '';
   
   const modalContent = document.querySelector('#modal .modal-content');
   modalContent.style.maxWidth = '800px';
   const body = document.querySelector('#modal .modal-body');
   const formatted = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
   body.innerHTML = `
-    <h3>${title}</h3>
-    ${endpointHtml}
-    ${errorHtml}
-    <pre class="result-output">${escapeHtml(formatted)}</pre>
-    <div class="form-actions">
-      <button type="button" class="btn-primary" onclick="closeModal()">OK</button>
-    </div>
+    <div class="modal-header"><h3>${title}</h3>${endpointHtml}${errorHtml}</div>
+    <div class="modal-scroll"><pre class="result-output">${escapeHtml(formatted)}</pre></div>
+    <div class="modal-footer"><button type="button" class="btn-primary" onclick="closeModal()">OK</button></div>
   `;
   openModal();
 }
@@ -849,6 +855,7 @@ async function callEndpoint(btn, itemId = null, bodyData = null) {
   const format = btn.dataset.format || 'json';
   const showResult = btn.dataset.showResult || 'toast';
   const reloadOnFinish = btn.dataset.reloadOnFinish !== 'false';
+  const closeOnSuccess = btn.dataset.closeOnSuccess === 'true';
   
   if (format === 'stream') {
     connectStream(url, { method, bodyData, reloadOnFinish, showResult });
@@ -862,6 +869,7 @@ async function callEndpoint(btn, itemId = null, bodyData = null) {
       const response = await fetch(url, options);
       const result = await response.json();
       if (result.ok) {
+        if (closeOnSuccess) closeModal();
         if (method === 'DELETE' && itemId) {
           const row = document.getElementById(ROW_ID_PREFIX + '-' + String(itemId).replace(/[^a-zA-Z0-9_]/g, '_'));
           if (row) row.remove();
@@ -876,10 +884,18 @@ async function callEndpoint(btn, itemId = null, bodyData = null) {
           showToast(msg, itemId || '', 'success');
         }
       } else {
-        showToast('Failed', result.error, 'error');
+        if (closeOnSuccess) {
+          showModalError(result.error || 'Request failed');
+        } else {
+          showToast('Failed', result.error, 'error');
+        }
       }
     } catch (e) {
-      showToast('Error', e.message, 'error');
+      if (closeOnSuccess) {
+        showModalError(e.message);
+      } else {
+        showToast('Error', e.message, 'error');
+      }
     }
   }
 }

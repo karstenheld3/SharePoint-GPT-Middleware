@@ -125,6 +125,52 @@ This specification defines a reusable UI library for V2 routers, following the p
 **DD-UI-12:** XSS prevention. All user data in `renderItemRow()` must be escaped via `escapeHtml()` before inserting into HTML.
 **DD-UI-13:** Row ID sanitization. Row IDs derived from `row_id_field` must be sanitized (alphanumeric + underscore only) to prevent broken `id` attributes.
 **DD-UI-14:** Router-level navigation. Each router defines navigation constant (e.g., `main_page_nav_html`) as raw HTML string, passed to `generate_ui_page(navigation_html=...)`. Keeps navigation logic in router, not UI library.
+**DD-UI-15:** User language vs code language. UI labels use user-facing terms (New, Edit, Delete), while code/API uses technical terms (create, update, delete). Function names follow UI terminology.
+
+### UI Terminology and Naming Conventions
+
+**User actions vs API operations:**
+- **Create new** - Button: "New {Object}" - JS: `showNew{Object}Form()` - API: `/create`
+- **Modify existing** - Button: "Edit" - JS: `showEdit{Object}Form(itemId)` - API: `/update`
+- **Remove** - Button: "Delete" - JS: declarative `data-url` - API: `/delete`
+- **Refresh list** - Button: "Reload" - JS: `reloadItems()` - API: `?format=json`
+
+**Button labels and styles:**
+- **Page header** - "Reload" `.btn-small`
+- **Toolbar** - "New {Object}" `.btn-primary`
+- **Toolbar** - "Delete ({n})" `.btn-primary .btn-delete`
+- **Toolbar** - "{Action}" (streaming) `.btn-primary`
+- **Row actions** - "Edit" `.btn-small`
+- **Row actions** - "Delete" `.btn-small .btn-delete`
+- **Modal footer** - "OK" `.btn-primary`
+- **Modal footer** - "Cancel" `.btn-secondary`
+
+**Modal titles:**
+- **Create** - "New {Object}"
+- **Modify** - "Edit {Object}"
+- **Result** - "{Action} Result" or data display
+
+**Router-specific JS function naming:**
+- `reloadItems()` - Refresh table (always this name)
+- `renderAll{Objects}()` - Render all rows to tbody, e.g. `renderAllJobs()`
+- `render{Object}Row(item)` - Render single row HTML, e.g. `renderJobRow(job)`
+- `render{Object}Actions(item)` - Render action buttons (if dynamic), e.g. `renderJobActions(job)`
+- `showNew{Object}Form()` - Open create modal, e.g. `showNewDomainForm()`
+- `submitNew{Object}Form(event)` - Handle create form submit, e.g. `submitNewDomainForm(event)`
+- `showEdit{Object}Form(itemId)` - Open edit modal + load data, e.g. `showEditDomainForm('dom_01')`
+- `submitEdit{Object}Form(event)` - Handle edit form submit, e.g. `submitEditDomainForm(event)`
+
+**State management:**
+```javascript
+const {objects}State = new Map();  // e.g., jobsState, domainsState
+```
+
+**Constants at top of router-specific JS:**
+```javascript
+const LIST_ENDPOINT = '{router_prefix}/{router_name}?format=json';
+const DELETE_ENDPOINT = '{router_prefix}/{router_name}/delete?{id_param}={itemId}';
+const ROW_ID_PREFIX = '{object}';  // 'job', 'domain', 'item'
+```
 
 ---
 
@@ -137,11 +183,14 @@ This specification defines a reusable UI library for V2 routers, following the p
 │  Page Shell                                                                 │
 │  ├─ Toast Container (#toast-container)                                      │
 │  ├─ Modal Overlay (#modal > .modal-content > .modal-body)                   │
-│  │   ├─ Modal Header (.modal-header > h3)                                   │
+│  │   ├─ Modal Header (.modal-header)                                        │
+│  │   │   └─ Title (h3)                                                      │
 │  │   ├─ Modal Scroll (.modal-scroll) - scrollable form content              │
-│  │   └─ Modal Footer (.modal-footer) - fixed OK/Cancel buttons              │
+│  │   └─ Modal Footer (.modal-footer)                                        │
+│  │       ├─ Error Line (.modal-error) - red text, left-aligned              │
+│  │       └─ Buttons - right-aligned (OK, Cancel)                            │
 │  ├─ Main Content (.container)                                               │
-│  │   ├─ Page Header (h1 + reload button)                                    │
+│  │   ├─ Page Header (h1 + "Reload" button)                                  │
 │  │   ├─ Back Link                                                           │
 │  │   ├─ Toolbar (.toolbar)                                                  │
 │  │   │   ├─ Primary buttons (.btn-primary)                                  │
@@ -169,7 +218,7 @@ This specification defines a reusable UI library for V2 routers, following the p
 
 **Existing styles** (keep as-is):
 - Toast: `#toast-container`, `.toast`, `.toast-info/success/error/warning`, `.toast-content`, `.toast-title`, `.toast-close`, `@keyframes toast-slide-in`
-- Modal: `.modal-overlay`, `.modal-overlay.visible`, `.modal-content`, `.modal-close`, `.modal-body`, `.modal-header`, `.modal-scroll`, `.modal-footer`
+- Modal: `.modal-overlay`, `.modal-overlay.visible`, `.modal-content`, `.modal-close`, `.modal-body`, `.modal-header`, `.modal-error`, `.modal-scroll`, `.modal-footer`
 - Console: `.console-panel`, `.console-panel.hidden`, `.console-resize-handle`, `.console-resize-handle.dragging`, `.console-header`, `.console-status`, `.console-controls`, `.console-close`, `.console-output`
 - Form: `.form-error`
 - Table: `.empty-state`
@@ -215,6 +264,18 @@ td.actions button {
 
 td.actions button:last-child {
   margin-right: 0;
+}
+
+/* Modal error line (in modal-footer, left-aligned) */
+.modal-error {
+  color: #dc3545;
+  font-weight: 500;
+  margin: 0;
+  flex: 1;
+}
+
+.modal-error:empty {
+  display: none;
 }
 
 /* Form groups (for modal forms) */
@@ -468,17 +529,15 @@ function handleSSEData(eventType, data) {
 
 ### UI Trigger Points
 
-| UI Element | Trigger | Function Called | Typical Format |
-|------------|---------|-----------------|----------------|
-| Row [Delete] button | `onclick` | `callEndpoint(this, itemId)` | json |
-| Row [Edit] button | `onclick` | `showUpdateForm(itemId)` | N/A (modal) |
-| Toolbar [New Item] | `onclick` | `showNewItemForm()` | N/A (modal) |
-| Toolbar [Run Selftest] | `onclick` | `callEndpoint(this)` | stream |
-| Toolbar [Delete (N)] | `onclick` | `bulkDelete()` | json (loop) |
-| Modal [OK] (create) | `onclick` | `callEndpoint(this, null, bodyData)` | json |
-| Modal [OK] (update) | `onclick` | `callEndpoint(this, sourceItemId, bodyData)` | json |
-| Header [Reload] button | `onclick` | `reloadItems()` | json (direct) |
-| Console [Pause/Resume] | `onclick` | `togglePauseResume()` | json (control) |
+- **Row [Delete] button** - `onclick` → `callEndpoint(this, itemId)` (json)
+- **Row [Edit] button** - `onclick` → `showEditItemForm(itemId)` (modal)
+- **Toolbar [New Item]** - `onclick` → `showNewItemForm()` (modal)
+- **Toolbar [Run Selftest]** - `onclick` → `callEndpoint(this)` (stream)
+- **Toolbar [Delete (N)]** - `onclick` → `bulkDelete()` (json loop)
+- **Modal [OK] (create)** - `onclick` → `callEndpoint(this, null, bodyData)` (json)
+- **Modal [OK] (update)** - `onclick` → `callEndpoint(this, sourceItemId, bodyData)` (json)
+- **Header [Reload] button** - `onclick` → `reloadItems()` (json direct)
+- **Console [Pause/Resume]** - `onclick` → `togglePauseResume()` (json control)
 
 ### Direct fetch() Calls
 
@@ -507,7 +566,7 @@ const result = await response.json();
 if (result.ok) isPaused = !isPaused;
 ```
 
-**`showUpdateForm(itemId)`** - Fetches item data for edit form
+**`showEditItemForm(itemId)`** - Fetches item data for edit form
 ```javascript
 const response = await fetch(getEndpoint + '?item_id=' + itemId + '&format=json');
 const result = await response.json();
@@ -533,6 +592,7 @@ Buttons use `data-*` attributes for endpoint configuration instead of inline Jav
 - `data-format` - Response handling: `json` (fetch) or `stream` (SSE via `connectStream()`)
 - `data-show-result` - Where to display result: `toast` (default), `modal`, or `none`
 - `data-reload-on-finish` - Whether to reload table after completion (`true`/`false`)
+- `data-close-on-success` - For modal form buttons: close modal only when `result.ok=true` (`true`/`false`)
 
 **Not a data-* attribute:**
 - `confirm_message` - Used to generate inline onclick: `if(confirm('message')) callEndpoint(this, 'itemId')`
@@ -548,13 +608,16 @@ Buttons use `data-*` attributes for endpoint configuration instead of inline Jav
 - Call `fetch()` directly for JSON endpoints, following the same result handling pattern
 - Use `showToast()`, `showResultModal()`, `reloadItems()` for consistent UI feedback
 
-Example (modal form submission):
+Example (modal form submission with `data-close-on-success="true"`):
 ```javascript
-function submitForm(btn) {
-  const data = gatherFormData();          // Custom pre-processing
+function submitForm(event) {
+  event.preventDefault();
+  const form = document.getElementById('my-form');
+  const btn = document.querySelector('.modal-footer button[type="submit"]');
+  const data = gatherFormData(form);      // Custom pre-processing
   if (!validateForm(data)) return;        // Custom validation
-  closeModal();
-  callEndpoint(btn, data.item_id, data);  // Standard endpoint call
+  // Do NOT call closeModal() here - callEndpoint handles it on success
+  callEndpoint(btn, data.item_id, data);  // Closes modal only if result.ok=true
 }
 ```
 
@@ -569,14 +632,23 @@ async function callEndpoint(btn, itemId = null, bodyData = null) {
   const format = btn.dataset.format || 'json';
   const showResult = btn.dataset.showResult || 'toast';
   const reloadOnFinish = btn.dataset.reloadOnFinish !== 'false';
+  const closeOnSuccess = btn.dataset.closeOnSuccess === 'true';
   
   if (format === 'stream') {
     connectStream(url, { method, bodyData, reloadOnFinish, showResult });
   } else {
-    // Standard fetch with JSON response handling
-    const response = await fetch(url, { method, body: bodyData ? JSON.stringify(bodyData) : null });
-    const result = await response.json();
-    // Handle success/error, reload if needed, show result
+    try {
+      const response = await fetch(url, { method, body: bodyData ? JSON.stringify(bodyData) : null });
+      const result = await response.json();
+      if (result.ok) {
+        if (closeOnSuccess) closeModal();
+        // Handle success: reload, show result
+      } else {
+        showModalError(result.error);  // Show error in modal, keep form open
+      }
+    } catch (e) {
+      showModalError(e.message);
+    }
   }
 }
 ```
@@ -585,10 +657,8 @@ async function callEndpoint(btn, itemId = null, bodyData = null) {
 
 Button URLs support placeholders replaced at render time or call time:
 
-| Placeholder | Replaced By | When |
-|-------------|-------------|------|
-| `{router_prefix}` | Router's API prefix (e.g., `/v2`) | Render time (Python) |
-| `{itemId}` | Row's item ID | Call time (JavaScript) |
+- `{router_prefix}` - Router's API prefix (e.g., `/v2`) - replaced at render time (Python)
+- `{itemId}` - Row's item ID - replaced at call time (JavaScript)
 
 **Note:** Use `{itemId}` (camelCase) as the canonical placeholder for item IDs in URLs.
 
@@ -623,6 +693,8 @@ All JavaScript functions are generated as part of the UI page. The library provi
 - `closeModal()` - Hide modal, reset width
 - `handleEscapeKey(event)` - Close on Escape key
 - `showResultModal(data)` - Display job result in modal
+- `showModalError(message)` - Show error message in modal header (red text)
+- `clearModalError()` - Clear error message from modal header
 
 #### 3. Console/SSE Functions
 - `connectStream(url, options)` - Connect to SSE endpoint
@@ -803,7 +875,7 @@ columns = [
     "buttons": [                # Action buttons for this column
       {
         "text": "Edit",
-        "onclick": "showUpdateForm('{itemId}')",  # JS with placeholder
+        "onclick": "showEditItemForm('{itemId}')",  # JS with placeholder
         "class": "btn-small"
       },
       {
@@ -968,7 +1040,7 @@ async def demorouter_root(request: Request):
         "field": "actions",
         "header": "Actions",
         "buttons": [
-          {"text": "Edit", "onclick": "showUpdateForm('{itemId}')", "class": "btn-small"},
+          {"text": "Edit", "onclick": "showEditItemForm('{itemId}')", "class": "btn-small"},
           {"text": "Delete", "data_url": f"{router_prefix}/demorouter1/delete?item_id={{itemId}}", 
            "data_method": "DELETE", "data_format": "json", "confirm_message": "Delete {itemId}?",
            "class": "btn-small btn-delete"}
@@ -986,7 +1058,7 @@ async def demorouter_root(request: Request):
     # Router provides custom form functions
     custom_js = '''
 function showNewItemForm() { /* ... router-specific form ... */ }
-function showUpdateForm(itemId) { /* ... router-specific form ... */ }
+function showEditItemForm(itemId) { /* ... router-specific form ... */ }
 function showCreateDemoItemsForm() { /* ... router-specific form ... */ }
 '''
     
@@ -1012,8 +1084,8 @@ function showCreateDemoItemsForm() { /* ... router-specific form ... */ }
 
 The following remain router-specific (only styles are shared):
 
-1. **Create/Update forms** - Each router has different fields
-2. **Form submission handlers** - `submitNewItemForm()`, `submitUpdateForm()`
+1. **New/Edit forms** - Each router has different fields
+2. **Form submission handlers** - `submitNewItemForm()`, `submitEditItemForm()`
 3. **Router-specific dialogs** - e.g., `showCreateDemoItemsForm()`
 4. **Data validation logic** - Field-specific validation rules
 5. **Custom result displays** - Router-specific result formatting
@@ -1116,6 +1188,30 @@ return PlainTextResponse(generate_endpoint_docs(doc, router_prefix), ...)
 ---
 
 ## Spec Changes
+
+**[2025-12-18 20:45]**
+- Changed: Moved `.modal-error` from header to footer (left-aligned, buttons right-aligned)
+- Changed: Updated Component Inventory to reflect new modal structure
+
+**[2025-12-18 20:35]**
+- Added: `data-close-on-success` attribute for modal form buttons
+- Added: `.modal-error` CSS class for unified error display
+- Added: `showModalError()` and `clearModalError()` helper functions
+- Changed: Modal forms stay open on error, close only on success or Cancel
+
+**[2025-12-18 19:56]**
+- Fixed: Converted "UI Trigger Points" table to list format
+- Fixed: Converted "Placeholder Substitution" table to list format
+
+**[2025-12-18 19:55]**
+- Fixed: `showUpdateForm()` → `showEditItemForm()` throughout spec
+- Fixed: `submitUpdateForm()` → `submitEditItemForm()` throughout spec
+- Fixed: "Create/Update forms" → "New/Edit forms" in user-facing text
+
+**[2025-12-18 19:39]**
+- Added: DD-UI-15 for user language vs code language principle
+- Added: "UI Terminology and Naming Conventions" subsection with naming patterns
+- Added: Button labels/styles, modal titles, JS function naming conventions
 
 **[2024-12-17 12:00]**
 - Added: UI-IG-11/12 for required endpoints validation
