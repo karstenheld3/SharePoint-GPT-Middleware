@@ -257,6 +257,7 @@ Version 2 routers (as specified in this document):
 - Specifies if an action is allowed to delete or modify data.
 - Used to verify the configuration and predict the result of actions that can't be undone.
 - Supported by Create, Update, Delete, and endpoints that trigger long-running jobs.
+- Exception: Only complex or long-running operations require `dry_run`. Simple CRUD endpoints may opt out (e.g., `/v2/domains`).
 - Response uses the same schema as normal operation (no special `dry_run` flag or `would_create` fields).
 - Available options:
   - `false` (default) - Allowed to delete or modify data: perform the action as specified.
@@ -821,7 +822,8 @@ Create, Update, Delete operations usually support the `format=stream` query para
     - `mode=with_conversation` - if response has stored conversation: deletes stored conversation, then model response
 
 **Domain**
-- L(jhu)C(jhs)G(jh)U(jhs)D(jhs): `/v2/domains` - Knowledge domains to be used for crawling and semantic search
+- L(jhu)C(jh)G(jh)U(jh)D(jh): `/v2/domains` - Knowledge domains to be used for crawling and semantic search
+  - Exception: no `dry_run` flag needed here
 
 **Crawler**
 - L(u): `/v2/crawler` - UI for crawling SharePoint sites and see current status

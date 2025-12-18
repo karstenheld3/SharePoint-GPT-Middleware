@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from routers_v1.common_openai_functions_v1 import create_async_azure_openai_client_with_api_key, create_async_azure_openai_client_with_credential, create_async_openai_client
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from routers_v1 import crawler, inventory, domains, testrouter3
-from routers_v2 import demorouter1, demorouter2, jobs
+from routers_v2 import demorouter1, demorouter2, jobs, domains as domains_v2
 from routers_static import openai_proxy, sharepoint_search
 from routers_static.sharepoint_search import build_domains_and_metadata_cache
 from common_utility_functions import ZipExtractionMode, acquire_startup_lock, convert_to_flat_html_table, extract_zip_files, format_config_for_displaying, format_filesize, clear_folder
@@ -504,6 +504,14 @@ def create_app() -> FastAPI:
   except Exception as e:
     initialization_errors.append({"component": "Jobs Router", "error": str(e)})
 
+  # Include Domains V2 router under /v2
+  try:
+    app.include_router(domains_v2.router, tags=["Domains"], prefix=v2_router_prefix)
+    domains_v2.set_config(config, v2_router_prefix)
+    log_function_output(log_data, f"Domains V2 router included at {v2_router_prefix}")
+  except Exception as e:
+    initialization_errors.append({"component": "Domains V2 Router", "error": str(e)})
+
   # Mount static files directory
   static_path = os.path.join(os.path.dirname(__file__), "static")
   if os.path.exists(static_path):
@@ -596,6 +604,7 @@ def root() -> str:
     <li><a href="/v2/demorouter1">/v2/demorouter1</a> - Demo Router 1 (inline UI) (<a href="/v2/demorouter1?format=json">JSON</a> + <a href="/v2/demorouter1?format=html">HTML</a> + <a href="/v2/demorouter1?format=ui">UI</a>)</li>
     <li><a href="/v2/demorouter2">/v2/demorouter2</a> - Demo Router 2 (common_ui_functions_v2) (<a href="/v2/demorouter2?format=json">JSON</a> + <a href="/v2/demorouter2?format=html">HTML</a> + <a href="/v2/demorouter2?format=ui">UI</a>)</li>
     <li><a href="/v2/jobs">/v2/jobs</a> - Jobs Monitoring (<a href="/v2/jobs?format=json">JSON</a> + <a href="/v2/jobs?format=html">HTML</a> + <a href="/v2/jobs?format=ui">UI</a>)</li>
+    <li><a href="/v2/domains">/v2/domains</a> - Domains V2 (<a href="/v2/domains?format=json">JSON</a> + <a href="/v2/domains?format=html">HTML</a> + <a href="/v2/domains?format=ui">UI</a>)</li>
   </ul>
 
   <div class="section">

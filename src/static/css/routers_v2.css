@@ -58,12 +58,13 @@
 
 .modal-overlay .modal-content {
   background: #fff;
-  padding: 1.5rem 2rem;
   border-radius: 8px;
-  max-width: 500px;
+  width: 90%;
+  max-width: 900px;
   min-width: 400px;
   max-height: 80vh;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
   position: relative;
   box-shadow: 0 4px 20px rgba(0,0,0,0.3);
 }
@@ -77,9 +78,41 @@
   font-size: 1.5rem;
   cursor: pointer;
   color: #666;
+  z-index: 1;
 }
 
 .modal-close:hover { color: #333; }
+
+.modal-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.modal-header {
+  padding: 1.5rem 2rem 0.5rem 2rem;
+  flex-shrink: 0;
+}
+
+.modal-header h3 {
+  margin: 0;
+  padding-right: 2rem;
+}
+
+.modal-scroll {
+  padding: 0.5rem 2rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-footer {
+  padding: 1rem 2rem 1.5rem 2rem;
+  flex-shrink: 0;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
 
 /* Console Panel */
 .console-panel {

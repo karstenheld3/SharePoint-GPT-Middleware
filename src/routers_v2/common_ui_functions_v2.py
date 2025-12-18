@@ -122,7 +122,7 @@ def generate_toast_container() -> str:
 def generate_modal_structure() -> str:
   """Generate modal overlay with content shell."""
   return """<div id="modal" class="modal-overlay">
-    <div class="modal-content">
+    <div class="modal-content" style="max-width: 900px;">
       <button class="modal-close" onclick="closeModal()">&times;</button>
       <div class="modal-body"></div>
     </div>
@@ -232,7 +232,14 @@ function escapeHtml(text) {
 // ============================================
 // MODAL FUNCTIONS
 // ============================================
-function openModal() {
+const DEFAULT_MODAL_WIDTH = '900px';
+
+function setModalWidth(width) {
+  document.querySelector('#modal .modal-content').style.maxWidth = width || DEFAULT_MODAL_WIDTH;
+}
+
+function openModal(width) {
+  setModalWidth(width);
   document.getElementById('modal').classList.add('visible');
   document.addEventListener('keydown', handleEscapeKey);
   setTimeout(() => {
@@ -244,7 +251,7 @@ function openModal() {
 function closeModal() {
   document.getElementById('modal').classList.remove('visible');
   document.removeEventListener('keydown', handleEscapeKey);
-  document.querySelector('#modal .modal-content').style.maxWidth = '';
+  setModalWidth(DEFAULT_MODAL_WIDTH);
 }
 
 function handleEscapeKey(event) {
