@@ -12,4 +12,4 @@ Then read:
 - /src/: app.py, common_utility_functions.py, hardcoded_config.py
 - /src/routers_v2/: demorouter2.py, jobs.py, common_job_functions_v2.py, common_logging_functions_v2.py
 
-Return only a single line: "Read [x] md files, [z]k context tokens"
+Return only a single line: "Read [x] md files, [y] code files, [z]k context tokens"
