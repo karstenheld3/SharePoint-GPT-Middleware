@@ -13,13 +13,13 @@ This specification defines a reusable UI library for V2 routers, following the p
 
 ### Functional Requirements
 
-**UI-FR-01: Toast Notifications**
+**V2UI-FR-01: Toast Notifications**
 - Support info, success, error, warning message types
 - Auto-dismiss configurable per toast (default 5000ms)
 - Manual close via X button
 - Stack multiple toasts vertically (new toasts appear at bottom)
 
-**UI-FR-02: Modal Dialogs**
+**V2UI-FR-02: Modal Dialogs**
 - Overlay with centered content panel
 - Close on Escape key or X button
 - ENTER key submits form (use `type="submit"` on OK button with `form="formId"`, `onsubmit` on form)
@@ -28,7 +28,7 @@ This specification defines a reusable UI library for V2 routers, following the p
 - Internal structure: `.modal-header` (fixed title), `.modal-scroll` (scrollable form), `.modal-footer` (fixed buttons)
 - Only `.modal-scroll` area scrolls when content exceeds max-height; title and buttons remain fixed
 
-**UI-FR-03: Console Panel**
+**V2UI-FR-03: Console Panel**
 - Fixed position at bottom of viewport
 - Always included in UI pages (body has `has-console` class)
 - Initial visibility configurable via `console_initially_hidden` parameter
@@ -39,7 +39,7 @@ This specification defines a reusable UI library for V2 routers, following the p
 - Truncation at 1,000,000 chars with "[truncated]" prefix
 - Module-level state: `currentStreamUrl`, `currentJobId`, `isPaused`, `MAX_CONSOLE_CHARS`
 
-**UI-FR-04: SSE Streaming**
+**V2UI-FR-04: SSE Streaming**
 - Connect to stream endpoints via fetch API
 - Handle event types: start_json, log, end_json
 - Parse job_id from start_json for control operations
@@ -51,59 +51,59 @@ This specification defines a reusable UI library for V2 routers, following the p
   - `reloadOnFinish`: Reload table after stream ends (default true)
   - `showResult`: Where to display result ('toast' | 'modal' | 'none', default 'toast')
 
-**UI-FR-05: Job Control**
+**V2UI-FR-05: Job Control**
 - Pause/Resume button during active stream
 - Button state reflects job state (disabled when no active job)
 - Integrate with `/v2/jobs/control` endpoint
 
-**UI-FR-06: Data Tables**
+**V2UI-FR-06: Data Tables**
 - Column headers with optional select-all checkbox
 - Data rows with row ID attribute for targeting
 - Dynamic item count in header
 - Empty state message when no items
 
-**UI-FR-07: Bulk Operations**
+**V2UI-FR-07: Bulk Operations**
 - Select-all checkbox toggles all row checkboxes
 - Selected count display updates on change
 - Bulk delete button enabled only when items selected
 
-**UI-FR-08: Form Validation**
+**V2UI-FR-08: Form Validation**
 - Inline field error messages below input
 - Clear error on field correction
 - `showFieldError(input, message)` and `clearFieldError(input)` functions
 
-**UI-FR-09: Result Display**
+**V2UI-FR-09: Result Display**
 - Configurable per action: show in modal or toast
 - Modal shows formatted JSON with OK/FAIL status
 - Toast shows brief success/error message
 
-**UI-FR-10: Confirm Dialogs**
+**V2UI-FR-10: Confirm Dialogs**
 - `confirm()` prompt before destructive actions (delete)
 - Handled inline in onclick: `if(confirm('message')) callEndpoint(this, itemId)`
 - NOT a data-* attribute; part of onclick handler
 
-**UI-FR-11: Page Initialization**
+**V2UI-FR-11: Page Initialization**
 - `DOMContentLoaded` handler initializes console resize
 - All event listeners attached after DOM ready
 
-**UI-FR-12: Reload Button**
+**V2UI-FR-12: Reload Button**
 - Inline reload button next to page title
 - Calls `reloadItems()` to refresh table data
 
 ### Implementation Guarantees
 
-**UI-IG-01:** All routers use same CSS classes from `routers_v2.css`
-**UI-IG-02:** Same JavaScript functions for same interactions across all routers
-**UI-IG-03:** Same HTML structure for same components
-**UI-IG-04:** z-index hierarchy: Toast (10001) > Modal (1100) > Console (900) > Content (default)
-**UI-IG-05:** Create/Update forms are NOT generalized; only styles shared
-**UI-IG-06:** Routers can add inline styles for one-off customization
-**UI-IG-07:** Column and button configuration is declarative (like V1)
-**UI-IG-08:** Router provides its own endpoint URLs via configuration
-**UI-IG-09:** Functions support format=json, format=html, format=ui
-**UI-IG-10:** Generated HTML works with HTMX where applicable
-**UI-IG-11:** If `enable_bulk_delete=True`, `delete_endpoint` must be provided
-**UI-IG-12:** If any button has `reloadOnFinish=true`, `list_endpoint` must be provided
+**V2UI-IG-01:** All routers use same CSS classes from `routers_v2.css`
+**V2UI-IG-02:** Same JavaScript functions for same interactions across all routers
+**V2UI-IG-03:** Same HTML structure for same components
+**V2UI-IG-04:** z-index hierarchy: Toast (10001) > Modal (1100) > Console (900) > Content (default)
+**V2UI-IG-05:** Create/Update forms are NOT generalized; only styles shared
+**V2UI-IG-06:** Routers can add inline styles for one-off customization
+**V2UI-IG-07:** Column and button configuration is declarative (like V1)
+**V2UI-IG-08:** Router provides its own endpoint URLs via configuration
+**V2UI-IG-09:** Functions support format=json, format=html, format=ui
+**V2UI-IG-10:** Generated HTML works with HTMX where applicable
+**V2UI-IG-11:** If `enable_bulk_delete=True`, `delete_endpoint` must be provided
+**V2UI-IG-12:** If any button has `reloadOnFinish=true`, `list_endpoint` must be provided
 
 ---
 
@@ -111,21 +111,21 @@ This specification defines a reusable UI library for V2 routers, following the p
 
 ### UI design decisions
 
-**DD-UI-01:** Server-rendered initial data. The `generate_ui_page()` function requires `items` parameter - server already has data at render time, avoids blank table -> AJAX flash.
-**DD-UI-02:** Single rendering logic. Python generates initial rows using column config, JS `renderItemRow()` uses same config for client-side updates.
-**DD-UI-03:** Declarative button configuration. Buttons use `data-*` attributes for endpoint URL, method, format, result handling - no custom JS per action.
-**DD-UI-04:** Unified endpoint caller. Single `callEndpoint()` function handles all button clicks, routes to `fetch()` or `connectStream()` based on `data-format`.
-**DD-UI-05:** Console always included. No `enable_console` toggle - prevents broken state when streaming buttons exist but console HTML is missing.
-**DD-UI-06:** Placeholder standardization. Use `{itemId}` (camelCase) for item IDs in URLs, `{router_prefix}` for API prefix.
-**DD-UI-07:** Confirm via inline onclick. Destructive actions use `if(confirm('msg')) callEndpoint(...)` pattern, not a data-* attribute.
-**DD-UI-08:** Modal button order. OK / Cancel (Windows/Android convention) - primary action first in left-to-right reading flow.
-**DD-UI-09:** Toast stacking. New toasts appear at bottom of container.
-**DD-UI-10:** Forms are router-specific. Create/Update forms not generalized - only styles shared. Routers provide via `additional_js`.
-**DD-UI-11:** Single active stream. Only one streaming job at a time per page - `currentJobId` is overwritten if new stream starts. Intentional simplification.
-**DD-UI-12:** XSS prevention. All user data in `renderItemRow()` must be escaped via `escapeHtml()` before inserting into HTML.
-**DD-UI-13:** Row ID sanitization. Row IDs derived from `row_id_field` must be sanitized (alphanumeric + underscore only) to prevent broken `id` attributes.
-**DD-UI-14:** Router-level navigation. Each router defines navigation constant (e.g., `main_page_nav_html`) as raw HTML string, passed to `generate_ui_page(navigation_html=...)`. Keeps navigation logic in router, not UI library.
-**DD-UI-15:** User language vs code language. UI labels use user-facing terms (New, Edit, Delete), while code/API uses technical terms (create, update, delete). Function names follow UI terminology.
+**V2UI-DD-01:** Server-rendered initial data. The `generate_ui_page()` function requires `items` parameter - server already has data at render time, avoids blank table -> AJAX flash.
+**V2UI-DD-02:** Single rendering logic. Python generates initial rows using column config, JS `renderItemRow()` uses same config for client-side updates.
+**V2UI-DD-03:** Declarative button configuration. Buttons use `data-*` attributes for endpoint URL, method, format, result handling - no custom JS per action.
+**V2UI-DD-04:** Unified endpoint caller. Single `callEndpoint()` function handles all button clicks, routes to `fetch()` or `connectStream()` based on `data-format`.
+**V2UI-DD-05:** Console always included. No `enable_console` toggle - prevents broken state when streaming buttons exist but console HTML is missing.
+**V2UI-DD-06:** Placeholder standardization. Use `{itemId}` (camelCase) for item IDs in URLs, `{router_prefix}` for API prefix.
+**V2UI-DD-07:** Confirm via inline onclick. Destructive actions use `if(confirm('msg')) callEndpoint(...)` pattern, not a data-* attribute.
+**V2UI-DD-08:** Modal button order. OK / Cancel (Windows/Android convention) - primary action first in left-to-right reading flow.
+**V2UI-DD-09:** Toast stacking. New toasts appear at bottom of container.
+**V2UI-DD-10:** Forms are router-specific. Create/Update forms not generalized - only styles shared. Routers provide via `additional_js`.
+**V2UI-DD-11:** Single active stream. Only one streaming job at a time per page - `currentJobId` is overwritten if new stream starts. Intentional simplification.
+**V2UI-DD-12:** XSS prevention. All user data in `renderItemRow()` must be escaped via `escapeHtml()` before inserting into HTML.
+**V2UI-DD-13:** Row ID sanitization. Row IDs derived from `row_id_field` must be sanitized (alphanumeric + underscore only) to prevent broken `id` attributes.
+**V2UI-DD-14:** Router-level navigation. Each router defines navigation constant (e.g., `main_page_nav_html`) as raw HTML string, passed to `generate_ui_page(navigation_html=...)`. Keeps navigation logic in router, not UI library.
+**V2UI-DD-15:** User language vs code language. UI labels use user-facing terms (New, Edit, Delete), while code/API uses technical terms (create, update, delete). Function names follow UI terminology.
 
 ### UI Terminology and Naming Conventions
 
@@ -1209,13 +1209,13 @@ return PlainTextResponse(generate_endpoint_docs(doc, router_prefix), ...)
 - Fixed: "Create/Update forms" → "New/Edit forms" in user-facing text
 
 **[2025-12-18 19:39]**
-- Added: DD-UI-15 for user language vs code language principle
+- Added: V2UI-DD-15 for user language vs code language principle
 - Added: "UI Terminology and Naming Conventions" subsection with naming patterns
 - Added: Button labels/styles, modal titles, JS function naming conventions
 
 **[2024-12-17 12:00]**
-- Added: UI-IG-11/12 for required endpoints validation
-- Added: DD-UI-11/12/13 for edge cases (single stream, XSS, row ID sanitization)
+- Added: V2UI-IG-11/12 for required endpoints validation
+- Added: V2UI-DD-11/12/13 for edge cases (single stream, XSS, row ID sanitization)
 
 **[2024-12-17 11:30]**
 - Changed: Replaced `enable_console` with `console_initially_hidden` to prevent broken state

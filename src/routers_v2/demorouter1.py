@@ -1057,7 +1057,7 @@ async def demorouter_create(request: Request):
     logger.log_function_footer()
     return json_result(True, "", {"item_id": item_id, "dry_run": True, "would_create": item_data})
   
-  # format=stream - uses StreamingJobWriter for dual output (STREAM-FR-01)
+  # format=stream - uses StreamingJobWriter for dual output (V2JB-FR-01)
   if format_param == "stream":
     writer = StreamingJobWriter(
       persistent_storage_path=get_persistent_storage_path(),
@@ -1193,7 +1193,7 @@ async def demorouter_update(request: Request):
     logger.log_function_footer()
     return json_result(True, "", {"item_id": item_id, "dry_run": True, "would_update": merged_data})
   
-  # format=stream - uses StreamingJobWriter for dual output (STREAM-FR-01)
+  # format=stream - uses StreamingJobWriter for dual output (V2JB-FR-01)
   if format_param == "stream":
     final_item_id = target_item_id if rename_requested else source_item_id
     writer = StreamingJobWriter(
@@ -1309,7 +1309,7 @@ async def demorouter_delete_impl(request: Request):
     logger.log_function_footer()
     return json_result(True, "", {"item_id": item_id, "dry_run": True, "would_delete": existing})
   
-  # format=stream - uses StreamingJobWriter for dual output (STREAM-FR-01)
+  # format=stream - uses StreamingJobWriter for dual output (V2JB-FR-01)
   if format_param == "stream":
     writer = StreamingJobWriter(
       persistent_storage_path=get_persistent_storage_path(),

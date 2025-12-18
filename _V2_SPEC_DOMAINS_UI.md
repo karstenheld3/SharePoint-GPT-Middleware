@@ -195,12 +195,12 @@ Modal (Edit Domain):
 
 ## Functional Requirements
 
-**DOM-FR-01: Domain List Display**
+**V2DM-FR-01: Domain List Display**
 - Display all domains in a table with columns: Domain ID, Name, Vector Store Name, Vector Store ID, Actions
 - Show domain count in page header
 - Empty state message when no domains exist
 
-**DOM-FR-02: New Domain**
+**V2DM-FR-02: New Domain**
 - [New Domain] button opens modal form
 - Form fields:
   - Domain ID * (required, pattern: `[a-zA-Z0-9_-]+`, validated for uniqueness)
@@ -216,7 +216,7 @@ Modal (Edit Domain):
 - Success: close modal, reload list, show success toast
 - Error: show error toast
 
-**DOM-FR-03: Edit Domain**
+**V2DM-FR-03: Edit Domain**
 - [Edit] button on each row opens modal form with current values
 - Domain ID field is read-only (disabled)
 - Same form fields as Create (except Domain ID is disabled)
@@ -224,13 +224,13 @@ Modal (Edit Domain):
 - Success: close modal, reload list, show success toast
 - Error: show error toast
 
-**DOM-FR-05: JSON Example Dialog**
+**V2DM-FR-05: JSON Example Dialog**
 - [Show JSON Example] button opens nested modal
 - Shows formatted JSON example with file_sources, sitepage_sources, list_sources
 - [Copy to Form] button copies example to Sources JSON textarea
 - [Close] button closes the nested modal
 
-**DOM-FR-04: Delete Domain**
+**V2DM-FR-04: Delete Domain**
 - [Delete] button on each row with confirmation dialog
 - Confirm deletes domain via POST to `/v2/domains/delete?format=json&domain_id={id}`
 - Success: reload list, show success toast
@@ -238,16 +238,16 @@ Modal (Edit Domain):
 
 ## Implementation Guarantees
 
-**DOM-IG-01:** Use `common_ui_functions_v2.py` for all UI generation (html_head, toast, modal, core_js, form_js)
-**DOM-IG-02:** Domain data stored in folder-per-domain at `PERSISTENT_STORAGE_PATH/domains/{domain_id}/domain.json`
-**DOM-IG-03:** All endpoints follow V2 router patterns with `format` parameter support (json, html, ui)
-**DOM-IG-04:** JavaScript rendering follows same pattern as demorouter2.py
+**V2DM-IG-01:** Use `common_ui_functions_v2.py` for all UI generation (html_head, toast, modal, core_js, form_js)
+**V2DM-IG-02:** Domain data stored in folder-per-domain at `PERSISTENT_STORAGE_PATH/domains/{domain_id}/domain.json`
+**V2DM-IG-03:** All endpoints follow V2 router patterns with `format` parameter support (json, html, ui)
+**V2DM-IG-04:** JavaScript rendering follows same pattern as demorouter2.py
 
 ## Architecture and Design
 
-**DD-DOM-01:** Folder-per-domain storage matching V1 structure
-**DD-DOM-02:** Use common UI functions - no inline UI code duplication
-**DD-DOM-03:** Router-specific JavaScript for domain forms and rendering
+**V2DM-DD-01:** Folder-per-domain storage matching V1 structure
+**V2DM-DD-02:** Use common UI functions - no inline UI code duplication
+**V2DM-DD-03:** Router-specific JavaScript for domain forms and rendering
 
 ### Layer Diagram
 

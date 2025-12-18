@@ -1270,42 +1270,42 @@ This section specifies the unified logging system for both non-streaming and str
 
 ### Functional Requirements
 
-**LOG-FR-01: Unified Logger Class**
+**V2LG-FR-01: Unified Logger Class**
 - Single `MiddlewareLogger` class handles all endpoint logging
 - Three methods: `log_function_header()`, `log_function_output()`, `log_function_footer()`
 - Replaces separate `log_data` dict pattern with stateful object
 
-**LOG-FR-02: Nested Function Support**
+**V2LG-FR-02: Nested Function Support**
 - Logger tracks nesting depth via internal counter
 - Same logger instance passed to nested function calls
 - Outer function controls inner function logging behavior
 
-**LOG-FR-03: Configurable Inner Function Logging**
+**V2LG-FR-03: Configurable Inner Function Logging**
 - `log_inner_function_headers_and_footers` property controls if nested START/END lines are logged
 - When False: inner `log_function_header()` and `log_function_footer()` produce no output
 - `log_function_output()` always produces output regardless of nesting depth
 
-**LOG-FR-04: Indentation for Nested Logs**
+**V2LG-FR-04: Indentation for Nested Logs**
 - `inner_log_indentation` property specifies spaces per nesting level (default: 2)
 - Indentation applied to MESSAGE portion only, not the bracket prefix
 
-**LOG-FR-05: Optional Streaming Integration**
+**V2LG-FR-05: Optional Streaming Integration**
 - `stream_job_writer` property optionally holds a `StreamingJobWriter` instance
-- When set: log methods call `writer.emit_log()` internally for dual output compliance (STREAM-FR-01) and return SSE-formatted strings for yielding
+- When set: log methods call `writer.emit_log()` internally for dual output compliance (V2JB-FR-01) and return SSE-formatted strings for yielding
 - When None: log methods return None (server console only)
 
-**LOG-FR-06: Central Logger Configuration**
+**V2LG-FR-06: Central Logger Configuration**
 - `MiddlewareLogger` uses module-level `logger` from `utils.py`
 - `logging.basicConfig()` in `utils.py` remains the single configuration point
 - Changes to log level, handlers, format apply to all `MiddlewareLogger` instances
 
 ### Implementation Guarantees
 
-**LOG-IG-01:** Non-streaming endpoints have zero streaming overhead - no StreamingJobWriter created, no SSE formatting
-**LOG-IG-02:** All log output uses the same `logger.info()` call regardless of streaming mode
-**LOG-IG-03:** Server log format unchanged: `[TIMESTAMP,process PID,request N,top_function] MESSAGE`
-**LOG-IG-04:** Request counter is global and monotonically increasing across all endpoints
-**LOG-IG-05:** Nesting depth correctly tracks even with early returns or exceptions
+**V2LG-IG-01:** Non-streaming endpoints have zero streaming overhead - no StreamingJobWriter created, no SSE formatting
+**V2LG-IG-02:** All log output uses the same `logger.info()` call regardless of streaming mode
+**V2LG-IG-03:** Server log format unchanged: `[TIMESTAMP,process PID,request N,top_function] MESSAGE`
+**V2LG-IG-04:** Request counter is global and monotonically increasing across all endpoints
+**V2LG-IG-05:** Nesting depth correctly tracks even with early returns or exceptions
 
 ### MiddlewareLogger Class Definition
 
@@ -1380,7 +1380,7 @@ class MiddlewareLogger:
     """Write to server console using standard format."""
   
   def _emit_to_stream(self, message: str) -> Optional[str]:
-    """Emit to stream if writer is set. Calls writer.emit_log() for dual output (STREAM-FR-01)."""
+    """Emit to stream if writer is set. Calls writer.emit_log() for dual output (V2JB-FR-01)."""
 ```
 
 ### Log Output Formats
@@ -1441,49 +1441,49 @@ This section specifies the server-side implementation for streaming endpoints an
 
 ### Functional Requirements
 
-**STREAM-FR-01: Dual Output**
+**V2JB-FR-01: Dual Output**
 - Streaming endpoints must simultaneously: 1) yield SSE to HTTP response, 2) write same SSE to job file
 
-**STREAM-FR-02: Atomic Job Creation**
+**V2JB-FR-02: Atomic Job Creation**
 - Job file creation must use exclusive mode to prevent race conditions
 - On collision: regenerate job_id and retry
 
-**STREAM-FR-03: Buffered Disk Writes**
+**V2JB-FR-03: Buffered Disk Writes**
 - Log events buffered until `PERSISTENT_STORAGE_LOG_EVENTS_PER_WRITE` reached
 - `start_json` and `end_json` always flush immediately
 - Buffer flushed when checking control files
 
-**STREAM-FR-04: Control File Polling**
+**V2JB-FR-04: Control File Polling**
 - Iterative/long-running jobs must check for control files at regular intervals (e.g., after each item processed)
 - Instantaneous operations (single CRUD, < 100ms) may skip control file checking
 - Detection order: `cancel_requested` > `pause_requested` > `resume_requested`
 - Job deletes control file immediately after detection
 
-**STREAM-FR-05: Graceful Pause**
+**V2JB-FR-05: Graceful Pause**
 - On pause: flush buffer, write pause log, rename `.running` -> `.paused`
 - While paused: poll for `resume_requested` or `cancel_requested` using `await asyncio.sleep()` to avoid blocking event loop
 - On resume: rename `.paused` -> `.running`, continue processing
 
-**STREAM-FR-06: Graceful Cancel**
+**V2JB-FR-06: Graceful Cancel**
 - On cancel: flush buffer, emit `end_json` with `result.ok=false`, rename to `.cancelled`
 - Partial results should be included in `result.data` if available
 
-**STREAM-FR-07: Job Completion**
+**V2JB-FR-07: Job Completion**
 - On completion: emit `end_json` with final result, rename `.running` -> `.completed`
 - `finished_utc` must be set in `end_json`
 
-**STREAM-FR-08: Crash Recovery**
+**V2JB-FR-08: Crash Recovery**
 - Orphaned `.running` files indicate crashed jobs
 - No automatic recovery - manual cleanup or re-run required
 
 ### Implementation Guarantees
 
-**STREAM-IG-01:** Every job file contains exactly one `start_json` event as first content
-**STREAM-IG-02:** Every completed/cancelled job file contains exactly one `end_json` event as last content
-**STREAM-IG-03:** Job ID is unique across all routers for the lifetime of the jobs folder
-**STREAM-IG-04:** Control files are ephemeral - never persist after job processes them
-**STREAM-IG-05:** HTTP stream and job file content are byte-identical
-**STREAM-IG-06:** StreamingJobWriter has no dependency on MiddlewareLogger or FastAPI logging
+**V2JB-IG-01:** Every job file contains exactly one `start_json` event as first content
+**V2JB-IG-02:** Every completed/cancelled job file contains exactly one `end_json` event as last content
+**V2JB-IG-03:** Job ID is unique across all routers for the lifetime of the jobs folder
+**V2JB-IG-04:** Control files are ephemeral - never persist after job processes them
+**V2JB-IG-05:** HTTP stream and job file content are byte-identical
+**V2JB-IG-06:** StreamingJobWriter has no dependency on MiddlewareLogger or FastAPI logging
 
 ### File Organization
 
@@ -1493,7 +1493,7 @@ V2 router files are located in `src/routers_v2/`:
 
 ### Example: Non-Streaming Endpoint
 
-Shows MiddlewareLogger usage without streaming (LOG-IG-01 compliance):
+Shows MiddlewareLogger usage without streaming (V2LG-IG-01 compliance):
 
 ```python
 # routers_v2/inventory.py
@@ -1594,7 +1594,7 @@ async def process_files(request: Request):
     )
     
     try:
-      yield writer.emit_start()  # Must be first (STREAM-IG-01)
+      yield writer.emit_start()  # Must be first (V2JB-IG-01)
       
       sse = logger.log_function_header(function_name)
       if sse: yield sse
@@ -1759,7 +1759,7 @@ class StreamingJobWriter:
     - router_prefix: Injected from app.py (e.g., '/v2') for constructing monitor_url
     - Generates unique job_id (jb_[NUMBER])
     - Creates job file: [TIMESTAMP]_[[ACTION]]_[[JB_ID]]_[[OBJECT_ID]].running
-    - Retries with new job_id on collision (STREAM-FR-02)
+    - Retries with new job_id on collision (V2JB-FR-02)
     """
   
   @property
@@ -1772,26 +1772,26 @@ class StreamingJobWriter:
   
   def emit_start(self) -> str:
     """
-    Emit start_json event. Immediate flush to file. (STREAM-FR-03)
+    Emit start_json event. Immediate flush to file. (V2JB-FR-03)
     Returns SSE-formatted string for HTTP response.
     """
   
   def emit_log(self, message: str) -> str:
     """
-    Emit log event. Buffered write to file. (STREAM-FR-03)
+    Emit log event. Buffered write to file. (V2JB-FR-03)
     Returns SSE-formatted string for HTTP response.
     """
   
   def emit_end(self, ok: bool, error: str = "", data: dict = None) -> str:
     """
-    Emit end_json event. Immediate flush to file. (STREAM-FR-03, STREAM-FR-07)
+    Emit end_json event. Immediate flush to file. (V2JB-FR-03, V2JB-FR-07)
     Sets finished_utc timestamp.
     Returns SSE event string for HTTP response.
     """
   
   async def check_control(self) -> tuple[list[str], Optional[ControlAction]]:
     """
-    Check for control files and handle pause loop. (STREAM-FR-04, STREAM-FR-05)
+    Check for control files and handle pause loop. (V2JB-FR-04, V2JB-FR-05)
     - Flushes buffer before checking
     - If pause_requested: emits pause log, enters async pause loop, renames to .paused
     - If cancel_requested: returns ControlAction.CANCEL
@@ -1804,7 +1804,7 @@ class StreamingJobWriter:
   
   def finalize(self) -> None:
     """
-    Finalize job file state. (STREAM-FR-06, STREAM-FR-07)
+    Finalize job file state. (V2JB-FR-06, V2JB-FR-07)
     - If end_json emitted: rename to .completed or .cancelled
     - Flushes any remaining buffer
     Called automatically in finally block.

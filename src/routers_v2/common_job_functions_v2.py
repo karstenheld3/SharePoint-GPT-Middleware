@@ -36,7 +36,7 @@ class StreamingJobWriter:
   """
   Buffered writer for streaming job files. Handles dual output to HTTP and file.
   
-  Implements STREAM-FR-01 through STREAM-FR-08 and STREAM-IG-01 through STREAM-IG-06.
+  Implements V2JB-FR-01 through V2JB-FR-08 and V2JB-IG-01 through V2JB-IG-06.
   
   Usage:
     writer = StreamingJobWriter(
@@ -55,7 +55,7 @@ class StreamingJobWriter:
   
   def __init__(self, persistent_storage_path: str, router_name: str, action: str, object_id: Optional[str], source_url: str, router_prefix: str, buffer_size: int = None):
     """
-    Create job file and initialize writer (STREAM-FR-02: atomic creation).
+    Create job file and initialize writer (V2JB-FR-02: atomic creation).
     - router_prefix: Injected from app.py (e.g., '/v2') for constructing monitor_url
     - Generates unique job_id (jb_[NUMBER])
     - Creates job file: [TIMESTAMP]_[[ACTION]]_[[JB_ID]]_[[OBJECT_ID]].running
@@ -81,7 +81,7 @@ class StreamingJobWriter:
     self._jobs_folder = os.path.join(persistent_storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_JOBS_SUBFOLDER, router_name)
     os.makedirs(self._jobs_folder, exist_ok=True)
     
-    # Generate job file with collision retry (STREAM-FR-02)
+    # Generate job file with collision retry (V2JB-FR-02)
     self._create_job_file()
   
   def _create_job_file(self) -> None:
@@ -100,7 +100,7 @@ class StreamingJobWriter:
       self._job_file_path = os.path.join(self._jobs_folder, filename)
       
       try:
-        # Exclusive creation (STREAM-FR-02)
+        # Exclusive creation (V2JB-FR-02)
         fd = os.open(self._job_file_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         self._file_handle = os.fdopen(fd, 'w', encoding='utf-8')
         return
@@ -143,7 +143,7 @@ class StreamingJobWriter:
   
   def emit_start(self) -> str:
     """
-    Emit start_json event. Immediate flush to file (STREAM-FR-03, STREAM-IG-01).
+    Emit start_json event. Immediate flush to file (V2JB-FR-03, V2JB-IG-01).
     Returns SSE-formatted string for HTTP response.
     """
     metadata = self._get_job_metadata("running")
@@ -153,7 +153,7 @@ class StreamingJobWriter:
   
   def emit_log(self, message: str) -> str:
     """
-    Emit log event. Buffered write to file (STREAM-FR-03).
+    Emit log event. Buffered write to file (V2JB-FR-03).
     Message should already include timestamp from MiddlewareLogger.
     Returns SSE-formatted string for HTTP response.
     """
@@ -163,7 +163,7 @@ class StreamingJobWriter:
   
   def emit_end(self, ok: bool, error: str = "", data: dict = None, cancelled: bool = False) -> str:
     """
-    Emit end_json event. Immediate flush to file (STREAM-FR-03, STREAM-FR-07, STREAM-IG-02).
+    Emit end_json event. Immediate flush to file (V2JB-FR-03, V2JB-FR-07, V2JB-IG-02).
     Sets finished_utc timestamp.
     - cancelled=False (default): state="completed", result.ok indicates success/failure
     - cancelled=True: state="cancelled" (for user-initiated cancellation)
@@ -201,7 +201,7 @@ class StreamingJobWriter:
   
   async def check_control(self) -> tuple[list[str], Optional[ControlAction]]:
     """
-    Check for control files and handle pause loop (STREAM-FR-04, STREAM-FR-05).
+    Check for control files and handle pause loop (V2JB-FR-04, V2JB-FR-05).
     - Flushes buffer before checking
     - If pause_requested: emits pause log, enters async pause loop, renames to .paused
     - If cancel_requested: returns ControlAction.CANCEL
@@ -237,7 +237,7 @@ class StreamingJobWriter:
       self._job_file_path = paused_path
       self._file_handle = open(self._job_file_path, 'a', encoding='utf-8')
       
-      # Enter pause loop (STREAM-FR-05)
+      # Enter pause loop (V2JB-FR-05)
       while True:
         await asyncio.sleep(1.0)
         
@@ -287,7 +287,7 @@ class StreamingJobWriter:
   
   def finalize(self) -> None:
     """
-    Finalize job file state (STREAM-FR-06, STREAM-FR-07).
+    Finalize job file state (V2JB-FR-06, V2JB-FR-07).
     - If end_json emitted: rename to .completed or .cancelled
     - Flushes any remaining buffer
     Called automatically in finally block.

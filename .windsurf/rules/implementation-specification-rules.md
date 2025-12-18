@@ -11,6 +11,7 @@ Usage scenarios:
 
 **For the AI agent:**
 
+- In ALL user interactions, be extremely concise. Sacrifice grammar for the sake of consision.
 - Before making too many assumptions, propose 2 or 3 implementation alternatives.
 - List your assumptions at the start of each specification and let the user verify if your assumptions are correct.
 - Optimize for simplicity.
@@ -45,9 +46,9 @@ Implementation specifications should include these sections when relevant:
 1. **Overview**: Brief description, goal, target files, dependencies
 2. **Scenario**: Real-world problem, "What we don't want"
 3. **Context**: Project background, related systems
-4. **Functional Requirements**: Numbered requirements (XX-FR-01)
-5. **Implementation Guarantees**: Numbered guarantees (XX-IG-01)
-6. **Architecture and Design**: Design decisions (DD-XX-01), layer diagrams
+4. **Functional Requirements**: Numbered requirements (XXXX-FR-01)
+5. **Implementation Guarantees**: Numbered guarantees (XXXX-IG-01)
+6. **Architecture and Design**: Design decisions (XXXX-DD-01), layer diagrams
 7. **Domain Objects**: Core entities, data structures, schemas
 8. **User Actions**: All interactive operations (for UI specs)
 9. **UX Design**: ASCII diagrams with component boundaries (for UI specs)
@@ -88,11 +89,11 @@ Explicitly declare spec dependencies to clarify scope and prevent circular refer
 
 Use consistent ID prefixes with bold formatting for traceability:
 
-**Functional Requirements:** `**XX-FR-01:** Description`
-**Implementation Guarantees:** `**XX-IG-01:** Description`
-**Design Decisions:** `**DD-XX-01:** Description`
+**Functional Requirements:** `**XXXX-FR-01:** Description`
+**Implementation Guarantees:** `**XXXX-IG-01:** Description`
+**Design Decisions:** `**XXXX-DD-01:** Description`
 
-Where XX is a 1-4 letter domain prefix (e.g., UI, E for Endpoint, JOB).
+Where XXXX is a 2-4 letter domain prefix (e.g., V2UI for Version 2 UI, V2EP for Version 2 Endpoint, V2JB for Version 2 Job).
 
 **BAD:**
 ```

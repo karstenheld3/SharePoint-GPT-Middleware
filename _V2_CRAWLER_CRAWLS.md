@@ -29,28 +29,28 @@ Archives are stored in `PERSISTENT_STORAGE_PATH/crawls/` and can be listed/queri
 
 ## Functional Requirements
 
-**CRW-FR-01: Automatic Archive Creation**
+**V2CW-FR-01: Automatic Archive Creation**
 - After each successful crawl action, create a zip archive
 - Archive contains all `*_map.csv` files from affected sources
 - Archive contains `crawl.json` with action metadata
 - Failed crawl actions still create archive (captures error state)
 
-**CRW-FR-02: Archive Storage**
+**V2CW-FR-02: Archive Storage**
 - Path: `PERSISTENT_STORAGE_PATH/crawls/`
 - Filename: `[TIMESTAMP]_[[DOMAIN_ID]]_[ACTION]_[SCOPE]_[MODE].zip`
 - Timestamp format: `YYYY-MM-DD_HH-MM-SS`
 
-**CRW-FR-03: List Crawls Endpoint**
+**V2CW-FR-03: List Crawls Endpoint**
 - `GET /v2/crawler/crawls?domain_id={id}` - List all crawls for domain
 - `GET /v2/crawler/crawls?domain_id={id}&action={action}` - Filter by action
 - Returns list of `crawl.json` metadata objects
 
-**CRW-FR-04: Get Crawl Details Endpoint**
+**V2CW-FR-04: Get Crawl Details Endpoint**
 - `GET /v2/crawler/crawls/get?crawl_id={id}` - Get single crawl metadata
 - `GET /v2/crawler/crawls/get?crawl_id={id}&file={filename}` - Get specific map file content
 - Supports `format=json|csv|html`
 
-**CRW-FR-05: Delete Crawl Endpoint**
+**V2CW-FR-05: Delete Crawl Endpoint**
 - `GET /v2/crawler/crawls/delete?crawl_id={id}` - Delete single crawl archive
 - `GET /v2/crawler/crawls/delete?domain_id={id}&older_than={days}` - Bulk delete old archives
 
@@ -341,12 +341,12 @@ When `dry_run=true`: No archive is created. Dry runs are for preview only.
 
 ## Design Decisions
 
-**DD-CRW-01:** Flat folder structure for archives. All zips in single `crawls/` folder - filename contains all metadata needed for filtering.
+**V2CW-DD-01:** Flat folder structure for archives. All zips in single `crawls/` folder - filename contains all metadata needed for filtering.
 
-**DD-CRW-02:** Archive created even on failure. Captures map file state at time of error for debugging.
+**V2CW-DD-02:** Archive created even on failure. Captures map file state at time of error for debugging.
 
-**DD-CRW-03:** No separate archive trigger endpoint. Archives created automatically - reduces risk of forgetting to archive.
+**V2CW-DD-03:** No separate archive trigger endpoint. Archives created automatically - reduces risk of forgetting to archive.
 
-**DD-CRW-04:** crawl_id is filename-based. No separate ID generation - filename IS the unique identifier.
+**V2CW-DD-04:** crawl_id is filename-based. No separate ID generation - filename IS the unique identifier.
 
-**DD-CRW-05:** Map files stored with folder structure preserved. Allows easy identification of source within archive.
+**V2CW-DD-05:** Map files stored with folder structure preserved. Allows easy identification of source within archive.

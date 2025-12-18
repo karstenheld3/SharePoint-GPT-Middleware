@@ -15,7 +15,7 @@ def _escape_html(text: str) -> str:
   return html.escape(str(text)) if text else ""
 
 def _sanitize_row_id(item_id: str) -> str:
-  """Sanitize row ID to alphanumeric + underscore only (DD-UI-13)."""
+  """Sanitize row ID to alphanumeric + underscore only (V2UI-DD-13)."""
   return re.sub(r'[^a-zA-Z0-9_]', '_', str(item_id))
 
 def _generate_button(btn: Dict, router_prefix: str, item_id: Optional[str]) -> str:
@@ -947,9 +947,9 @@ def generate_ui_page(
     additional_js: Extra JavaScript
     additional_css: Extra CSS
   """
-  # Validate required endpoints (UI-IG-11, UI-IG-12)
+  # Validate required endpoints (V2UI-IG-11, V2UI-IG-12)
   if enable_bulk_delete and not delete_endpoint:
-    raise ValueError("delete_endpoint required when enable_bulk_delete=True (UI-IG-11)")
+    raise ValueError("delete_endpoint required when enable_bulk_delete=True (V2UI-IG-11)")
   
   # Check if any button has reloadOnFinish (default true) - requires list_endpoint
   needs_reload = False
@@ -959,7 +959,7 @@ def generate_ui_page(
         needs_reload = True
         break
   if needs_reload and not list_endpoint:
-    raise ValueError("list_endpoint required when toolbar buttons have reloadOnFinish=true (UI-IG-12)")
+    raise ValueError("list_endpoint required when toolbar buttons have reloadOnFinish=true (V2UI-IG-12)")
   
   # Generate components
   head = generate_html_head(title, include_htmx=True, include_v2_css=True, additional_css=additional_css)

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 logging.basicConfig(level=logging.INFO, format='%(message)s', handlers=[logging.StreamHandler(sys.stdout)])
 logger = logging.getLogger(__name__)
 
-# Global request counter (LOG-IG-04: monotonically increasing)
+# Global request counter (V2LG-IG-04: monotonically increasing)
 _request_counter = 0
 
 # Format milliseconds into a human-readable string
@@ -34,7 +34,7 @@ class MiddlewareLogger:
   """
   Unified logger for FastAPI endpoints with optional streaming support.
   
-  Implements LOG-FR-01 through LOG-FR-06 and LOG-IG-01 through LOG-IG-05 from specification.
+  Implements V2LG-FR-01 through V2LG-FR-06 and V2LG-IG-01 through V2LG-IG-05 from specification.
   
   Usage:
     # Non-streaming endpoint
@@ -64,7 +64,7 @@ class MiddlewareLogger:
   
   @classmethod
   def create(cls, log_inner_function_headers_and_footers: bool = True, inner_log_indentation: int = 2, stream_job_writer: Optional["StreamingJobWriter"] = None) -> "MiddlewareLogger":
-    """Factory method. Increments global request counter (LOG-IG-04)."""
+    """Factory method. Increments global request counter (V2LG-IG-04)."""
     global _request_counter
     _request_counter += 1
     instance = cls(
@@ -106,8 +106,8 @@ class MiddlewareLogger:
   
   def log_function_output(self, output: str) -> Optional[str]:
     """
-    Log intermediate output. Always logs regardless of nesting depth (LOG-FR-03).
-    Applies indentation based on current nesting depth (LOG-FR-04).
+    Log intermediate output. Always logs regardless of nesting depth (V2LG-FR-03).
+    Applies indentation based on current nesting depth (V2LG-FR-04).
     Returns: SSE event string if stream_job_writer set, else None
     """
     indented_message = self._apply_indentation(output)
@@ -151,22 +151,22 @@ class MiddlewareLogger:
       return None
   
   def _apply_indentation(self, output: str) -> str:
-    """Apply indentation based on nesting depth (LOG-FR-04). Depth 0 and 1 have no indentation."""
+    """Apply indentation based on nesting depth (V2LG-FR-04). Depth 0 and 1 have no indentation."""
     if self._nesting_depth <= 1: return output
     indent = " " * (self.inner_log_indentation * (self._nesting_depth - 1))
     return indent + output
   
   def _log_to_console(self, message: str) -> None:
-    """Write to server console using standard format (LOG-IG-03)."""
+    """Write to server console using standard format (V2LG-IG-03)."""
     process_id = os.getpid()
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     logger.info(f"[{timestamp},process {process_id},request {self._request_number},{self._function_name}] {message}")
   
   def _emit_to_stream(self, message: str) -> Optional[str]:
     """
-    Emit to stream if writer is set (LOG-FR-05).
+    Emit to stream if writer is set (V2LG-FR-05).
     Adds SSE-style timestamp prefix: [YYYY-MM-DD HH:MM:SS] MESSAGE
-    Calls writer.emit_log() for dual output compliance (STREAM-FR-01).
+    Calls writer.emit_log() for dual output compliance (V2JB-FR-01).
     Returns SSE-formatted string or None.
     """
     if self.stream_job_writer is None: return None
