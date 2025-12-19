@@ -32,6 +32,8 @@ Usage scenarios:
 - No emojis in the documentation. Use extended ASCII characters only.
 - Avoid Markdown tables when possible for enumerations use simple unnumberred lists with indented properties
 - When creating hierarchies and maps, use "└─" for indenting
+- Place a Table of Contents (TOC)at the start of the spec
+- No `---` markers between sections!
 
 **For the user:**
 - If the implementation idea is not very clear at the beginning, ask the agent for at least 3 implementation options.
@@ -44,19 +46,20 @@ Usage scenarios:
 Implementation specifications should include these sections when relevant:
 
 1. **Overview**: Brief description, goal, target files, dependencies
-2. **Scenario**: Real-world problem, "What we don't want"
-3. **Context**: Project background, related systems
-4. **Functional Requirements**: Numbered requirements (XXXX-FR-01)
-5. **Implementation Guarantees**: Numbered guarantees (XXXX-IG-01)
-6. **Architecture and Design**: Design decisions (XXXX-DD-01), layer diagrams
-7. **Domain Objects**: Core entities, data structures, schemas
-8. **User Actions**: All interactive operations (for UI specs)
-9. **UX Design**: ASCII diagrams with component boundaries (for UI specs)
-10. **Key Mechanisms**: Technical patterns, algorithms, call flows
-11. **Action Flow**: Step-by-step event sequences
-12. **Data Structures**: HTML/DOM, API contracts, file formats
-13. **Implementation Details**: Code organization, function signatures
-14. **Spec Changes**: Timestamped changelog
+2. **Table of Contents**: Section listing at the start of the spec
+3. **Scenario**: Real-world problem, "What we don't want"
+4. **Context**: Project background, related systems
+5. **Functional Requirements**: Numbered requirements (XXXX-FR-01)
+6. **Implementation Guarantees**: Numbered guarantees (XXXX-IG-01)
+7. **Architecture and Design**: Design decisions (XXXX-DD-01), layer diagrams
+8. **Domain Objects**: Core entities, data structures, schemas
+9. **User Actions**: All interactive operations (for UI specs)
+10. **UX Design**: ASCII diagrams with component boundaries (for UI specs)
+11. **Key Mechanisms**: Technical patterns, algorithms, call flows
+12. **Action Flow**: Step-by-step event sequences
+13. **Data Structures**: HTML/DOM, API contracts, file formats
+14. **Implementation Details**: Code organization, function signatures
+15. **Spec Changes**: Timestamped changelog
 
 ## Formatting Conventions
 
@@ -81,6 +84,7 @@ Explicitly declare spec dependencies to clarify scope and prevent circular refer
 - `_V1_SPEC_COMMON_UI_FUNCTIONS.md`
 - `_V2_SPEC_COMMON_UI_FUNCTIONS.md`
 ```
+Both should only be added if they contain list items.
 
 - **Depends on**: List specs that must be read first to understand this spec
 - **Does not depend on**: Explicitly exclude specs that might seem related but are not required
@@ -356,3 +360,39 @@ Use timestamped changelog format with grouped changes per session. Avoid tables 
 - Prefix with action: Added, Changed, Fixed, Removed, Moved
 - Most recent changes at top
 - Brief, single-line descriptions
+
+### Correct Section Order and Spec Header 
+
+**BAD:**
+```
+
+**Target files**:
+
+## Scenario
+...
+---
+
+
+
+## Architecture
+...
+---
+```
+
+**GOOD:**
+```
+# V0 Crawler Toolkit - Standalone SharePoint Crawler
+
+**Goal**: Document the architecture and workflow of the standalone SharePoint-GPT-Crawler-Toolkit.
+
+**Does not depend on:**
+- Any V2 specifications (this is the predecessor toolkit)
+...
+
+## Overview
+...
+
+## Table of Contents
+...
+
+```

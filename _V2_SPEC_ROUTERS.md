@@ -1,13 +1,47 @@
 # Routers Technical Specification Version 2
 
-This document describes the design and implemenation of the **second generation** routers used for crawling, access to domain objects, and long-running job management. First generation routers and endpoints are out of scope and should remain untouched to ensure backwards compatibility.
+**Goal**: Specify V2 routers with consistent endpoint patterns, interactive UI, and streaming job support for the SharePoint-GPT-Middleware.
 
-**Goal of this document:**
-- Specify `/v2/` prefixed routers with interactive UI and CRUD operations (Create, Read, Update, Delete). 'Read' is implemented as 'Get' here.
-- Describe solution architecture
-- Document requirements and assumptions
-- Document design decisions and why they have been made
-- Provide enough context to AI so code can be generated and verified
+**Depends on:**
+- `hardcoded_config.py` for `PERSISTENT_STORAGE_LOG_EVENTS_PER_WRITE` and path constants
+- `_V2_SPEC_COMMON_UI_FUNCTIONS.md` for UI generation patterns
+- `_V2_SPEC_DEMOROUTER_UI.md` for demo router UI specification
+
+**Does not depend on:**
+- V1 router implementations (`/src/routers_v1/`)
+- `_V1_SPEC_COMMON_UI_FUNCTIONS.md`
+
+## Table of Contents
+
+1. Scenario
+2. Context
+3. Domain Objects
+4. Endpoint Architecture and Design
+   - Domain Object Schemas
+   - Endpoint Design Decisions
+   - Action-Suffixed Syntax
+   - Query Params Syntax
+   - Shorthand Notation
+   - Specification of Endpoints
+   - Endpoint Return Formats
+5. Crawling Process
+   - Local Files
+   - Map Files
+   - Source-Specific Processing
+   - Crawling Process Steps
+6. Logging Specification
+   - Functional Requirements
+   - Implementation Guarantees
+   - MiddlewareLogger Class
+   - Log Output Formats
+7. Job Streaming Specification
+   - Functional Requirements
+   - Implementation Guarantees
+   - StreamingJobWriter
+   - Examples
+8. Spec Changes
+
+This document describes the design and implementation of the **second generation** routers used for crawling, access to domain objects, and long-running job management. First generation routers and endpoints are out of scope and should remain untouched to ensure backwards compatibility.
 
 ## Scenario
 
@@ -24,6 +58,7 @@ This document describes the design and implemenation of the **second generation*
 - Complex client-side state management (server renders initial data)
 - Multiple endpoint patterns for the same action
 - Separate API and UI codebases (single endpoint serves both)
+- Paging and limit functionality for list endpoints
 
 ## Context
 
@@ -160,6 +195,8 @@ Example `end_json`:
 **DD-E012:** `/create` endpoints receive all resource data including the identifier from the request body.
 **DD-E013:** `/get` and `/delete` endpoints receive the resource identifier via query string.
 **DD-E014:** `/update` endpoints receive the identifier via query string and update data from the body. If the endpoint supports identifier modification and the body contains a different identifier than the query string, this triggers an ID change: the resource identifier changes from the query string value to the body value, then remaining body fields are applied. Otherwise, any identifier in the body is ignored.
+**DD-E015:** All textual response formats use UTF-8 encoding.
+**DD-E016:** Response objects include relative backend URLs (e.g., `monitor_url`, `source_url`, `crawl_result_url`) to enable client navigation without hardcoding host/port.
 
 ### Why Action-Suffixed over RESTful?
 
@@ -739,6 +776,7 @@ This specification uses a shorthand notation to make it easy for AI code generat
     - `...(u)` -> supports `format=ui`
     - `...(s)` -> supports `format=stream`
     - `...(z)` -> supports `format=zip`
+    - `...(c)` -> supports `format=csv` (raw CSV output)
 	- `...()`  -> supports only self-documentation with `GET [R]/`
 
 **Examples**
@@ -808,9 +846,9 @@ Create, Update, Delete operations usually support the `format=stream` query para
   - `GET /v2/inventory/vector_stores/replicate?source_vector_store_ids={id1},{id2},...&target_vector_store_ids={id3},{id4},...&remove_target_files_not_in_sources=[true|false]`
     - Collects all files in the source vector stores (incl. de-duplication) and ensures all target vector stores contain all collected files
     - `source_vector_store_ids={id1},{id2},...` - one or many source vector stores
-	- `target_vector_store_ids={id3},{id4},...` - one or many target vector stores
-	- `remove_target_files_not_in_sources=false` (default) - only adds missing files to the target vector stores
-	- `remove_target_files_not_in_sources=true` - after adding missing files, removes all files in the targets that are not part of the files collected from sources
+	  - `target_vector_store_ids={id3},{id4},...` - one or many target vector stores
+	  - `remove_target_files_not_in_sources=false` (default) - only adds missing files to the target vector stores
+	  - `remove_target_files_not_in_sources=true` - after adding missing files, removes all files in the targets that are not part of the files collected from sources
 - L(jh)G(jh)D(jhs): `/v2/inventory/vector_stores/files` - Embedded files in vector stores in the connected Open AI backend
   - `DELETE, GET /v2/inventory/vector_stores/files/delete?vector_store_id={id}&file_id={id}&mode=[default|delete_globally]`
     - `mode=default` (default) - removes file reference from vector store
@@ -867,8 +905,10 @@ Create, Update, Delete operations usually support the `format=stream` query para
   - Optional: `source_id={id}` - if a scope other than `all` is given, the action can be further limited to individual sources
   - `dry_run=false` (default) - performs action as specified
   - `dry_run=true` - simulates action without writing / modifying data
-- L(jhs): `/v2/crawler/crawl?domain_id={id}&mode=[full|incremental]&scope=[all|files|lists|sitepages]&source_id={id}&dry_run=false`
+- L(jhs): `/v2/crawler/crawl?domain_id={id}&vector_store_id={id}&mode=[full|incremental]&scope=[all|files|lists|sitepages]&source_id={id}&dry_run=false`
   - Performs the following steps: 1) download, 2) processing, 3) embedding
+  - `domain_id` - domain to be crawled
+  - Optional: `vector_store_id` - embed files into this vector store, ignoring configured domain vector store in `domain.json`
   - `mode=full` (default) - performs full crawl
   - `mode=incremental` - performs incremental crawl (only changes)
   - `scope=all` (default) - crawls all: files, lists, sitepages
@@ -878,6 +918,16 @@ Create, Update, Delete operations usually support the `format=stream` query para
   - Optional: `source_id={id}` - if a scope other than `all` is given, the action can be further limited to individual sources
   - `dry_run=false` (default) - performs action as specified
   - `dry_run=true` - simulates action without writing / modifying data
+  - Creates archive after completion (see `_V2_SPEC_CRAWL_RESULTS.md`)
+- L(jh)G(jch)D(jh): `/v2/crawler/crawl_results` - Crawl result archives for auditing and debugging (see `_V2_SPEC_CRAWL_RESULTS.md`)
+  - `GET /v2/crawler/crawl_results?domain_id={id}` - List all crawl results for domain
+  - `GET /v2/crawler/crawl_results?domain_id={id}&scope={scope}` - Filter by scope
+  - `GET /v2/crawler/crawl_results/get?crawl_result_id={id}` - Get crawl result metadata (crawl.json)
+  - `GET /v2/crawler/crawl_results/get?crawl_result_id={id}&file={path}&format=[json|csv|html]` - Get specific map file from archive
+  - `DELETE, GET /v2/crawler/crawl_results/delete?crawl_result_id={id}` - Delete crawl result archive
+- X(jhs): `/v2/crawler/cleanup_metadata?domain_id={id}` - Remove stale entries from `files_metadata.json`
+  - Removes entries where `openai_file_id` no longer exists in any vector store
+  - Removes entries where `sharepoint_unique_file_id` no longer exists in any `vectorstore_map.csv`
 
 **Jobs**
 - L(jhu)G(jh)D(jh): `/v2/jobs` - Manage long-running jobs that are triggered by other endpoints (crawler, inventory)
@@ -1026,245 +1076,17 @@ Returns error if job is not in terminal state ('completed' or 'cancelled'):
 
 ### Crawling Process
 
-#### Local files (persistent storage)
+See `_V2_SPEC_CRAWLER.md` for complete crawling process specification including:
+- Local storage structure and folder layout
+- Map file definitions (`sharepoint_map.csv`, `files_map.csv`, `vectorstore_map.csv`)
+- Source-specific processing (file_sources, list_sources, sitepage_sources)
+- Download, process, and embed data steps
+- Complete list of edge cases (A1-A16, B1-B7, C1-C5, D1-D6, E1-E6)
+- Edge case handling mechanism using `sharepoint_unique_file_id`
+- Integrity check and recovery procedures
+- `files_metadata.json` update logic
 
-Data is stored in two top-level folders:
-
-**`PERSISTENT_STORAGE_PATH/crawler/`:**
-- Local cache of downloaded files, processed for embedding
-
-**`PERSISTENT_STORAGE_PATH/domains/`:**
-- Local storage of domain definitions and embedded file metadata
-
-**Folder Structure**:
-```
-/domains/
-├── DOMAIN01/                 # Domain folder
-│   ├── domain.json           # Domain definition file
-│   └── files_metadata.json   # Embedded file metadata (joins data from map files and metadata extraction)
-├── DOMAIN02/
-│   ├── domain.json
-│   └── files_metadata.json
-└── ...
-
-/crawler/
-├── DOMAIN01/                 # Domain folder containing cached crawler files
-├── DOMAIN02/                 # Domain folder containing cached crawler files
-└── ...
-
-/crawler/[DOMAIN_ID]/
-├── 01_files/[SOURCE_ID]/
-│   ├── sharepoint_map.csv    # Cached data for data in SharePoint
-│   ├── files_map.csv         # Cached data for downloaded and processed files
-│   ├── vectorstore_map.csv   # Cached data for embedded files in vector stores + mapping to local storage and SharePoint
-│   ├── 02_embedded/          # Successfully embedded files
-│   │   ├── Document1.docx
-│   │   └── SubFolder/
-│   │       └── AnotherDoc1.pdf
-│   └── 03_failed/            # Files where embedding failed
-│       ├── Document2.docx
-│       └── SubFolder/
-│           └── AnotherDoc2.pdf
-├── 02_lists/[SOURCE_ID]/
-│   ├── sharepoint_map.csv
-│   ├── files_map.csv
-│   ├── vectorstore_map.csv
-│   ├── 01_originals/         # Original CSV exports
-│   ├── 02_embedded/          # Converted Markdown files
-│   └── 03_failed/
-└── 03_sitepages/[SOURCE_ID]/
-    ├── sharepoint_map.csv
-    ├── files_map.csv
-    ├── vectorstore_map.csv
-    ├── 01_originals/         # Original HTML
-    ├── 02_embedded/          # Processed HTML
-    └── 03_failed/
-```
-
-#### Map files (persistent storage)
-
-Map files allow the crawler to quickly identify changes and analyze errors.
-Map file types:
-  - `sharepoint_map.csv` - caches file metadata from SharePoint
-  - `files_map.csv` - caches local storage, contains file download and processing status
-  - `vectorstore_map.csv`- caches vector store data, contains everything in other map files + upload and embedding status
-
-**`sharepoint_map.csv` columns:**
-- `sharepoint_listitem_id` - number - SharePoint list item ID (e.g., 123)
-- `sharepoint_unique_file_id` - string - GUID unique to this file (e.g., "b!abc123...")
-- `filename` - string - file name with extension (e.g., "Document.docx")
-- `file_type` - string - file extension without dot (e.g., "docx")
-- `file_size` - number - size in bytes (e.g., 864368)
-- `url` - string - URL-encoded SharePoint URL (e.g., "https://company.sharepoint.com/sites/demo/Shared%20Documents/Document.docx")
-- `raw_url` - string - unencoded SharePoint URL (e.g., "https://company.sharepoint.com/sites/demo/Shared Documents/Document.docx")
-- `server_relative_url` - string - path from site root (e.g., "/sites/demo/Shared Documents/Document.docx")
-- `last_modified_utc` - string (ISO 8601 / RFC3339) - SharePoint UTC timestamp (e.g., "2024-01-15T10:30:00.000000Z")
-- `last_modified_timestamp` - number - SharePoint Unix timestamp in seconds (e.g., 1705319400)
-
-**`files_map.csv` columns:**
-- `file_relative_path` - string - path relative to storage root with backslashes
-  - Empty if download failed.
-  - Processing failed example: "DOMAIN01\01_files\source01\03_failed\Reports\Q1.docx"
-  - Succeeded example: "DOMAIN01\01_files\source01\02_embedded\Reports\Q1.docx"
-- `file_size` - number - size in bytes (e.g., 864368)
-- `last_modified_utc` - string (ISO 8601 / RFC3339) - SharePoint UTC timestamp (e.g., "2024-01-15T10:30:00.000000Z")
-- `last_modified_timestamp` - number - SharePoint Unix timestamp in seconds (e.g., 1705319400)
-- `downloaded_utc` - string (ISO 8601 / RFC3339) - Download UTC timestamp (e.g., "2024-01-15T10:30:00.000000Z")
-- `downloaded_timestamp` - number - Download Unix timestamp in seconds (e.g., 1705319400)
-- `sharepoint_error` - string - Any error that might have occurred during the download
-- `processing_error` - string - Any error that might have occurred during the processing of the file
-
-**`vectorstore_map.csv` columns:**
-- `openai_file_id` - string - OpenAI file ID assigned after upload (e.g., "assistant-BuQoNyXQnoedPjTySDTFU1")
-  - empty if file could not be uploaded or embedded
-- `vector_store_id` - string - OpenAI vector store ID where the file was embedded last (Domain vector store ID)
-  - empty if file could not be uploaded or embedded
-- `file_relative_path` - string - path relative to storage root with backslashes
-  - Example if succeeded: "DOMAIN01\01_files\source01\02_embedded\Reports\Q1.docx"
-  - Example if failed: "DOMAIN01\01_files\source01\03_failed\Reports\Q1.docx"
-- `sharepoint_listitem_id` - number - SharePoint list item ID (e.g., 123)
-- `sharepoint_unique_file_id` - string - GUID unique to this file (e.g., "b!abc123...")
-- `filename` - string - file name with extension (e.g., "Document.docx")
-- `file_type` - string - file extension without dot (e.g., "docx")
-- `file_size` - number - size in bytes (e.g., 864368)
-- `last_modified_utc` - string (ISO 8601 / RFC3339) - UTC timestamp (e.g., "2024-01-15T10:30:00.000000Z")
-- `last_modified_timestamp` - number - Unix timestamp in seconds (e.g., 1705319400)
-- `downloaded_utc` - string (ISO 8601 / RFC3339) - `created_at` Open AI UTC timestamp returned by file upload (e.g., "2024-01-15T10:30:00.000000Z")
-  - empty if file could not be uploaded or embedded
-- `downloaded_timestamp` - number - `created_at` Open AI UTC timestamp returned by file upload (e.g., 1705319400)
-  - empty if file could not be uploaded or embedded
-- `uploaded_utc` - string (ISO 8601 / RFC3339) - `created_at` Open AI UTC timestamp returned by file upload (e.g., "2024-01-15T10:30:00.000000Z")
-  - empty if file could not be uploaded or embedded
-- `uploaded_timestamp` - number - `created_at` Open AI UTC timestamp returned by file upload (e.g., 1705319400)
-  - empty if file could not be uploaded or embedded
-- `embedded_utc` - string (ISO 8601 / RFC3339) - `created_at` Open AI UTC timestamp returned by file embedding (e.g., "2024-01-15T10:30:00.000000Z")
-  - empty if file could not be uploaded or embedded
-- `embedded_timestamp` - number - `created_at` Open AI UTC timestamp returned by file upload (e.g., 1705319400)
-  - empty if file could not be uploaded or embedded
-- `sharepoint_error` - string - Any error that might have occurred during the download
-- `processing_error` - string - Any error that might have occurred during the processing of the file
-- `embedding_error` - string - Any error that might have occurred during the upload to the Open AI backend or the embedding
-
-#### Source-specific processing
-
-**file_sources:**
-- Download target: `02_embedded/` folder
-- Process step: Skipped (files embedded directly)
-- `file_relative_path` set by: Download step
-
-**list_sources:**
-- Download target: `01_originals/` folder (exports SharePoint list to CSV)
-- Process step: Converts each CSV row to individual Markdown file in `02_embedded/`
-- `file_relative_path` set by: Process step (points to `02_embedded/`)
-
-**sitepage_sources:**
-- Download target: `01_originals/` folder (fetches page HTML)
-- Process step: Extracts content, cleans HTML, writes to `02_embedded/`
-- `file_relative_path` set by: Process step (points to `02_embedded/`)
-
-#### Crawling process for SharePoint sources
-
-Applies to: `file_sources`, `list_sources`, `sitepage_sources`
-
-**Parameters:**
-  - `domain_id={id}` - The domain id
-  - `mode=[full|incremental]` - Full or incremental crawl
-  - `source_type=[file_sources|list_sources|sitepage_sources]` - Type of sources to crawl
-  - Optional: `source_id={id}` - Process only a single source
-  - `dry_run=false` (default) - performs action as specified
-  - `dry_run=true` - simulates action, producing previewable stream output but not modifying persistent data:
-    - Creates temporary `sharepoint_map_[ID].csv` and `files_map_[ID].csv` files (ID = JOB_ID for streaming, random ID for json/html)
-    - All map comparisons and change detection run against temporary files
-    - No files are downloaded, uploaded, or deleted
-    - No vector store modifications
-    - Temporary files are deleted at end of job
-
-**Parallel-safe design:**
-- All crawl actions can run in parallel (different sources, different actions, or same source + different action)
-- No locking mechanism - parallelism achieved via lock-free eventual consistency:
-    - **Graceful write**: Write to temp file, then atomic rename. Retry on concurrency error.
-    - **Graceful read**: Retry on locked file.
-    - **Precondition check**: Each action verifies item state before processing.
-- Preconditions by action:
-    - Download: (none)
-    - Process: `file_relative_path` exists in `01_originals/` on disk
-    - Embed: `file_relative_path` exists in `02_embedded/` on disk
-- Items not meeting preconditions are skipped (logged as warning). Re-running the action picks them up.
-- Result includes count of skipped items so caller knows if re-run is needed.
-- For guaranteed sequential processing, run actions one at a time or use the combined `/crawl` endpoint.
-
-**Download data:**
-1. Crawler loads domain config for `domain_id` and loads all sources of specified `source_type` (404 for missing domain)
-2. If optional `source_id` is given, filters out all other sources (404 for missing source)
-3. Crawler connects to SharePoint source using credentials from config (downstream HTTP errors are logged but do not terminate action)
-4. [For each connected source]
-    - Loads item list from SharePoint as defined in source (with filter if configured)
-    - Writes `sharepoint_map.csv` file gracefully (retries on concurrency problems)
-    - If `mode=incremental`:
-	    - Loads `files_map.csv` to internal `file_map` (fallback to `mode=full` if file not exists)
-	    - Verifies each `file_relative_path` in `file_map` exists on disk (if missing: treat as ADDED for re-download)
-	    - Identifies 1) added files, 2) removed files, 3) changed files (based on `file_size` and `last_modified_utc`)
-	    - REMOVED: Deletes all removed files from target folders and from `file_map`. Writes `files_map.csv` gracefully.
-	    - ADDED: Downloads added items to target folder, applying SharePoint last modified timestamp. Writes updated `files_map.csv` gracefully.
-	    - CHANGED: Deletes all changed items from target folders.
-	    - CHANGED: Downloads changed items to target folder, applying SharePoint last modified timestamp. Writes updated `files_map.csv` gracefully.
-    - If `mode=full`:
-	    - Deletes all subfolders in `01_originals/`, `02_embedded/`, and `03_failed/` folders (fresh start)
-	    - Deletes `files_map.csv` and creates new internal `file_map`
-	    - ALL: Downloads all items to target folder, applying SharePoint last modified timestamp. Writes updated `files_map.csv` gracefully.
-
-Expected outcome:
-- `sharepoint_map.csv` contains all items (rows) that could be identified in SharePoint
-- `sharepoint_map.csv` does not contain items not existing in SharePoint
-- `files_map.csv` contains all items (rows) as `sharepoint_map.csv` with additional column data
-- `files_map.csv` > `file_relative_path` column is empty if download failed
-- Target folders do not contain items not existing in SharePoint
-- Target folders might be missing items that could not be downloaded from SharePoint
-
-**Process data:**
-- Source-type specific processing (see "Source-specific processing" above)
-- For list/sitepage sources:
-    - Verifies each `file_relative_path` in `files_map.csv` exists in `01_originals/` (if missing: log warning, mark for re-download by clearing `file_relative_path`)
-    - Converts original files to `02_embedded/`
-    - Updates `file_relative_path` in `files_map.csv` to point to processed file in `02_embedded/`
-- Writes updated `files_map.csv` gracefully
-
-**Embed data:**
-1. Crawler loads domain config for `domain_id` and loads all sources of specified `source_type` (404 for missing domain)
-2. If optional `source_id` is given, filters out all other sources (404 for missing source)
-3. Get target vector store
-    - If `vector_store_id`is given, sets this vector store as target (404 for missing)
-    - Otherwise uses `vector_store_id` from `domain.json` to get domain vector store (404 if missing, 500 if not configured)
-    - Load all vector store files 
-4. [For each source]
-    - Loads `files_map.csv` (skip source if not found)
-    - Loads `vectorstore_map.csv` (create empty internal map if not found)
-    - Cleanup `vectorstore_map.csv`: Removes all files with `openai_file_id` not found in the vector store. Writes `vectorstore_map.csv` gracefully.
-    - If `mode=incremental`:
-        - Verifies each `file_relative_path` in `files_map.csv` exists on disk (if missing: skip file, log warning)
-        - Compares the content of `files_map.csv` and `vectorstore_map.csv` while ignoring all files in `03_failed/` folders
-        - Identifies 1) added files, 2) removed files, 3) changed files (based on `file_size` and `last_modified_utc`)
-		- All changes must be reflected in internal `vectorstore_map`
-        - REMOVED: Removes all files from the vector store. Writes updated `vectorstore_map.csv` gracefully.
-        - ADDED: For each file, uploads the file to the global file storage and adds it to the vector store. Writes updated `vectorstore_map.csv` gracefully.
-        - CHANGED: For each file, removes the file from the vector store (if still exists), uploads the file to the global file storage and adds it to the vector store. Writes updated `vectorstore_map.csv` gracefully.
-    - If `mode=full`:
-		- Clears internal `vectorstore_map`
-        - REMOVED: Removes all files from this source in the vector store but leaves files in global storage (other vector stores might still use it). Writes updated `vectorstore_map.csv` gracefully.
-		- ALL: For each file in `files_map.csv`, uploads the file to the global file storage and adds it to the vector store. Writes updated `vectorstore_map.csv` gracefully.
-	- After modifying the target vector store:
-        - WAIT: Waits until the vector store has no files with status = 'in_progress'
-		- CLEANUP: Removes files where embedding has failed
-		    - Loads all vector store files
-			- Filters to only files that were added or changed in this run
-			- Identify files with status != 'completed'
-			- For each file
-			    - Removes file from vector store and deletes file in the global storage
-			    - Moves file from `02_embedded/` to `03_failed/` folder
-				- Updates file properties like `embedding_error` and `file_relative_path` in `vectorstore_map`
-			- Writes updated `vectorstore_map.csv` gracefully
-
-## MiddlewareLogger specification
+## Logging Specification
 
 This section specifies the unified logging system for both non-streaming and streaming endpoints.
 
