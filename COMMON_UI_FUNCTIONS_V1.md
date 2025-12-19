@@ -149,7 +149,7 @@ HTML table with thead/tbody structure.
 
 ```python
 # Example from domains.py
-headers = ['Domain ID', 'Name', 'Vector Store Name', 'Vector Store ID', 'Actions']
+headers = ['ID', 'Name', 'Vector Store Name', 'Vector Store ID', 'Actions']
 table_html = generate_table_with_headers(headers, table_rows, "No domains found")
 ```
 

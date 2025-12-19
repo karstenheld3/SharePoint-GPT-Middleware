@@ -443,7 +443,7 @@ def _generate_jobs_ui_page(jobs: list) -> str:
       <thead>
         <tr>
           <th><input type="checkbox" id="select-all" onchange="toggleSelectAll()"></th>
-          <th>ID</th>
+          <th>Job ID</th>
           <th>Router</th>
           <th>Endpoint</th>
           <th>Objects</th>

@@ -8,7 +8,7 @@ Find all .md files in the workspace but ONLY in the /.windsurf/rules folder and 
 Read these files.
 
 Then read:
-- /: SOPS.md, _V2_SPEC_ROUTERS.md, _V2_SPEC_DEMOROUTER_UI.md, _V2_SPEC_COMMON_UI_FUNCTIONS.md
+- /: SOPS.md, _V2_SPEC_ROUTERS.md, _V2_SPEC_CRAWLER.md, _V2_SPEC_CRAWL_RESULTS.md, _V2_SPEC_DEMOROUTER_UI.md, _V2_SPEC_COMMON_UI_FUNCTIONS.md
 - /src/: app.py, common_utility_functions.py, hardcoded_config.py
 - /src/routers_v2/: demorouter2.py, jobs.py, common_job_functions_v2.py, common_logging_functions_v2.py
 
