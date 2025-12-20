@@ -42,52 +42,48 @@ Users need to review historical operation results (crawls, site scans) for audit
 
 ## User Actions
 
-| Action | Trigger | Effect |
-|--------|---------|--------|
-| Result | Click [Result] button | Open modal dialog with report.json content |
-| Download | Click [Download] button | Download report archive as ZIP |
-| Delete | Click [Delete] button | Delete single report |
-| Bulk Delete | Select rows + click [Delete (n)] | Delete multiple reports |
-| Reload | Click [Reload] link | Reload reports table |
+- **Result** - Click [Result] button -> Open modal dialog with report.json content
+- **Download** - Click [Download] button -> Download report archive as ZIP
+- **Delete** - Click [Delete] button -> Delete single report
+- **Bulk Delete** - Select rows + click [Delete (n)] -> Delete multiple reports
+- **Reload** - Click [Reload] link -> Reload reports table
 
 ## UX Design
 
 ### Main Layout
 
 ```
-+---------------------------------------------------------------------------------------------------------------+
-| Reports (12) [Reload]                                                                                         |
-|                                                                                                               |
-| Back to Main Page                                                                                             |
-|                                                                                                               |
-| [Delete (0)]                                                                                                  |
-|                                                                                                               |
-| +---+--------+------------------------------+---------------------+--------+--------------------------------+ |
-| |   | Type   | Title                        | Created             | Result | Actions                        | |
-| +---+--------+------------------------------+---------------------+--------+--------------------------------+ |
-| |[ ]| crawl  | TEST01 full crawl            | 2024-01-15 14:30:00 | OK     | [Result] [Download] [Delete]   | |
-| |[ ]| crawl  | TEST01 files incremental     | 2024-01-15 14:26:30 | FAIL   | [Result] [Download] [Delete]   | |
-| |[ ]| site_scan | '/sites/HR' Security Scan | 2025-03-12 10:15:00 | OK     | [Result] [Download] [Delete]   | |
-| +---+--------+------------------------------+---------------------+--------+--------------------------------+ |
-|                                                                                                               |
-| +-------------------------------------------------------------------------------------------------------------+
-| | [Resize Handle - Draggable]                                                                        (hidden) |
-| | Console Output                                                                                      [Clear] |
-| +-------------------------------------------------------------------------------------------------------------+
-|                                                                                                               |
-+---------------------------------------------------------------------------------------------------------------+
++------------------------------------------------------------------------------------------------------------------+
+| Reports (12) [Reload]                                                                                            |
+|                                                                                                                  |
+| Back to Main Page                                                                                                |
+|                                                                                                                  |
+| [Delete (0)]                                                                                                     |
+|                                                                                                                  |
+| +---+-----------+------------------------------+---------------------+--------+--------------------------------+ |
+| |   | Type      | Title                        | Created             | Result | Actions                        | |
+| +---+-----------+------------------------------+---------------------+--------+--------------------------------+ |
+| |[ ]| crawl     | TEST01 full crawl            | 2024-01-15 14:30:00 | OK     | [Result] [Download] [Delete]   | |
+| |[ ]| crawl     | TEST01 files incremental     | 2024-01-15 14:26:30 | FAIL   | [Result] [Download] [Delete]   | |
+| |[ ]| site_scan | '/sites/HR' Security Scan    | 2025-03-12 10:15:00 | OK     | [Result] [Download] [Delete]   | |
+| +---+-----------+------------------------------+---------------------+--------+--------------------------------+ |
+|                                                                                                                  |
+| +----------------------------------------------------------------------------------------------------------------+
+| | [Resize Handle - Draggable]                                                                           (hidden) |
+| | Console Output                                                                                         [Clear] |
+| +----------------------------------------------------------------------------------------------------------------+
+|                                                                                                                  |
++------------------------------------------------------------------------------------------------------------------+
 ```
 
 ### Table Columns
 
-| Column | Source | Notes |
-|--------|--------|-------|
-| Checkbox | - | For bulk selection |
-| Type | `report.type` | Report type: `crawl`, `site_scan` |
-| Title | `report.title` | Human readable title |
-| Created | `report.created_utc` | Format: `YYYY-MM-DD HH:MM:SS` |
-| Result | `report.ok` | `-` (null), `OK` (true), `FAIL` (false) |
-| Actions | - | [Result] [Download] [Delete] |
+- **Checkbox** - For bulk selection
+- **Type** - `report.type`, report type: `crawl`, `site_scan`
+- **Title** - `report.title`, human readable title
+- **Created** - `report.created_utc`, format: `YYYY-MM-DD HH:MM:SS`
+- **Result** - `report.ok`: `-` (null), `OK` (true), `FAIL` (false)
+- **Actions** - [Result] [Download] [Delete]
 
 ### Result Column Logic
 
@@ -105,14 +101,14 @@ tr.row-cancel-or-fail { color: #b03030; }
 
 ### Toolbar
 
-| Button | State | Action |
-|--------|-------|--------|
-| Delete (0) | No selection | Disabled |
-| Delete (n) | n items selected | Enabled, triggers bulk delete confirmation |
+- **Delete (0)** - No selection -> Disabled
+- **Delete (n)** - n items selected -> Enabled, triggers bulk delete
 
 ### Navigation Links
 
 - **Back to Main Page** - `/` root endpoint
+- **Jobs** - `/v2/jobs?format=ui`
+- **Crawler** - `/v2/crawler?format=ui`
 
 ### Result Dialog (Modal)
 

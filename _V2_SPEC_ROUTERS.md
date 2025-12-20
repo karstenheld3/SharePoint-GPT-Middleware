@@ -106,6 +106,14 @@ A FastAPI-based middleware application that bridges SharePoint content with Open
 **OpenAI proxy** - Replicates behavior of a number of OpenAI API endpoints
 - Allows porting of applications to a security-controlled environment where Open AI or Azure OpenAI backends must not be exposed directly
 
+**Report** - Timestamped zip archive of operation results for auditing and debugging
+- Created by internal endpoint functions (no create endpoint exposed)
+- Contains `report.json` with mandatory fields: `report_id`, `title`, `type`, `created_utc`, `ok`, `error`, `files`
+- Contains operation-specific files (map files, logs, etc.)
+- Storage: `PERSISTENT_STORAGE_PATH/reports/[folder]/` where folder = plural of type
+- Types: `crawl` (folder: `crawls`), `site_scan` (folder: `site_scans`)
+- Specification: See `_V2_SPEC_REPORTS.md`
+
 ## Endpoint architecture and design
 
 In the following sections `resource` acts as a placeholder for the individual domain objects: `domain`, `vector_store`, etc. while `action` acts as a placeholder for Create, List, Update, Delete, and other actions. The combination of resources and actions is called an endpoint and is implemented as a HTTP/HTTPS URL.
@@ -184,7 +192,7 @@ Example `end_json`:
 **DD-E001:** Self-documentation on bare GET (no query params, including `format`). When documentation is needed, it's where the developer is working.
 **DD-E002:** Action-suffixed endpoints: `/resource`, `/resource/get`, `/resource/create`, `/resource/update`, `/resource/delete`. Allows self-documentation.
 **DD-E003:** Backend ships simple interactive UI. Admins need no programming skills. Changes can be implemented and tested fast and in one place.
-**DD-E004:** Format param controls response: `json`, `html`, `ui` (resource root only), `stream` (long-running jobs). 
+**DD-E004:** Format param controls response: `json`, `html`, `ui` (resource root only), `stream` (long-running jobs), `raw` (file content with original Content-Type). 
 **DD-E005:** Body accepts JSON or form data (content-type detection). Principle of least surprise: No need to look up documentation, it just works.
 **DD-E006:** Triggering, monitoring and management of crawling and other jobs via HTTP GET requests. Allows automation via single URL calls (low technology barrier).
 **DD-E007:** Semantic identifier names like `job_id`, `domain_id`, `source_id` that explicitly name the resource. Disambiguates object types and allow for actions that require multiple ids.
@@ -196,7 +204,8 @@ Example `end_json`:
 **DD-E013:** `/get` and `/delete` endpoints receive the resource identifier via query string.
 **DD-E014:** `/update` endpoints receive the identifier via query string and update data from the body. If the endpoint supports identifier modification and the body contains a different identifier than the query string, this triggers an ID change: the resource identifier changes from the query string value to the body value, then remaining body fields are applied. Otherwise, any identifier in the body is ignored.
 **DD-E015:** All textual response formats use UTF-8 encoding.
-**DD-E016:** Response objects include relative backend URLs (e.g., `monitor_url`, `source_url`, `crawl_result_url`) to enable client navigation without hardcoding host/port.
+**DD-E016:** Response objects include relative backend URLs (e.g., `monitor_url`, `source_url`, `report_url`) to enable client navigation without hardcoding host/port.
+**DD-E017:** `/delete` endpoints return the full resource object (same as `/get` would return) before deletion.
 
 ### Why Action-Suffixed over RESTful?
 
@@ -775,8 +784,7 @@ This specification uses a shorthand notation to make it easy for AI code generat
     - `...(h)` -> supports `format=html`
     - `...(u)` -> supports `format=ui`
     - `...(s)` -> supports `format=stream`
-    - `...(z)` -> supports `format=zip`
-    - `...(c)` -> supports `format=csv` (raw CSV output)
+    - `...(r)` -> supports `format=raw`
 	- `...()`  -> supports only self-documentation with `GET [R]/`
 
 **Examples**
@@ -918,13 +926,7 @@ Create, Update, Delete operations usually support the `format=stream` query para
   - Optional: `source_id={id}` - if a scope other than `all` is given, the action can be further limited to individual sources
   - `dry_run=false` (default) - performs action as specified
   - `dry_run=true` - simulates action without writing / modifying data
-  - Creates archive after completion (see `_V2_SPEC_CRAWL_RESULTS.md`)
-- L(jh)G(jch)D(jh): `/v2/crawler/crawl_results` - Crawl result archives for auditing and debugging (see `_V2_SPEC_CRAWL_RESULTS.md`)
-  - `GET /v2/crawler/crawl_results?domain_id={id}` - List all crawl results for domain
-  - `GET /v2/crawler/crawl_results?domain_id={id}&scope={scope}` - Filter by scope
-  - `GET /v2/crawler/crawl_results/get?crawl_result_id={id}` - Get crawl result metadata (crawl.json)
-  - `GET /v2/crawler/crawl_results/get?crawl_result_id={id}&file={path}&format=[json|csv|html]` - Get specific map file from archive
-  - `DELETE, GET /v2/crawler/crawl_results/delete?crawl_result_id={id}` - Delete crawl result archive
+  - Creates report archive after completion (see `_V2_SPEC_REPORTS.md`)
 - X(jhs): `/v2/crawler/cleanup_metadata?domain_id={id}` - Remove stale entries from `files_metadata.json`
   - Removes entries where `openai_file_id` no longer exists in any vector store
   - Removes entries where `sharepoint_unique_file_id` no longer exists in any `vectorstore_map.csv`
@@ -949,12 +951,21 @@ Create, Update, Delete operations usually support the `format=stream` query para
   - `GET /v2/jobs/monitor?job_id={id}&format=stream` -> Full stream (from first event) as Server-Sent Events
 - L(jh): `/v2/jobs/results?job_id={id}` - Return `result` JSON from `end_json` event of the stream
 
+**Reports**
+- L(jhu)G(jh)D(j): `/v2/reports` - Report archives for auditing and debugging (see `_V2_SPEC_REPORTS.md`)
+  - `GET /v2/reports?type={type}` - Filter by report type (crawl, site_scan)
+  - `GET /v2/reports/get?report_id={id}` - Get report metadata (report.json content)
+- X(jhr): `/v2/reports/file?report_id={id}&file_path={path}` - Get specific file from report archive
+  - `format=raw` (default) - Returns file content with appropriate Content-Type
+  - `format=json` - Returns file content wrapped in JSON result
+  - `format=html` - Returns file content as HTML
+- X(): `/v2/reports/download?report_id={id}` - Download report archive as ZIP
+  - Returns ZIP file with Content-Disposition header
 
 **Local Storage**
 - L(jhu)G(j): `/v2/local_storage` - Browse files and folders in the persistent storage path
   - `GET /v2/local_storage` -> Self-documentation (UTF-8 text)
   - `GET /v2/local_storage?format=json` -> JSON result with root directory listing `{"ok": true, "error": "", "data": [...]}`
-  - `GET /v2/local_storage?format=html` -> HTML table with root directory listing
   - `GET /v2/local_storage?format=ui` -> Interactive UI with folder tree navigation
   - `GET /v2/local_storage/get` -> Self-documentation (UTF-8 text)
   - `GET /v2/local_storage/get?path={relative_path}&format=json` -> JSON listing of file/folder at path (contents if folder, metadata if file)

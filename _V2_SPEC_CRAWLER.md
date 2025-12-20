@@ -84,16 +84,16 @@ A **Crawl** is a single execution of the crawling process for a domain. It perfo
 - `lists` - crawl only `list_sources`
 - `sitepages` - crawl only `sitepage_sources`
 
-### Crawl Result
+### Crawl Report
 
-A **Crawl Result** is a timestamped archive created after a `/crawl` endpoint completes. It captures the state of all map files at the time of crawl for auditing and debugging.
+A **Crawl Report** is a timestamped archive created after a `/crawl` endpoint completes. It captures the state of all map files at the time of crawl for auditing and debugging.
 
-**Storage:** `PERSISTENT_STORAGE_PATH/crawl_results/[crawl_result_id].zip`
-**ID format:** `[TIMESTAMP]_[DOMAIN_ID]_[SCOPE]_[MODE]` (e.g., `2025-01-15_14-25-00_TEST01_all_full`)
-**Specification:** See `_V2_SPEC_CRAWL_RESULTS.md`
+**Storage:** `PERSISTENT_STORAGE_PATH/reports/crawls/[filename].zip`
+**Report ID format:** `crawls/[TIMESTAMP]_[DOMAIN_ID]_[SCOPE]_[MODE]` (e.g., `crawls/2025-01-15_14-25-00_TEST01_all_full`)
+**Specification:** See `_V2_SPEC_REPORTS.md` (type=crawl)
 
 **Contents:**
-- `crawl.json` - crawl metadata (parameters, timing, per-source statistics)
+- `report.json` - crawl metadata (parameters, timing, per-source statistics)
 - `*_map.csv` files - snapshot of map files at crawl completion
 
 **Not created when:**

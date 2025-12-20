@@ -57,7 +57,7 @@ Reports created by internal endpoint functions only - no create endpoint exposed
 
 **V2RP-DD-03:** No create endpoint. Reports created by internal Python functions called from other routers.
 
-**V2RP-DD-04:** Minimal metadata. Only `report_id`, `title`, `type`, `created_utc`, `ok`, `error` are mandatory. Rest is type-specific.
+**V2RP-DD-04:** Minimal metadata. Only `report_id`, `title`, `type`, `created_utc`, `ok`, `error`, `files` are mandatory. Rest is type-specific.
 
 **V2RP-DD-05:** Result pattern for display. UI shows Result column: `-` (pending), `OK` (success), `FAIL` (failure) - same as Jobs UI.
 
@@ -74,7 +74,7 @@ Reports created by internal endpoint functions only - no create endpoint exposed
 ## Implementation Guarantees
 
 **V2RP-IG-01:** Archive zip files are valid and readable
-**V2RP-IG-02:** report.json contains mandatory fields: report_id, title, type, created_utc, ok, error
+**V2RP-IG-02:** report.json contains mandatory fields: report_id, title, type, created_utc, ok, error, files
 **V2RP-IG-03:** File paths in archive preserved when keep_folder_structure=true
 **V2RP-IG-04:** List endpoint returns reports sorted by created_utc (newest first)
 **V2RP-IG-05:** Delete removes report archive completely from disk
@@ -83,6 +83,7 @@ Reports created by internal endpoint functions only - no create endpoint exposed
 
 ### Report (minimal mandatory fields)
 
+
 ```
 report_id: string       # "[folder]/[filename]" e.g. "crawls/2024-01-15_14-25-00_TEST01_all_full"
 title: string           # Human readable title
@@ -90,16 +91,19 @@ type: string            # Report type (singular): "crawl", "site_scan", etc.
 created_utc: string     # ISO timestamp when archive was created
 ok: bool                # true = success, false = failure
 error: string           # Error message if ok=false, empty otherwise
+files: array            # Flattened inventory of zip archive contents
+  └─ filename: string           # File name only (e.g., "sharepoint_map.csv")
+  └─ file_path: string          # Path within archive (e.g., "01_files/source01/sharepoint_map.csv")
+  └─ file_size: int             # Size in bytes
+  └─ last_modified_utc: string  # ISO timestamp of file modification
 ```
 
 Plus type-specific fields (see Archive Structure).
 
 ### Type-to-Folder Mapping
 
-| Type (singular) | Folder (plural) |
-|-----------------|-----------------|
-| crawl           | crawls          |
-| site_scan       | site_scans      |
+- **crawl** -> `crawls`
+- **site_scan** -> `site_scans`
 
 ## Archive Structure
 
@@ -130,6 +134,12 @@ PERSISTENT_STORAGE_PATH/reports/
   "created_utc": "2024-01-15T14:30:00.000000Z",
   "ok": true,
   "error": "",
+  "files": [
+    {"filename": "report.json", "file_path": "report.json", "file_size": 2048, "last_modified_utc": "2024-01-15T14:30:00.000000Z"},
+    {"filename": "sharepoint_map.csv", "file_path": "01_files/source01/sharepoint_map.csv", "file_size": 15360, "last_modified_utc": "2024-01-15T14:28:00.000000Z"},
+    {"filename": "files_map.csv", "file_path": "01_files/source01/files_map.csv", "file_size": 12288, "last_modified_utc": "2024-01-15T14:28:00.000000Z"},
+    {"filename": "vectorstore_map.csv", "file_path": "01_files/source01/vectorstore_map.csv", "file_size": 8192, "last_modified_utc": "2024-01-15T14:29:00.000000Z"}
+  ],
   "domain_id": "TEST01",
   "scope": "all",
   "mode": "full",
@@ -147,9 +157,9 @@ PERSISTENT_STORAGE_PATH/reports/
       "items_removed": 2,
       "items_failed": 1,
       "map_files": [
-        {"path": "01_files/source01/sharepoint_map.csv", "url": "/v2/reports/file?report_id=crawls/2024-01-15_14-25-00_TEST01_all_full&file=01_files/source01/sharepoint_map.csv"},
-        {"path": "01_files/source01/files_map.csv", "url": "/v2/reports/file?report_id=crawls/2024-01-15_14-25-00_TEST01_all_full&file=01_files/source01/files_map.csv"},
-        {"path": "01_files/source01/vectorstore_map.csv", "url": "/v2/reports/file?report_id=crawls/2024-01-15_14-25-00_TEST01_all_full&file=01_files/source01/vectorstore_map.csv"}
+        {"path": "01_files/source01/sharepoint_map.csv", "url": "/v2/reports/file?report_id=crawls/2024-01-15_14-25-00_TEST01_all_full&file_path=01_files/source01/sharepoint_map.csv"},
+        {"path": "01_files/source01/files_map.csv", "url": "/v2/reports/file?report_id=crawls/2024-01-15_14-25-00_TEST01_all_full&file_path=01_files/source01/files_map.csv"},
+        {"path": "01_files/source01/vectorstore_map.csv", "url": "/v2/reports/file?report_id=crawls/2024-01-15_14-25-00_TEST01_all_full&file_path=01_files/source01/vectorstore_map.csv"}
       ]
     },
     {
@@ -161,9 +171,9 @@ PERSISTENT_STORAGE_PATH/reports/
       "items_removed": 0,
       "items_failed": 0,
       "map_files": [
-        {"path": "01_files/source02/sharepoint_map.csv", "url": "/v2/reports/file?report_id=...&file=01_files/source02/sharepoint_map.csv"},
-        {"path": "01_files/source02/files_map.csv", "url": "/v2/reports/file?report_id=...&file=01_files/source02/files_map.csv"},
-        {"path": "01_files/source02/vectorstore_map.csv", "url": "/v2/reports/file?report_id=...&file=01_files/source02/vectorstore_map.csv"}
+        {"path": "01_files/source02/sharepoint_map.csv", "url": "/v2/reports/file?report_id=...&file_path=01_files/source02/sharepoint_map.csv"},
+        {"path": "01_files/source02/files_map.csv", "url": "/v2/reports/file?report_id=...&file_path=01_files/source02/files_map.csv"},
+        {"path": "01_files/source02/vectorstore_map.csv", "url": "/v2/reports/file?report_id=...&file_path=01_files/source02/vectorstore_map.csv"}
       ]
     }
   ]
@@ -225,6 +235,10 @@ PERSISTENT_STORAGE_PATH/reports/
   "created_utc": "2025-03-12T10:15:00.000000Z",
   "ok": true,
   "error": "",
+  "files": [
+    {"filename": "report.json", "file_path": "report.json", "file_size": 1024, "last_modified_utc": "2025-03-12T10:15:00.000000Z"},
+    {"filename": "permissions.csv", "file_path": "permissions.csv", "file_size": 8192, "last_modified_utc": "2025-03-12T10:14:00.000000Z"}
+  ],
   "site_url": "https://example.sharepoint.com/sites/HR-Central",
   "scope": "security",
   "job_id": "jb_112",
@@ -320,7 +334,7 @@ Returns full filesystem path to archive. Returns None if not found.
 
 ### GET /v2/reports
 
-List reports.
+List reports. Bare GET (no params) returns self-documentation.
 
 **Parameters:**
 - `type` (optional) - Filter by report type
@@ -347,7 +361,7 @@ List reports.
 
 ### GET /v2/reports/get
 
-Get report metadata (report.json content).
+Get report metadata (report.json content). Bare GET returns self-documentation.
 
 **Parameters:**
 - `report_id` (required) - Report identifier
@@ -368,27 +382,32 @@ Get report metadata (report.json content).
 
 ### GET /v2/reports/file
 
-Get specific file from report archive.
+Get specific file from report archive. Bare GET returns self-documentation.
 
 **Parameters:**
 - `report_id` (required) - Report identifier
-- `file` (required) - File path within archive
+- `file_path` (required) - File path within archive
 - `format=[json|html|raw]` (default=raw)
 
 **Response (format=raw):** File content with appropriate Content-Type
 
 ### GET /v2/reports/download
 
-Download report archive as ZIP.
+Download report archive as ZIP. Bare GET returns self-documentation.
 
 **Parameters:**
 - `report_id` (required) - Report identifier
 
 **Response:** ZIP file with Content-Disposition header
 
-### DELETE /v2/reports/delete
+**Error Response (404):**
+```json
+{"ok": false, "error": "Report 'crawls/invalid_id' not found.", "data": {}}
+```
 
-Delete report.
+### DELETE, GET /v2/reports/delete
+
+Delete report. Bare GET returns self-documentation.
 
 **Parameters:**
 - `report_id` (required) - Report identifier
@@ -398,7 +417,16 @@ Delete report.
 {
   "ok": true,
   "error": "",
-  "data": {"report_id": "crawls/2024-01-15_14-25-00_TEST01_all_full", "deleted": true}
+  "data": {
+    "report_id": "crawls/2024-01-15_14-25-00_TEST01_all_full",
+    "title": "TEST01 full crawl",
+    "type": "crawl",
+    "created_utc": "2024-01-15T14:30:00.000000Z",
+    "ok": true,
+    "error": "",
+    "files": [...],
+    ...type-specific fields...
+  }
 }
 ```
 
@@ -440,27 +468,3 @@ if report.ok is None or report not finished: display "-"
 elif report.ok == true: display "OK"
 else: display "FAIL"
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
