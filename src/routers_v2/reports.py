@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Fil
 from routers_v2.common_report_functions_v2 import list_reports, get_report_metadata, get_report_file, delete_report, get_report_archive_path, create_report
 from routers_v2.common_report_functions_v2 import set_config as set_report_functions_config
 from routers_v2.common_logging_functions_v2 import MiddlewareLogger
-from routers_v2.common_ui_functions_v2 import generate_router_docs_page, generate_endpoint_docs, json_result, html_result, generate_html_head, generate_toast_container, generate_modal_structure, generate_console_panel, generate_core_js, generate_console_js
+from routers_v2.common_ui_functions_v2 import generate_ui_page, generate_router_docs_page, generate_endpoint_docs, json_result, html_result
 from routers_v2.common_job_functions_v2 import StreamingJobWriter, ControlAction
 
 router = APIRouter()
@@ -289,60 +289,52 @@ function submitCreateDemoReportsForm() {{
 
 # ----------------------------------------- START: UI Page Generation ----------------------------------------------------
 
-def generate_reports_ui_page() -> str:
+def generate_reports_ui_page(reports: list) -> str:
   nav_links = f'{main_page_nav_html} | <a href="{router_prefix}/jobs?format=ui">Jobs</a> | <a href="{router_prefix}/crawler?format=ui">Crawler</a>'
   
-  toolbar_html = f"""
-<div class="toolbar">
-  <button class="btn-primary" onclick="showCreateDemoReportsForm()">Create Demo Reports</button>
-  <button id="bulk-delete-btn" onclick="bulkDelete()" disabled>Delete (<span id="selected-count">0</span>)</button>
-</div>
-"""
+  columns = [
+    {"field": "type", "header": "Type", "default": "-"},
+    {"field": "title", "header": "Title", "default": "-"},
+    {"field": "created_utc", "header": "Created", "js_format": "formatTimestamp(item.created_utc)"},
+    {"field": "ok", "header": "Result", "js_format": "formatResult(item.ok)"},
+    {
+      "field": "actions",
+      "header": "Actions",
+      "buttons": [
+        {"text": "Result", "onclick": "showReportResult('{itemId}')", "class": "btn-small"},
+        {"text": "Download", "onclick": "downloadReport('{itemId}')", "class": "btn-small"},
+        {
+          "text": "Delete",
+          "data_url": f"{router_prefix}/{router_name}/delete?report_id={{itemId}}",
+          "data_method": "DELETE",
+          "data_format": "json",
+          "confirm_message": "Delete report '{itemId}'?",
+          "class": "btn-small btn-delete"
+        }
+      ]
+    }
+  ]
   
-  table_html = """
-<table id="reports-table" class="data-table">
-  <thead>
-    <tr>
-      <th style="width:30px"><input type="checkbox" id="select-all" onchange="toggleSelectAll()"></th>
-      <th>Type</th>
-      <th>Title</th>
-      <th>Created</th>
-      <th>Result</th>
-      <th>Actions</th>
-    </tr>
-  </thead>
-  <tbody id="reports-tbody">
-    <tr><td colspan="6" class="empty-state">Loading...</td></tr>
-  </tbody>
-</table>
-"""
+  toolbar_buttons = [
+    {"text": "Create Demo Reports", "onclick": "showCreateDemoReportsForm()", "class": "btn-primary"}
+  ]
   
-  head_html = generate_html_head(f"Reports")
-  toast_html = generate_toast_container()
-  modal_html = generate_modal_structure()
-  console_html = generate_console_panel()
-  core_js = generate_core_js()
-  console_js = generate_console_js(router_prefix, f"{router_prefix}/jobs/control")
-  router_js = get_router_specific_js()
-  
-  return f"""<!DOCTYPE html>
-<html>
-{head_html}
-<body>
-  <h1>Reports (<span id="reports-count">0</span>) <a href="{router_prefix}/{router_name}?format=ui" style="font-size:0.5em">[Reload]</a></h1>
-  <p>{nav_links}</p>
-  {toolbar_html}
-  {table_html}
-  {console_html}
-  {toast_html}
-  {modal_html}
-  <script>
-{core_js}
-{console_js}
-{router_js}
-  </script>
-</body>
-</html>"""
+  return generate_ui_page(
+    title="Reports",
+    router_prefix=router_prefix,
+    items=reports,
+    columns=columns,
+    row_id_field="report_id",
+    row_id_prefix="report",
+    navigation_html=nav_links,
+    toolbar_buttons=toolbar_buttons,
+    enable_selection=True,
+    enable_bulk_delete=True,
+    list_endpoint=f"{router_prefix}/{router_name}?format=json",
+    delete_endpoint=f"{router_prefix}/{router_name}/delete?report_id={{itemId}}",
+    jobs_control_endpoint=f"{router_prefix}/jobs/control",
+    additional_js=get_router_specific_js()
+  )
 
 # ----------------------------------------- END: UI Page Generation ------------------------------------------------------
 
@@ -381,7 +373,7 @@ async def list_reports_endpoint(request: Request):
   
   if format_param == "ui":
     logger.log_function_footer()
-    return HTMLResponse(generate_reports_ui_page())
+    return HTMLResponse(generate_reports_ui_page(reports))
   elif format_param == "html":
     logger.log_function_footer()
     return html_result("Reports", reports, main_page_nav_html)
