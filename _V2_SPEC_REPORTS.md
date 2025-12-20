@@ -277,7 +277,9 @@ def create_report(
   filename: str,                              # "2024-01-15_14-25-00_TEST01_all_full" (without .zip)
   files: list[tuple[str, bytes]],             # [(archive_path, content), ...]
   metadata: dict,                             # Type-specific metadata (merged with mandatory fields)
-  keep_folder_structure: bool = True          # If True, preserve file paths; if False, flatten to root
+  keep_folder_structure: bool = True,         # If True, preserve file paths; if False, flatten to root
+  dry_run: bool = False,                      # If True, simulate without writing to disk
+  logger: Optional[MiddlewareLogger] = None   # Optional logger for output
 ) -> str:                                     # Returns report_id
 ```
 
@@ -293,7 +295,7 @@ Creates zip archive with report.json and provided files.
 ### list_reports()
 
 ```python
-def list_reports(type_filter: str = None) -> list[dict]:
+def list_reports(type_filter: str = None, logger: Optional[MiddlewareLogger] = None) -> list[dict]:
 ```
 
 Lists all reports, optionally filtered by type. Returns list of report.json contents, sorted by created_utc descending.
@@ -301,7 +303,7 @@ Lists all reports, optionally filtered by type. Returns list of report.json cont
 ### get_report_metadata()
 
 ```python
-def get_report_metadata(report_id: str) -> dict | None:
+def get_report_metadata(report_id: str, logger: Optional[MiddlewareLogger] = None) -> dict | None:
 ```
 
 Reads and returns report.json content from archive. Returns None if not found.
@@ -309,7 +311,7 @@ Reads and returns report.json content from archive. Returns None if not found.
 ### get_report_file()
 
 ```python
-def get_report_file(report_id: str, file_path: str) -> bytes | None:
+def get_report_file(report_id: str, file_path: str, logger: Optional[MiddlewareLogger] = None) -> bytes | None:
 ```
 
 Reads specific file from archive. Returns None if not found.
@@ -317,10 +319,10 @@ Reads specific file from archive. Returns None if not found.
 ### delete_report()
 
 ```python
-def delete_report(report_id: str) -> bool:
+def delete_report(report_id: str, dry_run: bool = False, logger: Optional[MiddlewareLogger] = None) -> dict | None:
 ```
 
-Deletes archive file. Returns True if deleted, False if not found.
+Deletes archive file. Returns deleted report metadata (per DD-E017), or None if not found.
 
 ### get_report_archive_path()
 
