@@ -2,7 +2,7 @@
 # Spec: _V2_SPEC_REPORTS.md, _V2_SPEC_REPORTS_UI.md
 # Endpoints: L(j)G(jh)F(jr)D(z)X(jh): /v2/reports
 
-import asyncio, textwrap, uuid
+import asyncio, random, textwrap, uuid
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, FileResponse, Response, StreamingResponse
 
@@ -52,14 +52,14 @@ const reportsState = new Map();
 // PAGE INITIALIZATION
 // ============================================
 document.addEventListener('DOMContentLoaded', async () => {{
-  await reloadReports();
+  await reloadItems();
   initConsoleResize();
 }});
 
 // ============================================
 // REPORTS LOADING
 // ============================================
-async function reloadReports() {{
+async function reloadItems() {{
   try {{
     const response = await fetch('{router_prefix}/{router_name}?format=json');
     const result = await response.json();
@@ -77,7 +77,7 @@ async function reloadReports() {{
 }}
 
 function updateHeaderCount() {{
-  const countEl = document.getElementById('reports-count');
+  const countEl = document.getElementById('item-count');
   if (countEl) countEl.textContent = reportsState.size;
 }}
 
@@ -85,7 +85,7 @@ function updateHeaderCount() {{
 // REPORTS RENDERING
 // ============================================
 function renderAllReports() {{
-  const tbody = document.getElementById('reports-tbody');
+  const tbody = document.getElementById('items-tbody');
   if (!tbody) return;
   
   if (reportsState.size === 0) {{
@@ -103,23 +103,24 @@ function renderAllReports() {{
 
 function renderReportRow(report) {{
   const rowClass = report.ok === false ? 'row-cancel-or-fail' : '';
-  const result = formatResult(report.ok);
+  const result = formatResultOkFail(report.ok);
   const created = formatTimestamp(report.created_utc);
-  const escapedId = encodeId(report.report_id);
-  const escapedTitle = (report.title || '').replace(/'/g, "\\\\'");
+  const escapedId = sanitizeId(report.report_id);
+  const escapedTitle = escapeHtml(report.title || '').replace(/'/g, "\\\\'");
+  const reportId = report.report_id;
   
-  return `<tr id="report-${{escapedId}}" class="${{rowClass}}">
-    <td><input type="checkbox" class="report-checkbox" data-report-id="${{report.report_id}}" onchange="updateSelectedCount()"></td>
-    <td>${{report.type || '-'}}</td>
-    <td>${{report.title || '-'}}</td>
-    <td>${{created}}</td>
-    <td>${{result}}</td>
-    <td class="actions">
-      <button onclick="showReportResult('${{report.report_id}}')">Result</button>
-      <button onclick="downloadReport('${{report.report_id}}')">Download</button>
-      <button onclick="deleteReport('${{report.report_id}}', '${{escapedTitle}}')">Delete</button>
-    </td>
-  </tr>`;
+  return '<tr id="report-' + escapedId + '"' + (rowClass ? ' class="' + rowClass + '"' : '') + '>' +
+    '<td><input type="checkbox" class="item-checkbox" data-item-id="' + reportId + '" onchange="updateSelectedCount()"></td>' +
+    '<td>' + escapeHtml(report.type || '-') + '</td>' +
+    '<td>' + escapeHtml(report.title || '-') + '</td>' +
+    '<td>' + created + '</td>' +
+    '<td>' + result + '</td>' +
+    '<td class="actions">' +
+      '<button class="btn-small" onclick="showReportResult(\\'' + reportId + '\\')">Result</button> ' +
+      '<button class="btn-small" data-url="{router_prefix}/{router_name}/download?report_id=' + encodeURIComponent(reportId) + '" onclick="downloadReport(this)">Download</button> ' +
+      '<button class="btn-small btn-delete" onclick="if(confirm(\\'Delete report ' + escapedTitle + '?\\')) deleteReport(\\'' + reportId + '\\', \\'' + escapedTitle + '\\')">Delete</button>' +
+    '</td>' +
+  '</tr>';
 }}
 
 // ============================================
@@ -130,7 +131,17 @@ async function showReportResult(reportId) {{
     const response = await fetch(`{router_prefix}/{router_name}/get?report_id=${{encodeURIComponent(reportId)}}&format=json`);
     const result = await response.json();
     if (result.ok) {{
-      showResultModal(result.data.title || reportId, result.data.ok, JSON.stringify(result.data, null, 2));
+      const data = result.data;
+      const status = data.ok === null || data.ok === undefined ? '-' : (data.ok ? 'OK' : 'FAIL');
+      const body = document.querySelector('#modal .modal-body');
+      body.innerHTML = `
+        <div class="modal-header"><h3>Result (${{status}}) - '${{escapeHtml(data.title || reportId)}}'</h3></div>
+        <div class="modal-scroll">
+          <pre class="result-output">${{escapeHtml(JSON.stringify(data, null, 2))}}</pre>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn-primary" onclick="closeModal()">OK</button></div>
+      `;
+      openModal();
     }} else {{
       showToast('Error', result.error, 'error');
     }}
@@ -139,8 +150,8 @@ async function showReportResult(reportId) {{
   }}
 }}
 
-function downloadReport(reportId) {{
-  window.location = `{router_prefix}/{router_name}/download?report_id=${{encodeURIComponent(reportId)}}`;
+function downloadReport(btn) {{
+  window.location = btn.dataset.url;
 }}
 
 async function deleteReport(reportId, title) {{
@@ -186,52 +197,8 @@ async function bulkDelete() {{
 // ============================================
 // SELECTION
 // ============================================
-function updateSelectedCount() {{
-  const checkboxes = document.querySelectorAll('.report-checkbox:checked');
-  const count = checkboxes.length;
-  const countEl = document.getElementById('selected-count');
-  if (countEl) countEl.textContent = count;
-  const btn = document.getElementById('bulk-delete-btn');
-  if (btn) btn.disabled = count === 0;
-}}
-
-function toggleSelectAll() {{
-  const selectAll = document.getElementById('select-all');
-  if (!selectAll) return;
-  const checked = selectAll.checked;
-  document.querySelectorAll('.report-checkbox').forEach(cb => cb.checked = checked);
-  updateSelectedCount();
-}}
-
 function getSelectedReportIds() {{
-  return Array.from(document.querySelectorAll('.report-checkbox:checked')).map(cb => cb.dataset.reportId);
-}}
-
-// ============================================
-// HELPERS
-// ============================================
-function formatResult(ok) {{
-  if (ok === null || ok === undefined) return '-';
-  return ok ? 'OK' : 'FAIL';
-}}
-
-function formatTimestamp(ts) {{
-  if (!ts) return '-';
-  const date = new Date(ts);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${{date.getFullYear()}}-${{pad(date.getMonth() + 1)}}-${{pad(date.getDate())}} ${{pad(date.getHours())}}:${{pad(date.getMinutes())}}:${{pad(date.getSeconds())}}`;
-}}
-
-function encodeId(id) {{
-  return (id || '').replace(/[^a-zA-Z0-9]/g, '_');
-}}
-
-// Result modal (reuse pattern from Jobs UI)
-function showResultModal(title, ok, jsonContent) {{
-  const status = ok === null || ok === undefined ? '-' : (ok ? 'OK' : 'FAIL');
-  const modalTitle = `Result (${{status}}) - '${{title}}'`;
-  const content = `<pre style="max-height:400px;overflow:auto;background:#f5f5f5;padding:1rem;border-radius:4px;">${{jsonContent}}</pre>`;
-  showModal(modalTitle, content, [{{ label: 'OK', onclick: 'hideModal()' }}]);
+  return getSelectedIds();
 }}
 
 // ============================================
@@ -653,6 +620,15 @@ async def create_demo_reports_endpoint(request: Request):
     failed_reports = []
     batch_id = uuid.uuid4().hex[:8]
     
+    # Randomly select at least 1 index to be a failed report (if count > 1)
+    fail_indices = set()
+    if count > 1:
+      fail_indices.add(random.randint(0, count - 1))  # At least 1 failed
+      # Optionally add more failures (20% chance per remaining report)
+      for idx in range(count):
+        if idx not in fail_indices and random.random() < 0.2:
+          fail_indices.add(idx)
+    
     try:
       yield writer.emit_start()
       
@@ -663,6 +639,7 @@ async def create_demo_reports_endpoint(request: Request):
         now = datetime.datetime.now(datetime.timezone.utc)
         timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
         filename = f"{timestamp}_demo_{batch_id}_{i+1:02d}"
+        is_failed = i in fail_indices
         title = f"Demo {report_type} report {i+1}"
         
         sse = stream_logger.log_function_output(f"[ {i+1} / {count} ] Creating report '{filename}'...")
@@ -682,12 +659,12 @@ async def create_demo_reports_endpoint(request: Request):
           return
         
         try:
-          # Create demo report with sample data
+          # Create demo report with sample data (some randomly marked as failed)
           metadata = {
             "title": title,
             "type": report_type,
-            "ok": True,
-            "error": "",
+            "ok": not is_failed,
+            "error": "Simulated failure for demo purposes" if is_failed else "",
             "demo": True,
             "batch_id": batch_id
           }
@@ -696,7 +673,7 @@ async def create_demo_reports_endpoint(request: Request):
           ]
           report_id = create_report(report_type, filename, files, metadata)
           created_reports.append(report_id)
-          sse = stream_logger.log_function_output("  OK.")
+          sse = stream_logger.log_function_output("  OK." if not is_failed else "  OK (marked as failed report).")
           if sse: yield sse
         except Exception as e:
           failed_reports.append({"filename": filename, "error": str(e)})

@@ -127,12 +127,12 @@ function renderJobRow(job) {{
   const objectsHtml = parsed.objectIds.length > 0 ? escapeHtml(parsed.objectIds.join(', ')) : '-';
   const stalled = isStalled(job);
   const stateDisplay = stalled ? job.state + ' (stalled)' : job.state;
-  const resultDisplay = job.result ? (job.result.ok ? 'OK' : 'FAIL') : '-';
+  const resultDisplay = formatResultOkFail(job.result?.ok);
   const isCancelOrFail = job.state === 'cancelled' || (job.result && !job.result.ok);
   const isRunning = job.state === 'running';
   
   const actions = renderJobActions(job, stalled);
-  const rowId = escapeHtml(job.job_id.replace(/[^a-zA-Z0-9_]/g, '_'));
+  const rowId = sanitizeId(job.job_id);
   const rowClass = isRunning ? 'row-running' : (isCancelOrFail ? 'row-cancel-or-fail' : '');
   
   return '<tr id="job-' + rowId + '"' + (rowClass ? ' class="' + rowClass + '"' : '') + '>' +
@@ -176,6 +176,9 @@ function renderJobActions(job, stalled) {{
     }}
   }}
   
+  // Delete button - always available
+  actions.push('<button class="btn-small btn-delete" onclick="if(confirm(\\'Delete job ' + jobId + '?\\')) deleteJob(\\'' + jobId + '\\')">Delete</button>');
+  
   return actions.join(' ');
 }}
 
@@ -202,20 +205,6 @@ function parseSourceUrl(source_url) {{
     return {{ router, endpoint, objectIds }};
   }} catch (e) {{
     return {{ router: '-', endpoint: '-', objectIds: [] }};
-  }}
-}}
-
-// ============================================
-// TIMESTAMP FORMATTING
-// ============================================
-function formatTimestamp(ts) {{
-  if (!ts) return '-';
-  try {{
-    const date = new Date(ts);
-    const pad = (n) => String(n).padStart(2, '0');
-    return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds());
-  }} catch (e) {{
-    return '-';
   }}
 }}
 
@@ -301,27 +290,25 @@ function showErrorModal(response) {{
 const ROW_ID_PREFIX = 'job';
 const DELETE_ENDPOINT = '{router_prefix}/{router_name}/delete?job_id={{itemId}}';
 
-function updateSelectedCount() {{
-  const selected = document.querySelectorAll('.item-checkbox:checked');
-  const total = document.querySelectorAll('.item-checkbox');
-  const btn = document.getElementById('btn-delete-selected');
-  const countEl = document.getElementById('selected-count');
-  if (countEl) countEl.textContent = selected.length;
-  if (btn) btn.disabled = selected.length === 0;
-  const selectAll = document.getElementById('select-all');
-  if (selectAll) selectAll.checked = total.length > 0 && selected.length === total.length;
-}}
-
-function toggleSelectAll() {{
-  const selectAll = document.getElementById('select-all');
-  const checkboxes = document.querySelectorAll('.item-checkbox');
-  checkboxes.forEach(cb => cb.checked = selectAll.checked);
-  updateSelectedCount();
-}}
-
 function getSelectedJobIds() {{
-  const selected = document.querySelectorAll('.item-checkbox:checked');
-  return Array.from(selected).map(cb => cb.dataset.itemId);
+  return getSelectedIds();
+}}
+
+async function deleteJob(jobId) {{
+  try {{
+    const url = DELETE_ENDPOINT.replace('{{itemId}}', jobId);
+    const response = await fetch(url, {{ method: 'DELETE' }});
+    const result = await response.json();
+    if (result.ok) {{
+      jobsState.delete(jobId);
+      renderAllJobs();
+      showToast('Deleted', 'Job ' + jobId + ' deleted.', 'success');
+    }} else {{
+      showToast('Error', result.error, 'error');
+    }}
+  }} catch (e) {{
+    showToast('Error', e.message, 'error');
+  }}
 }}
 
 async function bulkDelete() {{

@@ -277,6 +277,127 @@ Per UI spec:
 </button>
 ```
 
+## Critical Implementation Patterns
+
+**IMPORTANT:** These patterns were discovered during implementation and must be followed exactly.
+
+### 1. Common UI Element IDs (MUST MATCH)
+
+The `generate_ui_page()` function generates specific element IDs. Custom JS must use these exact IDs:
+
+| Element | Correct ID | Wrong ID |
+|---------|-----------|----------|
+| Item count | `#item-count` | `#reports-count` |
+| Table body | `#items-tbody` | `#reports-tbody` |
+| Checkbox class | `.item-checkbox` | `.report-checkbox` |
+| Checkbox data attr | `data-item-id` | `data-report-id` |
+| Delete button | `#btn-delete-selected` | `#bulk-delete-btn` |
+| Select all | `#select-all` | - |
+
+### 2. String Concatenation for Row Rendering (CRITICAL)
+
+**DO NOT use template literals** for `renderRow` functions when onclick handlers contain quotes.
+
+Template literals process escape sequences differently, causing quote escaping to fail.
+
+**BAD (template literal):**
+```javascript
+return `<tr><td><button onclick="deleteReport('${id}')">Delete</button></td></tr>`;
+```
+
+**GOOD (string concatenation - matches jobs.py):**
+```javascript
+return '<tr><td><button onclick="deleteReport(\\'' + id + '\\')">Delete</button></td></tr>';
+```
+
+### 3. Quote Escaping in onclick Handlers
+
+Inside Python f-string that generates JS string concatenation:
+- `\\'` produces `\'` which becomes `'` in final HTML onclick
+- For confirm dialogs: `if(confirm(\\'Delete ' + title + '?\\'))`
+- NO extra quotes around variables in the confirm message
+
+**Pattern:**
+```javascript
+'<button onclick="if(confirm(\\'Delete report ' + escapedTitle + '?\\')) deleteReport(\\'' + reportId + '\\')">Delete</button>'
+```
+
+### 4. Modal Display Pattern
+
+**DO NOT** create custom `showResultModal()` that calls undefined `showModal()`.
+
+**Use direct modal body manipulation (matches jobs.py):**
+```javascript
+async function showReportResult(reportId) {{
+  const response = await fetch(`...`);
+  const result = await response.json();
+  if (result.ok) {{
+    const data = result.data;
+    const body = document.querySelector('#modal .modal-body');
+    body.innerHTML = `
+      <div class="modal-header"><h3>Title</h3></div>
+      <div class="modal-scroll"><pre>${{escapeHtml(JSON.stringify(data, null, 2))}}</pre></div>
+      <div class="modal-footer"><button onclick="closeModal()">OK</button></div>
+    `;
+    openModal();
+  }}
+}}
+```
+
+### 5. Use Common Functions (DO NOT REDEFINE)
+
+These functions are provided by `generate_core_js()` in `common_ui_functions_v2.py`. **Do not redefine them in router-specific JS:**
+
+| Function | Purpose | Usage |
+|----------|---------|-------|
+| `formatTimestamp(ts)` | Format ISO timestamp | `formatTimestamp(report.created_utc)` |
+| `formatResultOkFail(ok)` | Format boolean to OK/FAIL | `formatResultOkFail(report.ok)` or `formatResultOkFail(job.result?.ok)` |
+| `sanitizeId(id)` | Sanitize for row ID | `sanitizeId(report.report_id)` |
+| `updateSelectedCount()` | Update count + reset select-all | Already wired to `.item-checkbox` |
+| `toggleSelectAll()` | Toggle all checkboxes | Already wired to `#select-all` |
+| `getSelectedIds()` | Get checked item IDs | Returns `data-item-id` values |
+
+**Router-specific wrappers (if needed):**
+```javascript
+function getSelectedReportIds() {{ return getSelectedIds(); }}
+```
+
+### 6. Button Classes
+
+- **Action buttons:** `class="btn-small"` for consistent styling
+- **Delete button:** `class="btn-small btn-delete"` for red styling
+- **Confirm dialog:** Add `if(confirm('...'))` before destructive actions
+
+### 7. Declarative Button Pattern
+
+For buttons with simple actions, use `data-*` attributes:
+
+```javascript
+'<button class="btn-small" data-url="' + downloadUrl + '" onclick="downloadReport(this)">Download</button>'
+
+function downloadReport(btn) {{
+  window.location = btn.dataset.url;
+}}
+```
+
+### 8. XSS Prevention
+
+Always use `escapeHtml()` for user-provided content:
+```javascript
+const escapedTitle = escapeHtml(report.title || '');
+'<td>' + escapeHtml(report.type || '-') + '</td>'
+```
+
+### 9. Function Naming Convention
+
+Use `reloadItems()` as the standard name (called by common UI on stream finish):
+```javascript
+function reloadItems() {{
+  // Router-specific reload logic
+  reloadReports();  // or inline the logic
+}}
+```
+
 ## JavaScript Functions
 
 ### State Management

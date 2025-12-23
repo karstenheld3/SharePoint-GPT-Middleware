@@ -302,6 +302,55 @@ function showResultModal(data) {
   `;
   openModal();
 }
+
+// ============================================
+// COMMON FORMATTING FUNCTIONS
+// ============================================
+function formatTimestamp(ts) {
+  if (!ts) return '-';
+  try {
+    const date = new Date(ts);
+    const pad = (n) => String(n).padStart(2, '0');
+    return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds());
+  } catch (e) {
+    return '-';
+  }
+}
+
+function formatResultOkFail(ok) {
+  if (ok === null || ok === undefined) return '-';
+  return ok ? 'OK' : 'FAIL';
+}
+
+function sanitizeId(id) {
+  return (id || '').replace(/[^a-zA-Z0-9]/g, '_');
+}
+
+// ============================================
+// COMMON SELECTION FUNCTIONS
+// ============================================
+function updateSelectedCount() {
+  const selected = document.querySelectorAll('.item-checkbox:checked');
+  const total = document.querySelectorAll('.item-checkbox');
+  const count = selected.length;
+  const countEl = document.getElementById('selected-count');
+  if (countEl) countEl.textContent = count;
+  const btn = document.getElementById('btn-delete-selected');
+  if (btn) btn.disabled = count === 0;
+  const selectAll = document.getElementById('select-all');
+  if (selectAll) selectAll.checked = total.length > 0 && count === total.length;
+}
+
+function toggleSelectAll() {
+  const selectAll = document.getElementById('select-all');
+  if (!selectAll) return;
+  document.querySelectorAll('.item-checkbox').forEach(cb => cb.checked = selectAll.checked);
+  updateSelectedCount();
+}
+
+function getSelectedIds() {
+  return Array.from(document.querySelectorAll('.item-checkbox:checked')).map(cb => cb.dataset.itemId);
+}
 """
 
 def generate_console_js(router_prefix: str, jobs_control_endpoint: str) -> str:

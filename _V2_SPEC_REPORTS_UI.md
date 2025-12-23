@@ -221,7 +221,7 @@ User clicks [Delete (n)]
 
 ### Page Load
 
-1. Server returns HTML page with empty `<tbody id="reports-tbody">`
+1. Server returns HTML page with empty `<tbody id="items-tbody">`
 2. On `DOMContentLoaded`, JavaScript fetches `/v2/reports?format=json`
 3. JavaScript renders report rows into tbody
 
@@ -231,43 +231,23 @@ User clicks [Delete (n)]
 // State
 const reportsState = new Map();
 
-// Page init
+// Page init - use reloadItems() name for common UI compatibility
 document.addEventListener('DOMContentLoaded', () => {
-  reloadReports();
+  reloadItems();
   initConsoleResize();
 });
 
-// Fetch and render reports
-async function reloadReports() { ... }
-
-// Render all reports
-function renderAllReports() { ... }
-
-// Render single row
-function renderReportRow(report) { ... }
-
-// Show report result modal
-async function showReportResult(reportId) { ... }
-
-// Download report
-function downloadReport(reportId) { ... }
-
-// Delete single report
-async function deleteReport(reportId, title) { ... }
-
-// Bulk delete
-async function bulkDelete() { ... }
-
-// Selection
-function updateSelectedCount() { ... }
+async function reloadItems() { /* fetch and render */ }
+function renderAllReports() { /* render all rows */ }
+function renderReportRow(report) { /* USE STRING CONCATENATION, NOT TEMPLATE LITERALS */ }
+async function showReportResult(reportId) { /* direct modal body manipulation */ }
+function downloadReport(btn) { /* declarative: btn.dataset.url */ }
+async function deleteReport(reportId, title) { /* with confirm() */ }
+async function bulkDelete() { /* with confirm() */ }
+function updateSelectedCount() { /* MUST reset select-all checkbox */ }
 function toggleSelectAll() { ... }
-function getSelectedReportIds() { ... }
-
-// Result display
-function formatResult(ok) {
-  if (ok === null || ok === undefined) return '-';
-  return ok ? 'OK' : 'FAIL';
-}
+function getSelectedReportIds() { /* use .item-checkbox, data-item-id */ }
+function formatResult(ok) { /* -, OK, FAIL */ }
 ```
 
 ### Dependencies

@@ -714,18 +714,24 @@ All JavaScript functions are generated as part of the UI page. The library provi
 - `callEndpoint(btn, itemId, bodyData)` - Unified endpoint caller
 
 #### 6. Table Functions
-- `reloadItems()` - Fetch and re-render table
-- `renderItemsTable(items)` - Render tbody from data
-- `renderItemRow(item)` - Generate single row HTML
-- `updateItemCount()` - Update count display
+- `reloadItems()` - Fetch and re-render table (router-specific, but name is standardized)
+- `renderItemsTable(items)` - Render tbody from data (router-specific)
+- `renderItemRow(item)` - Generate single row HTML (router-specific)
+- `updateItemCount()` - Update count display (router-specific)
 
-#### 7. Selection Functions
-- `updateSelectedCount()` - Update selected count
-- `toggleSelectAll()` - Toggle all checkboxes
-- `getSelectedItemIds()` - Get array of selected IDs
-- `bulkDelete()` - Delete all selected items
+#### 7. Selection Functions (in generate_core_js)
+- `updateSelectedCount()` - Update selected count, button state, and select-all checkbox
+- `toggleSelectAll()` - Toggle all `.item-checkbox` elements
+- `getSelectedIds()` - Get array of `data-item-id` values from checked boxes
 
-#### 8. Form Functions
+Note: `bulkDelete()` is router-specific (different endpoints/state management).
+
+#### 8. Formatting Functions (in generate_core_js)
+- `formatTimestamp(ts)` - Format ISO timestamp to 'YYYY-MM-DD HH:MM:SS' or '-'
+- `formatResultOkFail(ok)` - Format boolean ok value to '-', 'OK', or 'FAIL'
+- `sanitizeId(id)` - Sanitize ID to alphanumeric + underscore only (for row IDs)
+
+#### 9. Form Functions
 - `showFieldError(input, message)` - Display inline error
 - `clearFieldError(input)` - Remove inline error
 
