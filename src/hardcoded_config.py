@@ -25,6 +25,7 @@ class CrawlerHardcodedConfig:
   UNZIP_TO_PERSISTENT_STORAGE_CLEAR_BEFORE: str
   LOCALSTORAGE_ZIP_FILENAME_PREFIX: str
   DEFAULT_FILETYPES_ACCEPTED_BY_VECTOR_STORES: List[str]
+  APPEND_TO_MAP_FILES_EVERY_X_LINES: int
 
 
 
@@ -52,4 +53,5 @@ CRAWLER_HARDCODED_CONFIG = CrawlerHardcodedConfig(
   ,LOCALSTORAGE_ZIP_FILENAME_PREFIX="download_"
   # https://platform.openai.com/docs/assistants/tools/file-search/supported-files#supported-files
   ,DEFAULT_FILETYPES_ACCEPTED_BY_VECTOR_STORES=["c", "cpp", "cs", "css", "doc", "docx", "go", "html", "java", "js", "json", "md", "pdf", "php", "pptx", "py", "rb", "sh", "tex", "ts", "txt"]
+  ,APPEND_TO_MAP_FILES_EVERY_X_LINES=10
 )

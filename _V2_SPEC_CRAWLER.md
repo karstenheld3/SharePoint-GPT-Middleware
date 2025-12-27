@@ -161,7 +161,10 @@ SharePoint ──► download_data ──► sharepoint_map.csv ─┐
 - Move misplaced files to correct paths automatically
 
 **V2CR-FR-05: Graceful Map File Operations**
-- Write to temp file, atomic rename
+- Buffered append writes using `MapFileWriter` class
+- Write header once at start (atomic: temp file + rename)
+- Append rows in batches (every `APPEND_TO_MAP_FILES_EVERY_X_LINES` items)
+- Force flush on: header creation, first item, last item
 - Retry on concurrency errors
 - Fallback to `mode=full` on corrupted/missing map files
 
@@ -188,6 +191,7 @@ SharePoint ──► download_data ──► sharepoint_map.csv ─┐
 **V2CR-IG-03:** `files_map.csv` accurately reflects disk state after integrity check
 **V2CR-IG-04:** Custom properties in `files_metadata.json` survive file updates (carry-over by `sharepoint_unique_file_id`)
 **V2CR-IG-05:** All edge cases are handled without data loss
+**V2CR-IG-06:** All paths and filenames use `CRAWLER_HARDCODED_CONFIG` constants from `hardcoded_config.py` (no hardcoded strings)
 
 ## Local Storage Structure
 
@@ -198,6 +202,21 @@ Data is stored in two top-level folders:
 
 **`PERSISTENT_STORAGE_PATH/domains/`:**
 - Local storage of domain definitions and embedded file metadata
+
+**Note:** All folder and file names below are defined in `CRAWLER_HARDCODED_CONFIG` (`hardcoded_config.py`):
+- `domains` = `PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER`
+- `crawler` = `PERSISTENT_STORAGE_PATH_CRAWLER_SUBFOLDER`
+- `01_files` = `PERSISTENT_STORAGE_PATH_DOCUMENTS_FOLDER`
+- `02_lists` = `PERSISTENT_STORAGE_PATH_LISTS_FOLDER`
+- `03_sitepages` = `PERSISTENT_STORAGE_PATH_SITEPAGES_FOLDER`
+- `01_originals` = `PERSISTENT_STORAGE_PATH_ORIGINALS_SUBFOLDER`
+- `02_embedded` = `PERSISTENT_STORAGE_PATH_EMBEDDED_SUBFOLDER`
+- `03_failed` = `PERSISTENT_STORAGE_PATH_FAILED_SUBFOLDER`
+- `domain.json` = `DOMAIN_JSON`
+- `files_metadata.json` = `FILES_METADATA_JSON`
+- `sharepoint_map.csv` = `SHAREPOINT_MAP_CSV`
+- `files_map.csv` = `FILE_MAP_CSV`
+- `vectorstore_map.csv` = `VECTOR_STORE_MAP_CSV`
 
 **Folder Structure**:
 ```
@@ -266,8 +285,10 @@ Map file types:
 - `last_modified_timestamp` - number - SharePoint Unix timestamp in seconds (e.g., 1705319400)
 
 **`files_map.csv` columns:**
+- `sharepoint_listitem_id` - number - SharePoint list item ID (e.g., 123)
 - `sharepoint_unique_file_id` - string - GUID unique to this file, used as key for change detection (e.g., "b!abc123...")
 - `filename` - string - file name with extension, used for rename detection (e.g., "Document.docx")
+- `file_type` - string - file extension without dot (e.g., "docx")
 - `server_relative_url` - string - path from site root, used for move detection (e.g., "/sites/demo/Shared Documents/Document.docx")
 - `file_relative_path` - string - path relative to storage root with backslashes
   - Empty if download failed.
@@ -276,8 +297,8 @@ Map file types:
 - `file_size` - number - size in bytes (e.g., 864368)
 - `last_modified_utc` - string (ISO 8601 / RFC3339) - SharePoint UTC timestamp (e.g., "2024-01-15T10:30:00.000000Z")
 - `last_modified_timestamp` - number - SharePoint Unix timestamp in seconds (e.g., 1705319400)
-- `downloaded_utc` - string (ISO 8601 / RFC3339) - Download UTC timestamp (e.g., "2024-01-15T10:30:00.000000Z")
-- `downloaded_timestamp` - number - Download Unix timestamp in seconds (e.g., 1705319400)
+- `downloaded_utc` - string (ISO 8601 / RFC3339) - When file was downloaded to local disk (e.g., "2024-01-15T10:30:00.000000Z")
+- `downloaded_timestamp` - number - When file was downloaded to local disk, Unix timestamp in seconds (e.g., 1705319400)
 - `sharepoint_error` - string - Any error that might have occurred during the download
 - `processing_error` - string - Any error that might have occurred during the processing of the file
 
@@ -296,10 +317,8 @@ Map file types:
 - `file_size` - number - size in bytes (e.g., 864368)
 - `last_modified_utc` - string (ISO 8601 / RFC3339) - UTC timestamp (e.g., "2024-01-15T10:30:00.000000Z")
 - `last_modified_timestamp` - number - Unix timestamp in seconds (e.g., 1705319400)
-- `downloaded_utc` - string (ISO 8601 / RFC3339) - `created_at` Open AI UTC timestamp returned by file upload (e.g., "2024-01-15T10:30:00.000000Z")
-  - empty if file could not be uploaded or embedded
-- `downloaded_timestamp` - number - `created_at` Open AI UTC timestamp returned by file upload (e.g., 1705319400)
-  - empty if file could not be uploaded or embedded
+- `downloaded_utc` - string (ISO 8601 / RFC3339) - When file was downloaded to local disk, copied from files_map.csv (e.g., "2024-01-15T10:30:00.000000Z")
+- `downloaded_timestamp` - number - When file was downloaded to local disk, copied from files_map.csv, Unix timestamp in seconds (e.g., 1705319400)
 - `uploaded_utc` - string (ISO 8601 / RFC3339) - `created_at` Open AI UTC timestamp returned by file upload (e.g., "2024-01-15T10:30:00.000000Z")
   - empty if file could not be uploaded or embedded
 - `uploaded_timestamp` - number - `created_at` Open AI UTC timestamp returned by file upload (e.g., 1705319400)
@@ -339,6 +358,11 @@ Applies to: `file_sources`, `list_sources`, `sitepage_sources`
 - `source_type=[file_sources|list_sources|sitepage_sources]` - Type of sources to crawl
 - Optional: `source_id={id}` - Process only a single source
 - `dry_run=false` (default) - performs action as specified
+- `retry_batches=2` (default) - number of processing batches for failed items:
+  - Batch 1: Process all items, collect failures into retry list
+  - Batch 2: Retry failed items from batch 1
+  - Set to `1` to disable retries
+  - Applies to: download, process, embed steps (SharePoint timeouts, OpenAI rate limits, etc.)
 - `dry_run=true` - simulates action, producing previewable stream output but not modifying persistent data:
   - Creates temporary `sharepoint_map_[ID].csv` and `files_map_[ID].csv` files (ID = JOB_ID for streaming, random ID for json/html)
   - All map comparisons and change detection run against temporary files
@@ -363,9 +387,11 @@ Applies to: `file_sources`, `list_sources`, `sitepage_sources`
 **Download data:**
 1. Crawler loads domain config for `domain_id` and loads all sources of specified `source_type` (404 for missing domain)
 2. If optional `source_id` is given, filters out all other sources (404 for missing source)
-3. Crawler connects to SharePoint source using credentials from config (downstream HTTP errors are logged but do not terminate action)
-4. [For each connected source]
+3. [For each source]
+    - Crawler connects to SharePoint site using credentials from config
+    - **If connection fails:** Log error, skip source, continue with next source
     - Loads item list from SharePoint as defined in source (with filter if configured)
+4. [For each connected source]
     - Writes `sharepoint_map.csv` file gracefully (retries on concurrency problems)
     - If `mode=incremental`:
       - Loads `files_map.csv` to internal `file_map` (fallback to `mode=full` if file not exists)
@@ -375,15 +401,15 @@ Applies to: `file_sources`, `list_sources`, `sitepage_sources`
         - REMOVED: `sharepoint_unique_file_id` in `file_map` but not in SharePoint
         - CHANGED: any of `filename`, `server_relative_url`, `file_size`, or `last_modified_utc` differs
       - REMOVED: Deletes all removed files from target folders and from `file_map`. Writes `files_map.csv` gracefully.
-      - ADDED: Downloads added items to target folder, applying SharePoint last modified timestamp. Writes updated `files_map.csv` gracefully.
+      - ADDED: Downloads added items to target folder, applying SharePoint last modified timestamp. **If download fails:** Log error, set `sharepoint_error` in files_map, skip item. Writes updated `files_map.csv` gracefully.
       - CHANGED: Deletes all changed items from target folders.
-      - CHANGED: Downloads changed items to target folder, applying SharePoint last modified timestamp. Writes updated `files_map.csv` gracefully.
+      - CHANGED: Downloads changed items to target folder, applying SharePoint last modified timestamp. **If download fails:** Log error, set `sharepoint_error` in files_map, skip item. Writes updated `files_map.csv` gracefully.
     - If `mode=full`:
       - Deletes all subfolders in `01_originals/`, `02_embedded/`, and `03_failed/` folders (fresh start)
       - Deletes `files_map.csv` and creates new internal `file_map`
-      - ALL: Downloads all items to target folder, applying SharePoint last modified timestamp. Writes updated `files_map.csv` gracefully.
+      - ALL: Downloads all items to target folder, applying SharePoint last modified timestamp. **If download fails:** Log error, set `sharepoint_error` in files_map, skip item. Writes updated `files_map.csv` gracefully.
 
-5. Runs Integrity Check (see "Integrity Check" section)
+5. Runs Integrity Check for this source (see "Integrity Check" section)
 
 Expected outcome:
 - `sharepoint_map.csv` contains all items (rows) that could be identified in SharePoint
@@ -565,7 +591,8 @@ Runs at the end of every `download_data` step (both full and incremental modes) 
    - `actual_files` = { `sharepoint_unique_file_id` -> (`filename`, `server_relative_url`, `actual_local_path`, `file_exists_on_disk`) }
 
 3. Scan disk for orphan files:
-   - `disk_files` = all files in `02_embedded/` folder (recursive)
+   - For `file_sources`: scan `02_embedded/` folder (files downloaded directly there)
+   - For `list_sources`/`sitepage_sources`: scan both `01_originals/` and `02_embedded/` folders
    - `orphan_files` = files on disk not referenced by any `file_relative_path` in `files_map.csv`
 
 4. Compare and identify anomalies:
@@ -589,15 +616,23 @@ Runs at the end of every `download_data` step (both full and incremental modes) 
 **Expected local path derivation:**
 
 ```python
-def get_expected_local_path(source_type: str, source_id: str, server_relative_url: str) -> str:
+from hardcoded_config import CRAWLER_HARDCODED_CONFIG as CFG
+
+# Map source_type to folder prefix using config constants
+SOURCE_TYPE_FOLDERS = {
+  "file_sources": CFG.PERSISTENT_STORAGE_PATH_DOCUMENTS_FOLDER,
+  "list_sources": CFG.PERSISTENT_STORAGE_PATH_LISTS_FOLDER,
+  "sitepage_sources": CFG.PERSISTENT_STORAGE_PATH_SITEPAGES_FOLDER
+}
+
+def get_expected_local_path(domain_id: str, source_type: str, source_id: str, server_relative_url: str) -> str:
   # Extract relative path from SharePoint URL
   # e.g., "/sites/demo/Shared Documents/Reports/Q1.docx" -> "Reports/Q1.docx"
   relative_path = extract_relative_path(server_relative_url)
   
-  # Build local path
+  # Build local path using config constants
   # e.g., "DOMAIN01/01_files/source01/02_embedded/Reports/Q1.docx"
-  folder_prefix = {"file_sources": "01_files", "list_sources": "02_lists", "sitepage_sources": "03_sitepages"}
-  return f"{domain_id}/{folder_prefix[source_type]}/{source_id}/02_embedded/{relative_path}"
+  return f"{domain_id}/{SOURCE_TYPE_FOLDERS[source_type]}/{source_id}/{CFG.PERSISTENT_STORAGE_PATH_EMBEDDED_SUBFOLDER}/{relative_path}"
 ```
 
 **Anomaly detection handles edge cases:**
@@ -692,9 +727,15 @@ def carry_over_custom_properties(new_entry: dict, previous_entries: list) -> dic
 
 **Cleanup mechanism:**
 
-Optional cleanup endpoint `/v2/crawler/cleanup_metadata?domain_id={id}` removes entries where:
-- `openai_file_id` no longer exists in any vector store
-- `sharepoint_unique_file_id` no longer exists in any `vectorstore_map.csv`
+Endpoint: `GET /v2/crawler/cleanup_metadata?domain_id={id}`
+
+**Purpose:** Remove stale entries from `files_metadata.json` to keep it clean and reduce file size.
+
+**Removes entries where:**
+- `openai_file_id` no longer exists in the domain's vector store
+- `sharepoint_unique_file_id` no longer exists in any source's `vectorstore_map.csv`
+
+**Returns:** JSON with count of removed entries and remaining entries
 
 **Edge case handling:**
 - **File updated (A3-A9):** New `openai_file_id` entry created, custom properties carried over from previous entry with same `sharepoint_unique_file_id`
@@ -702,6 +743,33 @@ Optional cleanup endpoint `/v2/crawler/cleanup_metadata?domain_id={id}` removes 
 - **File restored (A10):** New entry created, carry-over from historical entry if exists
 
 ## Spec Changes
+
+**[2024-12-27 17:38]**
+- Added `retry_batches=2` parameter for retry logic (download, process, embed steps)
+- Expanded `/v2/crawler/cleanup_metadata` endpoint documentation with purpose and return format
+- Clarified integrity check runs per-source after download step completes
+
+**[2024-12-27 17:21]**
+- Added `sharepoint_listitem_id` column to `files_map.csv` for consistency with other map files
+- Updated `get_expected_local_path()` code example to use `CRAWLER_HARDCODED_CONFIG` constants
+- Clarified integrity check folder scanning: `file_sources` scans `02_embedded/`, `list_sources`/`sitepage_sources` scan both `01_originals/` and `02_embedded/`
+
+**[2024-12-27 17:12]**
+- Implementation must use `CRAWLER_HARDCODED_CONFIG` constants from `hardcoded_config.py`:
+  - Folder paths: `PERSISTENT_STORAGE_PATH_CRAWLER_SUBFOLDER`, `PERSISTENT_STORAGE_PATH_DOCUMENTS_FOLDER`, `PERSISTENT_STORAGE_PATH_LISTS_FOLDER`, `PERSISTENT_STORAGE_PATH_SITEPAGES_FOLDER`, `PERSISTENT_STORAGE_PATH_ORIGINALS_SUBFOLDER`, `PERSISTENT_STORAGE_PATH_EMBEDDED_SUBFOLDER`, `PERSISTENT_STORAGE_PATH_FAILED_SUBFOLDER`
+  - File names: `DOMAIN_JSON`, `FILES_METADATA_JSON`, `SHAREPOINT_MAP_CSV`, `FILE_MAP_CSV`, `VECTOR_STORE_MAP_CSV`
+  - Settings: `APPEND_TO_MAP_FILES_EVERY_X_LINES`, `DEFAULT_FILETYPES_ACCEPTED_BY_VECTOR_STORES`
+
+**[2024-12-27 16:53]**
+- Updated V2CR-FR-05: Replaced full-file rewrite with buffered append writes
+- Added `MapFileWriter` class with `APPEND_TO_MAP_FILES_EVERY_X_LINES` config
+- Force flush triggers: header creation, first item, last item
+
+**[2024-12-27 16:48]**
+- Added `file_type` column to `files_map.csv`
+- Clarified `downloaded_utc` semantics: files_map = when downloaded to disk, vectorstore_map = copied from files_map
+- Added error handling for SharePoint connection failures: skip source, continue with next
+- Added error handling for file download failures: log error, set `sharepoint_error`, skip item, continue
 
 **[2024-12-19 17:26]**
 - Initial version extracted from `_V2_SPEC_ROUTERS.md`

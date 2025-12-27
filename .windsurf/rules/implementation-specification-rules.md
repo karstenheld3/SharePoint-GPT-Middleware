@@ -59,7 +59,7 @@ Implementation specifications should include these sections when relevant:
 12. **Action Flow**: Step-by-step event sequences
 13. **Data Structures**: HTML/DOM, API contracts, file formats
 14. **Implementation Details**: Code organization, function signatures
-15. **Spec Changes**: Timestamped changelog
+15. **Spec Changes**: Timestamped changelog (most recent on top)
 
 ## Formatting Conventions
 
@@ -327,7 +327,7 @@ User clicks [Pause] or [Resume]
 
 ### Provide a 'Spec Changes'
 
-Use timestamped changelog format with grouped changes per session. Avoid tables - use nested lists instead.
+Use timestamped changelog format with grouped changes per session. **IMPORTANT: Most recent changes at top (reverse chronological order).** Avoid tables - use nested lists instead.
 
 **BAD:**
 ```
