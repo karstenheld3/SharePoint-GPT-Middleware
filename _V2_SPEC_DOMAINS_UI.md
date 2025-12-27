@@ -477,8 +477,9 @@ def _generate_domains_ui_page(domains: list) -> str: ...
 @router.get("/")                    # L: List (ui/json/html)
 @router.get("/get")                 # G: Get single domain
 @router.post("/create")             # C: Create domain
-@router.post("/update")             # U: Update domain
-@router.post("/delete")             # D: Delete domain
+@router.put("/update")              # U: Update domain
+@router.delete("/delete")           # D: Delete domain (GET fallback)
+@router.get("/selftest")            # Selftest (stream only)
 ```
 
 ### Endpoint Signatures
@@ -502,9 +503,14 @@ def _generate_domains_ui_page(domains: list) -> str: ...
 - Body: `name`, `description`, `vector_store_name`, `vector_store_id`, `sources_json`
 - Returns: JSON result with updated domain
 
-**Delete (POST /v2/domains/delete)**
+**Delete (DELETE/GET /v2/domains/delete)**
 - Query params: `domain_id`, `format` (json)
 - Returns: JSON result with success/error
+
+**Selftest (GET /v2/domains/selftest)**
+- Query params: `format` (stream only)
+- Streaming endpoint that tests all CRUD operations
+- Returns: SSE stream with test results, end_json contains passed/failed counts
 
 ## Data Structures
 
@@ -556,17 +562,16 @@ interface Domain {
 
 ## Differences from demorouter2.py
 
-| Feature | demorouter2 | domains |
-|---------|-------------|---------|
-| Bulk selection | Yes | No (for now) |
-| Streaming endpoints | Yes (selftest, create_demo_items) | No (for now) |
-| Console panel | Yes | No (for now) |
-| Table columns | ID, Name, Version | Domain ID, Name, Vector Store Name, Vector Store ID |
-| Primary key | item_id | domain_id |
-| Storage | {storage}/demorouter2/items.json | {storage}/domains/{domain_id}/domain.json |
+- **Bulk selection**: demorouter2=Yes, domains=No
+- **Streaming endpoints**: demorouter2=selftest+create_demo_items, domains=selftest
+- **Console panel**: demorouter2=Yes, domains=Yes (initially hidden)
+- **Table columns**: demorouter2=ID/Name/Version, domains=Domain ID/Name/Vector Store Name/Vector Store ID
+- **Primary key**: demorouter2=item_id, domains=domain_id
+- **Storage**: demorouter2={storage}/demorouter2/items.json, domains={storage}/domains/{domain_id}/domain.json
 
 ## Spec Changes
 
+- 2025-12-27: Updated spec to match implementation: added selftest endpoint, console panel (hidden), corrected DELETE method
 - 2025-12-27: Added Domain ID rename support in Edit form (follows demorouter2 pattern per DD-E014)
 - 2025-12-18: Initial specification created
 - 2025-12-18: Fixed TypeScript interface (added description, file_sources, sitepage_sources, list_sources)

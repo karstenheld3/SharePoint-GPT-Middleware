@@ -70,7 +70,7 @@ Users need to review historical operation results (crawls, site scans) for audit
 |                                                                                                                  |
 | +----------------------------------------------------------------------------------------------------------------+
 | | [Resize Handle - Draggable]                                                                           (hidden) |
-| | Console Output                                                                                         [Clear] |
+| | Console Output (disconnected) http://...monitor?job_id=jb_XX&format=stream      [Pause] [Cancel] [Clear]   [X] |
 | +----------------------------------------------------------------------------------------------------------------+
 |                                                                                                                  |
 +------------------------------------------------------------------------------------------------------------------+

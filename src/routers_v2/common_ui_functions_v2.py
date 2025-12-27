@@ -136,7 +136,7 @@ def generate_console_panel(title: str = "Console Output", include_pause_resume_c
   return f"""<div id="console-panel" class="console-panel">
     <div class="console-resize-handle" id="console-resize-handle"></div>
     <div class="console-header">
-      <div><span id="console-title">{_escape_html(title)}</span> <span id="console-status" class="console-status">(disconnected)</span></div>
+      <div><span id="console-title">{_escape_html(title)}</span> <span id="console-status" class="console-status">(disconnected)</span> <a id="console-monitor-link" href="#" target="_blank" style="display: none; margin-left: 1rem; font-size: 0.85em;"></a></div>
       <div class="console-controls">
         {pause_btn}
         {cancel_btn}
@@ -361,6 +361,7 @@ def generate_console_js(router_prefix: str, jobs_control_endpoint: str) -> str:
 // ============================================
 let currentStreamUrl = null;
 let currentJobId = null;
+let currentMonitorUrl = null;
 let isPaused = false;
 const MAX_CONSOLE_CHARS = 1000000;
 
@@ -446,8 +447,10 @@ function handleSSEData(eventType, data) {{
     try {{
       const json = JSON.parse(data);
       currentJobId = json.job_id || null;
+      currentMonitorUrl = json.monitor_url || null;
       isPaused = false;
       updatePauseResumeButton();
+      updateMonitorLink();
       appendToConsole("===== START: Job ID='" + json.job_id + "'");
     }} catch (e) {{
       appendToConsole(data);
@@ -541,6 +544,19 @@ function updateConsoleStatus(state) {{
     statusEl.textContent = '(connecting...)';
   }} else if (state === 'connected') {{
     statusEl.textContent = '(connected)';
+  }}
+}}
+
+function updateMonitorLink() {{
+  const linkEl = document.getElementById('console-monitor-link');
+  if (!linkEl) return;
+  if (currentMonitorUrl && currentJobId) {{
+    const fullUrl = window.location.origin + currentMonitorUrl;
+    linkEl.href = currentMonitorUrl;
+    linkEl.textContent = fullUrl;
+    linkEl.style.display = 'inline';
+  }} else {{
+    linkEl.style.display = 'none';
   }}
 }}
 

@@ -81,29 +81,29 @@ A reactive web UI for managing demo items with CRUD operations and streaming job
 
 ```
 main page: /v2/demorouter1?format=ui
-+-------------------------------------------------------------------------------------------+
-| Demo Items (3)  [Reload]                                                                  |
-| Back to Demo Router                                                                       |
-| [New Item] [Create Demo Items] [Run Selftest] [Delete (0)]                                |
-|                                                                                           |
-| +---+-------------+------------+---------+-------------------+                            |
-| |[x]| ID          | Name       | Version | Actions           |                            |
-| +---+-------------+------------+---------+-------------------+                            |
-| |[ ]| demo_001    | Item One   | 1       | [Edit] [Delete]   |                            |
-| |[ ]| demo_002    | Item Two   | 2       | [Edit] [Delete]   |                            |
-| |[x]| demo_003    | Item Three | 1       | [Edit] [Delete]   |                            |
-| +---+-------------+------------+---------+-------------------+                            |
-|                                                                                           |
-+-- [Resize Handle] ------------------------------------------------------------------------+
-| Console Output (connected)                                   [Pause] [Cancel] [Clear] [X] |
-|-------------------------------------------------------------------------------------------|
-| ===== START: Job ID='jb_42'                                                               |
-| Creating 10 demo items (batch ID='abc123', delay=300ms each)...                           |
-| [ 1 / 10 ] Creating item 'demo_abc123_001'...                                             |
-|   OK.                                                                                     |
-| [ 2 / 10 ] Creating item 'demo_abc123_002'...                                             |
-|                                                                                           |
-+-------------------------------------------------------------------------------------------+
++-------------------------------------------------------------------------------------------------------+
+| Demo Items (3)  [Reload]                                                                              |
+| Back to Demo Router                                                                                   |
+| [New Item] [Create Demo Items] [Run Selftest] [Delete (0)]                                            |
+|                                                                                                       |
+| +---+-------------+------------+---------+-------------------+                                        |
+| |[x]| ID          | Name       | Version | Actions           |                                        |
+| +---+-------------+------------+---------+-------------------+                                        |
+| |[ ]| demo_001    | Item One   | 1       | [Edit] [Delete]   |                                        |
+| |[ ]| demo_002    | Item Two   | 2       | [Edit] [Delete]   |                                        |
+| |[x]| demo_003    | Item Three | 1       | [Edit] [Delete]   |                                        |
+| +---+-------------+------------+---------+-------------------+                                        |
+|                                                                                                       |
++-- [Resize Handle] ------------------------------------------------------------------------------------+
+| Console Output (connected) http://...monitor?job_id=jb_42&format=stream  [Pause] [Cancel] [Clear] [X] |
+|-------------------------------------------------------------------------------------------------------+
+| ===== START: Job ID='jb_42'                                                                           |
+| Creating 10 demo items (batch ID='abc123', delay=300ms each)...                                       |
+| [ 1 / 10 ] Creating item 'demo_abc123_001'...                                                         |
+|   OK.                                                                                                 |
+| [ 2 / 10 ] Creating item 'demo_abc123_002'...                                                         |
+|                                                                                                       |
++-------------------------------------------------------------------------------------------------------+
 
 Toast Container (top-right, fixed position):
 +-----------------------------------------------+
@@ -256,10 +256,13 @@ Benefits:
 ### Console Header Controls
 
 ```
-[Pause] | [Clear] | [X]
+Console Output (status) [Monitor URL link]    [Pause] [Cancel] [Clear] [X]
 ```
 
+- **Status** - `(disconnected)`, `(connecting...)`, `(connected)`
+- **Monitor URL link** - Clickable full URL (e.g., `http://127.0.0.1:8000/v2/jobs/monitor?job_id=jb_42&format=stream`), opens raw stream in new tab; persists after job completes
 - **[Pause]** - Disabled when no job running; toggles to [Resume] when paused
+- **[Cancel]** - Disabled when no job running; cancels current job
 - **[Clear]** - Always enabled, clears console output
 - **[X]** - Hides console panel
 

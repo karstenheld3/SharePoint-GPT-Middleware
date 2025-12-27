@@ -36,8 +36,10 @@ This specification defines a reusable UI library for V2 routers, following the p
 - Resizable via drag handle (min 45px, max viewport-30px)
 - SSE streaming output with auto-scroll
 - Status indicator: connecting, connected, disconnected
+- Monitor URL link: clickable full URL (e.g., `http://127.0.0.1:8000/v2/jobs/monitor?job_id=jb_42&format=stream`) opens raw stream in new tab
+- Monitor link persists after job completes (allows access to completed job output)
 - Truncation at 1,000,000 chars with "[truncated]" prefix
-- Module-level state: `currentStreamUrl`, `currentJobId`, `isPaused`, `MAX_CONSOLE_CHARS`
+- Module-level state: `currentStreamUrl`, `currentJobId`, `currentMonitorUrl`, `isPaused`, `MAX_CONSOLE_CHARS`
 
 **V2UI-FR-04: SSE Streaming**
 - Connect to stream endpoints via fetch API
@@ -206,8 +208,10 @@ const ROW_ID_PREFIX = '{object}';  // 'job', 'domain', 'item'
 │      ├─ Resize Handle (#console-resize-handle)                              │
 │      ├─ Console Header (.console-header)                                    │
 │      │   ├─ Title + Status (#console-title, #console-status)                │
+│      │   ├─ Monitor Link (#console-monitor-link) - clickable URL            │
 │      │   └─ Controls (.console-controls)                                    │
 │      │       ├─ Pause/Resume (#btn-pause-resume)                            │
+│      │       ├─ Cancel (#btn-cancel)                                        │
 │      │       ├─ Clear button                                                │
 │      │       └─ Close button (.console-close)                               │
 │      └─ Console Output (#console-output)                                    │
@@ -704,6 +708,7 @@ All JavaScript functions are generated as part of the UI page. The library provi
 - `showConsole()` - Show console panel
 - `hideConsole()` - Hide console panel
 - `updateConsoleStatus(state)` - Update status indicator
+- `updateMonitorLink()` - Update monitor URL link (show/hide, set href and text)
 - `initConsoleResize()` - Enable drag-to-resize
 
 #### 4. Job Control Functions

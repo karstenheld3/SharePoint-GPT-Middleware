@@ -70,7 +70,7 @@ Users need to monitor crawler progress, view real-time output, and control runni
 |                                                                                                                     |
 | +-------------------------------------------------------------------------------------------------------------------+
 | | [Resize Handle - Draggable]                                                                                       |
-| | Console Output                                                                                            [Clear] |
+| | Console Output (connected) http://...monitor?job_id=jb_42&format=stream          [Pause] [Cancel] [Clear]     [X] |
 | | ----------------------------------------------------------------------------------------------------------------- |
 | | [ 1 / 20 ] Downloading 'document_001.pdf'...                                                                      |
 | |   OK.                                                                                                             |
