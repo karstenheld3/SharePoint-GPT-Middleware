@@ -259,3 +259,209 @@ def rename_domain(storage_path: str, source_domain_id: str, target_domain_id: st
     return True, ""
   except Exception as e:
     return False, f"Failed to rename domain: {str(e)}"
+
+
+# ----------------------------------------- START: Path Helpers -------------------------------------------------------
+
+# Map source_type to folder prefix using config constants
+SOURCE_TYPE_FOLDERS = {
+  "file_sources": CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOCUMENTS_FOLDER,      # "01_files"
+  "list_sources": CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_LISTS_FOLDER,          # "02_lists"
+  "sitepage_sources": CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_SITEPAGES_FOLDER   # "03_sitepages"
+}
+
+def get_source_folder_path(storage_path: str, domain_id: str, source_type: str, source_id: str) -> str:
+  """
+  Get the base folder path for a source.
+  Example: /data/crawler/DOMAIN01/01_files/source01/
+  """
+  crawler_folder = CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_CRAWLER_SUBFOLDER
+  return os.path.join(storage_path, crawler_folder, domain_id, SOURCE_TYPE_FOLDERS[source_type], source_id)
+
+def get_embedded_folder_path(storage_path: str, domain_id: str, source_type: str, source_id: str) -> str:
+  """Get path to 02_embedded subfolder."""
+  return os.path.join(get_source_folder_path(storage_path, domain_id, source_type, source_id), CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_EMBEDDED_SUBFOLDER)
+
+def get_failed_folder_path(storage_path: str, domain_id: str, source_type: str, source_id: str) -> str:
+  """Get path to 03_failed subfolder."""
+  return os.path.join(get_source_folder_path(storage_path, domain_id, source_type, source_id), CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_FAILED_SUBFOLDER)
+
+def get_originals_folder_path(storage_path: str, domain_id: str, source_type: str, source_id: str) -> str:
+  """Get path to 01_originals subfolder (lists/sitepages only)."""
+  return os.path.join(get_source_folder_path(storage_path, domain_id, source_type, source_id), CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_ORIGINALS_SUBFOLDER)
+
+def server_relative_url_to_local_path(server_relative_url: str, sharepoint_url_part: str) -> str:
+  """
+  Convert SharePoint server_relative_url to local relative path.
+  Example: "/sites/demo/Shared Documents/Reports/Q1.docx" with sharepoint_url_part="/Shared Documents" -> "Reports/Q1.docx"
+  """
+  from urllib.parse import unquote
+  decoded_url = unquote(server_relative_url)
+  decoded_part = unquote(sharepoint_url_part)
+  idx = decoded_url.lower().find(decoded_part.lower())
+  if idx != -1:
+    local_path = decoded_url[idx + len(decoded_part):]
+    local_path = local_path.lstrip('/')
+    return local_path.replace('/', os.sep)
+  return os.path.basename(decoded_url)
+
+def get_file_relative_path(domain_id: str, source_type: str, source_id: str, subfolder: str, local_path: str) -> str:
+  """
+  Build file_relative_path for map files.
+  Example: "DOMAIN01\\01_files\\source01\\02_embedded\\Reports\\Q1.docx"
+  """
+  return os.path.join(domain_id, SOURCE_TYPE_FOLDERS[source_type], source_id, subfolder, local_path)
+
+# ----------------------------------------- END: Path Helpers ---------------------------------------------------------
+
+
+# ----------------------------------------- START: files_metadata.json Helpers ----------------------------------------
+
+STANDARD_METADATA_FIELDS = {
+  "sharepoint_listitem_id", "sharepoint_unique_file_id", "openai_file_id",
+  "file_relative_path", "url", "raw_url", "server_relative_url",
+  "filename", "file_type", "file_size", "last_modified_utc", "last_modified_timestamp",
+  "embedded_utc", "source_id", "source_type"
+}
+
+def get_domain_path(storage_path: str, domain_id: str) -> str:
+  """Get path to domain folder in domains subfolder."""
+  return os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER, domain_id)
+
+def load_files_metadata(domain_path: str) -> list:
+  """Load files_metadata.json, return empty list if not exists."""
+  metadata_path = os.path.join(domain_path, CRAWLER_HARDCODED_CONFIG.FILES_METADATA_JSON)
+  if not os.path.exists(metadata_path): return []
+  try:
+    with open(metadata_path, 'r', encoding='utf-8') as f:
+      return json.load(f)
+  except Exception:
+    return []
+
+def save_files_metadata(domain_path: str, metadata: list) -> None:
+  """Save files_metadata.json with graceful write (temp + rename)."""
+  metadata_path = os.path.join(domain_path, CRAWLER_HARDCODED_CONFIG.FILES_METADATA_JSON)
+  temp_path = metadata_path + ".tmp"
+  os.makedirs(domain_path, exist_ok=True)
+  with open(temp_path, 'w', encoding='utf-8') as f:
+    json.dump(metadata, f, indent=2, ensure_ascii=False)
+  os.replace(temp_path, metadata_path)
+
+def carry_over_custom_properties(new_entry: dict, existing_entries: list) -> dict:
+  """
+  Copy non-standard fields from most recent existing entry with same sharepoint_unique_file_id.
+  Implements V2CR-FR-06.
+  """
+  target_uid = new_entry.get("sharepoint_unique_file_id")
+  if not target_uid: return new_entry
+  matching = [e for e in existing_entries if e.get("sharepoint_unique_file_id") == target_uid]
+  if not matching: return new_entry
+  most_recent = max(matching, key=lambda e: e.get("embedded_utc", ""))
+  for key, value in most_recent.items():
+    if key not in STANDARD_METADATA_FIELDS and key not in new_entry:
+      new_entry[key] = value
+  return new_entry
+
+def update_files_metadata(domain_path: str, new_entries: list) -> None:
+  """
+  Add new entries to files_metadata.json with carry-over of custom properties.
+  Implements V2CR-FR-06.
+  """
+  existing = load_files_metadata(domain_path)
+  for entry in new_entries:
+    entry = carry_over_custom_properties(entry, existing)
+    existing.append(entry)
+  save_files_metadata(domain_path, existing)
+
+# ----------------------------------------- END: files_metadata.json Helpers ------------------------------------------
+
+
+# ----------------------------------------- START: Source Filtering ---------------------------------------------------
+
+def get_sources_for_scope(domain: DomainConfig, scope: str, source_id: Optional[str] = None) -> list:
+  """
+  Filter domain sources by scope and optional source_id.
+  
+  Args:
+    domain: DomainConfig with file_sources, list_sources, sitepage_sources
+    scope: "all" | "files" | "lists" | "sitepages"
+    source_id: Optional filter to single source
+    
+  Returns:
+    List of (source_type, source) tuples.
+  """
+  sources = []
+  if scope in ("all", "files"):
+    for src in domain.file_sources:
+      sources.append(("file_sources", src))
+  if scope in ("all", "lists"):
+    for src in domain.list_sources:
+      sources.append(("list_sources", src))
+  if scope in ("all", "sitepages"):
+    for src in domain.sitepage_sources:
+      sources.append(("sitepage_sources", src))
+  
+  if source_id:
+    sources = [(st, src) for st, src in sources if src.source_id == source_id]
+  
+  return sources
+
+# ----------------------------------------- END: Source Filtering -----------------------------------------------------
+
+
+# ----------------------------------------- START: dry_run Helpers ----------------------------------------------------
+
+def get_map_filename(base_name: str, job_id: Optional[str] = None) -> str:
+  """
+  Get map filename, with job_id suffix for dry_run mode.
+  
+  Examples:
+    get_map_filename("sharepoint_map.csv", None) -> "sharepoint_map.csv"
+    get_map_filename("sharepoint_map.csv", "jb_123") -> "sharepoint_map_jb_123.csv"
+  """
+  if not job_id: return base_name
+  name, ext = os.path.splitext(base_name)
+  return f"{name}_{job_id}{ext}"
+
+def cleanup_temp_map_files(source_folder: str, job_id: str) -> None:
+  """Delete temp map files after dry_run completes. Called in finally block."""
+  if not job_id: return
+  import glob
+  pattern = os.path.join(source_folder, f"*_{job_id}.csv")
+  for filepath in glob.glob(pattern):
+    try:
+      os.remove(filepath)
+    except Exception:
+      pass
+
+# ----------------------------------------- END: dry_run Helpers ------------------------------------------------------
+
+
+# ----------------------------------------- START: File Type Filtering ------------------------------------------------
+
+def is_file_embeddable(filename: str) -> bool:
+  """
+  Check if file type is accepted by vector stores.
+  Uses CRAWLER_HARDCODED_CONFIG.DEFAULT_FILETYPES_ACCEPTED_BY_VECTOR_STORES.
+  """
+  if not filename: return False
+  ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+  return ext in CRAWLER_HARDCODED_CONFIG.DEFAULT_FILETYPES_ACCEPTED_BY_VECTOR_STORES
+
+def filter_embeddable_files(files: list) -> tuple:
+  """
+  Split files into embeddable and non-embeddable.
+  Returns: (embeddable, skipped)
+  Files must have 'filename' attribute.
+  """
+  embeddable = []
+  skipped = []
+  for f in files:
+    fname = getattr(f, 'filename', None) or f.get('filename', '') if isinstance(f, dict) else None
+    if fname and is_file_embeddable(fname):
+      embeddable.append(f)
+    else:
+      skipped.append(f)
+  return embeddable, skipped
+
+# ----------------------------------------- END: File Type Filtering --------------------------------------------------

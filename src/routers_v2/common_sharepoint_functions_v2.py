@@ -1,11 +1,11 @@
 # Common functions for SharePoint operations using Office365-REST-Python-Client
 # https://pypi.org/project/Office365-REST-Python-Client/#Working-with-SharePoint-API
 # V2 version using MiddlewareLogger
-import os
+import csv, os
 from cryptography import x509
 from datetime import datetime
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote, unquote
 from dataclasses import asdict, dataclass
 from office365.sharepoint.client_context import ClientContext
 from office365.sharepoint.lists.list import List as DocumentLibrary
@@ -16,11 +16,15 @@ from routers_v2.common_logging_functions_v2 import MiddlewareLogger
 
 @dataclass
 class SharePointFile:
-    id: str
-    unique_id: str
+    """File metadata from SharePoint API - aligned with sharepoint_map.csv columns (10 fields)."""
+    sharepoint_listitem_id: int
+    sharepoint_unique_file_id: str
     filename: str
-    server_relative_url: str
+    file_type: str
     file_size: int
+    url: str
+    raw_url: str
+    server_relative_url: str
     last_modified_utc: str
     last_modified_timestamp: int
 
@@ -193,24 +197,30 @@ def get_document_library_files(ctx: ClientContext, document_library: DocumentLib
     
     # Convert to SharePointFile dataclass instances
     sharepoint_files = []
+    # Get site base URL for building full URLs
+    parsed = urlparse(ctx.service_root_url())
+    site_base_url = f"{parsed.scheme}://{parsed.netloc}"
+    
     for item in all_items:
       try:
         # Extract properties
-        item_id = str(item.properties.get('Id', ''))
+        item_id = int(item.properties.get('Id', 0))
         unique_id = str(item.properties.get('UniqueId', ''))
         file_leaf_ref = item.properties.get('FileLeafRef', '')
         file_ref = item.properties.get('FileRef', '')
+        # Derive file_type from filename
+        file_type = file_leaf_ref.rsplit('.', 1)[-1].lower() if '.' in file_leaf_ref else ''
+        # Build URLs
+        raw_url = site_base_url + file_ref
+        url = site_base_url + quote(file_ref, safe='/:@')
         # Get file size from expanded File property
         file_size = 0
         if 'File' in item.properties and item.properties['File']:
           file_obj = item.properties['File']
-          # File is a ClientObject, access properties directly
           if hasattr(file_obj, 'properties') and 'Length' in file_obj.properties:
             file_size = int(file_obj.properties['Length'])
           elif hasattr(file_obj, 'Length'):
             file_size = int(file_obj.Length)
-        
-        # Fallback: try direct property access
         if file_size == 0 and 'Length' in item.properties:
           file_size = int(item.properties.get('Length', 0))
         modified = item.properties.get('Modified', '')
@@ -220,7 +230,6 @@ def get_document_library_files(ctx: ClientContext, document_library: DocumentLib
         last_modified_timestamp = 0
         if modified:
           try:
-            # SharePoint returns dates in ISO format
             dt = datetime.fromisoformat(modified.replace('Z', '+00:00'))
             last_modified_utc = dt.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
             last_modified_timestamp = int(dt.timestamp())
@@ -229,13 +238,16 @@ def get_document_library_files(ctx: ClientContext, document_library: DocumentLib
             last_modified_utc = modified
             last_modified_timestamp = 0
         
-        # Create SharePointFile instance
+        # Create SharePointFile instance with new fields
         sp_file = SharePointFile(
-          id=item_id,
-          unique_id=unique_id,
+          sharepoint_listitem_id=item_id,
+          sharepoint_unique_file_id=unique_id,
           filename=file_leaf_ref,
-          server_relative_url=file_ref,
+          file_type=file_type,
           file_size=file_size,
+          url=url,
+          raw_url=raw_url,
+          server_relative_url=file_ref,
           last_modified_utc=last_modified_utc,
           last_modified_timestamp=last_modified_timestamp
         )
@@ -251,3 +263,110 @@ def get_document_library_files(ctx: ClientContext, document_library: DocumentLib
   except Exception as e:
     logger.log_function_output(f"ERROR: Failed to retrieve files from document library: {str(e)}")
     return []
+
+
+# ----------------------------------------- START: File Download ------------------------------------------------------
+
+def download_file_from_sharepoint(ctx: ClientContext, server_relative_url: str, target_path: str, preserve_timestamp: bool = True, last_modified_timestamp: int = None) -> tuple[bool, str]:
+  """
+  Download a single file from SharePoint to local disk.
+  
+  Args:
+    ctx: Authenticated SharePoint context
+    server_relative_url: SharePoint file path (e.g., "/sites/demo/Shared Documents/file.docx")
+    target_path: Local filesystem path to save file
+    preserve_timestamp: If True, set file mtime to SharePoint last_modified
+    last_modified_timestamp: Unix timestamp to apply if preserve_timestamp=True
+    
+  Returns:
+    (success, error_message)
+  """
+  try:
+    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+    with open(target_path, 'wb') as f:
+      ctx.web.get_file_by_server_relative_url(server_relative_url).download(f).execute_query()
+    if preserve_timestamp and last_modified_timestamp:
+      os.utime(target_path, (last_modified_timestamp, last_modified_timestamp))
+    return True, ""
+  except Exception as e:
+    return False, str(e)
+
+# ----------------------------------------- END: File Download --------------------------------------------------------
+
+
+# ----------------------------------------- START: List Operations ----------------------------------------------------
+
+def get_list_items(ctx: ClientContext, list_name: str, filter_query: str, logger: MiddlewareLogger) -> list:
+  """Get all items from a SharePoint list as dictionaries."""
+  try:
+    sp_list = ctx.web.lists.get_by_title(list_name)
+    items_query = sp_list.items
+    if filter_query and filter_query.strip():
+      items_query = items_query.filter(filter_query)
+    
+    def print_progress(items):
+      logger.log_function_output(f"Retrieved {len(items)} list items so far...")
+    
+    all_items = items_query.get_all(5000, print_progress).execute_query()
+    logger.log_function_output(f"Total list items retrieved: {len(all_items)}")
+    
+    result = []
+    for item in all_items:
+      result.append(dict(item.properties))
+    return result
+  except Exception as e:
+    logger.log_function_output(f"ERROR: Failed to get list items: {str(e)}")
+    return []
+
+def export_list_to_csv(ctx: ClientContext, list_name: str, filter_query: str, target_path: str, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Export SharePoint list to CSV file. Returns (success, error_message)."""
+  try:
+    items = get_list_items(ctx, list_name, filter_query, logger)
+    if not items:
+      return True, ""  # Empty list is valid
+    
+    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+    
+    # Get all unique keys from all items
+    all_keys = set()
+    for item in items:
+      all_keys.update(item.keys())
+    fieldnames = sorted(all_keys)
+    
+    with open(target_path, 'w', newline='', encoding='utf-8') as f:
+      writer = csv.DictWriter(f, fieldnames=fieldnames)
+      writer.writeheader()
+      for item in items:
+        writer.writerow(item)
+    
+    logger.log_function_output(f"Exported {len(items)} items to '{target_path}'")
+    return True, ""
+  except Exception as e:
+    return False, str(e)
+
+# ----------------------------------------- END: List Operations ------------------------------------------------------
+
+
+# ----------------------------------------- START: Site Pages Operations ----------------------------------------------
+
+def get_site_pages(ctx: ClientContext, pages_url_part: str, filter_query: str, logger: MiddlewareLogger) -> list:
+  """Get site pages metadata. Similar to get_document_library_files but for SitePages library."""
+  library, error = try_get_document_library(ctx, ctx.web.url, pages_url_part)
+  if error:
+    logger.log_function_output(f"ERROR: {error}")
+    return []
+  return get_document_library_files(ctx, library, filter_query, logger)
+
+def download_site_page_html(ctx: ClientContext, server_relative_url: str, target_path: str, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Download site page content as HTML file. Returns (success, error_message)."""
+  try:
+    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+    # Get the page file content
+    with open(target_path, 'wb') as f:
+      ctx.web.get_file_by_server_relative_url(server_relative_url).download(f).execute_query()
+    logger.log_function_output(f"Downloaded site page to '{target_path}'")
+    return True, ""
+  except Exception as e:
+    return False, str(e)
+
+# ----------------------------------------- END: Site Pages Operations ------------------------------------------------
