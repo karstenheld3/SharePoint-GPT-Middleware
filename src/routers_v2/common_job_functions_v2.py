@@ -280,13 +280,14 @@ class StreamingJobWriter:
           break
   
   def _find_control_file(self, control_type: str) -> Optional[str]:
-    """Find control file matching this job_id."""
-    pattern = os.path.join(self._jobs_folder, f"*[{self._job_id}]*.{control_type}")
+    """Find control file matching this job_id. Escapes brackets for glob pattern."""
+    # Escape [ and ] in glob pattern: [[] matches literal [, []] matches literal ]
+    pattern = os.path.join(self._jobs_folder, f"*[[]{self._job_id}[]]*.{control_type}")
     files = glob.glob(pattern)
     if files: return files[0]
     
     # Also check simpler pattern without object_id
-    pattern = os.path.join(self._jobs_folder, f"*[{self._job_id}].{control_type}")
+    pattern = os.path.join(self._jobs_folder, f"[[]{self._job_id}[]].{control_type}")
     files = glob.glob(pattern)
     return files[0] if files else None
   

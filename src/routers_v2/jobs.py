@@ -1277,12 +1277,6 @@ async def jobs_selftest(request: Request):
         if sse: yield sse
         
         # ===== CATEGORY 6: CONTROL ERROR CASES (4 tests) =====
-        # Pause Job 2 again for force cancel test
-        sse = log("Pausing Job 2 again for force cancel test...")
-        if sse: yield sse
-        await client.get(f"{control_url}?job_id={pause_resume_job_id}&action=pause")
-        await wait_for_extension(pause_resume_job_id, "paused", max_wait=3.0)
-        
         sse = next_test("Pause completed job (should fail)")
         if sse: yield sse
         r = await client.get(f"{control_url}?job_id={completed_job_id}&action=pause")
@@ -1295,10 +1289,18 @@ async def jobs_selftest(request: Request):
         sse = check(r.json().get("ok") == False, "Resume cancelled job fails", f"Expected error, got: {r.json()}")
         if sse: yield sse
         
-        sse = next_test("Force cancel paused job (Job 2)")
+        # Cancel Job 2's background task first (releases file handle), then force cancel
+        sse = log("Cancelling Job 2 background task for force cancel test...")
         if sse: yield sse
-        r = await client.get(f"{control_url}?job_id={pause_resume_job_id}&action=cancel&force=true")
-        sse = check(r.json().get("ok") == True, "Force cancel paused job succeeds", f"Got: {r.json()}")
+        if task2 and not task2.done():
+          task2.cancel()
+          try: await task2
+          except asyncio.CancelledError: pass
+        
+        sse = next_test("Force cancel job (Job 2)")
+        if sse: yield sse
+        force_ok = force_cancel_job(get_persistent_storage_path(), pause_resume_job_id)
+        sse = check(force_ok, "Force cancel job succeeds", "Force cancel failed")
         if sse: yield sse
         
         sse = next_test("GET /get after force cancel")

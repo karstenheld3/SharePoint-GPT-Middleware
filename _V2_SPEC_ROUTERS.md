@@ -962,10 +962,15 @@ Create, Update, Delete operations usually support the `format=stream` query para
     - HTTP 400 if job is in terminal state (`completed`, `cancelled`): "Job '<job_id>' is already completed.", "Job '<job_id>' is already cancelled."
     - HTTP 400 if action is invalid for current state (e.g., `resume` on a `running` job): "Cannot resume running job '<job_id>'."
 - L(jhs): `/v2/jobs/monitor?job_id={id}` - Monitor long-running jobs
-  - `GET /v2/jobs/monitor?job_id={id}&format=json` -> JSON `{ [JOB_METADATA], "log" : "[LAST_LOG_EVENT_DATA]"}`
+  - `GET /v2/jobs/monitor?job_id={id}&format=json` -> JSON `{ [JOB_METADATA], "log" : "[LAST_LOG_EVENT_DATA]"}` 
   - `GET /v2/jobs/monitor?job_id={id}&format=html` -> JSON converted to nested HTML table
   - `GET /v2/jobs/monitor?job_id={id}&format=stream` -> Full stream (from first event) as Server-Sent Events
 - L(jh): `/v2/jobs/results?job_id={id}` - Return `result` JSON from `end_json` event of the stream
+- X(s): `/v2/jobs/selftest` - Self-test for jobs router operations
+  - Only supports `format=stream`
+  - Tests: error cases, job creation, monitor endpoint, pause/resume, cancel, force cancel, delete
+  - Creates 4 test jobs during execution, cleans up after completion
+  - Result: `{ok, error, data: {passed, failed, passed_tests, failed_tests}}`
 
 **Reports**
 - L(jhu)G(jh)D(j): `/v2/reports` - Report archives for auditing and debugging (see `_V2_SPEC_REPORTS.md`)
@@ -1687,9 +1692,11 @@ def delete_job(persistent_storage_path: str, job_id: str) -> bool:
 
 def force_cancel_job(persistent_storage_path: str, job_id: str) -> bool:
   """Force cancel stalled job by renaming .running -> .cancelled. Cleans up control files."""
-```
 
 ### Spec Changes
+
+**[2025-12-27 15:20]**
+- Added: `X(s): /v2/jobs/selftest` endpoint - self-test for jobs router operations (46 tests)
 
 **[2024-12-17 12:10]**
 - Added: "Scenario" section with Problem/Solution/What we don't want

@@ -78,7 +78,7 @@ main page: /v2/jobs?format=ui
 +------------------------------------------------------------------------------------------------------------------------------------+
 | Jobs (4) [Reload]                                                                                                                  |
 | Back to main page                                                                                                                  |
-| [Delete (0)]                                                                                                                       |         
+| [Delete (0)]                                                                                                                       |
 |                                                                                                                                    |
 | +---+-------+-----------+---------------------+----------+-----------+--------+---------+----------+-----------------------------+ |
 | |[ ]| ID    | Router    | Endpoint            | Objects  | State     | Result | Started | Finished | Actions                     | |
@@ -573,6 +573,7 @@ User clicks [Disconnect]
     
     <div class="toolbar">
       <button id="btn-delete-selected" onclick="bulkDelete()" class="btn-small btn-delete" disabled>Delete Selected (0)</button>
+      <button class="btn-primary" data-url="/v2/jobs/selftest?format=stream" data-format="stream" data-show-result="modal" data-reload-on-finish="true" onclick="callEndpoint(this)">Run Selftest</button>
       <button onclick="refreshJobs()" class="btn-small">Refresh</button>
     </div>
     
@@ -763,6 +764,9 @@ The Jobs UI uses `/static/css/routers_v2.css` which provides all V2 UI component
 No additional inline CSS required - all styles are shared with other V2 routers.
 
 ## Spec Changes
+
+**[2025-12-27 15:20]**
+- Added: [Run Selftest] button in toolbar - streams to console, shows result in modal, reloads on finish
 
 **[2025-12-18 19:48]**
 - Changed: Removed duplicated `escapeHtml()` implementation - reference common spec
