@@ -597,6 +597,8 @@ function appendToConsole(text) {{
 
 function clearConsole() {{
   document.getElementById('console-output').textContent = '';
+  currentMonitorUrl = null;
+  updateMonitorLink();
 }}
 
 function hideConsole() {{

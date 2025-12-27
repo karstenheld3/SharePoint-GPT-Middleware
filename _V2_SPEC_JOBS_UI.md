@@ -393,6 +393,7 @@ Console panel structure and core functions are provided by `common_ui_functions_
 **Jobs-specific behavior:**
 - Clicking [Monitor] on different job disconnects current stream, connects to new one
 - Console title shows job ID: "Console Output (connected): Job ID='jb_44'"
+- [Clear] button clears console output AND removes monitor URL link from header
 
 ### Timestamp Formatting
 
@@ -764,6 +765,9 @@ The Jobs UI uses `/static/css/routers_v2.css` which provides all V2 UI component
 No additional inline CSS required - all styles are shared with other V2 routers.
 
 ## Spec Changes
+
+**[2025-12-27 15:30]**
+- Changed: [Clear] button now also clears the monitor URL link from console header
 
 **[2025-12-27 15:20]**
 - Added: [Run Selftest] button in toolbar - streams to console, shows result in modal, reloads on finish
