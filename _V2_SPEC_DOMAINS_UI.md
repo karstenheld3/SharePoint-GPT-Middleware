@@ -170,8 +170,9 @@ Modal (Edit Domain):
 |                                                          [x]  |
 | Edit Domain: DOMAIN01                                         |
 |                                                               |
-| Domain ID (read-only)                                         |
-| [DOMAIN01_____________________________________________] (disabled)
+| Domain ID                                                     |
+| [DOMAIN01_____________________________________________]       |
+| (Change to rename the domain)                                 |
 |                                                               |
 | Name *                                                        |
 | [Sales Docs____________________________________________]      |
@@ -218,11 +219,20 @@ Modal (Edit Domain):
 
 **V2DM-FR-03: Edit Domain**
 - [Edit] button on each row opens modal form with current values
-- Domain ID field is read-only (disabled)
-- Same form fields as Create (except Domain ID is disabled)
-- Submit updates domain via POST to `/v2/domains/update?format=json&domain_id={id}`
+- Domain ID field is editable (supports rename per DD-E014 from `_V2_SPEC_ROUTERS.md`)
+- Hidden `source_domain_id` field stores original ID for comparison
+- Same form fields as Create
+- Submit updates domain via PUT to `/v2/domains/update?domain_id={source_id}`
+- If Domain ID changed: includes `domain_id` in body to trigger rename
+- If Domain ID unchanged: omits `domain_id` from body (no rename)
+- ID change flow per DD-E014:
+  1. Query string `domain_id` = current identifier (source)
+  2. Body `domain_id` = new identifier (target, only if changed)
+  3. Backend validates: source exists (404 if not), target not exists (400 if collision)
+  4. Backend renames domain folder from source to target
+  5. Backend applies remaining body fields
 - Success: close modal, reload list, show success toast
-- Error: show error toast
+- Error: show error in modal footer, keep modal open
 
 **V2DM-FR-05: JSON Example Dialog**
 - [Show JSON Example] button opens nested modal
@@ -332,10 +342,75 @@ function renderDomainRow(domain) { ... }
 function showNewDomainForm() { ... }
 function submitNewDomainForm(event) { ... }
 function showEditDomainForm(domainId) { ... }
-function submitEditDomainForm(event, domainId) { ... }
+function submitEditDomainForm(event) { ... }
 
 // Delete
 function deleteDomain(domainId) { ... }
+```
+
+### Edit Form with ID Change Support
+
+Follows the same pattern as demorouter2.py per DD-E014:
+
+**Edit form structure:**
+```html
+<form id="edit-domain-form" onsubmit="return submitEditDomainForm(event)">
+  <input type="hidden" name="source_domain_id" value="${domainId}">
+  <div class="form-group">
+    <label>Domain ID</label>
+    <input type="text" name="domain_id" value="${domainId}">
+    <small style="color: #666;">Change to rename the domain</small>
+  </div>
+  <!-- ... other fields ... -->
+</form>
+```
+
+**Submit logic:**
+```javascript
+function submitEditDomainForm(event) {
+  event.preventDefault();
+  const form = document.getElementById('edit-domain-form');
+  const btn = document.querySelector('.modal-footer button[type="submit"]');
+  const formData = new FormData(form);
+  const data = {};
+  
+  const sourceDomainId = formData.get('source_domain_id');
+  const targetDomainId = formData.get('domain_id');
+  
+  // Validate Domain ID not empty
+  const domainIdInput = form.querySelector('input[name="domain_id"]');
+  if (!targetDomainId || !targetDomainId.trim()) {
+    showFieldError(domainIdInput, 'Domain ID cannot be empty');
+    return;
+  }
+  clearFieldError(domainIdInput);
+  
+  // Build data object
+  for (const [key, value] of formData.entries()) {
+    if (key === 'source_domain_id') continue;  // Skip source ID
+    if (key === 'domain_id') {
+      // Only include if changed (triggers rename per DD-E014)
+      if (value && value.trim() !== sourceDomainId) {
+        data.domain_id = value.trim();
+      }
+    } else if (value !== undefined) {
+      data[key] = value.trim();
+    }
+  }
+  
+  clearModalError();
+  callEndpoint(btn, sourceDomainId, data);  // Uses source ID in URL
+}
+```
+
+**Button data attributes:**
+```html
+<button type="submit" form="edit-domain-form" class="btn-primary"
+        data-url="{router_prefix}/{router_name}/update?domain_id=${domainId}"
+        data-method="PUT"
+        data-format="json"
+        data-reload-on-finish="true"
+        data-close-on-success="true">OK</button>
 ```
 
 ### JSON Example Content
@@ -492,6 +567,7 @@ interface Domain {
 
 ## Spec Changes
 
+- 2025-12-27: Added Domain ID rename support in Edit form (follows demorouter2 pattern per DD-E014)
 - 2025-12-18: Initial specification created
 - 2025-12-18: Fixed TypeScript interface (added description, file_sources, sitepage_sources, list_sources)
 - 2025-12-18: Updated storage to folder-per-domain structure matching V1

@@ -297,6 +297,7 @@ def generate_reports_ui_page(reports: list) -> str:
     toolbar_buttons=toolbar_buttons,
     enable_selection=True,
     enable_bulk_delete=True,
+    console_initially_hidden=True,
     list_endpoint=f"{router_prefix}/{router_name}?format=json",
     delete_endpoint=f"{router_prefix}/{router_name}/delete?report_id={{itemId}}",
     jobs_control_endpoint=f"{router_prefix}/jobs/control",
