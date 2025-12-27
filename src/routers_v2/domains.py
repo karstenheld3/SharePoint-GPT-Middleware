@@ -2,12 +2,14 @@
 # Spec: L(jhu)C(jhs)G(jh)U(jhs)D(jhs): /v2/domains
 # Uses common_ui_functions_v2.py and common_crawler_functions_v2.py
 
-import json, os, textwrap
+import json, os, textwrap, uuid
+import httpx
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 
 from routers_v2.common_ui_functions_v2 import generate_ui_page, generate_router_docs_page, generate_endpoint_docs, json_result, html_result
 from routers_v2.common_logging_functions_v2 import MiddlewareLogger
+from routers_v2.common_job_functions_v2 import StreamingJobWriter
 from routers_v2.common_crawler_functions_v2 import (
   DomainConfig, FileSource, SitePageSource, ListSource,
   load_domain, load_all_domains, save_domain_to_file, delete_domain_folder, rename_domain,
@@ -19,6 +21,18 @@ config = None
 router_prefix = None
 router_name = "domains"
 main_page_nav_html = '<a href="/">Back to Main Page</a>'
+example_domain_json = """
+{
+  "domain_id": "example_domain",
+  "name": "Example Domain",
+  "description": "Example description",
+  "vector_store_name": "example_vs",
+  "vector_store_id": "",
+  "file_sources": [],
+  "sitepage_sources": [],
+  "list_sources": []
+}
+"""
 
 def set_config(app_config, prefix):
   global config, router_prefix
@@ -301,7 +315,8 @@ async def domains_root(request: Request):
       {"path": "/get", "desc": "Get single domain", "formats": ["json", "html"]},
       {"path": "/create", "desc": "Create domain (POST)", "formats": []},
       {"path": "/update", "desc": "Update domain (PUT)", "formats": []},
-      {"path": "/delete", "desc": "Delete domain (DELETE/GET)", "formats": []}
+      {"path": "/delete", "desc": "Delete domain (DELETE/GET)", "formats": []},
+      {"path": "/selftest", "desc": "Self-test", "formats": ["stream"]}
     ]
     return HTMLResponse(generate_router_docs_page(
       title="Domains",
@@ -355,7 +370,15 @@ async def domains_root(request: Request):
     ]
     
     toolbar_buttons = [
-      {"text": "New Domain", "onclick": "showNewDomainForm()", "class": "btn-primary"}
+      {"text": "New Domain", "onclick": "showNewDomainForm()", "class": "btn-primary"},
+      {
+        "text": "Run Selftest",
+        "data_url": f"{router_prefix}/{router_name}/selftest?format=stream",
+        "data_format": "stream",
+        "data_show_result": "modal",
+        "data_reload_on_finish": "true",
+        "class": "btn-primary"
+      }
     ]
     
     html = generate_ui_page(
@@ -739,3 +762,353 @@ async def domains_delete(request: Request):
   return json_result(True, "", result)
 
 # ----------------------------------------- END: D(jh) - Delete --------------------------------------------------------------
+
+
+# ----------------------------------------- START: Selftest ------------------------------------------------------------------
+
+@router.get(f"/{router_name}/selftest")
+async def domains_selftest(request: Request):
+  """
+  Self-test for domains CRUD operations.
+  
+  Only supports format=stream.
+  
+  Tests:
+  1. Error cases (missing params, non-existent domains)
+  2. Create domain
+  3. Create with sources
+  4. Update domain
+  5. Rename domain (ID change)
+  6. Delete domain
+  
+  Example:
+  GET {router_prefix}/{router_name}/selftest?format=stream
+
+  Example domain:
+  {example_domain_json}
+  """
+  request_params = dict(request.query_params)
+  
+  if len(request_params) == 0:
+    doc = textwrap.dedent(domains_selftest.__doc__).replace("{router_prefix}", router_prefix).replace("{router_name}", router_name).replace("{example_domain_json}", example_domain_json.strip())
+    return PlainTextResponse(generate_endpoint_docs(doc, router_prefix), media_type="text/plain; charset=utf-8")
+  
+  format_param = request_params.get("format", "")
+  
+  if format_param != "stream":
+    return json_result(False, "Selftest only supports format=stream", {})
+  
+  base_url = str(request.base_url).rstrip("/")
+  
+  writer = StreamingJobWriter(
+    persistent_storage_path=get_persistent_storage_path(),
+    router_name=router_name,
+    action="selftest",
+    object_id=None,
+    source_url=str(request.url),
+    router_prefix=router_prefix
+  )
+  stream_logger = MiddlewareLogger.create(stream_job_writer=writer)
+  stream_logger.log_function_header("domains_selftest")
+  
+  test_id = f"selftest_{uuid.uuid4().hex[:8]}"
+  sources_test_id = f"selftest_src_{uuid.uuid4().hex[:8]}"
+  renamed_test_id = f"{test_id}_renamed"
+  
+  test_domain_v1 = {"domain_id": test_id, "name": "Test Domain", "description": "Selftest domain", "vector_store_name": "test_vs"}
+  test_domain_v2 = {"name": "Updated Domain", "description": "Updated description", "vector_store_name": "updated_vs"}
+  test_sources_json = json.dumps({"file_sources": [{"source_id": "src1", "site_url": "https://test.sharepoint.com", "sharepoint_url_part": "/Docs", "filter": ""}], "sitepage_sources": [], "list_sources": []})
+  
+  async def run_selftest():
+    ok_count = 0
+    fail_count = 0
+    test_num = 0
+    passed_tests = []
+    failed_tests = []
+    
+    def log(msg: str):
+      return stream_logger.log_function_output(msg)
+    
+    def next_test(description: str):
+      nonlocal test_num
+      test_num += 1
+      return log(f"[Test {test_num}] {description}")
+    
+    def check(condition: bool, ok_msg: str, fail_msg: str):
+      nonlocal ok_count, fail_count
+      if condition:
+        ok_count += 1
+        passed_tests.append(ok_msg)
+        return log(f"  OK: {ok_msg}")
+      else:
+        fail_count += 1
+        failed_tests.append(fail_msg)
+        return log(f"  FAIL: {fail_msg}")
+    
+    try:
+      yield writer.emit_start()
+      
+      async with httpx.AsyncClient(timeout=30.0) as client:
+        create_url = f"{base_url}{router_prefix}/{router_name}/create"
+        update_url = f"{base_url}{router_prefix}/{router_name}/update"
+        get_url = f"{base_url}{router_prefix}/{router_name}/get?domain_id={test_id}&format=json"
+        list_url = f"{base_url}{router_prefix}/{router_name}?format=json"
+        delete_url = f"{base_url}{router_prefix}/{router_name}/delete?domain_id={test_id}"
+        
+        # ===== ERROR CASES =====
+        sse = next_test("Error cases...")
+        if sse: yield sse
+        
+        # Test 1: POST /create without body
+        r = await client.post(create_url)
+        sse = check(r.json().get("ok") == False, "POST /create without body - returns error (ok=false)", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        # Test 2: POST /create with empty required fields
+        r = await client.post(create_url, json={"domain_id": "", "name": "", "description": "", "vector_store_name": ""})
+        sse = check(r.json().get("ok") == False, "POST /create empty fields - returns validation error (ok=false)", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        # Test 3: PUT /update without domain_id param
+        r = await client.put(f"{base_url}{router_prefix}/{router_name}/update")
+        sse = check(r.json().get("ok") == False, "PUT /update without domain_id - returns error (ok=false)", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        # Test 4: PUT /update with non-existent domain_id
+        r = await client.put(f"{base_url}{router_prefix}/{router_name}/update?domain_id=nonexistent_domain_xyz")
+        sse = check(r.status_code == 404, "PUT /update non-existent - returns 404", f"Expected 404, got: {r.status_code}")
+        if sse: yield sse
+        
+        # Test 5: GET /get without domain_id
+        r = await client.get(f"{base_url}{router_prefix}/{router_name}/get?format=json")
+        sse = check(r.json().get("ok") == False, "GET /get without domain_id - returns error (ok=false)", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        # Test 6: GET /get with non-existent domain_id
+        r = await client.get(f"{base_url}{router_prefix}/{router_name}/get?domain_id=nonexistent_domain_xyz&format=json")
+        sse = check(r.status_code == 404, "GET /get non-existent - returns 404", f"Expected 404, got: {r.status_code}")
+        if sse: yield sse
+        
+        # Test 7: DELETE without domain_id
+        r = await client.delete(f"{base_url}{router_prefix}/{router_name}/delete")
+        sse = check(r.json().get("ok") == False, "DELETE without domain_id - returns error (ok=false)", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        # Test 8: DELETE non-existent domain
+        r = await client.delete(f"{base_url}{router_prefix}/{router_name}/delete?domain_id=nonexistent_domain_xyz")
+        sse = check(r.status_code == 404, "DELETE non-existent - returns 404", f"Expected 404, got: {r.status_code}")
+        if sse: yield sse
+        
+        # ===== CREATE TESTS =====
+        sse = next_test(f"POST /create - Creating '{test_id}'...")
+        if sse: yield sse
+        
+        # Test 9: POST /create with valid data
+        r = await client.post(create_url, json=test_domain_v1)
+        result = r.json()
+        sse = check(r.status_code == 200 and result.get("ok") == True, "POST /create - call succeeded (HTTP 200, ok=true)", f"status={r.status_code}, response={result}")
+        if sse: yield sse
+        
+        # Test 10: GET /get - verify created data
+        sse = next_test("GET /get - Verifying created domain...")
+        if sse: yield sse
+        
+        r = await client.get(get_url)
+        result = r.json()
+        domain_data = result.get("data", {})
+        match = (r.status_code == 200 and domain_data.get("name") == test_domain_v1["name"] and domain_data.get("description") == test_domain_v1["description"])
+        sse = check(match, f"GET /get - domain retrieved with correct data (name='{domain_data.get('name')}')", f"status={r.status_code}, data={domain_data}")
+        if sse: yield sse
+        
+        # Test 11: POST /create with same domain_id
+        sse = next_test("POST /create duplicate...")
+        if sse: yield sse
+        
+        r = await client.post(create_url, json=test_domain_v1)
+        sse = check(r.json().get("ok") == False and "already exists" in r.json().get("error", ""), "POST /create duplicate - returns 'already exists' error", f"Expected 'already exists' error, got: {r.json()}")
+        if sse: yield sse
+        
+        # Test 12: GET / - domain in list
+        sse = next_test("GET / - Listing all domains...")
+        if sse: yield sse
+        
+        r = await client.get(list_url)
+        list_result = r.json()
+        domains = list_result.get("data", [])
+        domain_ids = [d.get("domain_id") for d in domains]
+        sse = check(test_id in domain_ids, f"GET / - domain found in list ({len(domains)} total)", "Domain NOT found in list")
+        if sse: yield sse
+        
+        # ===== CREATE WITH SOURCES =====
+        sse = next_test(f"POST /create with sources - Creating '{sources_test_id}'...")
+        if sse: yield sse
+        
+        # Test 13: POST /create with sources_json
+        sources_domain = {"domain_id": sources_test_id, "name": "Sources Test", "description": "Test with sources", "vector_store_name": "sources_vs", "sources_json": test_sources_json}
+        r = await client.post(create_url, json=sources_domain)
+        sse = check(r.json().get("ok") == True, "POST /create with sources - call succeeded (ok=true)", f"Failed: {r.json()}")
+        if sse: yield sse
+        
+        # Test 14: GET /get - verify sources parsed
+        sse = next_test("GET /get - Verifying sources...")
+        if sse: yield sse
+        
+        r = await client.get(f"{base_url}{router_prefix}/{router_name}/get?domain_id={sources_test_id}&format=json")
+        sources_data = r.json().get("data", {})
+        file_sources = sources_data.get("file_sources", [])
+        sse = check(len(file_sources) == 1, f"GET /get - sources parsed correctly (file_sources.length={len(file_sources)})", f"Expected 1 file_source, got: {file_sources}")
+        if sse: yield sse
+        
+        # Test 15: POST /create with invalid sources_json
+        sse = next_test("POST /create with invalid sources_json...")
+        if sse: yield sse
+        
+        invalid_sources_domain = {"domain_id": f"invalid_{uuid.uuid4().hex[:8]}", "name": "Invalid", "description": "Invalid sources", "vector_store_name": "invalid_vs", "sources_json": "not valid json"}
+        r = await client.post(create_url, json=invalid_sources_domain)
+        sse = check(r.json().get("ok") == False, "POST /create invalid sources - returns error (ok=false)", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        # ===== UPDATE TESTS =====
+        sse = next_test("PUT /update - Updating domain...")
+        if sse: yield sse
+        
+        # Test 16: PUT /update with new name
+        r = await client.put(f"{update_url}?domain_id={test_id}", json=test_domain_v2)
+        sse = check(r.json().get("ok") == True, "PUT /update - call succeeded (ok=true)", f"Failed: {r.json().get('error')}")
+        if sse: yield sse
+        
+        # Test 17: GET /get - verify name changed
+        sse = next_test("GET /get - Verifying update...")
+        if sse: yield sse
+        
+        r = await client.get(get_url)
+        updated = r.json().get("data", {})
+        sse = check(updated.get("name") == test_domain_v2["name"], f"PUT /update - domain modified (name='{updated.get('name')}')", f"Mismatch: {updated}")
+        if sse: yield sse
+        
+        # Test 18: PUT /update with sources_json
+        sse = next_test("PUT /update with sources...")
+        if sse: yield sse
+        
+        r = await client.put(f"{update_url}?domain_id={test_id}", json={"sources_json": test_sources_json})
+        sse = check(r.json().get("ok") == True, "PUT /update with sources - call succeeded (ok=true)", f"Failed: {r.json()}")
+        if sse: yield sse
+        
+        # Test 19: GET /get - verify sources updated
+        r = await client.get(get_url)
+        updated_sources = r.json().get("data", {}).get("file_sources", [])
+        sse = check(len(updated_sources) == 1, f"PUT /update - sources updated (file_sources.length={len(updated_sources)})", f"Expected 1, got: {updated_sources}")
+        if sse: yield sse
+        
+        # ===== RENAME TESTS =====
+        sse = next_test(f"PUT /update with domain_id (rename) '{test_id}' -> '{renamed_test_id}'...")
+        if sse: yield sse
+        
+        # Test 20: PUT /update with domain_id in body (rename)
+        r = await client.put(f"{update_url}?domain_id={test_id}", json={"domain_id": renamed_test_id})
+        sse = check(r.json().get("ok") == True, "PUT /update rename - call succeeded (ok=true)", f"Failed: {r.json()}")
+        if sse: yield sse
+        
+        # Test 21: GET /get with old domain_id - should be 404
+        sse = next_test("GET /get old ID - Verifying rename...")
+        if sse: yield sse
+        
+        r = await client.get(get_url)
+        sse = check(r.status_code == 404, "GET /get old ID - returns 404 (renamed away)", f"Expected 404, got: {r.status_code}")
+        if sse: yield sse
+        
+        # Test 22: GET /get with new domain_id - should work
+        r = await client.get(f"{base_url}{router_prefix}/{router_name}/get?domain_id={renamed_test_id}&format=json")
+        sse = check(r.status_code == 200 and r.json().get("ok") == True, "GET /get new ID - returns 200 (domain found)", f"Expected 200, got: {r.status_code}, {r.json()}")
+        if sse: yield sse
+        
+        # Test 23: PUT /update rename to existing domain_id
+        sse = next_test("PUT /update rename to existing ID...")
+        if sse: yield sse
+        
+        r = await client.put(f"{update_url}?domain_id={renamed_test_id}", json={"domain_id": sources_test_id})
+        sse = check(r.status_code == 400 and "already exists" in r.json().get("error", ""), "PUT /update rename to existing - returns 400 'already exists'", f"Expected 400 with 'already exists', got: {r.status_code}, {r.json()}")
+        if sse: yield sse
+        
+        # Test 24: PUT /update rename to invalid format
+        sse = next_test("PUT /update rename to invalid format...")
+        if sse: yield sse
+        
+        r = await client.put(f"{update_url}?domain_id={renamed_test_id}", json={"domain_id": "invalid id with spaces!"})
+        sse = check(r.status_code == 400 and "Invalid domain ID format" in r.json().get("error", ""), "PUT /update rename invalid format - returns 400 'Invalid domain ID format'", f"Expected 400 with format error, got: {r.status_code}, {r.json()}")
+        if sse: yield sse
+        
+        # Test 25: GET / - verify renamed domain in list
+        sse = next_test("GET / - Verifying list after rename...")
+        if sse: yield sse
+        
+        r = await client.get(list_url)
+        domains_after_rename = r.json().get("data", [])
+        domain_ids_after = [d.get("domain_id") for d in domains_after_rename]
+        renamed_in_list = renamed_test_id in domain_ids_after
+        old_not_in_list = test_id not in domain_ids_after
+        sse = check(renamed_in_list and old_not_in_list, f"GET / - renamed domain in list, old ID removed", f"renamed_in_list={renamed_in_list}, old_not_in_list={old_not_in_list}")
+        if sse: yield sse
+        
+        # ===== DELETE TESTS =====
+        sse = next_test(f"DELETE /delete '{renamed_test_id}'...")
+        if sse: yield sse
+        
+        # Test 26: DELETE /delete
+        r = await client.delete(f"{base_url}{router_prefix}/{router_name}/delete?domain_id={renamed_test_id}")
+        sse = check(r.json().get("ok") == True, "DELETE /delete - call succeeded (ok=true)", f"Failed: {r.json().get('error')}")
+        if sse: yield sse
+        
+        # Test 27: GET /get - should be 404
+        sse = next_test("Verifying deletion...")
+        if sse: yield sse
+        
+        r = await client.get(f"{base_url}{router_prefix}/{router_name}/get?domain_id={renamed_test_id}&format=json")
+        sse = check(r.status_code == 404, "DELETE /delete - domain deleted (GET returns 404)", f"Got: {r.status_code}")
+        if sse: yield sse
+        
+        # Test 28: GET / - domain not in list
+        r = await client.get(list_url)
+        domains_after_delete = r.json().get("data", [])
+        domain_ids_final = [d.get("domain_id") for d in domains_after_delete]
+        sse = check(renamed_test_id not in domain_ids_final, "DELETE /delete - domain removed from list", "Domain still in list!")
+        if sse: yield sse
+        
+        # Test 29: DELETE same domain again - should be 404
+        sse = next_test("DELETE same domain again...")
+        if sse: yield sse
+        
+        r = await client.delete(f"{base_url}{router_prefix}/{router_name}/delete?domain_id={renamed_test_id}")
+        sse = check(r.status_code == 404, "DELETE again - returns 404 (already deleted)", f"Expected 404, got: {r.status_code}")
+        if sse: yield sse
+      
+      # Summary
+      sse = log(f"")
+      if sse: yield sse
+      sse = log(f"===== SELFTEST COMPLETE =====")
+      if sse: yield sse
+      sse = log(f"OK: {ok_count}, FAIL: {fail_count}")
+      if sse: yield sse
+      
+      stream_logger.log_function_footer()
+      
+      ok = (fail_count == 0)
+      yield writer.emit_end(ok=ok, error="" if ok else f"{fail_count} test(s) failed.", data={"passed": ok_count, "failed": fail_count, "passed_tests": passed_tests, "failed_tests": failed_tests})
+      
+    except Exception as e:
+      sse = log(f"ERROR: {type(e).__name__}: {str(e)}")
+      if sse: yield sse
+      stream_logger.log_function_footer()
+      yield writer.emit_end(ok=False, error=str(e), data={"passed": ok_count, "failed": fail_count, "test_id": test_id})
+    finally:
+      try:
+        async with httpx.AsyncClient(timeout=10.0) as cleanup_client:
+          await cleanup_client.delete(f"{base_url}{router_prefix}/{router_name}/delete?domain_id={test_id}")
+          await cleanup_client.delete(f"{base_url}{router_prefix}/{router_name}/delete?domain_id={renamed_test_id}")
+          await cleanup_client.delete(f"{base_url}{router_prefix}/{router_name}/delete?domain_id={sources_test_id}")
+      except: pass
+      writer.finalize()
+  
+  return StreamingResponse(run_selftest(), media_type="text/event-stream")
+
+# ----------------------------------------- END: Selftest --------------------------------------------------------------------
