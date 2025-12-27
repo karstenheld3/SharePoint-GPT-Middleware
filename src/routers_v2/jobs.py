@@ -16,7 +16,7 @@ router = APIRouter()
 config = None
 router_prefix = None
 router_name = "jobs"
-main_page_nav_html = '<a href="/">Back to Main Page</a>'
+main_page_nav_html = '<a href="/">Back to Main Page</a> | <a href="{router_prefix}/domains?format=ui">Domains</a> | <a href="{router_prefix}/crawler?format=ui">Crawler</a> | <a href="{router_prefix}/jobs?format=ui">Jobs</a> | <a href="{router_prefix}/reports?format=ui">Reports</a>'
 example_item_json = """
 {
   "job_id": "jb_42",
@@ -382,7 +382,7 @@ async def jobs_root(request: Request):
       description="Monitor and control long-running streaming jobs.",
       router_prefix=f"{router_prefix}/{router_name}",
       endpoints=endpoints,
-      navigation_html=main_page_nav_html
+      navigation_html=main_page_nav_html.replace("{router_prefix}", router_prefix)
     ))
   
   format_param = request_params.get("format", "json")
@@ -398,7 +398,7 @@ async def jobs_root(request: Request):
   
   if format_param == "html":
     logger.log_function_footer()
-    return html_result("Jobs", jobs_data, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html}')
+    return html_result("Jobs", jobs_data, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
   
   if format_param == "ui":
     logger.log_function_footer()
@@ -435,7 +435,7 @@ def _generate_jobs_ui_page(jobs: list) -> str:
       <button onclick="refreshJobs()" class="btn-small">Reload</button>
     </div>
     
-    <p>{main_page_nav_html}</p>
+    <p>{main_page_nav_html.replace("{router_prefix}", router_prefix)}</p>
     
     <div class="toolbar">
       <button id="btn-delete-selected" class="btn-primary btn-delete" onclick="bulkDelete()" disabled>Delete (<span id="selected-count">0</span>)</button>
@@ -510,13 +510,13 @@ async def jobs_get(request: Request):
   
   if not job_id:
     logger.log_function_footer()
-    if format_param == "html": return html_result("Error", {"error": "Missing 'job_id' parameter."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html}')
+    if format_param == "html": return html_result("Error", {"error": "Missing 'job_id' parameter."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
     return json_result(False, "Missing 'job_id' parameter.", {})
   
   job = find_job_by_id(get_persistent_storage_path(), job_id)
   if job is None:
     logger.log_function_footer()
-    if format_param == "html": return html_result("Not Found", {"error": f"Job '{job_id}' not found."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html}')
+    if format_param == "html": return html_result("Not Found", {"error": f"Job '{job_id}' not found."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
     return JSONResponse({"ok": False, "error": f"Job '{job_id}' not found.", "data": {}}, status_code=404)
   
   job_data = _job_to_dict(job)
@@ -527,7 +527,7 @@ async def jobs_get(request: Request):
   
   if format_param == "html":
     logger.log_function_footer()
-    return html_result(f"Job: {job_id}", job_data, f'<a href="{router_prefix}/{router_name}?format=ui">Back</a> | {main_page_nav_html}')
+    return html_result(f"Job: {job_id}", job_data, f'<a href="{router_prefix}/{router_name}?format=ui">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
   
   logger.log_function_footer()
   return json_result(False, f"Format '{format_param}' not supported. Use: json, html", {})
@@ -573,7 +573,7 @@ async def jobs_monitor(request: Request):
   job = find_job_by_id(get_persistent_storage_path(), job_id)
   if job is None:
     logger.log_function_footer()
-    if format_param == "html": return html_result("Not Found", {"error": f"Job '{job_id}' does not exist."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html}')
+    if format_param == "html": return html_result("Not Found", {"error": f"Job '{job_id}' does not exist."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
     return JSONResponse({"ok": False, "error": f"Job '{job_id}' does not exist.", "data": {}}, status_code=404)
   
   log_content = read_job_log(get_persistent_storage_path(), job_id)
@@ -619,7 +619,7 @@ async def jobs_monitor(request: Request):
     last_log = _extract_last_log_line(log_content) if log_content else ""
     job_data["log"] = last_log
     logger.log_function_footer()
-    return html_result(f"Monitor: {job_id}", job_data, f'<a href="{router_prefix}/{router_name}?format=ui">Back</a> | {main_page_nav_html}')
+    return html_result(f"Monitor: {job_id}", job_data, f'<a href="{router_prefix}/{router_name}?format=ui">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
   
   logger.log_function_footer()
   return json_result(False, f"Format '{format_param}' not supported. Use: json, html, stream", {})
@@ -757,18 +757,18 @@ async def jobs_results(request: Request):
   
   if not job_id:
     logger.log_function_footer()
-    if format_param == "html": return html_result("Error", {"error": "Missing 'job_id' parameter."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html}')
+    if format_param == "html": return html_result("Error", {"error": "Missing 'job_id' parameter."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
     return json_result(False, "Missing 'job_id' parameter.", {})
   
   job = find_job_by_id(get_persistent_storage_path(), job_id)
   if job is None:
     logger.log_function_footer()
-    if format_param == "html": return html_result("Not Found", {"error": f"Job '{job_id}' not found."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html}')
+    if format_param == "html": return html_result("Not Found", {"error": f"Job '{job_id}' not found."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
     return JSONResponse({"ok": False, "error": f"Job '{job_id}' not found.", "data": {}}, status_code=404)
   
   if job.state not in ["completed", "cancelled"]:
     logger.log_function_footer()
-    if format_param == "html": return html_result("Results Not Available", {"error": f"Results not available. Job '{job_id}' state is '{job.state}'."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html}')
+    if format_param == "html": return html_result("Results Not Available", {"error": f"Results not available. Job '{job_id}' state is '{job.state}'."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
     return json_result(False, f"Results not available. Job '{job_id}' state is '{job.state}'.", {})
   
   result_data = job.result if job.result else {"ok": False, "error": "No result available", "data": {}}
@@ -779,7 +779,7 @@ async def jobs_results(request: Request):
   
   if format_param == "html":
     logger.log_function_footer()
-    return html_result(f"Result: {job_id}", result_data, f'<a href="{router_prefix}/{router_name}?format=ui">Back</a> | {main_page_nav_html}')
+    return html_result(f"Result: {job_id}", result_data, f'<a href="{router_prefix}/{router_name}?format=ui">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
   
   logger.log_function_footer()
   return json_result(False, f"Format '{format_param}' not supported. Use: json, html", {})
@@ -823,28 +823,28 @@ async def jobs_delete_impl(request: Request):
   
   if not job_id:
     logger.log_function_footer()
-    if format_param == "html": return html_result("Error", {"error": "Missing 'job_id' parameter."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html}')
+    if format_param == "html": return html_result("Error", {"error": "Missing 'job_id' parameter."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
     return json_result(False, "Missing 'job_id' parameter.", {})
   
   job = find_job_by_id(get_persistent_storage_path(), job_id)
   if job is None:
     logger.log_function_footer()
-    if format_param == "html": return html_result("Not Found", {"error": f"Job '{job_id}' not found."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html}')
+    if format_param == "html": return html_result("Not Found", {"error": f"Job '{job_id}' not found."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
     return JSONResponse({"ok": False, "error": f"Job '{job_id}' not found.", "data": {}}, status_code=404)
   
   if job.state in ["running", "paused"]:
     logger.log_function_footer()
-    if format_param == "html": return html_result("Cannot Delete", {"error": f"Cannot delete active job '{job_id}' (state: {job.state}). Cancel it first."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html}')
+    if format_param == "html": return html_result("Cannot Delete", {"error": f"Cannot delete active job '{job_id}' (state: {job.state}). Cancel it first."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
     return json_result(False, f"Cannot delete active job '{job_id}' (state: {job.state}). Cancel it first.", {"job_id": job_id, "state": job.state})
   
   success = delete_job(get_persistent_storage_path(), job_id)
   if not success:
     logger.log_function_footer()
-    if format_param == "html": return html_result("Delete Failed", {"error": f"Failed to delete job '{job_id}'."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html}')
+    if format_param == "html": return html_result("Delete Failed", {"error": f"Failed to delete job '{job_id}'."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
     return json_result(False, f"Failed to delete job '{job_id}'.", {"job_id": job_id})
   
   logger.log_function_footer()
-  if format_param == "html": return html_result("Job Deleted", {"job_id": job_id, "message": f"Job '{job_id}' deleted successfully."}, f'<a href="{router_prefix}/{router_name}?format=ui">Back to Jobs</a> | {main_page_nav_html}')
+  if format_param == "html": return html_result("Job Deleted", {"job_id": job_id, "message": f"Job '{job_id}' deleted successfully."}, f'<a href="{router_prefix}/{router_name}?format=ui">Back to Jobs</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
   return json_result(True, "", {"job_id": job_id})
 
 # ----------------------------------------- END: D(jh) - Delete ------------------------------------------------------------

@@ -16,7 +16,7 @@ router = APIRouter()
 config = None
 router_prefix = None
 router_name = "reports"
-main_page_nav_html = '<a href="/">Back to Main Page</a>'
+main_page_nav_html = '<a href="/">Back to Main Page</a> | <a href="{router_prefix}/domains?format=ui">Domains</a> | <a href="{router_prefix}/crawler?format=ui">Crawler</a> | <a href="{router_prefix}/jobs?format=ui">Jobs</a> | <a href="{router_prefix}/reports?format=ui">Reports</a>'
 example_item_json = """
 {
   "report_id": "crawls/2024-01-15_14-25-00_TEST01_all_full",
@@ -257,7 +257,7 @@ function submitCreateDemoReportsForm() {{
 # ----------------------------------------- START: UI Page Generation ----------------------------------------------------
 
 def generate_reports_ui_page(reports: list) -> str:
-  nav_links = f'{main_page_nav_html} | <a href="{router_prefix}/jobs?format=ui">Jobs</a> | <a href="{router_prefix}/crawler?format=ui">Crawler</a>'
+  nav_links = main_page_nav_html.replace("{router_prefix}", router_prefix)
   
   columns = [
     {"field": "type", "header": "Type", "default": "-"},

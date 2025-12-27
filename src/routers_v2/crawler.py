@@ -20,7 +20,7 @@ router = APIRouter()
 config = None
 router_prefix = None
 router_name = "crawler"
-main_page_nav_html = '<a href="/">Back to Main Page</a> | <a href="/v2/domains?format=ui">Domains</a>'
+main_page_nav_html = '<a href="/">Back to Main Page</a> | <a href="{router_prefix}/domains?format=ui">Domains</a> | <a href="{router_prefix}/crawler?format=ui">Crawler</a> | <a href="{router_prefix}/jobs?format=ui">Jobs</a> | <a href="{router_prefix}/reports?format=ui">Reports</a>'
 
 def set_config(app_config, prefix):
   global config, router_prefix
@@ -348,7 +348,7 @@ async def crawler_root(request: Request):
     return json_result(True, "", [asdict(j) for j in crawler_jobs])
   if format_param == "html":
     logger.log_function_footer()
-    return html_result("Crawler Jobs", {"jobs": [asdict(j) for j in crawler_jobs]}, main_page_nav_html)
+    return html_result("Crawler Jobs", {"jobs": [asdict(j) for j in crawler_jobs]}, main_page_nav_html.replace("{router_prefix}", router_prefix))
   logger.log_function_footer()
   return generate_router_docs_page(router_name, "Crawler router for SharePoint crawl operations", router_prefix)
 
@@ -641,7 +641,7 @@ def _generate_crawler_ui_page(jobs: list) -> str:
     columns=columns,
     row_id_field="job_id",
     row_id_prefix="job",
-    navigation_html=main_page_nav_html,
+    navigation_html=main_page_nav_html.replace("{router_prefix}", router_prefix),
     toolbar_buttons=[],
     enable_selection=False,
     enable_bulk_delete=False,

@@ -20,7 +20,7 @@ router = APIRouter()
 config = None
 router_prefix = None
 router_name = "domains"
-main_page_nav_html = '<a href="/">Back to Main Page</a>'
+main_page_nav_html = '<a href="/">Back to Main Page</a> | <a href="{router_prefix}/domains?format=ui">Domains</a> | <a href="{router_prefix}/crawler?format=ui">Crawler</a> | <a href="{router_prefix}/jobs?format=ui">Jobs</a> | <a href="{router_prefix}/reports?format=ui">Reports</a>'
 example_domain_json = """
 {
   "domain_id": "example_domain",
@@ -323,7 +323,7 @@ async def domains_root(request: Request):
       description=f"Knowledge domains for crawling and semantic search. Storage: PERSISTENT_STORAGE_PATH/domains/{{domain_id}}/domain.json",
       router_prefix=f"{router_prefix}/{router_name}",
       endpoints=endpoints,
-      navigation_html=main_page_nav_html
+      navigation_html=main_page_nav_html.replace("{router_prefix}", router_prefix)
     ))
   
   format_param = request_params.get("format", "json")
@@ -342,7 +342,7 @@ async def domains_root(request: Request):
   
   if format_param == "html":
     logger.log_function_footer()
-    return html_result("Domains", domains_list, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html}')
+    return html_result("Domains", domains_list, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
   
   if format_param == "ui":
     logger.log_function_footer()
@@ -388,7 +388,7 @@ async def domains_root(request: Request):
       columns=columns,
       row_id_field="domain_id",
       row_id_prefix="domain",
-      navigation_html=main_page_nav_html,
+      navigation_html=main_page_nav_html.replace("{router_prefix}", router_prefix),
       toolbar_buttons=toolbar_buttons,
       enable_selection=False,
       enable_bulk_delete=False,
@@ -453,7 +453,7 @@ async def domains_get(request: Request):
   
   if format_param == "html":
     logger.log_function_footer()
-    return html_result(f"Domain: {domain_id}", domain_dict, f'<a href="{router_prefix}/{router_name}?format=ui">Back</a> | {main_page_nav_html}')
+    return html_result(f"Domain: {domain_id}", domain_dict, f'<a href="{router_prefix}/{router_name}?format=ui">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
   
   logger.log_function_footer()
   return json_result(False, f"Format '{format_param}' not supported. Use: json, html", {})
@@ -571,7 +571,7 @@ async def domains_create(request: Request):
   
   if format_param == "html":
     logger.log_function_footer()
-    return html_result(f"Created: {domain_id}", result, f'<a href="{router_prefix}/{router_name}?format=ui">Back</a> | {main_page_nav_html}')
+    return html_result(f"Created: {domain_id}", result, f'<a href="{router_prefix}/{router_name}?format=ui">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
   
   logger.log_function_footer()
   return json_result(True, "", result)
@@ -705,7 +705,7 @@ async def domains_update(request: Request):
   
   if format_param == "html":
     logger.log_function_footer()
-    return html_result(f"Updated: {domain_id}", result, f'<a href="{router_prefix}/{router_name}?format=ui">Back</a> | {main_page_nav_html}')
+    return html_result(f"Updated: {domain_id}", result, f'<a href="{router_prefix}/{router_name}?format=ui">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
   
   logger.log_function_footer()
   return json_result(True, "", result)
@@ -756,7 +756,7 @@ async def domains_delete(request: Request):
   
   if format_param == "html":
     logger.log_function_footer()
-    return html_result(f"Deleted: {domain_id}", result, f'<a href="{router_prefix}/{router_name}?format=ui">Back</a> | {main_page_nav_html}')
+    return html_result(f"Deleted: {domain_id}", result, f'<a href="{router_prefix}/{router_name}?format=ui">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
   
   logger.log_function_footer()
   return json_result(True, "", result)
