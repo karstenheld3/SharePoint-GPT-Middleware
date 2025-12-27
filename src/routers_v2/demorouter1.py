@@ -1871,9 +1871,12 @@ async def demorouter_create_demo_items(request: Request):
         await asyncio.sleep(delay_ms / 1000.0)
         
         # Check for control files (pause/cancel) - handles pause loop internally
-        log_events, control_action = await writer.check_control()
-        for sse in log_events:
-          yield sse
+        control_action = None
+        async for item in writer.check_control():
+          if isinstance(item, ControlAction):
+            control_action = item
+          else:
+            yield item
         
         # Handle cancel
         if control_action == ControlAction.CANCEL:

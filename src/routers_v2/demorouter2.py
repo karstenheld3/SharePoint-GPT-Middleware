@@ -1102,9 +1102,12 @@ async def demorouter_create_demo_items(request: Request):
         
         await asyncio.sleep(delay_ms / 1000.0)
         
-        log_events, control_action = await writer.check_control()
-        for sse in log_events:
-          yield sse
+        control_action = None
+        async for item in writer.check_control():
+          if isinstance(item, ControlAction):
+            control_action = item
+          else:
+            yield item
         
         if control_action == ControlAction.CANCEL:
           sse = stream_logger.log_function_output(f"Cancelled after creating {len(created_items)} items.")

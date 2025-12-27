@@ -199,25 +199,23 @@ class StreamingJobWriter:
       self._file_handle.flush()
       self._buffer.clear()
   
-  async def check_control(self) -> tuple[list[str], Optional[ControlAction]]:
+  async def check_control(self):
     """
-    Check for control files and handle pause loop (V2JB-FR-04, V2JB-FR-05).
+    Async generator: check for control files and handle pause loop (V2JB-FR-04, V2JB-FR-05).
     - Flushes buffer before checking
-    - If pause_requested: emits pause log, enters async pause loop, renames to .paused
-    - If cancel_requested: returns ControlAction.CANCEL
-    - If resume_requested (while paused): emits resume log, renames to .running
-    Returns (log_events, control_action):
-    - log_events: list of SSE-formatted strings for pause/resume
-    - control_action: ControlAction.CANCEL if cancelled, None otherwise
+    - If pause_requested: yields pause log, enters async pause loop, renames to .paused
+    - If cancel_requested: yields ControlAction.CANCEL
+    - If resume_requested (while paused): yields resume log, renames to .running
+    Yields: SSE-formatted strings for pause/resume, or ControlAction.CANCEL
     """
     self._flush_buffer()
-    log_events: list[str] = []
     
     # Check for cancel first (highest priority)
     cancel_file = self._find_control_file("cancel_requested")
     if cancel_file:
       os.unlink(cancel_file)
-      return (log_events, ControlAction.CANCEL)
+      yield ControlAction.CANCEL
+      return
     
     # Check for pause
     pause_file = self._find_control_file("pause_requested")
@@ -227,7 +225,7 @@ class StreamingJobWriter:
       # Emit pause log with timestamp (not going through MiddlewareLogger)
       timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
       sse = self.emit_log(f"[{timestamp}] Pause requested, pausing...")
-      log_events.append(sse)
+      yield sse  # Yield immediately so stream receives pause event
       self._flush_buffer()
       
       # Rename to .paused
@@ -245,7 +243,8 @@ class StreamingJobWriter:
         cancel_file = self._find_control_file("cancel_requested")
         if cancel_file:
           os.unlink(cancel_file)
-          return (log_events, ControlAction.CANCEL)
+          yield ControlAction.CANCEL
+          return
         
         # Check for resume
         resume_file = self._find_control_file("resume_requested")
@@ -255,7 +254,7 @@ class StreamingJobWriter:
           # Emit resume log with timestamp (not going through MiddlewareLogger)
           timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
           sse = self.emit_log(f"[{timestamp}] Resume requested, resuming...")
-          log_events.append(sse)
+          yield sse
           self._flush_buffer()
           
           # Rename to .running
@@ -265,8 +264,6 @@ class StreamingJobWriter:
           self._job_file_path = running_path
           self._file_handle = open(self._job_file_path, 'a', encoding='utf-8')
           break
-    
-    return (log_events, None)
   
   def _find_control_file(self, control_type: str) -> Optional[str]:
     """Find control file matching this job_id."""
