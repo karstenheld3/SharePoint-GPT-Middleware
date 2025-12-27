@@ -2,14 +2,15 @@
 # Spec: L(jhu)G(jh)D(jh): /v2/jobs
 # Implements _V2_SPEC_JOBS_UI.md specification
 
-import textwrap
+import asyncio, textwrap, uuid
+import httpx
 from dataclasses import asdict
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 
-from routers_v2.common_ui_functions_v2 import generate_router_docs_page, generate_endpoint_docs, json_result, html_result, generate_html_head, generate_toast_container, generate_modal_structure, generate_console_panel, generate_core_js, generate_console_js, generate_form_js
+from routers_v2.common_ui_functions_v2 import generate_router_docs_page, generate_endpoint_docs, json_result, html_result, generate_html_head, generate_toast_container, generate_modal_structure, generate_console_panel, generate_core_js, generate_console_js, generate_form_js, generate_endpoint_caller_js
 from routers_v2.common_logging_functions_v2 import MiddlewareLogger
-from routers_v2.common_job_functions_v2 import list_jobs, find_job_by_id, read_job_log, read_job_result, create_control_file, delete_job, force_cancel_job, JobMetadata
+from routers_v2.common_job_functions_v2 import list_jobs, find_job_by_id, find_job_file, read_job_log, read_job_result, create_control_file, delete_job, force_cancel_job, JobMetadata, StreamingJobWriter, ControlAction
 
 router = APIRouter()
 config = None
@@ -373,7 +374,8 @@ async def jobs_root(request: Request):
       {"path": "/monitor", "desc": "Monitor job output", "formats": ["json", "html", "stream"]},
       {"path": "/control", "desc": "Pause/Resume/Cancel job", "formats": ["json"]},
       {"path": "/results", "desc": "Get job result", "formats": ["json", "html"]},
-      {"path": "/delete", "desc": "Delete job file (DELETE/GET)", "formats": []}
+      {"path": "/delete", "desc": "Delete job file (DELETE/GET)", "formats": []},
+      {"path": "/selftest", "desc": "Self-test", "formats": ["stream"]}
     ]
     return HTMLResponse(generate_router_docs_page(
       title="Jobs Router",
@@ -415,6 +417,7 @@ def _generate_jobs_ui_page(jobs: list) -> str:
   core_js = generate_core_js()
   console_js = generate_console_js(router_prefix, f"{router_prefix}/{router_name}/control")
   form_js = generate_form_js()
+  endpoint_caller_js = generate_endpoint_caller_js()
   router_js = get_router_specific_js()
   
   return f"""<!doctype html><html lang="en">
@@ -436,6 +439,7 @@ def _generate_jobs_ui_page(jobs: list) -> str:
     
     <div class="toolbar">
       <button id="btn-delete-selected" class="btn-primary btn-delete" onclick="bulkDelete()" disabled>Delete (<span id="selected-count">0</span>)</button>
+      <button class="btn-primary" data-url="{router_prefix}/{router_name}/selftest?format=stream" data-format="stream" data-show-result="modal" data-reload-on-finish="true" onclick="callEndpoint(this)">Run Selftest</button>
     </div>
     
     <table>
@@ -465,6 +469,7 @@ def _generate_jobs_ui_page(jobs: list) -> str:
 {core_js}
 {console_js}
 {form_js}
+{endpoint_caller_js}
 {router_js}
   </script>
 </body>
@@ -575,7 +580,6 @@ async def jobs_monitor(request: Request):
   
   if format_param == "stream":
     logger.log_function_footer()
-    import asyncio
     async def stream_log():
       # Yield existing content
       last_len = 0
@@ -844,3 +848,557 @@ async def jobs_delete_impl(request: Request):
   return json_result(True, "", {"job_id": job_id})
 
 # ----------------------------------------- END: D(jh) - Delete ------------------------------------------------------------
+
+
+# ----------------------------------------- START: Selftest helpers --------------------------------------------------------
+
+async def _run_test_job_to_completion(delay_seconds: float = 0.1, item_count: int = 3) -> str:
+  """Run a quick test job to completion. Returns job_id."""
+  writer = StreamingJobWriter(
+    persistent_storage_path=get_persistent_storage_path(),
+    router_name=router_name,
+    action="selftest",
+    object_id=None,
+    source_url=f"{router_prefix}/{router_name}/selftest",
+    router_prefix=router_prefix
+  )
+  job_id = writer.job_id
+  try:
+    writer.emit_start()
+    for i in range(item_count):
+      await asyncio.sleep(delay_seconds)
+      writer.emit_log(f"[ {i+1} / {item_count} ] Test item {i+1}")
+    writer.emit_end(ok=True, data={"items": item_count})
+  finally:
+    writer.finalize()
+  return job_id
+
+async def _run_slow_test_job_in_background(delay_seconds: float = 1.0, item_count: int = 30) -> tuple[str, asyncio.Task]:
+  """Start a slow test job in background. Returns (job_id, task)."""
+  writer = StreamingJobWriter(
+    persistent_storage_path=get_persistent_storage_path(),
+    router_name=router_name,
+    action="selftest",
+    object_id=None,
+    source_url=f"{router_prefix}/{router_name}/selftest",
+    router_prefix=router_prefix
+  )
+  job_id = writer.job_id
+  
+  async def run_job():
+    try:
+      writer.emit_start()
+      for i in range(item_count):
+        await asyncio.sleep(delay_seconds)
+        writer.emit_log(f"[ {i+1} / {item_count} ] Slow test item {i+1}")
+        async for control_event in writer.check_control():
+          if isinstance(control_event, ControlAction):
+            if control_event == ControlAction.CANCEL:
+              writer.emit_end(ok=False, error="Cancelled", data={}, cancelled=True)
+              return
+      writer.emit_end(ok=True, data={"items": item_count})
+    finally:
+      writer.finalize()
+  
+  task = asyncio.create_task(run_job())
+  await asyncio.sleep(0.3)
+  return job_id, task
+
+# ----------------------------------------- END: Selftest helpers ----------------------------------------------------------
+
+
+# ----------------------------------------- START: Selftest endpoint -------------------------------------------------------
+
+@router.get(f"/{router_name}/selftest")
+async def jobs_selftest(request: Request):
+  """
+  Self-test for jobs router operations.
+  
+  Only supports format=stream.
+  
+  Tests:
+  1. Error cases (missing params, non-existent jobs)
+  2. Job creation and basic get
+  3. Monitor endpoint (json, html, stream)
+  4. Control actions (pause/resume/cancel)
+  5. State transition verification
+  6. SSE stream event verification
+  7. Job file extension verification
+  8. Delete operations
+  
+  Example:
+  GET {router_prefix}/{router_name}/selftest?format=stream
+  
+  Result (end_json event):
+  {
+    "ok": true,
+    "error": "",
+    "data": {
+      "passed": 46,
+      "failed": 0,
+      "passed_tests": ["Test 1 description", ...],
+      "failed_tests": []
+    }
+  }
+  """
+  request_params = dict(request.query_params)
+  
+  if len(request_params) == 0:
+    doc = textwrap.dedent(jobs_selftest.__doc__).replace("{router_prefix}", router_prefix).replace("{router_name}", router_name)
+    return PlainTextResponse(generate_endpoint_docs(doc, router_prefix), media_type="text/plain; charset=utf-8")
+  
+  format_param = request_params.get("format", "")
+  if format_param != "stream":
+    return json_result(False, "Selftest only supports format=stream", {})
+  
+  base_url = str(request.base_url).rstrip("/")
+  
+  writer = StreamingJobWriter(
+    persistent_storage_path=get_persistent_storage_path(),
+    router_name=router_name,
+    action="selftest",
+    object_id="main",
+    source_url=str(request.url),
+    router_prefix=router_prefix
+  )
+  stream_logger = MiddlewareLogger.create(stream_job_writer=writer)
+  stream_logger.log_function_header("jobs_selftest")
+  
+  test_job_ids = []
+  background_tasks = []
+  
+  async def run_selftest():
+    ok_count = 0
+    fail_count = 0
+    test_num = 0
+    passed_tests = []
+    failed_tests = []
+    
+    completed_job_id = None
+    pause_resume_job_id = None
+    cancel_job_id = None
+    running_for_delete_id = None
+    
+    def log(msg: str):
+      return stream_logger.log_function_output(msg)
+    
+    def next_test(description: str):
+      nonlocal test_num
+      test_num += 1
+      return log(f"[Test {test_num}] {description}")
+    
+    def check(condition: bool, ok_msg: str, fail_msg: str):
+      nonlocal ok_count, fail_count
+      if condition:
+        ok_count += 1
+        passed_tests.append(ok_msg)
+        return log(f"  OK: {ok_msg}")
+      else:
+        fail_count += 1
+        failed_tests.append(fail_msg)
+        return log(f"  FAIL: {fail_msg}")
+    
+    def verify_job_file_extension(job_id: str, expected_ext: str) -> bool:
+      filepath = find_job_file(get_persistent_storage_path(), job_id)
+      if not filepath: return False
+      return filepath.endswith(f".{expected_ext}")
+    
+    async def wait_for_extension(job_id: str, expected_ext: str, max_wait: float = 3.0) -> bool:
+      for _ in range(int(max_wait / 0.2)):
+        if verify_job_file_extension(job_id, expected_ext): return True
+        await asyncio.sleep(0.2)
+      return False
+    
+    def parse_sse_events(sse_content: str) -> list[dict]:
+      events = []
+      current_event = None
+      current_data = []
+      for line in sse_content.split('\n'):
+        if line.startswith('event: '):
+          if current_event:
+            events.append({"event": current_event, "data": '\n'.join(current_data)})
+          current_event = line[7:]
+          current_data = []
+        elif line.startswith('data: '):
+          current_data.append(line[6:])
+        elif line == '' and current_event:
+          events.append({"event": current_event, "data": '\n'.join(current_data)})
+          current_event = None
+          current_data = []
+      return events
+    
+    def has_state_event(events: list[dict], expected_state: str) -> bool:
+      import json as json_module
+      for e in events:
+        if e["event"] == "state_json":
+          try:
+            data = json_module.loads(e["data"])
+            if data.get("state") == expected_state: return True
+          except: pass
+      return False
+    
+    try:
+      yield writer.emit_start()
+      
+      async with httpx.AsyncClient(timeout=30.0) as client:
+        get_url = f"{base_url}{router_prefix}/{router_name}/get"
+        monitor_url = f"{base_url}{router_prefix}/{router_name}/monitor"
+        control_url = f"{base_url}{router_prefix}/{router_name}/control"
+        results_url = f"{base_url}{router_prefix}/{router_name}/results"
+        delete_url = f"{base_url}{router_prefix}/{router_name}/delete"
+        list_url = f"{base_url}{router_prefix}/{router_name}?format=json"
+        
+        # ===== CATEGORY 1: ERROR CASES (10 tests) =====
+        sse = next_test("Error cases - GET /get without job_id")
+        if sse: yield sse
+        r = await client.get(f"{get_url}?format=json")
+        sse = check(r.json().get("ok") == False, "GET /get without job_id returns error", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        sse = next_test("Error cases - GET /get non-existent")
+        if sse: yield sse
+        r = await client.get(f"{get_url}?job_id=nonexistent_jb_999&format=json")
+        sse = check(r.status_code == 404, "GET /get non-existent returns 404", f"Expected 404, got: {r.status_code}")
+        if sse: yield sse
+        
+        sse = next_test("Error cases - GET /monitor without job_id")
+        if sse: yield sse
+        r = await client.get(f"{monitor_url}?format=json")
+        sse = check(r.json().get("ok") == False, "GET /monitor without job_id returns error", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        sse = next_test("Error cases - GET /monitor non-existent")
+        if sse: yield sse
+        r = await client.get(f"{monitor_url}?job_id=nonexistent_jb_999&format=json")
+        sse = check(r.status_code == 404, "GET /monitor non-existent returns 404", f"Expected 404, got: {r.status_code}")
+        if sse: yield sse
+        
+        sse = next_test("Error cases - GET /control without job_id")
+        if sse: yield sse
+        r = await client.get(f"{control_url}?action=pause")
+        sse = check(r.json().get("ok") == False, "GET /control without job_id returns error", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        sse = next_test("Error cases - GET /control without action")
+        if sse: yield sse
+        r = await client.get(f"{control_url}?job_id=jb_1")
+        sse = check(r.json().get("ok") == False, "GET /control without action returns error", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        sse = next_test("Error cases - GET /control invalid action")
+        if sse: yield sse
+        r = await client.get(f"{control_url}?job_id=jb_1&action=invalid")
+        sse = check(r.json().get("ok") == False, "GET /control invalid action returns error", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        sse = next_test("Error cases - GET /control non-existent job")
+        if sse: yield sse
+        r = await client.get(f"{control_url}?job_id=nonexistent_jb_999&action=pause")
+        sse = check(r.status_code == 404, "GET /control non-existent returns 404", f"Expected 404, got: {r.status_code}")
+        if sse: yield sse
+        
+        sse = next_test("Error cases - GET /results without job_id")
+        if sse: yield sse
+        r = await client.get(f"{results_url}?format=json")
+        sse = check(r.json().get("ok") == False, "GET /results without job_id returns error", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        sse = next_test("Error cases - DELETE /delete without job_id")
+        if sse: yield sse
+        r = await client.delete(delete_url)
+        sse = check(r.json().get("ok") == False, "DELETE without job_id returns error", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        # ===== CATEGORY 2: JOB CREATION AND BASIC GET (5 tests) =====
+        sse = next_test("Create test job (Job 1)")
+        if sse: yield sse
+        completed_job_id = await _run_test_job_to_completion(delay_seconds=0.05, item_count=3)
+        test_job_ids.append(completed_job_id)
+        sse = check(completed_job_id is not None, f"Job created with ID '{completed_job_id}'", "Failed to create job")
+        if sse: yield sse
+        
+        sse = next_test("Wait for job completion")
+        if sse: yield sse
+        ext_ok = await wait_for_extension(completed_job_id, "completed", max_wait=5.0)
+        sse = check(ext_ok, "Job file has .completed extension", "Job file not .completed")
+        if sse: yield sse
+        
+        sse = next_test("GET /get for completed job")
+        if sse: yield sse
+        r = await client.get(f"{get_url}?job_id={completed_job_id}&format=json")
+        result = r.json()
+        sse = check(result.get("ok") == True and result.get("data", {}).get("state") == "completed", "GET /get returns completed state", f"Got: {result}")
+        if sse: yield sse
+        
+        sse = next_test("GET / - job in list")
+        if sse: yield sse
+        r = await client.get(list_url)
+        jobs_list = r.json().get("data", [])
+        job_ids = [j.get("job_id") for j in jobs_list]
+        sse = check(completed_job_id in job_ids, f"Job found in list ({len(jobs_list)} total)", "Job NOT found in list")
+        if sse: yield sse
+        
+        sse = next_test("GET /results for completed job")
+        if sse: yield sse
+        r = await client.get(f"{results_url}?job_id={completed_job_id}&format=json")
+        result = r.json()
+        sse = check(result.get("ok") == True and result.get("data") is not None, "GET /results returns data", f"Got: {result}")
+        if sse: yield sse
+        
+        # ===== CATEGORY 3: MONITOR ENDPOINT (4 tests) =====
+        sse = next_test("GET /monitor format=json")
+        if sse: yield sse
+        r = await client.get(f"{monitor_url}?job_id={completed_job_id}&format=json")
+        result = r.json()
+        sse = check(result.get("ok") == True and "log" in result.get("data", {}), "GET /monitor json includes log field", f"Got: {result}")
+        if sse: yield sse
+        
+        sse = next_test("GET /monitor format=html")
+        if sse: yield sse
+        r = await client.get(f"{monitor_url}?job_id={completed_job_id}&format=html")
+        sse = check(r.status_code == 200 and "text/html" in r.headers.get("content-type", ""), "GET /monitor html returns HTML", f"Got status {r.status_code}")
+        if sse: yield sse
+        
+        sse = next_test("GET /monitor format=stream")
+        if sse: yield sse
+        r = await client.get(f"{monitor_url}?job_id={completed_job_id}&format=stream")
+        sse = check(r.status_code == 200, "GET /monitor stream returns 200", f"Got status {r.status_code}")
+        if sse: yield sse
+        
+        sse = next_test("Verify SSE events in job file")
+        if sse: yield sse
+        log_content = read_job_log(get_persistent_storage_path(), completed_job_id)
+        events = parse_sse_events(log_content)
+        event_types = [e["event"] for e in events]
+        has_start = "start_json" in event_types
+        has_log = "log" in event_types
+        has_end = "end_json" in event_types
+        sse = check(has_start and has_log and has_end, "SSE has start_json, log, end_json events", f"Events: {event_types}")
+        if sse: yield sse
+        
+        # ===== CATEGORY 4: PAUSE/RESUME + ERROR CASES (10 tests) =====
+        sse = next_test("Create slow job (Job 2) for pause/resume")
+        if sse: yield sse
+        pause_resume_job_id, task2 = await _run_slow_test_job_in_background(delay_seconds=1.0, item_count=60)
+        test_job_ids.append(pause_resume_job_id)
+        background_tasks.append(task2)
+        sse = check(pause_resume_job_id is not None, f"Slow job created with ID '{pause_resume_job_id}'", "Failed to create slow job")
+        if sse: yield sse
+        
+        sse = next_test("Resume running job (should fail)")
+        if sse: yield sse
+        r = await client.get(f"{control_url}?job_id={pause_resume_job_id}&action=resume")
+        sse = check(r.json().get("ok") == False, "Resume running job fails", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        sse = next_test("Pause running job")
+        if sse: yield sse
+        r = await client.get(f"{control_url}?job_id={pause_resume_job_id}&action=pause")
+        sse = check(r.json().get("ok") == True, "Pause running job succeeds", f"Got: {r.json()}")
+        if sse: yield sse
+        
+        sse = next_test("Verify .paused extension")
+        if sse: yield sse
+        ext_ok = await wait_for_extension(pause_resume_job_id, "paused", max_wait=3.0)
+        sse = check(ext_ok, "Job file has .paused extension", "Job file not .paused")
+        if sse: yield sse
+        
+        sse = next_test("GET /get shows paused state")
+        if sse: yield sse
+        r = await client.get(f"{get_url}?job_id={pause_resume_job_id}&format=json")
+        state = r.json().get("data", {}).get("state")
+        sse = check(state == "paused", f"Job state is 'paused'", f"Got state: {state}")
+        if sse: yield sse
+        
+        sse = next_test("SSE contains state_json paused")
+        if sse: yield sse
+        log_content = read_job_log(get_persistent_storage_path(), pause_resume_job_id)
+        events = parse_sse_events(log_content)
+        sse = check(has_state_event(events, "paused"), "SSE has state_json paused event", "No paused state event")
+        if sse: yield sse
+        
+        sse = next_test("Pause paused job (should fail)")
+        if sse: yield sse
+        r = await client.get(f"{control_url}?job_id={pause_resume_job_id}&action=pause")
+        sse = check(r.json().get("ok") == False, "Pause paused job fails", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        sse = next_test("Resume paused job")
+        if sse: yield sse
+        r = await client.get(f"{control_url}?job_id={pause_resume_job_id}&action=resume")
+        sse = check(r.json().get("ok") == True, "Resume paused job succeeds", f"Got: {r.json()}")
+        if sse: yield sse
+        
+        sse = next_test("Verify .running extension")
+        if sse: yield sse
+        ext_ok = await wait_for_extension(pause_resume_job_id, "running", max_wait=3.0)
+        sse = check(ext_ok, "Job file has .running extension", "Job file not .running")
+        if sse: yield sse
+        
+        sse = next_test("SSE contains state_json running")
+        if sse: yield sse
+        log_content = read_job_log(get_persistent_storage_path(), pause_resume_job_id)
+        events = parse_sse_events(log_content)
+        sse = check(has_state_event(events, "running"), "SSE has state_json running event", "No running state event")
+        if sse: yield sse
+        
+        # ===== CATEGORY 5: CANCEL (5 tests) =====
+        sse = next_test("Create slow job (Job 3) for cancel")
+        if sse: yield sse
+        cancel_job_id, task3 = await _run_slow_test_job_in_background(delay_seconds=1.0, item_count=60)
+        test_job_ids.append(cancel_job_id)
+        background_tasks.append(task3)
+        sse = check(cancel_job_id is not None, f"Slow job created with ID '{cancel_job_id}'", "Failed to create slow job")
+        if sse: yield sse
+        
+        sse = next_test("Cancel running job")
+        if sse: yield sse
+        r = await client.get(f"{control_url}?job_id={cancel_job_id}&action=cancel")
+        sse = check(r.json().get("ok") == True, "Cancel running job succeeds", f"Got: {r.json()}")
+        if sse: yield sse
+        
+        sse = next_test("Wait for cancel processing")
+        if sse: yield sse
+        await asyncio.sleep(1.5)
+        sse = check(True, "Waited for cancel processing", "")
+        if sse: yield sse
+        
+        sse = next_test("Verify .cancelled extension")
+        if sse: yield sse
+        ext_ok = await wait_for_extension(cancel_job_id, "cancelled", max_wait=3.0)
+        sse = check(ext_ok, "Job file has .cancelled extension", "Job file not .cancelled")
+        if sse: yield sse
+        
+        sse = next_test("SSE contains state_json cancelled")
+        if sse: yield sse
+        log_content = read_job_log(get_persistent_storage_path(), cancel_job_id)
+        events = parse_sse_events(log_content)
+        sse = check(has_state_event(events, "cancelled"), "SSE has state_json cancelled event", "No cancelled state event")
+        if sse: yield sse
+        
+        # ===== CATEGORY 6: CONTROL ERROR CASES (4 tests) =====
+        # Pause Job 2 again for force cancel test
+        sse = log("Pausing Job 2 again for force cancel test...")
+        if sse: yield sse
+        await client.get(f"{control_url}?job_id={pause_resume_job_id}&action=pause")
+        await wait_for_extension(pause_resume_job_id, "paused", max_wait=3.0)
+        
+        sse = next_test("Pause completed job (should fail)")
+        if sse: yield sse
+        r = await client.get(f"{control_url}?job_id={completed_job_id}&action=pause")
+        sse = check(r.json().get("ok") == False, "Pause completed job fails", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        sse = next_test("Resume cancelled job (should fail)")
+        if sse: yield sse
+        r = await client.get(f"{control_url}?job_id={cancel_job_id}&action=resume")
+        sse = check(r.json().get("ok") == False, "Resume cancelled job fails", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        sse = next_test("Force cancel paused job (Job 2)")
+        if sse: yield sse
+        r = await client.get(f"{control_url}?job_id={pause_resume_job_id}&action=cancel&force=true")
+        sse = check(r.json().get("ok") == True, "Force cancel paused job succeeds", f"Got: {r.json()}")
+        if sse: yield sse
+        
+        sse = next_test("GET /get after force cancel")
+        if sse: yield sse
+        r = await client.get(f"{get_url}?job_id={pause_resume_job_id}&format=json")
+        state = r.json().get("data", {}).get("state")
+        sse = check(state == "cancelled", f"Job state is 'cancelled'", f"Got state: {state}")
+        if sse: yield sse
+        
+        # ===== CATEGORY 7: DELETE TESTS (8 tests) =====
+        sse = next_test("Create slow job (Job 4) for delete test")
+        if sse: yield sse
+        running_for_delete_id, task4 = await _run_slow_test_job_in_background(delay_seconds=1.0, item_count=60)
+        test_job_ids.append(running_for_delete_id)
+        background_tasks.append(task4)
+        sse = check(running_for_delete_id is not None, f"Slow job created with ID '{running_for_delete_id}'", "Failed to create slow job")
+        if sse: yield sse
+        
+        sse = next_test("DELETE running job (should fail)")
+        if sse: yield sse
+        r = await client.delete(f"{delete_url}?job_id={running_for_delete_id}")
+        sse = check(r.json().get("ok") == False, "DELETE running job fails", f"Expected error, got: {r.json()}")
+        if sse: yield sse
+        
+        sse = next_test("DELETE completed job (Job 1)")
+        if sse: yield sse
+        r = await client.delete(f"{delete_url}?job_id={completed_job_id}")
+        sse = check(r.json().get("ok") == True, "DELETE completed job succeeds", f"Got: {r.json()}")
+        if sse: yield sse
+        
+        sse = next_test("GET /get deleted job returns 404")
+        if sse: yield sse
+        r = await client.get(f"{get_url}?job_id={completed_job_id}&format=json")
+        sse = check(r.status_code == 404, "GET deleted job returns 404", f"Got status: {r.status_code}")
+        if sse: yield sse
+        
+        sse = next_test("DELETE cancelled job (Job 3)")
+        if sse: yield sse
+        r = await client.delete(f"{delete_url}?job_id={cancel_job_id}")
+        sse = check(r.json().get("ok") == True, "DELETE cancelled job succeeds", f"Got: {r.json()}")
+        if sse: yield sse
+        
+        sse = next_test("GET / excludes deleted jobs")
+        if sse: yield sse
+        r = await client.get(list_url)
+        jobs_list = r.json().get("data", [])
+        job_ids = [j.get("job_id") for j in jobs_list]
+        neither_in_list = completed_job_id not in job_ids and cancel_job_id not in job_ids
+        sse = check(neither_in_list, "Deleted jobs not in list", f"Jobs still in list: {job_ids}")
+        if sse: yield sse
+        
+        sse = next_test("DELETE force_cancelled job (Job 2)")
+        if sse: yield sse
+        r = await client.delete(f"{delete_url}?job_id={pause_resume_job_id}")
+        sse = check(r.json().get("ok") == True, "DELETE force_cancelled job succeeds", f"Got: {r.json()}")
+        if sse: yield sse
+        
+        sse = next_test("DELETE same job again returns 404")
+        if sse: yield sse
+        r = await client.delete(f"{delete_url}?job_id={pause_resume_job_id}")
+        sse = check(r.status_code == 404, "DELETE same job returns 404", f"Got status: {r.status_code}")
+        if sse: yield sse
+      
+      # Summary
+      sse = log("")
+      if sse: yield sse
+      sse = log("===== SELFTEST COMPLETE =====")
+      if sse: yield sse
+      sse = log(f"OK: {ok_count}, FAIL: {fail_count}")
+      if sse: yield sse
+      
+      stream_logger.log_function_footer()
+      
+      ok = (fail_count == 0)
+      yield writer.emit_end(ok=ok, error="" if ok else f"{fail_count} test(s) failed.", data={"passed": ok_count, "failed": fail_count, "passed_tests": passed_tests, "failed_tests": failed_tests})
+      
+    except Exception as e:
+      sse = log(f"ERROR: {type(e).__name__}: {str(e)}")
+      if sse: yield sse
+      stream_logger.log_function_footer()
+      yield writer.emit_end(ok=False, error=str(e), data={"passed": ok_count, "failed": fail_count})
+    finally:
+      # Cleanup: Cancel background tasks
+      for task in background_tasks:
+        if not task.done():
+          task.cancel()
+          try: await task
+          except asyncio.CancelledError: pass
+      
+      # Cleanup: Force cancel and delete remaining test jobs
+      for job_id in test_job_ids:
+        try:
+          job = find_job_by_id(get_persistent_storage_path(), job_id)
+          if job and job.state in ["running", "paused"]:
+            force_cancel_job(get_persistent_storage_path(), job_id)
+          delete_job(get_persistent_storage_path(), job_id)
+        except: pass
+      
+      writer.finalize()
+  
+  return StreamingResponse(run_selftest(), media_type="text/event-stream")
+
+# ----------------------------------------- END: Selftest endpoint ---------------------------------------------------------
