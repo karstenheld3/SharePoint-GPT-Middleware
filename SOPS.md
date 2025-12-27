@@ -83,13 +83,14 @@ Streaming endpoints support `format=stream` and create job files for long-runnin
 3. Create job file using pattern: `[TIMESTAMP]_[[ACTION]]_[[JB_ID]]_[[OBJECT_ID]].[state]`
 4. Emit `start_json` event with job metadata at stream start
 5. Emit `log` events for progress (use `[ x / n ]` format for iterations)
-6. Emit `end_json` event with job metadata and result at stream end
-7. Check for control files (`.pause_requested`, `.resume_requested`, `.cancel_requested`) periodically
-8. Handle state transitions: `running` -> `paused`/`cancelled`/`completed`
-9. Yield pause/resume log events to HTTP stream (required for IG-05 byte-identical streams)
-10. Store job files in `PERSISTENT_STORAGE_PATH/jobs/[router]/`
-11. Add link to home page in `app.py` > `root()` available links section
-12. Document the `end_json` result format in the endpoint docstring:
+6. Emit `state_json` events on pause/resume/cancel for UI synchronization
+7. Emit `end_json` event with job metadata and result at stream end
+8. Check for control files (`.pause_requested`, `.resume_requested`, `.cancel_requested`) periodically
+9. Handle state transitions: `running` -> `paused`/`cancelled`/`completed`
+10. Yield pause/resume state and log events to HTTP stream (required for IG-05 byte-identical streams)
+11. Store job files in `PERSISTENT_STORAGE_PATH/jobs/[router]/`
+12. Add link to home page in `app.py` > `root()` available links section
+13. Document the `end_json` result format in the endpoint docstring:
     ```
     Result (end_json event):
     {
@@ -98,4 +99,4 @@ Streaming endpoints support `format=stream` and create job files for long-runnin
       "data": { ... }
     }
     ```
-13. Verify implementation against Python rules
+14. Verify implementation against Python rules

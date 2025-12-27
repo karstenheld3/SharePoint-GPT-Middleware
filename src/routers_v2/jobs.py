@@ -71,6 +71,18 @@ function isStalled(job) {{
   return age > STALE_THRESHOLD_MS;
 }}
 
+function onJobStateChange(jobId, state) {{
+  const job = jobsState.get(jobId);
+  if (!job) return;
+  job.state = state;
+  const rowId = 'job-' + sanitizeId(jobId);
+  const row = document.getElementById(rowId);
+  if (row) {{
+    row.outerHTML = renderJobRow(job);
+  }}
+  updateSelectedCount();
+}}
+
 // ============================================
 // PAGE INITIALIZATION
 // ============================================

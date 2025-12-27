@@ -425,12 +425,14 @@ Long-running jobs can be monitored, paused, resumed, cancelled by independent pr
 - Each event is terminated by an empty line (**LF** or **CRLF**)
 - Each stream starts with a `start_json` event and ends with a `end_json` event
 - Even if the streaming job is cancelled, an `end_json` event containing the status and result is guaranteed (except on crashes)
-- Between the `start_json` and `end_json` events only `log` events are allowed
+- Between the `start_json` and `end_json` events, `log` and `state_json` events are allowed
+- `state_json` events are emitted when job state changes (pause/resume/cancel) for UI synchronization
 - The `start_json` event contains a JSON object with the job metadata
 
 Example *stream output* for `start_json` event with job metadata as JSON
 ```
 event: start_json
+data: { "job_id": "jb_2", "state": "running", "source_url": "/v2/crawler/crawl?domain_id=TEST01&format=stream", "monitor_url": "/v2/jobs/monitor?job_id=jb_2", "started_utc": "2024-01-15T10:30:00.000000Z", "finished_utc": null, "last_modified_utc": "...", "result": null}
 data: { "job_id": "jb_2", "state": "running", "source_url": "/v2/crawler/crawl?domain_id=TEST01&format=stream", "last_modified_utc": "..."}
 
 ```
@@ -453,9 +455,18 @@ data: }
 Example *stream output* for `log` event with single line of text
 ```
 event: log
-data: [ 2 / 4 ] Processing file 'document.docx' (ID='assistant-86Bsp9rZQevLksitUBBPEn', modified='2025-11-26 14:20:30')...
+data: [ 2 / 4 ] Processing file 'document.docx'...
 
 ```
+
+Example *stream output* for `state_json` event (emitted on pause/resume/cancel)
+```
+event: state_json
+data: {"state": "paused", "job_id": "jb_42"}
+
+```
+
+Valid `state` values: `running` (on resume), `paused` (on pause), `cancelled` (on cancel)
 
 Example *multiline stream output* for `end_json` event with job metadata as JSON
 ```

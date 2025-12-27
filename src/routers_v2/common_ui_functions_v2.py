@@ -443,6 +443,13 @@ function connectStream(url, options = {{}}) {{
 function handleSSEData(eventType, data) {{
   if (eventType === 'log') {{
     appendToConsole(data);
+  }} else if (eventType === 'state_json') {{
+    try {{
+      const stateData = JSON.parse(data);
+      handleStateChange(stateData);
+    }} catch (e) {{
+      console.error('Failed to parse state_json:', e);
+    }}
   }} else if (eventType === 'start_json') {{
     try {{
       const json = JSON.parse(data);
@@ -490,6 +497,24 @@ function updatePauseResumeCancelButtons() {{
 }}
 
 function updatePauseResumeButton() {{ updatePauseResumeCancelButtons(); }}
+
+function handleStateChange(stateData) {{
+  if (stateData.state === 'paused') {{
+    isPaused = true;
+  }} else if (stateData.state === 'running') {{
+    isPaused = false;
+  }} else if (stateData.state === 'cancelled') {{
+    isPaused = false;
+  }}
+  updatePauseResumeCancelButtons();
+  const cancelBtn = document.getElementById('btn-cancel');
+  if (cancelBtn && stateData.state === 'cancelled') {{
+    cancelBtn.disabled = true;
+  }}
+  if (typeof onJobStateChange === 'function') {{
+    onJobStateChange(stateData.job_id, stateData.state);
+  }}
+}}
 
 async function togglePauseResume() {{
   if (!currentJobId) return;

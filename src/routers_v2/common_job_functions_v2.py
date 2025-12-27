@@ -161,6 +161,16 @@ class StreamingJobWriter:
     self._write_buffered(sse)
     return sse
   
+  def emit_state(self, state: str) -> str:
+    """
+    Emit state_json event for UI synchronization. Immediate write to file for reconnect replay.
+    Returns SSE-formatted string for HTTP response.
+    """
+    data = {"state": state, "job_id": self._job_id}
+    sse = self._format_sse_event("state_json", json.dumps(data))
+    self._write_immediate(sse)
+    return sse
+
   def emit_end(self, ok: bool, error: str = "", data: dict = None, cancelled: bool = False) -> str:
     """
     Emit end_json event. Immediate flush to file (V2JB-FR-03, V2JB-FR-07, V2JB-IG-02).
@@ -214,6 +224,7 @@ class StreamingJobWriter:
     cancel_file = self._find_control_file("cancel_requested")
     if cancel_file:
       os.unlink(cancel_file)
+      yield self.emit_state("cancelled")
       yield ControlAction.CANCEL
       return
     
@@ -222,10 +233,11 @@ class StreamingJobWriter:
     if pause_file:
       os.unlink(pause_file)
       
-      # Emit pause log with timestamp (not going through MiddlewareLogger)
+      # Emit state event first (for UI), then log event (for humans)
+      yield self.emit_state("paused")
       timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
       sse = self.emit_log(f"[{timestamp}] Pause requested, pausing...")
-      yield sse  # Yield immediately so stream receives pause event
+      yield sse
       self._flush_buffer()
       
       # Rename to .paused
@@ -243,6 +255,7 @@ class StreamingJobWriter:
         cancel_file = self._find_control_file("cancel_requested")
         if cancel_file:
           os.unlink(cancel_file)
+          yield self.emit_state("cancelled")
           yield ControlAction.CANCEL
           return
         
@@ -251,7 +264,8 @@ class StreamingJobWriter:
         if resume_file:
           os.unlink(resume_file)
           
-          # Emit resume log with timestamp (not going through MiddlewareLogger)
+          # Emit state event first (for UI), then log event (for humans)
+          yield self.emit_state("running")
           timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
           sse = self.emit_log(f"[{timestamp}] Resume requested, resuming...")
           yield sse

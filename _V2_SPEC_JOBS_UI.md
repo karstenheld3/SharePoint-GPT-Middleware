@@ -45,6 +45,7 @@ A reactive web UI for monitoring and controlling long-running jobs. Uses the uni
 
 **SSE Event Types**
 - `start_json` - Job metadata at stream start (JSON)
+- `state_json` - Job state change for UI sync (JSON: `{state, job_id}`)
 - `log` - Log line (plain text)
 - `end_json` - Job metadata at stream end (JSON)
 
@@ -152,8 +153,9 @@ function monitorJob(jobId) {
 
 1. **Connect** - User clicks [Monitor] -> `monitorJob(jobId)` calls `connectStream()`
 2. **Receive** - `handleSSEData()` parses events, appends log lines to console
-3. **JSON events** - `start_json`/`end_json` handled by `handleSSEData()`, updates job row state
-4. **Disconnect** - Any of:
+3. **JSON events** - `start_json`/`state_json`/`end_json` handled by `handleSSEData()`, updates job row state
+4. **State sync** - `state_json` updates `isPaused` flag, buttons, and job row via `onJobStateChange()`
+5. **Disconnect** - Any of:
    - `end_json` received -> Stream completes naturally
    - User clicks [X] on console -> `hideConsole()` (stream continues in background)
    - User navigates away -> Browser cleans up fetch
@@ -321,23 +323,23 @@ function updateJobState(jobId, action) {
 
 Note: This is optimistic - the actual state change happens when the job processes the control file. For cancel, the job may still emit `end_json` with final result before terminating.
 
-**2. Monitored job state change (start_json/end_json received)**
+**2. Monitored job state change (start_json/state_json/end_json received)**
 
-The Jobs UI extends `handleSSEData()` from `common_ui_functions_v2.py` to also update job rows:
+The Jobs UI uses `onJobStateChange()` callback (called from `handleStateChange()` in common_ui_functions_v2.py) to update job rows on `state_json` events. For `start_json`/`end_json`, the base `handleSSEData()` handles console output:
+
 ```javascript
-// Override handleSSEData to also update job state
-const baseHandleSSEData = handleSSEData;
-function handleSSEData(eventType, data) {
-  baseHandleSSEData(eventType, data);  // Console output
-  
-  if (eventType === 'start_json') {
-    try {
-      const json = JSON.parse(data);
-      updateJobInTable(json.job_id, { state: json.state });
-    } catch (e) {}
-  }
-  
-  if (eventType === 'end_json') {
+// Called by handleStateChange() when state_json event is received
+function onJobStateChange(jobId, state) {
+  const job = jobsState.get(jobId);
+  if (!job) return;
+  job.state = state;
+  const row = document.getElementById('job-' + sanitizeId(jobId));
+  if (row) row.outerHTML = renderJobRow(job);
+  updateSelectedCount();
+}
+
+// handleSSEData also handles start_json/end_json for row updates
+if (eventType === 'end_json') {
     try {
       const json = JSON.parse(data);
       updateJobInTable(json.job_id, { 

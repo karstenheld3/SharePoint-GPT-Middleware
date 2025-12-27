@@ -43,8 +43,9 @@ This specification defines a reusable UI library for V2 routers, following the p
 
 **V2UI-FR-04: SSE Streaming**
 - Connect to stream endpoints via fetch API
-- Handle event types: start_json, log, end_json
+- Handle event types: start_json, state_json, log, end_json
 - Parse job_id from start_json for control operations
+- Handle state_json for UI synchronization (update isPaused flag and buttons)
 - Show result in modal or toast on stream end
 - `connectStream(url, options)` options:
   - `method`: HTTP method (GET/POST/PUT/DELETE, default GET)
@@ -399,7 +400,8 @@ User clicks button
 ┌────────────┐  ┌─────────────────┐
 │ JSON result│  │ SSE events:     │
 │ {ok, data} │  │ start_json      │
-└─────┬──────┘  │ log (multiple)  │
+└─────┬──────┘  │ state_json      │
+      │         │ log (multiple)  │
       │         │ end_json        │
       │         └────────┬────────┘
       │                  │
@@ -508,12 +510,29 @@ function handleSSEData(eventType, data) {
     const json = JSON.parse(data);
     currentJobId = json.job_id;        // Enable pause/resume
     appendToConsole("===== START: Job ID='" + json.job_id + "'");
+  } else if (eventType === 'state_json') {
+    const stateData = JSON.parse(data);
+    handleStateChange(stateData);      // Update isPaused flag and buttons
   } else if (eventType === 'log') {
     appendToConsole(data);             // Plain text to console
   } else if (eventType === 'end_json') {
     const json = JSON.parse(data);
     lastEndJson = json;                // Store for result display
     appendToConsole("===== END: Job ID='" + json.job_id + "' Result='" + status + "'");
+  }
+}
+
+function handleStateChange(stateData) {
+  // Update isPaused flag based on state
+  if (stateData.state === 'paused') isPaused = true;
+  else if (stateData.state === 'running') isPaused = false;
+  else if (stateData.state === 'cancelled') isPaused = false;
+  
+  updatePauseResumeCancelButtons();    // Reflect new state in UI
+  
+  // Notify router-specific handler if exists (e.g., jobs router updates table row)
+  if (typeof onJobStateChange === 'function') {
+    onJobStateChange(stateData.job_id, stateData.state);
   }
 }
 ```
