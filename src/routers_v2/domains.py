@@ -786,6 +786,18 @@ async def domains_selftest(request: Request):
 
   Example domain:
   {example_domain_json}
+
+  Result (end_json event):
+  {
+    "ok": true,
+    "error": "",
+    "data": {
+      "passed": 29,
+      "failed": 0,
+      "passed_tests": ["Test 1 description", ...],
+      "failed_tests": []
+    }
+  }
   """
   request_params = dict(request.query_params)
   

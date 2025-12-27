@@ -790,6 +790,18 @@ async def demorouter_selftest(request: Request):
 
   Example item:
   {example_item_json}
+
+  Result (end_json event):
+  {
+    "ok": true,
+    "error": "",
+    "data": {
+      "passed": 22,
+      "failed": 0,
+      "passed_tests": ["Test 1 description", ...],
+      "failed_tests": []
+    }
+  }
   """
   request_params = dict(request.query_params)
   

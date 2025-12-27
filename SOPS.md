@@ -59,11 +59,20 @@ V2 endpoints follow action-suffixed pattern: `/resource/get`, `/resource/create`
 4. Add `log_function_header()` / `log_function_footer()` calls
 5. Return plain text self-documentation if no query params: `if len(request.query_params) == 0` -> `PlainTextResponse`
 6. Implement consistent JSON result format: `{"ok": true/false, "error": "", "data": {...}}`
-7. Use semantic identifier names: `job_id`, `domain_id`, `source_id`, `vector_store_id`
-8. Support `dry_run=true` param for Create, Update, Delete actions
-9. If router `/` endpoint shows documentation, add endpoint link there
-10. Add link to home page in `app.py` > `root()` available links section
-11. Verify implementation against Python rules
+7. Document the `format=json` result structure in the endpoint docstring:
+    ```
+    Result (format=json):
+    {
+      "ok": true,
+      "error": "",
+      "data": { ... }
+    }
+    ```
+8. Use semantic identifier names: `job_id`, `domain_id`, `source_id`, `vector_store_id`
+9. Support `dry_run=true` param for Create, Update, Delete actions
+10. If router `/` endpoint shows documentation, add endpoint link there
+11. Add link to home page in `app.py` > `root()` available links section
+12. Verify implementation against Python rules
 
 ## Adding a `/v2/` streaming endpoint
 
@@ -80,4 +89,13 @@ Streaming endpoints support `format=stream` and create job files for long-runnin
 9. Yield pause/resume log events to HTTP stream (required for IG-05 byte-identical streams)
 10. Store job files in `PERSISTENT_STORAGE_PATH/jobs/[router]/`
 11. Add link to home page in `app.py` > `root()` available links section
-12. Verify implementation against Python rules
+12. Document the `end_json` result format in the endpoint docstring:
+    ```
+    Result (end_json event):
+    {
+      "ok": true,
+      "error": "",
+      "data": { ... }
+    }
+    ```
+13. Verify implementation against Python rules

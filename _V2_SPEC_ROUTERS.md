@@ -870,9 +870,14 @@ Create, Update, Delete operations usually support the `format=stream` query para
     - `mode=default` (default) - deletes model response
     - `mode=with_conversation` - if response has stored conversation: deletes stored conversation, then model response
 
-**Domain**
+**Domains**
 - L(jhu)C(jh)G(jh)U(jh)D(jh): `/v2/domains` - Knowledge domains to be used for crawling and semantic search
   - Exception: no `dry_run` flag needed here
+  - `PUT /v2/domains/update?domain_id={id}` supports rename via `domain_id` in body (per DD-E014)
+- X(s): `/v2/domains/selftest` - Self-test for domains CRUD operations
+  - Only supports `format=stream`
+  - Tests: error cases, create, create with sources, update, rename (ID change), delete
+  - Result: `{ok, error, data: {passed, failed, passed_tests, failed_tests}}`
 
 **Crawler**
 - L(u): `/v2/crawler` - UI for crawling SharePoint sites and see current status
