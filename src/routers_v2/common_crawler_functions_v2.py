@@ -1,6 +1,6 @@
 # Common functions and dataclasses for domains management V2
 # V2 version using MiddlewareLogger
-import json, os, shutil
+import json, os, re, shutil
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional
 
@@ -240,3 +240,22 @@ def delete_domain_folder(storage_path: str, domain_id: str, logger: Optional[Mid
   
   if logger:
     logger.log_function_output(f"Domain deleted successfully: {domain_id}")
+
+def rename_domain(storage_path: str, source_domain_id: str, target_domain_id: str) -> tuple[bool, str]:
+  """
+  Rename a domain by renaming its folder.
+  Returns (success, error_message).
+  """
+  domains_path = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER)
+  source_path = os.path.join(domains_path, source_domain_id)
+  target_path = os.path.join(domains_path, target_domain_id)
+  
+  if not os.path.exists(source_path): return False, f"Source domain '{source_domain_id}' not found."
+  if os.path.exists(target_path): return False, f"Target domain '{target_domain_id}' already exists."
+  if not re.match(r'^[a-zA-Z0-9_-]+$', target_domain_id): return False, f"Invalid domain ID format: '{target_domain_id}'. Use only letters, numbers, underscores, hyphens."
+  
+  try:
+    os.rename(source_path, target_path)
+    return True, ""
+  except Exception as e:
+    return False, f"Failed to rename domain: {str(e)}"

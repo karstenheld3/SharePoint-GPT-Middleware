@@ -10,7 +10,7 @@ from routers_v2.common_ui_functions_v2 import generate_ui_page, generate_router_
 from routers_v2.common_logging_functions_v2 import MiddlewareLogger
 from routers_v2.common_crawler_functions_v2 import (
   DomainConfig, FileSource, SitePageSource, ListSource,
-  load_domain, load_all_domains, save_domain_to_file, delete_domain_folder,
+  load_domain, load_all_domains, save_domain_to_file, delete_domain_folder, rename_domain,
   validate_domain_config, domain_config_to_dict
 )
 
@@ -201,10 +201,11 @@ async function showEditDomainForm(domainId) {{
       <div class="modal-header"><h3>Edit Domain: ${{escapeHtml(domainId)}}</h3></div>
       <div class="modal-scroll">
         <form id="edit-domain-form" onsubmit="return submitEditDomainForm(event)">
-          <input type="hidden" name="domain_id" value="${{escapeHtml(domainId)}}">
+          <input type="hidden" name="source_domain_id" value="${{escapeHtml(domainId)}}">
           <div class="form-group">
             <label>Domain ID</label>
-            <input type="text" value="${{escapeHtml(domainId)}}" disabled>
+            <input type="text" name="domain_id" value="${{escapeHtml(domainId)}}">
+            <small style="color: #666;">Change to rename the domain</small>
           </div>
           <div class="form-group">
             <label>Name *</label>
@@ -251,15 +252,32 @@ function submitEditDomainForm(event) {{
   const formData = new FormData(form);
   const data = {{}};
   
+  const sourceDomainId = formData.get('source_domain_id');
+  const targetDomainId = formData.get('domain_id');
+  
+  // Validate Domain ID not empty
+  const domainIdInput = form.querySelector('input[name="domain_id"]');
+  if (!targetDomainId || !targetDomainId.trim()) {{
+    showFieldError(domainIdInput, 'Domain ID cannot be empty');
+    return;
+  }}
+  clearFieldError(domainIdInput);
+  
+  // Build data object
   for (const [key, value] of formData.entries()) {{
-    if (key === 'domain_id') continue; // Skip domain_id, it's in URL
-    if (value !== undefined) {{
+    if (key === 'source_domain_id') continue;
+    if (key === 'domain_id') {{
+      // Only include if changed (triggers rename per DD-E014)
+      if (value && value.trim() !== sourceDomainId) {{
+        data.domain_id = value.trim();
+      }}
+    }} else if (value !== undefined) {{
       data[key] = value.trim();
     }}
   }}
   
   clearModalError();
-  callEndpoint(btn, null, data);
+  callEndpoint(btn, sourceDomainId, data);
 }}
 """
 
@@ -601,6 +619,19 @@ async def domains_update(request: Request):
         form = await request.form()
         body_data = dict(form)
   except: pass
+  
+  # Rename detection (per DD-E014)
+  source_domain_id = domain_id
+  target_domain_id = body_data.get("domain_id", None)
+  rename_requested = target_domain_id and target_domain_id != source_domain_id
+  
+  # Handle rename if requested
+  if rename_requested:
+    success, error_msg = rename_domain(storage_path, source_domain_id, target_domain_id)
+    if not success:
+      logger.log_function_footer()
+      return JSONResponse({"ok": False, "error": error_msg, "data": {}}, status_code=400)
+    domain_id = target_domain_id
   
   # Update fields if provided
   name = body_data.get("name", "").strip() or existing.name

@@ -216,45 +216,45 @@ Note: `domainId` in the URL is the source ID (from when form was opened).
 
 ### Helper Functions (common_crawler_functions_v2.py)
 
-- [ ] Add `rename_domain(storage_path, source_domain_id, target_domain_id)` function
-- [ ] Validate source exists (return error tuple if not)
-- [ ] Validate target not exists (return error tuple if collision)
-- [ ] Validate target ID format matches `[a-zA-Z0-9_-]+`
-- [ ] Rename folder using `os.rename()`
-- [ ] Return tuple `(success: bool, error_msg: str)`
+- [x] Add `rename_domain(storage_path, source_domain_id, target_domain_id)` function
+- [x] Validate source exists (return error tuple if not)
+- [x] Validate target not exists (return error tuple if collision)
+- [x] Validate target ID format matches `[a-zA-Z0-9_-]+`
+- [x] Rename folder using `os.rename()`
+- [x] Return tuple `(success: bool, error_msg: str)`
 
 ### Router Endpoint (domains.py - update endpoint)
 
-- [ ] Import `rename_domain` from common_crawler_functions_v2
-- [ ] Extract `source_domain_id` from query string (after body parsing)
-- [ ] Extract `target_domain_id` from body (if present)
-- [ ] Detect rename: `rename_requested = target_domain_id and target_domain_id != source_domain_id`
-- [ ] Validate source domain exists (404 if not) - already exists
-- [ ] If rename requested: call `rename_domain(storage_path, source, target)`, handle errors (400)
-- [ ] Update `domain_id` variable to target ID after successful rename
-- [ ] **CRITICAL**: Use updated `domain_id` in `DomainConfig(domain_id=domain_id, ...)`
-- [ ] Save domain to new location (save_domain_to_file uses domain_id from config)
+- [x] Import `rename_domain` from common_crawler_functions_v2
+- [x] Extract `source_domain_id` from query string (after body parsing)
+- [x] Extract `target_domain_id` from body (if present)
+- [x] Detect rename: `rename_requested = target_domain_id and target_domain_id != source_domain_id`
+- [x] Validate source domain exists (404 if not) - already exists
+- [x] If rename requested: call `rename_domain(storage_path, source, target)`, handle errors (400)
+- [x] Update `domain_id` variable to target ID after successful rename
+- [x] **CRITICAL**: Use updated `domain_id` in `DomainConfig(domain_id=domain_id, ...)`
+- [x] Save domain to new location (save_domain_to_file uses domain_id from config)
 
 ### UI JavaScript (domains.py - get_router_specific_js)
 
 **showEditDomainForm()**:
-- [ ] Add hidden field: `<input type="hidden" name="source_domain_id" value="${{escapeHtml(domainId)}}">`
-- [ ] Change Domain ID input: remove `disabled`, add `name="domain_id"`
-- [ ] Add hint text: `<small style="color: #666;">Change to rename the domain</small>`
+- [x] Add hidden field: `<input type="hidden" name="source_domain_id" value="${{escapeHtml(domainId)}}">`
+- [x] Change Domain ID input: remove `disabled`, add `name="domain_id"`
+- [x] Add hint text: `<small style="color: #666;">Change to rename the domain</small>`
 
 **submitEditDomainForm()**:
-- [ ] Get `sourceDomainId` from `formData.get('source_domain_id')`
-- [ ] Get `targetDomainId` from `formData.get('domain_id')`
-- [ ] Validate Domain ID not empty, show field error if empty
-- [ ] Skip `source_domain_id` when building data object
-- [ ] Include `domain_id` in data only if `targetDomainId !== sourceDomainId`
-- [ ] Call `callEndpoint(btn, sourceDomainId, data)` with source ID
+- [x] Get `sourceDomainId` from `formData.get('source_domain_id')`
+- [x] Get `targetDomainId` from `formData.get('domain_id')`
+- [x] Validate Domain ID not empty, show field error if empty
+- [x] Skip `source_domain_id` when building data object
+- [x] Include `domain_id` in data only if `targetDomainId !== sourceDomainId`
+- [x] Call `callEndpoint(btn, sourceDomainId, data)` with source ID
 
 **Button attributes**:
-- [ ] `data-url` uses source ID: `?domain_id=${{domainId}}`
-- [ ] `data-method="PUT"`
-- [ ] `data-close-on-success="true"`
-- [ ] `data-reload-on-finish="true"`
+- [x] `data-url` uses source ID: `?domain_id=${{domainId}}`
+- [x] `data-method="PUT"`
+- [x] `data-close-on-success="true"`
+- [x] `data-reload-on-finish="true"`
 
 ### Testing
 
