@@ -165,13 +165,13 @@ class MiddlewareLogger:
     return indent + output
   
   def _log_to_console(self, message: str) -> None:
-    """Write to server console using standard format (V2LG-IG-03)."""
+    """Write to server console using standard format (V2LG-IG-02, V2LG-IG-03)."""
     if self.include_line_header:
       process_id = os.getpid()
       timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
       logger.info(f"[{timestamp},process {process_id},request {self._request_number},{self._function_name}] {message}")
     else:
-      print(message)
+      logger.info(message)
   
   def _emit_to_stream(self, message: str) -> Optional[str]:
     """

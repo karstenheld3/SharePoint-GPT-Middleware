@@ -1149,9 +1149,14 @@ This section specifies the unified logging system for both non-streaming and str
 - When None: log methods return None (server console only)
 
 **V2LG-FR-06: Central Logger Configuration**
-- `MiddlewareLogger` uses module-level `logger` from `utils.py`
-- `logging.basicConfig()` in `utils.py` remains the single configuration point
+- `MiddlewareLogger` uses module-level `logger` from `common_logging_functions_v2.py`
+- `logging.basicConfig()` in `common_logging_functions_v2.py` remains the single configuration point
 - Changes to log level, handlers, format apply to all `MiddlewareLogger` instances
+
+**V2LG-FR-07: Optional Line Header**
+- `include_line_header` property controls whether bracket prefix is included (default: True)
+- When True: logs use format `[TIMESTAMP,process PID,request N,top_function] MESSAGE`
+- When False: logs use `logger.info(message)` with indentation only (useful for CLI tools/tests)
 
 ### Implementation Guarantees
 
@@ -1164,13 +1169,24 @@ This section specifies the unified logging system for both non-streaming and str
 ### MiddlewareLogger Class Definition
 
 ```python
-# src/utils.py (add to existing file, after existing log functions)
+# src/routers_v2/common_logging_functions_v2.py
 
+import datetime, logging, os, sys
 from dataclasses import dataclass, field
 from typing import Optional, List, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
-  from routers_v2.router_job_functions import StreamingJobWriter
+  from routers_v2.common_job_functions_v2 import StreamingJobWriter
+
+# Global constant for missing/unknown values in logs (GLOB-LG-09)
+UNKNOWN = '[UNKNOWN]'
+
+# Configure logging for multi-worker environment
+logging.basicConfig(level=logging.INFO, format='%(message)s', handlers=[logging.StreamHandler(sys.stdout)])
+logger = logging.getLogger(__name__)
+
+# Global request counter (V2LG-IG-04: monotonically increasing)
+_request_counter = 0
 
 @dataclass
 class MiddlewareLogger:
@@ -1179,6 +1195,7 @@ class MiddlewareLogger:
   # Configuration (set at creation)
   log_inner_function_headers_and_footers: bool = True
   inner_log_indentation: int = 2
+  include_line_header: bool = True
   stream_job_writer: Optional["StreamingJobWriter"] = None
   
   # State (managed internally)
@@ -1192,15 +1209,18 @@ class MiddlewareLogger:
   def create(cls,
              log_inner_function_headers_and_footers: bool = True,
              inner_log_indentation: int = 2,
+             include_line_header: bool = True,
              stream_job_writer: Optional["StreamingJobWriter"] = None) -> "MiddlewareLogger":
-    """Factory method. Increments global request counter."""
+    """Factory method. Increments global request counter (V2LG-IG-04)."""
     global _request_counter
     _request_counter += 1
     instance = cls(
       log_inner_function_headers_and_footers=log_inner_function_headers_and_footers,
       inner_log_indentation=inner_log_indentation,
+      include_line_header=include_line_header,
       stream_job_writer=stream_job_writer,
-      _request_number=_request_counter
+      _request_number=_request_counter,
+      _inner_stack=[]
     )
     return instance
   
@@ -1231,10 +1251,10 @@ class MiddlewareLogger:
     """Apply indentation based on nesting depth."""
   
   def _log_to_console(self, message: str) -> None:
-    """Write to server console using standard format."""
+    """Write to server console using logger.info() (V2LG-IG-02, V2LG-IG-03). Omits bracket prefix when include_line_header=False."""
   
   def _emit_to_stream(self, message: str) -> Optional[str]:
-    """Emit to stream if writer is set. Calls writer.emit_log() for dual output (V2JB-FR-01)."""
+    """Emit to stream if writer is set (V2LG-FR-05). Adds timestamp prefix, calls writer.emit_log() for dual output (V2JB-FR-01)."""
 ```
 
 ### Log Output Formats
