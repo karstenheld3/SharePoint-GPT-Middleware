@@ -95,7 +95,7 @@ def load_domain(storage_path: str, domain_id: str, logger: Optional[MiddlewareLo
       )
       
       if logger:
-        logger.log_function_output(f"Successfully loaded domain: domain_id='{domain_config.domain_id}'")
+        logger.log_function_output(f"Domain loaded: domain_id='{domain_config.domain_id}'")
         logger.log_function_footer()
       
       return domain_config
@@ -128,7 +128,7 @@ def load_all_domains(storage_path: str, logger: Optional[MiddlewareLogger] = Non
   domains_path = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER)
   
   if logger:
-    logger.log_function_output(f"Scanning domains path='{domains_path}'...")
+    logger.log_function_output(f"Scanning domains: path='{domains_path}'...")
   
   if not os.path.exists(domains_path):
     os.makedirs(domains_path, exist_ok=True)
@@ -268,7 +268,7 @@ def rename_domain(storage_path: str, source_domain_id: str, target_domain_id: st
     return False, f"Failed to rename domain: {str(e)}"
 
 
-# ----------------------------------------- START: Path Helpers -------------------------------------------------------
+# ----------------------------------------- START: Path Helpers -------------------------------------------------------------------
 
 # Map source_type to folder prefix using config constants
 SOURCE_TYPE_FOLDERS = {
@@ -318,10 +318,10 @@ def get_file_relative_path(domain_id: str, source_type: str, source_id: str, sub
   """
   return os.path.join(domain_id, SOURCE_TYPE_FOLDERS[source_type], source_id, subfolder, local_path)
 
-# ----------------------------------------- END: Path Helpers ---------------------------------------------------------
+# ----------------------------------------- END: Path Helpers ---------------------------------------------------------------------
 
 
-# ----------------------------------------- START: files_metadata.json Helpers ----------------------------------------
+# ----------------------------------------- START: files_metadata.json Helpers --------------------------------------------------
 
 STANDARD_METADATA_FIELDS = {
   "sharepoint_listitem_id", "sharepoint_unique_file_id", "openai_file_id",
@@ -379,10 +379,10 @@ def update_files_metadata(domain_path: str, new_entries: list) -> None:
     existing.append(entry)
   save_files_metadata(domain_path, existing)
 
-# ----------------------------------------- END: files_metadata.json Helpers ------------------------------------------
+# ----------------------------------------- END: files_metadata.json Helpers ----------------------------------------------------
 
 
-# ----------------------------------------- START: Source Filtering ---------------------------------------------------
+# ----------------------------------------- START: Source Filtering -----------------------------------------------------------------
 
 def get_sources_for_scope(domain: DomainConfig, scope: str, source_id: Optional[str] = None) -> list:
   """
@@ -412,10 +412,10 @@ def get_sources_for_scope(domain: DomainConfig, scope: str, source_id: Optional[
   
   return sources
 
-# ----------------------------------------- END: Source Filtering -----------------------------------------------------
+# ----------------------------------------- END: Source Filtering -------------------------------------------------------------------
 
 
-# ----------------------------------------- START: dry_run Helpers ----------------------------------------------------
+# ----------------------------------------- START: dry_run Helpers ------------------------------------------------------------------
 
 def get_map_filename(base_name: str, job_id: Optional[str] = None) -> str:
   """
@@ -439,10 +439,10 @@ def cleanup_temp_map_files(source_folder: str, job_id: str) -> None:
     except Exception:
       pass
 
-# ----------------------------------------- END: dry_run Helpers ------------------------------------------------------
+# ----------------------------------------- END: dry_run Helpers --------------------------------------------------------------------
 
 
-# ----------------------------------------- START: File Type Filtering ------------------------------------------------
+# ----------------------------------------- START: File Type Filtering --------------------------------------------------------------
 
 def is_file_embeddable(filename: str) -> bool:
   """
@@ -469,4 +469,4 @@ def filter_embeddable_files(files: list) -> tuple:
       skipped.append(f)
   return embeddable, skipped
 
-# ----------------------------------------- END: File Type Filtering --------------------------------------------------
+# ----------------------------------------- END: File Type Filtering ----------------------------------------------------------------

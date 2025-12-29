@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from common_utility_functions import convert_to_flat_html_table
 
-# ----------------------------------------- START: Internal Helpers ----------------------------------------------------------
+# ----------------------------------------- START: Internal Helpers ----------------------------------------------------------------
 
 def _escape_html(text: str) -> str:
   """Escape HTML special characters."""
@@ -24,20 +24,20 @@ def _generate_button(btn: Dict, router_prefix: str, item_id: Optional[str]) -> s
   btn_class = btn.get("class", "btn-small")
   
   # Build attributes
-  attrs = [f'class="{btn_class}"']
+  attributes = [f'class="{btn_class}"']
   
   # Data attributes for callEndpoint
   if "data_url" in btn:
     url = btn["data_url"].replace("{router_prefix}", router_prefix)
-    attrs.append(f'data-url="{_escape_html(url)}"')
+    attributes.append(f'data-url="{_escape_html(url)}"')
   if "data_method" in btn:
-    attrs.append(f'data-method="{btn["data_method"]}"')
+    attributes.append(f'data-method="{btn["data_method"]}"')
   if "data_format" in btn:
-    attrs.append(f'data-format="{btn["data_format"]}"')
+    attributes.append(f'data-format="{btn["data_format"]}"')
   if "data_show_result" in btn:
-    attrs.append(f'data-show-result="{btn["data_show_result"]}"')
+    attributes.append(f'data-show-result="{btn["data_show_result"]}"')
   if "data_reload_on_finish" in btn:
-    attrs.append(f'data-reload-on-finish="{btn["data_reload_on_finish"]}"')
+    attributes.append(f'data-reload-on-finish="{btn["data_reload_on_finish"]}"')
   
   # Build onclick
   onclick = btn.get("onclick", "")
@@ -47,23 +47,23 @@ def _generate_button(btn: Dict, router_prefix: str, item_id: Optional[str]) -> s
     # Replace {itemId} placeholder
     if item_id:
       onclick = onclick.replace("{itemId}", item_id)
-    attrs.append(f'onclick="{_escape_html(onclick)}"')
+    attributes.append(f'onclick="{_escape_html(onclick)}"')
   elif "data_url" in btn:
     # Auto-generate callEndpoint onclick
     if confirm_msg and item_id:
       confirm_escaped = confirm_msg.replace("{itemId}", item_id).replace("'", "\\'")
-      attrs.append(f"onclick=\"if(confirm('{confirm_escaped}')) callEndpoint(this, '{item_id}')\"")
+      attributes.append(f"onclick=\"if(confirm('{confirm_escaped}')) callEndpoint(this, '{item_id}')\"")
     elif item_id:
-      attrs.append(f"onclick=\"callEndpoint(this, '{item_id}')\"")
+      attributes.append(f"onclick=\"callEndpoint(this, '{item_id}')\"")
     else:
-      attrs.append('onclick="callEndpoint(this)"')
+      attributes.append('onclick="callEndpoint(this)"')
   
-  return f'<button {" ".join(attrs)}>{_escape_html(text)}</button>'
+  return f'<button {" ".join(attributes)}>{_escape_html(text)}</button>'
 
-# ----------------------------------------- END: Internal Helpers ------------------------------------------------------------
+# ----------------------------------------- END: Internal Helpers ------------------------------------------------------------------
 
 
-# ----------------------------------------- START: Response Helpers ----------------------------------------------------------
+# ----------------------------------------- START: Response Helpers ----------------------------------------------------------------
 
 def json_result(ok: bool, error: str, data: Any) -> JSONResponse:
   """Generate consistent JSON response: {ok, error, data}."""
@@ -94,10 +94,10 @@ def html_result(title: str, data: Any, navigation_html: str = "") -> HTMLRespons
 </body>
 </html>""")
 
-# ----------------------------------------- END: Response Helpers ------------------------------------------------------------
+# ----------------------------------------- END: Response Helpers ------------------------------------------------------------------
 
 
-# ----------------------------------------- START: Component Generators ------------------------------------------------------
+# ----------------------------------------- START: Component Generators ------------------------------------------------------------
 
 def generate_html_head(title: str, include_htmx: bool = True, include_v2_css: bool = True, additional_css: str = "") -> str:
   """Generate <head> section with standard resources."""
@@ -203,10 +203,10 @@ def generate_all_table_rows(items: List[Dict], columns: List[Dict], row_id_field
   if not items: return ""
   return "".join([generate_table_row(item, columns, row_id_field, row_id_prefix, router_prefix, enable_selection) for item in items])
 
-# ----------------------------------------- END: Component Generators --------------------------------------------------------
+# ----------------------------------------- END: Component Generators --------------------------------------------------------------
 
 
-# ----------------------------------------- START: JavaScript Generators -----------------------------------------------------
+# ----------------------------------------- START: JavaScript Generators -----------------------------------------------------------
 
 def generate_core_js() -> str:
   """Generate toast, modal, escapeHtml functions."""
@@ -993,10 +993,10 @@ async function callEndpoint(btn, itemId = null, bodyData = null) {
 }
 """
 
-# ----------------------------------------- END: JavaScript Generators -------------------------------------------------------
+# ----------------------------------------- END: JavaScript Generators -------------------------------------------------------------
 
 
-# ----------------------------------------- START: High-Level Page Generators ------------------------------------------------
+# ----------------------------------------- START: High-Level Page Generators ------------------------------------------------------
 
 def generate_ui_page(
   title: str,
@@ -1177,4 +1177,4 @@ def generate_endpoint_docs(docstring: str, router_prefix: str) -> str:
   """
   return docstring.replace("{router_prefix}", router_prefix) if docstring else ""
 
-# ----------------------------------------- END: High-Level Page Generators --------------------------------------------------
+# ----------------------------------------- END: High-Level Page Generators --------------------------------------------------------

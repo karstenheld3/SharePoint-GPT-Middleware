@@ -167,9 +167,8 @@ def get_document_library_files(ctx: ClientContext, document_library: DocumentLib
       logger.log_function_footer()
       return []
     
-    # Define progress callback for pagination
+    # Callback to track pagination progress
     def print_progress(items):
-      """Callback function to track pagination progress"""
       logger.log_function_output(f"{len(items)} item{'' if len(items) == 1 else 's'} retrieved so far...")
     
     # Build the query with optional filter

@@ -26,7 +26,7 @@ def get_reports_path() -> Path:
   storage_path = getattr(config, 'LOCAL_PERSISTENT_STORAGE_PATH', None) or ''
   return Path(storage_path) / "reports"
 
-# ----------------------------------------- START: Type/Folder Conversion -------------------------------------------------
+# ----------------------------------------- START: Type/Folder Conversion -----------------------------------------------------
 
 def get_folder_for_type(report_type: str) -> str:
   if report_type == "site_scan": return "site_scans"
@@ -36,10 +36,10 @@ def get_type_from_folder(folder: str) -> str:
   if folder == "site_scans": return "site_scan"
   return folder.rstrip("s")
 
-# ----------------------------------------- END: Type/Folder Conversion ---------------------------------------------------
+# ----------------------------------------- END: Type/Folder Conversion -------------------------------------------------------
 
 
-# ----------------------------------------- START: Report CRUD Functions --------------------------------------------------
+# ----------------------------------------- START: Report CRUD Functions ------------------------------------------------------
 
 def create_report(report_type: str, filename: str, files: list[tuple[str, bytes]], metadata: dict, keep_folder_structure: bool = True, dry_run: bool = False, logger: Optional[MiddlewareLogger] = None) -> str:
   """
@@ -119,7 +119,7 @@ def list_reports(type_filter: str = None, logger: Optional[MiddlewareLogger] = N
   List all reports, optionally filtered by type.
   Returns list of report.json contents, sorted by created_utc descending (newest first).
   """
-  if logger: logger.log_function_output(f"Listing reports" + (f" (type={type_filter})" if type_filter else "") + "...")
+  if logger: logger.log_function_output(f"Listing reports" + (f" (type='{type_filter}')" if type_filter else "") + "...")
   reports = []
   reports_path = _long_path(get_reports_path())
   
@@ -226,4 +226,4 @@ def get_report_archive_path(report_id: str) -> Path | None:
   if not archive_path.exists(): return None
   return archive_path
 
-# ----------------------------------------- END: Report CRUD Functions ----------------------------------------------------
+# ----------------------------------------- END: Report CRUD Functions --------------------------------------------------------

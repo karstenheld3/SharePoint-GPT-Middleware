@@ -6,7 +6,7 @@
 # All used UI and Javascript should remain in this file.
 # Dependencies are allowed for jobs and logging. 
 
-import json, os, textwrap
+import asyncio, datetime, json, os, textwrap, uuid
 import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
@@ -1374,8 +1374,6 @@ async def demorouter_selftest(request: Request):
   Example item:
   {example_item_json}
   """
-  import uuid, datetime
-  
   request_params = dict(request.query_params)
   
   # Bare GET returns self-documentation
@@ -1803,10 +1801,8 @@ async def demorouter_create_demo_items(request: Request):
   Example item:
   {example_item_json}
   """
-  import asyncio, uuid, datetime
-  
   request_params = dict(request.query_params)
-  
+
   # Bare GET returns self-documentation
   if len(request_params) == 0:
     doc = textwrap.dedent(demorouter_create_demo_items.__doc__).replace("{router_prefix}", router_prefix).replace("{router_name}", router_name).replace("{example_item_json}", example_item_json.strip())
