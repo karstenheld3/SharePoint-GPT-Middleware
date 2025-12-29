@@ -317,14 +317,6 @@ async def get_search_results_using_search_api(openai_client, search_params: Coai
   compatible_response = SearchApiResponse()
   return search_results, compatible_response
 
-# Tries to get the vector store by id and returns None if it fails
-async def try_get_vector_store_by_id(client, vsid) -> Optional[CoaiVectorStore]:
-  try:
-    vector_store = await client.vector_stores.retrieve(vsid)
-    return _convert_to_coai_vector_store(vector_store)
-  except Exception as e:
-    return None
-
 # Utility function to remove temperature parameter for reasoning models that don't support it
 # When reasoning model is used, it will add the reasoning effort if specified
 def remove_temperature_from_request_params_for_reasoning_models(request_params, model_name, reasoning_effort=None) -> None:

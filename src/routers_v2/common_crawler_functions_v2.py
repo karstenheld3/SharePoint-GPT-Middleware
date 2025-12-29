@@ -1,7 +1,8 @@
 # Common functions and dataclasses for domains management V2
 # V2 version using MiddlewareLogger
-import json, os, re, shutil
+import glob, json, os, re, shutil
 from dataclasses import asdict, dataclass
+from urllib.parse import unquote
 from typing import Any, Dict, List, Optional
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
@@ -301,7 +302,6 @@ def server_relative_url_to_local_path(server_relative_url: str, sharepoint_url_p
   Convert SharePoint server_relative_url to local relative path.
   Example: "/sites/demo/Shared Documents/Reports/Q1.docx" with sharepoint_url_part="/Shared Documents" -> "Reports/Q1.docx"
   """
-  from urllib.parse import unquote
   decoded_url = unquote(server_relative_url)
   decoded_part = unquote(sharepoint_url_part)
   idx = decoded_url.lower().find(decoded_part.lower())
@@ -432,7 +432,6 @@ def get_map_filename(base_name: str, job_id: Optional[str] = None) -> str:
 def cleanup_temp_map_files(source_folder: str, job_id: str) -> None:
   """Delete temp map files after dry_run completes. Called in finally block."""
   if not job_id: return
-  import glob
   pattern = os.path.join(source_folder, f"*_{job_id}.csv")
   for filepath in glob.glob(pattern):
     try:
