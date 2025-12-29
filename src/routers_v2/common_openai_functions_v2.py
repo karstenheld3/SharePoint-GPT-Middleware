@@ -21,7 +21,7 @@ from openai.types.shared_params.responses_model import ResponsesModel
 
 import httpx
 
-from routers_v2.common_logging_functions_v2 import MiddlewareLogger
+from routers_v2.common_logging_functions_v2 import MiddlewareLogger, UNKNOWN
 
 # Global variable for OpenAI datetime attributes that need conversion
 OPENAI_DATETIME_ATTRIBUTES = ["created_at", "expires_at"]
@@ -671,9 +671,9 @@ async def delete_vector_store_by_id(client: AsyncAzureOpenAI | AsyncOpenAI, vect
           if logger: logger.log_function_output(f"  [ {i+1} / {len(file_ids)} ] Deleted file ID={file_id}")
         except Exception as e:
           failed_count += 1
-          if logger: logger.log_function_output(f"  [ {i+1} / {len(file_ids)} ] WARNING: Failed to delete file ID={file_id}: {str(e)}")
+          if logger: logger.log_function_output(f"  [ {i+1} / {len(file_ids)} ] WARNING: Failed to delete file ID={file_id} -> {str(e)}")
       
-      if logger: logger.log_function_output(f"File deletion complete: {deleted_count} deleted, {failed_count} failed")
+      if logger: logger.log_function_output(f"  {deleted_count} deleted, {failed_count} failed.")
     
     # Delete the vector store
     await client.vector_stores.delete(vector_store_id)

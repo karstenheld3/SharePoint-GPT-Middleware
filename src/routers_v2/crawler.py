@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Str
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from routers_v2.common_ui_functions_v2 import generate_router_docs_page, generate_endpoint_docs, json_result, html_result, generate_ui_page
-from routers_v2.common_logging_functions_v2 import MiddlewareLogger
+from routers_v2.common_logging_functions_v2 import MiddlewareLogger, UNKNOWN
 from routers_v2.common_job_functions_v2 import list_jobs, StreamingJobWriter, ControlAction
 from routers_v2.common_crawler_functions_v2 import DomainConfig, FileSource, ListSource, SitePageSource, load_domain, get_sources_for_scope, get_source_folder_path, get_embedded_folder_path, get_failed_folder_path, get_originals_folder_path, server_relative_url_to_local_path, get_file_relative_path, get_map_filename, cleanup_temp_map_files, is_file_embeddable, filter_embeddable_files, load_files_metadata, save_files_metadata, update_files_metadata, get_domain_path, SOURCE_TYPE_FOLDERS
 from routers_v2.common_map_file_functions_v2 import SharePointMapRow, FilesMapRow, VectorStoreMapRow, ChangeDetectionResult, MapFileWriter, read_sharepoint_map, read_files_map, read_vectorstore_map, detect_changes, is_file_changed, is_file_changed_for_embed, sharepoint_map_row_to_files_map_row, files_map_row_to_vectorstore_map_row
@@ -102,9 +102,9 @@ async def step_download_source(storage_path: str, domain: DomainConfig, source, 
         logger.log_function_output(f"  ERROR: {error}")
         result.errors = 1
         return result
-      sp_files = get_document_library_files(ctx, library, source.filter, logger)
+      sp_files = get_document_library_files(ctx, library, source.filter, logger, dry_run)
     elif source_type == "sitepage_sources":
-      sp_files = get_site_pages(ctx, source.sharepoint_url_part, source.filter, logger)
+      sp_files = get_site_pages(ctx, source.sharepoint_url_part, source.filter, logger, dry_run)
     sp_items = [_sharepoint_file_to_map_row(f) for f in sp_files]
     result.total_files = len(sp_items)
     sp_writer = MapFileWriter(sp_map_path, SharePointMapRow)
@@ -112,7 +112,7 @@ async def step_download_source(storage_path: str, domain: DomainConfig, source, 
     for item in sp_items: sp_writer.append_row(item)
     sp_writer.finalize()
     changes = detect_changes(sp_items, local_items)
-    logger.log_function_output(f"  Change detection: added={len(changes.added)}, changed={len(changes.changed)}, removed={len(changes.removed)}, unchanged={len(changes.unchanged)}")
+    logger.log_function_output(f"  {len(changes.added)} added, {len(changes.changed)} changed, {len(changes.removed)} removed, {len(changes.unchanged)} unchanged.")
     target_folder = get_embedded_folder_path(storage_path, domain.domain_id, source_type, source_id) if source_type == "file_sources" else get_originals_folder_path(storage_path, domain.domain_id, source_type, source_id)
     os.makedirs(target_folder, exist_ok=True)
     files_writer = MapFileWriter(files_map_path, FilesMapRow)
@@ -129,25 +129,18 @@ async def step_download_source(storage_path: str, domain: DomainConfig, source, 
       utc_now, ts_now = _get_utc_now()
       logger.log_function_output(f"[ {i+1} / {total} ] Downloading '{sp_item.filename}'...")
       subfolder = CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_EMBEDDED_SUBFOLDER if source_type == "file_sources" else CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_ORIGINALS_SUBFOLDER
-      if dry_run:
-        logger.log_function_output(f"  [DRY RUN] Would download")
+      success, error = download_file_from_sharepoint(ctx, sp_item.server_relative_url, target_path, True, sp_item.last_modified_timestamp, dry_run)
+      if success:
+        logger.log_function_output("  OK.")
         file_rel_path = get_file_relative_path(domain.domain_id, source_type, source_id, subfolder, local_path)
         files_row = sharepoint_map_row_to_files_map_row(sp_item, file_rel_path, utc_now, ts_now)
         files_writer.append_row(files_row)
         result.downloaded += 1
       else:
-        success, error = download_file_from_sharepoint(ctx, sp_item.server_relative_url, target_path, True, sp_item.last_modified_timestamp)
-        if success:
-          logger.log_function_output("  OK.")
-          file_rel_path = get_file_relative_path(domain.domain_id, source_type, source_id, subfolder, local_path)
-          files_row = sharepoint_map_row_to_files_map_row(sp_item, file_rel_path, utc_now, ts_now)
-          files_writer.append_row(files_row)
-          result.downloaded += 1
-        else:
-          logger.log_function_output(f"  ERROR: {error}")
-          files_row = sharepoint_map_row_to_files_map_row(sp_item, "", utc_now, ts_now, sharepoint_error=error)
-          files_writer.append_row(files_row)
-          result.errors += 1
+        logger.log_function_output(f"  ERROR: {error}")
+        files_row = sharepoint_map_row_to_files_map_row(sp_item, "", utc_now, ts_now, sharepoint_error=error)
+        files_writer.append_row(files_row)
+        result.errors += 1
     for local_item in changes.unchanged:
       files_writer.append_row(local_item)
       result.skipped += 1
@@ -157,7 +150,7 @@ async def step_download_source(storage_path: str, domain: DomainConfig, source, 
         if os.path.exists(removed_path): os.remove(removed_path)
       result.removed += 1
     files_writer.finalize()
-    logger.log_function_output(f"  Download complete: {result.downloaded} downloaded, {result.skipped} skipped, {result.errors} errors")
+    logger.log_function_output(f"  {result.downloaded} downloaded, {result.skipped} skipped, {result.errors} error{'' if result.errors == 1 else 's'}.")
   except Exception as e:
     logger.log_function_output(f"  ERROR: {str(e)}")
     result.errors += 1
@@ -203,7 +196,6 @@ async def step_process_source(storage_path: str, domain_id: str, source, source_
       target_name = filename.rsplit('.', 1)[0] + '.md'
       target_path = os.path.join(embedded_folder, target_name)
       if dry_run:
-        logger.log_function_output(f"  [DRY RUN] Would process '{filename}'")
         result.processed += 1
       else:
         try:
@@ -268,11 +260,11 @@ async def step_embed_source(storage_path: str, domain: DomainConfig, source, sou
       continue
     utc_now, ts_now = _get_utc_now()
     if dry_run:
-      logger.log_function_output(f"  [DRY RUN] Would embed")
       vs_row = files_map_row_to_vectorstore_map_row(files_item, "dry_run_file_id", vector_store_id, utc_now, ts_now, utc_now, ts_now)
       vs_writer.append_row(vs_row)
       result.uploaded += 1
       result.embedded += 1
+      logger.log_function_output("  OK.")
     else:
       if existing_vs and existing_vs.openai_file_id:
         await remove_and_delete_file(openai_client, vector_store_id, existing_vs.openai_file_id, logger)
@@ -295,7 +287,7 @@ async def step_embed_source(storage_path: str, domain: DomainConfig, source, sou
   if metadata_entries and not dry_run:
     domain_path = get_domain_path(storage_path, domain.domain_id)
     update_files_metadata(domain_path, metadata_entries)
-  logger.log_function_output(f"  Embed complete: {result.embedded} embedded, {result.failed} failed")
+  logger.log_function_output(f"  {result.embedded} embedded, {result.failed} failed.")
   return result
 
 async def crawl_domain(storage_path: str, domain: DomainConfig, mode: str, scope: str, source_id: Optional[str], dry_run: bool, retry_batches: int, writer: StreamingJobWriter, logger: MiddlewareLogger, crawler_config: dict, openai_client) -> dict:
@@ -393,10 +385,11 @@ async def _crawl_stream(domain: DomainConfig, mode: str, scope: str, source_id: 
     if not dry_run and results.get("ok", False):
       report_id = create_crawl_report(get_persistent_storage_path(), domain.domain_id, mode, scope, results, started_utc, finished_utc)
       results["data"]["report_id"] = report_id
-    yield logger.log_function_output(f"Crawl completed: {results.get('data', {}).get('total_embedded', 0)} files embedded")
+    total_embedded = results.get('data', {}).get('total_embedded', 0)
+    yield logger.log_function_output(f"{total_embedded} file{'' if total_embedded == 1 else 's'} embedded.")
     yield writer.emit_end(ok=results.get("ok", False), error=results.get("error", ""), data=results.get("data", {}))
   except Exception as e:
-    yield logger.log_function_output(f"ERROR: {str(e)}")
+    yield logger.log_function_output(f"ERROR: Crawl failed -> {str(e)}")
     yield writer.emit_end(ok=False, error=str(e), data={})
   finally:
     if dry_run:

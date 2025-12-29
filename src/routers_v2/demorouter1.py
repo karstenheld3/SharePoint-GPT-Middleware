@@ -12,7 +12,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 
 from common_utility_functions import convert_to_flat_html_table
-from routers_v2.common_logging_functions_v2 import MiddlewareLogger
+from routers_v2.common_logging_functions_v2 import MiddlewareLogger, UNKNOWN
 from routers_v2.common_job_functions_v2 import StreamingJobWriter, ControlAction
 
 router = APIRouter()
@@ -1765,7 +1765,7 @@ async def demorouter_selftest(request: Request):
       yield writer.emit_end(ok=ok, error="" if ok else f"{fail_count} test(s)".replace("(s)", "s" if fail_count != 1 else "") + " failed.", data={"passed": ok_count, "failed": fail_count, "passed_tests": passed_tests, "failed_tests": failed_tests})
       
     except Exception as e:
-      sse = log(f"ERROR: {type(e).__name__}: {str(e)}")
+      sse = log(f"ERROR: Self-test failed -> {type(e).__name__}: {str(e)}")
       if sse: yield sse
       stream_logger.log_function_footer()
       yield writer.emit_end(ok=False, error=str(e), data={"passed": ok_count, "failed": fail_count, "passed_tests": passed_tests, "failed_tests": failed_tests, "test_id": test_id})
@@ -1854,7 +1854,7 @@ async def demorouter_create_demo_items(request: Request):
     try:
       yield writer.emit_start()
       
-      sse = stream_logger.log_function_output(f"Creating {count} demo items (batch ID='{batch_id}', delay={delay_ms}ms each)...")
+      sse = stream_logger.log_function_output(f"Creating {count} demo items (batch_id='{batch_id}', delay={delay_ms}ms each)...")
       if sse: yield sse
       
       for i in range(count):
@@ -1900,7 +1900,7 @@ async def demorouter_create_demo_items(request: Request):
       # Summary
       sse = stream_logger.log_function_output(f"")
       if sse: yield sse
-      sse = stream_logger.log_function_output(f"Completed: {len(created_items)} created, {len(failed_items)} failed.")
+      sse = stream_logger.log_function_output(f"{len(created_items)} created, {len(failed_items)} failed.")
       if sse: yield sse
       
       stream_logger.log_function_footer()
@@ -1913,7 +1913,7 @@ async def demorouter_create_demo_items(request: Request):
       )
       
     except Exception as e:
-      sse = stream_logger.log_function_output(f"ERROR: {type(e).__name__}: {str(e)}")
+      sse = stream_logger.log_function_output(f"ERROR: Item creation failed -> {type(e).__name__}: {str(e)}")
       if sse: yield sse
       stream_logger.log_function_footer()
       yield writer.emit_end(ok=False, error=str(e), data={"created": len(created_items), "items": created_items})

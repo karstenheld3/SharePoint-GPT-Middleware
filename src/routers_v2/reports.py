@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Fil
 
 from routers_v2.common_report_functions_v2 import list_reports, get_report_metadata, get_report_file, delete_report, get_report_archive_path, create_report
 from routers_v2.common_report_functions_v2 import set_config as set_report_functions_config
-from routers_v2.common_logging_functions_v2 import MiddlewareLogger
+from routers_v2.common_logging_functions_v2 import MiddlewareLogger, UNKNOWN
 from routers_v2.common_ui_functions_v2 import generate_ui_page, generate_router_docs_page, generate_endpoint_docs, json_result, html_result
 from routers_v2.common_job_functions_v2 import StreamingJobWriter, ControlAction
 
@@ -656,7 +656,7 @@ async def create_demo_reports_endpoint(request: Request):
             yield item
         
         if control_action == ControlAction.CANCEL:
-          sse = stream_logger.log_function_output(f"Cancelled after creating {len(created_reports)} report(s).")
+          sse = stream_logger.log_function_output(f"{len(created_reports)} report{'' if len(created_reports) == 1 else 's'} created before cancel.")
           if sse: yield sse
           stream_logger.log_function_footer()
           yield writer.emit_end(ok=False, error="Cancelled by user.", data={"created": len(created_reports), "reports": created_reports}, cancelled=True)
@@ -686,7 +686,7 @@ async def create_demo_reports_endpoint(request: Request):
       
       sse = stream_logger.log_function_output("")
       if sse: yield sse
-      sse = stream_logger.log_function_output(f"Completed: {len(created_reports)} created, {len(failed_reports)} failed.")
+      sse = stream_logger.log_function_output(f"{len(created_reports)} created, {len(failed_reports)} failed.")
       if sse: yield sse
       
       stream_logger.log_function_footer()
@@ -699,7 +699,7 @@ async def create_demo_reports_endpoint(request: Request):
       )
       
     except Exception as e:
-      sse = stream_logger.log_function_output(f"ERROR: {type(e).__name__}: {str(e)}")
+      sse = stream_logger.log_function_output(f"ERROR: Report creation failed -> {type(e).__name__}: {str(e)}")
       if sse: yield sse
       stream_logger.log_function_footer()
       yield writer.emit_end(ok=False, error=str(e), data={"created": len(created_reports), "reports": created_reports})

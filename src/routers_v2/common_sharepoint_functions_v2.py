@@ -11,8 +11,7 @@ from office365.sharepoint.client_context import ClientContext
 from office365.sharepoint.lists.list import List as DocumentLibrary
 from cryptography.hazmat.primitives.serialization import pkcs12, Encoding, PrivateFormat, NoEncryption
 from cryptography.hazmat.backends import default_backend
-from routers_v2.common_logging_functions_v2 import MiddlewareLogger
-
+from routers_v2.common_logging_functions_v2 import MiddlewareLogger, UNKNOWN
 
 @dataclass
 class SharePointFile:
@@ -142,34 +141,36 @@ def try_get_document_library(ctx: ClientContext, site_url: str, library_url_part
     return None, error_message
 
 
-def get_document_library_files(ctx: ClientContext, document_library: DocumentLibrary, filter: str, logger: MiddlewareLogger) -> list[SharePointFile]:
+def get_document_library_files(ctx: ClientContext, document_library: DocumentLibrary, filter: str, logger: MiddlewareLogger, dry_run: bool = False) -> list[SharePointFile]:
   """
   Get all files from a SharePoint document library, handling pagination automatically.
-  
-  This function retrieves ALL files from the library, even if there are more than 5000 items,
-  by using the get_all() method which handles pagination internally.
+  dry_run=True verifies library is accessible without fetching all files.
   
   Args:
     ctx: An authenticated SharePoint client context
     document_library: The SharePoint document library object
     filter: Optional OData filter string (e.g., "FileLeafRef eq 'document.pdf'"). If None or empty, no filter is applied.
     logger: MiddlewareLogger instance for logging output
+    dry_run: If True, verify access only without fetching all files
     
   Returns:
     list[SharePointFile]: List of SharePointFile dataclass instances
-    
-  Example:
-    filter = "FileLeafRef eq 'document.pdf'"  # Optional filter
-    files = get_document_library_files(ctx, library, filter, logger)
   """
   
+  logger.log_function_header("get_document_library_files()")
   try:
-    logger.log_function_output(f"Starting to retrieve files from document library: {document_library.properties.get('Title', 'Unknown')}")
+    lib_title = document_library.properties.get('Title') or UNKNOWN
+    lib_id = document_library.properties.get('Id') or UNKNOWN
+    logger.log_function_output(f"Library: '{lib_title}' (ID={lib_id})")
+    if dry_run:
+      document_library.get().execute_query()
+      logger.log_function_footer()
+      return []
     
     # Define progress callback for pagination
     def print_progress(items):
       """Callback function to track pagination progress"""
-      logger.log_function_output(f"Retrieved {len(items)} items so far...")
+      logger.log_function_output(f"{len(items)} item{'' if len(items) == 1 else 's'} retrieved so far...")
     
     # Build the query with optional filter
     # Use FSObjType to filter: 0 = file, 1 = folder
@@ -193,7 +194,7 @@ def get_document_library_files(ctx: ClientContext, document_library: DocumentLib
     page_size = 5000
     all_items = items_query.get_all(page_size, print_progress).execute_query()
     
-    logger.log_function_output(f"Total files retrieved: {len(all_items)}")
+    logger.log_function_output(f"{len(all_items)} file{'' if len(all_items) == 1 else 's'} retrieved.")
     
     # Convert to SharePointFile dataclass instances
     sharepoint_files = []
@@ -234,7 +235,7 @@ def get_document_library_files(ctx: ClientContext, document_library: DocumentLib
             last_modified_utc = dt.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
             last_modified_timestamp = int(dt.timestamp())
           except Exception as date_error:
-            logger.log_function_output(f"Warning: Failed to parse date for file {file_leaf_ref}: {date_error}")
+            logger.log_function_output(f"  WARNING: File '{file_ref}' (ID={item_id}) - failed to parse date '{modified}' -> {date_error}")
             last_modified_utc = modified
             last_modified_timestamp = 0
         
@@ -254,20 +255,25 @@ def get_document_library_files(ctx: ClientContext, document_library: DocumentLib
         sharepoint_files.append(sp_file)
         
       except Exception as item_error:
-        logger.log_function_output(f"Warning: Failed to process item: {item_error}")
+        item_id_str = item.properties.get('Id') or UNKNOWN
+        file_ref_str = item.properties.get('FileRef') or UNKNOWN
+        logger.log_function_output(f"  WARNING: File '{file_ref_str}' (ID={item_id_str}) - failed to process -> {item_error}")
         continue
     
-    logger.log_function_output(f"Successfully converted {len(sharepoint_files)} files to SharePointFile objects")
+    logger.log_function_output(f"{len(sharepoint_files)} file{'' if len(sharepoint_files) == 1 else 's'} converted to SharePointFile objects.")
+    logger.log_function_footer()
     return sharepoint_files
     
   except Exception as e:
-    logger.log_function_output(f"ERROR: Failed to retrieve files from document library: {str(e)}")
+    lib_title = (document_library.properties.get('Title') or UNKNOWN) if document_library else UNKNOWN
+    logger.log_function_output(f"  ERROR: Library '{lib_title}' - failed to retrieve files -> {str(e)}")
+    logger.log_function_footer()
     return []
 
 
 # ----------------------------------------- START: File Download ------------------------------------------------------
 
-def download_file_from_sharepoint(ctx: ClientContext, server_relative_url: str, target_path: str, preserve_timestamp: bool = True, last_modified_timestamp: int = None) -> tuple[bool, str]:
+def download_file_from_sharepoint(ctx: ClientContext, server_relative_url: str, target_path: str, preserve_timestamp: bool = True, last_modified_timestamp: int = None, dry_run: bool = False) -> tuple[bool, str]:
   """
   Download a single file from SharePoint to local disk.
   
@@ -277,18 +283,24 @@ def download_file_from_sharepoint(ctx: ClientContext, server_relative_url: str, 
     target_path: Local filesystem path to save file
     preserve_timestamp: If True, set file mtime to SharePoint last_modified
     last_modified_timestamp: Unix timestamp to apply if preserve_timestamp=True
+    dry_run: If True, verify file exists but don't download
     
   Returns:
     (success, error_message)
   """
   try:
+    sp_file = ctx.web.get_file_by_server_relative_url(server_relative_url)
+    if dry_run:
+      sp_file.get().execute_query()
+      return True, ""
     os.makedirs(os.path.dirname(target_path), exist_ok=True)
     with open(target_path, 'wb') as f:
-      ctx.web.get_file_by_server_relative_url(server_relative_url).download(f).execute_query()
+      sp_file.download(f).execute_query()
     if preserve_timestamp and last_modified_timestamp:
       os.utime(target_path, (last_modified_timestamp, last_modified_timestamp))
     return True, ""
   except Exception as e:
+    if not dry_run and os.path.exists(target_path): os.remove(target_path)
     return False, str(e)
 
 # ----------------------------------------- END: File Download --------------------------------------------------------
@@ -298,6 +310,7 @@ def download_file_from_sharepoint(ctx: ClientContext, server_relative_url: str, 
 
 def get_list_items(ctx: ClientContext, list_name: str, filter_query: str, logger: MiddlewareLogger) -> list:
   """Get all items from a SharePoint list as dictionaries."""
+  logger.log_function_header("get_list_items()")
   try:
     sp_list = ctx.web.lists.get_by_title(list_name)
     items_query = sp_list.items
@@ -305,25 +318,29 @@ def get_list_items(ctx: ClientContext, list_name: str, filter_query: str, logger
       items_query = items_query.filter(filter_query)
     
     def print_progress(items):
-      logger.log_function_output(f"Retrieved {len(items)} list items so far...")
+      logger.log_function_output(f"{len(items)} list item{'' if len(items) == 1 else 's'} retrieved so far...")
     
     all_items = items_query.get_all(5000, print_progress).execute_query()
-    logger.log_function_output(f"Total list items retrieved: {len(all_items)}")
+    logger.log_function_output(f"{len(all_items)} list item{'' if len(all_items) == 1 else 's'} retrieved.")
     
     result = []
     for item in all_items:
       result.append(dict(item.properties))
+    logger.log_function_footer()
     return result
   except Exception as e:
-    logger.log_function_output(f"ERROR: Failed to get list items: {str(e)}")
+    logger.log_function_output(f"  ERROR: List '{list_name}' - failed to get items -> {str(e)}")
+    logger.log_function_footer()
     return []
 
-def export_list_to_csv(ctx: ClientContext, list_name: str, filter_query: str, target_path: str, logger: MiddlewareLogger) -> tuple[bool, str]:
-  """Export SharePoint list to CSV file. Returns (success, error_message)."""
+def export_list_to_csv(ctx: ClientContext, list_name: str, filter_query: str, target_path: str, logger: MiddlewareLogger, dry_run: bool = False) -> tuple[bool, str]:
+  """Export SharePoint list to CSV file. Returns (success, error_message). dry_run=True verifies list access only."""
+  logger.log_function_header("export_list_to_csv()")
   try:
     items = get_list_items(ctx, list_name, filter_query, logger)
-    if not items:
-      return True, ""  # Empty list is valid
+    if dry_run or not items:
+      logger.log_function_footer()
+      return True, ""
     
     os.makedirs(os.path.dirname(target_path), exist_ok=True)
     
@@ -339,9 +356,11 @@ def export_list_to_csv(ctx: ClientContext, list_name: str, filter_query: str, ta
       for item in items:
         writer.writerow(item)
     
-    logger.log_function_output(f"Exported {len(items)} items to '{target_path}'")
+    logger.log_function_output(f"{len(items)} item{'' if len(items) == 1 else 's'} exported to '{target_path}'.")
+    logger.log_function_footer()
     return True, ""
   except Exception as e:
+    logger.log_function_footer()
     return False, str(e)
 
 # ----------------------------------------- END: List Operations ------------------------------------------------------
@@ -349,24 +368,36 @@ def export_list_to_csv(ctx: ClientContext, list_name: str, filter_query: str, ta
 
 # ----------------------------------------- START: Site Pages Operations ----------------------------------------------
 
-def get_site_pages(ctx: ClientContext, pages_url_part: str, filter_query: str, logger: MiddlewareLogger) -> list:
-  """Get site pages metadata. Similar to get_document_library_files but for SitePages library."""
+def get_site_pages(ctx: ClientContext, pages_url_part: str, filter_query: str, logger: MiddlewareLogger, dry_run: bool = False) -> list:
+  """Get site pages metadata. Similar to get_document_library_files but for SitePages library. dry_run=True only verifies library exists."""
+  logger.log_function_header("get_site_pages()")
   library, error = try_get_document_library(ctx, ctx.web.url, pages_url_part)
   if error:
-    logger.log_function_output(f"ERROR: {error}")
+    logger.log_function_output(f"ERROR: Site pages '{pages_url_part}' - {error}")
+    logger.log_function_footer()
     return []
-  return get_document_library_files(ctx, library, filter_query, logger)
+  result = get_document_library_files(ctx, library, filter_query, logger, dry_run)
+  logger.log_function_footer()
+  return result
 
-def download_site_page_html(ctx: ClientContext, server_relative_url: str, target_path: str, logger: MiddlewareLogger) -> tuple[bool, str]:
-  """Download site page content as HTML file. Returns (success, error_message)."""
+def download_site_page_html(ctx: ClientContext, server_relative_url: str, target_path: str, logger: MiddlewareLogger, dry_run: bool = False) -> tuple[bool, str]:
+  """Download site page content as HTML file. Returns (success, error_message). dry_run=True verifies page exists only."""
+  logger.log_function_header("download_site_page_html()")
   try:
+    sp_file = ctx.web.get_file_by_server_relative_url(server_relative_url)
+    if dry_run:
+      sp_file.get().execute_query()
+      logger.log_function_footer()
+      return True, ""
     os.makedirs(os.path.dirname(target_path), exist_ok=True)
-    # Get the page file content
     with open(target_path, 'wb') as f:
-      ctx.web.get_file_by_server_relative_url(server_relative_url).download(f).execute_query()
-    logger.log_function_output(f"Downloaded site page to '{target_path}'")
+      sp_file.download(f).execute_query()
+    logger.log_function_output(f"Site page downloaded to '{target_path}'.")
+    logger.log_function_footer()
     return True, ""
   except Exception as e:
+    if not dry_run and os.path.exists(target_path): os.remove(target_path)
+    logger.log_function_footer()
     return False, str(e)
 
 # ----------------------------------------- END: Site Pages Operations ------------------------------------------------

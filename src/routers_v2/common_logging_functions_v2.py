@@ -8,6 +8,9 @@ from typing import List, Optional, Tuple, TYPE_CHECKING
 if TYPE_CHECKING:
   from routers_v2.common_job_functions_v2 import StreamingJobWriter
 
+# Global constant for missing/unknown values in logs (GLOB-LG-09)
+UNKNOWN = '[UNKNOWN]'
+
 # Configure logging for multi-worker environment
 logging.basicConfig(level=logging.INFO, format='%(message)s', handlers=[logging.StreamHandler(sys.stdout)])
 logger = logging.getLogger(__name__)
@@ -53,6 +56,7 @@ class MiddlewareLogger:
   # Configuration (set at creation)
   log_inner_function_headers_and_footers: bool = True
   inner_log_indentation: int = 2
+  include_line_header: bool = True
   stream_job_writer: Optional["StreamingJobWriter"] = None
   
   # State (managed internally)
@@ -63,13 +67,14 @@ class MiddlewareLogger:
   _inner_stack: List[Tuple[str, datetime.datetime]] = field(default_factory=list)
   
   @classmethod
-  def create(cls, log_inner_function_headers_and_footers: bool = True, inner_log_indentation: int = 2, stream_job_writer: Optional["StreamingJobWriter"] = None) -> "MiddlewareLogger":
+  def create(cls, log_inner_function_headers_and_footers: bool = True, inner_log_indentation: int = 2, include_line_header: bool = True, stream_job_writer: Optional["StreamingJobWriter"] = None) -> "MiddlewareLogger":
     """Factory method. Increments global request counter (V2LG-IG-04)."""
     global _request_counter
     _request_counter += 1
     instance = cls(
       log_inner_function_headers_and_footers=log_inner_function_headers_and_footers,
       inner_log_indentation=inner_log_indentation,
+      include_line_header=include_line_header,
       stream_job_writer=stream_job_writer,
       _request_number=_request_counter,
       _inner_stack=[]
@@ -89,10 +94,10 @@ class MiddlewareLogger:
       # Top-level function: always log, set state
       self._function_name = function_name
       self._start_time = now
-      message = f"START: {function_name}..."
-      self._log_to_console(message)
       self._nesting_depth = 1
-      return self._emit_to_stream(message)
+      indented_message = self._apply_indentation(f"START: {function_name}...")
+      self._log_to_console(indented_message)
+      return self._emit_to_stream(indented_message)
     else:
       # Nested function: push to stack, conditionally log
       self._inner_stack.append((function_name, now))
@@ -131,14 +136,12 @@ class MiddlewareLogger:
       else:
         duration = "0 ms"
       
-      message = f"END: {self._function_name} ({duration})."
-      self._log_to_console(message)
+      indented_message = self._apply_indentation(f"END: {self._function_name} ({duration}).")
+      self._log_to_console(indented_message)
       self._nesting_depth = 0
-      return self._emit_to_stream(message)
+      return self._emit_to_stream(indented_message)
     else:
-      # Nested function: pop from stack
-      self._nesting_depth -= 1
-      
+      # Nested function: pop from stack, apply indentation BEFORE decrementing depth
       if self._inner_stack:
         inner_func_name, inner_start_time = self._inner_stack.pop()
         
@@ -146,21 +149,29 @@ class MiddlewareLogger:
           ms = int((now - inner_start_time).total_seconds() * 1000)
           duration = format_milliseconds(ms)
           indented_message = self._apply_indentation(f"END: {inner_func_name} ({duration}).")
+          self._nesting_depth -= 1
           self._log_to_console(indented_message)
           return self._emit_to_stream(indented_message)
+      self._nesting_depth -= 1
       return None
   
   def _apply_indentation(self, output: str) -> str:
-    """Apply indentation based on nesting depth (V2LG-FR-04). Depth 0 and 1 have no indentation."""
-    if self._nesting_depth <= 1: return output
-    indent = " " * (self.inner_log_indentation * (self._nesting_depth - 1))
+    """Apply indentation based on nesting depth (V2LG-FR-04). When include_line_header=False, all depths get indentation."""
+    if self.include_line_header:
+      if self._nesting_depth <= 1: return output
+      indent = " " * (self.inner_log_indentation * (self._nesting_depth - 1))
+    else:
+      indent = " " * (self.inner_log_indentation * self._nesting_depth)
     return indent + output
   
   def _log_to_console(self, message: str) -> None:
     """Write to server console using standard format (V2LG-IG-03)."""
-    process_id = os.getpid()
-    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    logger.info(f"[{timestamp},process {process_id},request {self._request_number},{self._function_name}] {message}")
+    if self.include_line_header:
+      process_id = os.getpid()
+      timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+      logger.info(f"[{timestamp},process {process_id},request {self._request_number},{self._function_name}] {message}")
+    else:
+      print(message)
   
   def _emit_to_stream(self, message: str) -> Optional[str]:
     """

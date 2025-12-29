@@ -8,7 +8,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 
 from routers_v2.common_ui_functions_v2 import generate_ui_page, generate_router_docs_page, generate_endpoint_docs, json_result, html_result
-from routers_v2.common_logging_functions_v2 import MiddlewareLogger
+from routers_v2.common_logging_functions_v2 import MiddlewareLogger, UNKNOWN
 from routers_v2.common_job_functions_v2 import StreamingJobWriter
 from routers_v2.common_crawler_functions_v2 import (
   DomainConfig, FileSource, SitePageSource, ListSource,
@@ -1108,7 +1108,7 @@ async def domains_selftest(request: Request):
       yield writer.emit_end(ok=ok, error="" if ok else f"{fail_count} test(s) failed.", data={"passed": ok_count, "failed": fail_count, "passed_tests": passed_tests, "failed_tests": failed_tests})
       
     except Exception as e:
-      sse = log(f"ERROR: {type(e).__name__}: {str(e)}")
+      sse = log(f"ERROR: Self-test failed -> {type(e).__name__}: {str(e)}")
       if sse: yield sse
       stream_logger.log_function_footer()
       yield writer.emit_end(ok=False, error=str(e), data={"passed": ok_count, "failed": fail_count, "test_id": test_id})

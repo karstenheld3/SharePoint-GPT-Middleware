@@ -9,7 +9,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 
 from routers_v2.common_ui_functions_v2 import generate_router_docs_page, generate_endpoint_docs, json_result, html_result, generate_html_head, generate_toast_container, generate_modal_structure, generate_console_panel, generate_core_js, generate_console_js, generate_form_js, generate_endpoint_caller_js
-from routers_v2.common_logging_functions_v2 import MiddlewareLogger
+from routers_v2.common_logging_functions_v2 import MiddlewareLogger, UNKNOWN
 from routers_v2.common_job_functions_v2 import list_jobs, find_job_by_id, find_job_file, read_job_log, read_job_result, create_control_file, delete_job, force_cancel_job, JobMetadata, StreamingJobWriter, ControlAction
 
 router = APIRouter()
@@ -1378,7 +1378,7 @@ async def jobs_selftest(request: Request):
       yield writer.emit_end(ok=ok, error="" if ok else f"{fail_count} test(s) failed.", data={"passed": ok_count, "failed": fail_count, "passed_tests": passed_tests, "failed_tests": failed_tests})
       
     except Exception as e:
-      sse = log(f"ERROR: {type(e).__name__}: {str(e)}")
+      sse = log(f"ERROR: Self-test failed -> {type(e).__name__}: {str(e)}")
       if sse: yield sse
       stream_logger.log_function_footer()
       yield writer.emit_end(ok=False, error=str(e), data={"passed": ok_count, "failed": fail_count})

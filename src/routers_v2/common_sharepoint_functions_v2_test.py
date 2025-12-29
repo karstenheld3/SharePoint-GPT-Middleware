@@ -9,15 +9,22 @@
 import sys, os, tempfile, shutil, json
 from pathlib import Path
 from dataclasses import dataclass, asdict
+from dotenv import load_dotenv
+
+# Load .env file from project root
+load_dotenv(Path(__file__).parent.parent.parent / '.env')
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from routers_v2 import common_sharepoint_functions_v2 as spf
+from routers_v2 import common_sharepoint_functions_v2 as cspf
 from routers_v2.common_logging_functions_v2 import MiddlewareLogger
 from routers_v2.common_crawler_functions_v2 import load_domain, DomainConfig
 
 # ----------------------------------------- START: Configuration -----------------------------------------------------
+
+# Test options
+delete_downloaded_files_after_test = False
 
 # Domain to test with
 test_domain_id = "AiSearchTest01"
@@ -43,6 +50,10 @@ test_count = 0
 pass_count = 0
 fail_count = 0
 skip_count = 0
+failed_tests = []
+skipped_tests = []
+section_num = 0
+total_sections = 12
 
 def test(name: str, condition: bool, details: str = ""):
   global test_count, pass_count, fail_count
@@ -52,26 +63,32 @@ def test(name: str, condition: bool, details: str = ""):
     print(f"  OK: {name}")
   else:
     fail_count += 1
-    print(f"  FAIL: {name}" + (f" -> {details}" if details else ""))
+    fail_msg = f"{name}" + (f" -> {details}" if details else "")
+    failed_tests.append(fail_msg)
+    print(f"  FAIL: {fail_msg}")
 
 def skip(name: str, reason: str = ""):
   global skip_count
   skip_count += 1
-  print(f"  SKIP: {name}" + (f" -> {reason}" if reason else ""))
+  skip_msg = f"{name}" + (f" -> {reason}" if reason else "")
+  skipped_tests.append(skip_msg)
+  print(f"  SKIP: {skip_msg}")
 
 def section(name: str):
-  print(f"\n{'=' * 70}\n{name}\n{'=' * 70}")
-
+  global section_num
+  section_num += 1
+  print(f"[ {section_num} / {total_sections} ] {name}")
 # ----------------------------------------- END: Test Infrastructure -------------------------------------------------
 
 
 # ----------------------------------------- START: Test Cases --------------------------------------------------------
 
 def test_sharepoint_file_dataclass():
+  """Test SharePointFile dataclass creation and serialization. No external dependencies."""
   section("SharePointFile Dataclass")
   
   # Create instance with all fields
-  sp_file = spf.SharePointFile(
+  sp_file = cspf.SharePointFile(
     sharepoint_listitem_id=42,
     sharepoint_unique_file_id="abc-123-def",
     filename="test.docx",
@@ -96,26 +113,38 @@ def test_sharepoint_file_dataclass():
   test("asdict has 10 keys", len(sp_dict) == 10)
 
 def test_pem_conversion(cert_path: str, cert_password: str):
+  """
+  Test PFX to PEM certificate conversion.
+  - Verifies PEM file is created from PFX
+  - Verifies thumbprint is extracted
+  - Verifies idempotency (second call returns cached result)
+  """
   section("get_or_create_pem_from_pfx()")
   
   if not cert_path or not os.path.exists(cert_path):
     skip("PEM conversion", f"Certificate not found at '{cert_path}'")
     return None, None
   
-  pem_file, thumbprint = spf.get_or_create_pem_from_pfx(cert_path, cert_password)
+  pem_file, thumbprint = cspf.get_or_create_pem_from_pfx(cert_path, cert_password)
   
   test("Returns pem_file path", pem_file is not None and pem_file.endswith('.pem'))
   test("Returns thumbprint", thumbprint is not None and len(thumbprint) > 0)
   test("PEM file created", os.path.exists(pem_file))
   
   # Test idempotency - second call should use cached PEM
-  pem_file2, thumbprint2 = spf.get_or_create_pem_from_pfx(cert_path, cert_password)
+  pem_file2, thumbprint2 = cspf.get_or_create_pem_from_pfx(cert_path, cert_password)
   test("Idempotent - same pem_file", pem_file == pem_file2)
   test("Idempotent - same thumbprint", thumbprint == thumbprint2)
   
   return pem_file, thumbprint
 
 def test_connect_to_site(site_url: str, client_id: str, tenant_id: str, cert_path: str, cert_password: str):
+  """
+  Test SharePoint site connection using certificate authentication.
+  - Verifies ClientContext is created
+  - Verifies connection works by retrieving web title
+  Returns: ClientContext or None if connection fails
+  """
   section("connect_to_site_using_client_id_and_certificate()")
   
   if not all([site_url, client_id, tenant_id, cert_path, cert_password]):
@@ -127,7 +156,7 @@ def test_connect_to_site(site_url: str, client_id: str, tenant_id: str, cert_pat
     return None
   
   try:
-    ctx = spf.connect_to_site_using_client_id_and_certificate(site_url, client_id, tenant_id, cert_path, cert_password)
+    ctx = cspf.connect_to_site_using_client_id_and_certificate(site_url, client_id, tenant_id, cert_path, cert_password)
     test("Context created", ctx is not None)
     
     # Verify connection works by getting web title
@@ -142,6 +171,12 @@ def test_connect_to_site(site_url: str, client_id: str, tenant_id: str, cert_pat
     return None
 
 def test_try_get_document_library(ctx, site_url: str, library_url_part: str):
+  """
+  Test document library retrieval.
+  - Verifies valid library path returns library object
+  - Verifies invalid library path returns None + error message
+  Returns: Library object or None
+  """
   section("try_get_document_library()")
   
   if ctx is None:
@@ -149,22 +184,30 @@ def test_try_get_document_library(ctx, site_url: str, library_url_part: str):
     return None
   
   # Test with valid library
-  library, error = spf.try_get_document_library(ctx, site_url, library_url_part)
+  library, error = cspf.try_get_document_library(ctx, site_url, library_url_part)
   test("Valid library - returns library", library is not None, error or "")
   test("Valid library - no error", error is None)
   
   if library:
-    lib_title = library.properties.get('Title', 'Unknown')
-    print(f"    Library title: '{lib_title}'")
+    lib_title = library.properties.get('Title') or cspf.UNKNOWN
+    lib_id = library.properties.get('Id') or cspf.UNKNOWN
+    print(f"    Using library '{lib_title}' ID={lib_id}")
   
   # Test with invalid library
-  bad_library, bad_error = spf.try_get_document_library(ctx, site_url, "/NonExistent Library 12345")
+  bad_library, bad_error = cspf.try_get_document_library(ctx, site_url, "/NonExistent Library 12345")
   test("Invalid library - returns None", bad_library is None)
   test("Invalid library - returns error", bad_error is not None)
   
   return library
 
 def test_get_document_library_files(ctx, document_library, logger: MiddlewareLogger):
+  """
+  Test file listing from document library.
+  - Verifies returns list of SharePointFile instances
+  - Verifies file metadata (filename, server_relative_url, file_type)
+  - Verifies OData filter query works
+  Returns: List of SharePointFile objects
+  """
   section("get_document_library_files()")
   
   if ctx is None or document_library is None:
@@ -172,10 +215,10 @@ def test_get_document_library_files(ctx, document_library, logger: MiddlewareLog
     return []
   
   # Get all files (no filter)
-  files = spf.get_document_library_files(ctx, document_library, "", logger)
+  files = cspf.get_document_library_files(ctx, document_library, "", logger)
   test("Returns list", isinstance(files, list))
-  test("Returns SharePointFile instances", len(files) == 0 or isinstance(files[0], spf.SharePointFile))
-  print(f"    Total files retrieved: {len(files)}")
+  test("Returns SharePointFile instances", len(files) == 0 or isinstance(files[0], cspf.SharePointFile))
+  print(f"    {len(files)} file{'' if len(files) == 1 else 's'} retrieved.")
   
   if len(files) > 0:
     first_file = files[0]
@@ -188,14 +231,25 @@ def test_get_document_library_files(ctx, document_library, logger: MiddlewareLog
   if len(files) > 0:
     test_filename = files[0].filename
     filter_query = f"FileLeafRef eq '{test_filename}'"
-    filtered_files = spf.get_document_library_files(ctx, document_library, filter_query, logger)
+    filtered_files = cspf.get_document_library_files(ctx, document_library, filter_query, logger)
     test("Filter returns results", len(filtered_files) >= 1)
     if len(filtered_files) > 0:
       test("Filter matches filename", filtered_files[0].filename == test_filename)
   
+  # Test dry_run - should return empty list but verify access
+  dry_files = cspf.get_document_library_files(ctx, document_library, "", logger, dry_run=True)
+  test("dry_run returns empty list", dry_files == [])
+  
   return files
 
 def test_download_file(ctx, files: list, temp_dir: str):
+  """
+  Test file download from SharePoint.
+  - Verifies file downloads successfully
+  - Verifies local file size matches SharePoint
+  - Verifies timestamp preservation (last_modified)
+  - Verifies invalid path returns error
+  """
   section("download_file_from_sharepoint()")
   
   if ctx is None or len(files) == 0:
@@ -204,9 +258,9 @@ def test_download_file(ctx, files: list, temp_dir: str):
   
   # Pick first file to download
   test_file = files[0]
-  target_path = os.path.join(temp_dir, "downloads", test_file.filename)
+  target_path = os.path.join(temp_dir, "01_files", test_file.filename)
   
-  success, error = spf.download_file_from_sharepoint(
+  success, error = cspf.download_file_from_sharepoint(
     ctx,
     test_file.server_relative_url,
     target_path,
@@ -227,11 +281,30 @@ def test_download_file(ctx, files: list, temp_dir: str):
       test("Timestamp preserved", local_mtime == test_file.last_modified_timestamp, f"Local: {local_mtime}, SharePoint: {test_file.last_modified_timestamp}")
   
   # Test download with invalid path
-  bad_success, bad_error = spf.download_file_from_sharepoint(ctx, "/nonexistent/path/file.docx", os.path.join(temp_dir, "bad.docx"))
+  bad_target_path = os.path.join(temp_dir, "bad.docx")
+  bad_success, bad_error = cspf.download_file_from_sharepoint(ctx, "/nonexistent/path/file.docx", bad_target_path)
   test("Invalid path - returns False", bad_success == False)
   test("Invalid path - returns error", len(bad_error) > 0)
+  test("Invalid path - no file left behind", not os.path.exists(bad_target_path), f"File exists: {bad_target_path}")
+  
+  # Test dry_run - should verify file exists but not download
+  dry_target = os.path.join(temp_dir, "dry_run_file.docx")
+  dry_success, dry_error = cspf.download_file_from_sharepoint(ctx, test_file.server_relative_url, dry_target, dry_run=True)
+  test("dry_run succeeds", dry_success, dry_error)
+  test("dry_run does not create file", not os.path.exists(dry_target))
+  
+  # Test dry_run with invalid path - should fail validation
+  dry_bad_success, dry_bad_error = cspf.download_file_from_sharepoint(ctx, "/nonexistent/path/file.docx", dry_target, dry_run=True)
+  test("dry_run invalid path - returns False", dry_bad_success == False)
+  test("dry_run invalid path - returns error", len(dry_bad_error) > 0)
 
 def test_get_list_items(ctx, list_name: str, logger: MiddlewareLogger):
+  """
+  Test SharePoint list item retrieval.
+  - Verifies returns list of dictionaries
+  - Skips if no list_name configured in domain
+  Returns: List of item dictionaries
+  """
   section("get_list_items()")
   
   if ctx is None:
@@ -243,9 +316,9 @@ def test_get_list_items(ctx, list_name: str, logger: MiddlewareLogger):
     return []
   
   # Get all items
-  items = spf.get_list_items(ctx, list_name, "", logger)
+  items = cspf.get_list_items(ctx, list_name, "", logger)
   test("Returns list", isinstance(items, list))
-  print(f"    Total list items: {len(items)}")
+  print(f"    {len(items)} list item{'' if len(items) == 1 else 's'} retrieved.")
   
   if len(items) > 0:
     first_item = items[0]
@@ -255,6 +328,12 @@ def test_get_list_items(ctx, list_name: str, logger: MiddlewareLogger):
   return items
 
 def test_export_list_to_csv(ctx, list_name: str, temp_dir: str, logger: MiddlewareLogger):
+  """
+  Test SharePoint list export to CSV.
+  - Verifies CSV file is created
+  - Verifies CSV has header row
+  - Skips if no list_name configured in domain
+  """
   section("export_list_to_csv()")
   
   if ctx is None:
@@ -265,9 +344,9 @@ def test_export_list_to_csv(ctx, list_name: str, temp_dir: str, logger: Middlewa
     skip("Export list test", "No list_name configured in domain")
     return
   
-  target_path = os.path.join(temp_dir, "exports", f"{list_name}.csv")
+  target_path = os.path.join(temp_dir, "02_lists", f"{list_name}.csv")
   
-  success, error = spf.export_list_to_csv(ctx, list_name, "", target_path, logger)
+  success, error = cspf.export_list_to_csv(ctx, list_name, "", target_path, logger)
   test("Export succeeds", success, error)
   test("CSV file created", os.path.exists(target_path))
   
@@ -275,9 +354,21 @@ def test_export_list_to_csv(ctx, list_name: str, temp_dir: str, logger: Middlewa
     with open(target_path, 'r', encoding='utf-8') as f:
       lines = f.readlines()
     test("CSV has header", len(lines) >= 1)
-    print(f"    CSV lines: {len(lines)}")
+    print(f"    {len(lines)} CSV line{'' if len(lines) == 1 else 's'}.")
+  
+  # Test dry_run - should verify list access but not create file
+  dry_target = os.path.join(temp_dir, "02_lists", "dry_run.csv")
+  dry_success, dry_error = cspf.export_list_to_csv(ctx, list_name, "", dry_target, logger, dry_run=True)
+  test("dry_run succeeds", dry_success, dry_error)
+  test("dry_run does not create file", not os.path.exists(dry_target))
 
 def test_get_site_pages(ctx, pages_url_part: str, logger: MiddlewareLogger):
+  """
+  Test site pages retrieval.
+  - Verifies returns list of SharePointFile instances
+  - Defaults to /SitePages if no pages_url_part provided
+  Returns: List of SharePointFile objects
+  """
   section("get_site_pages()")
   
   if ctx is None:
@@ -288,17 +379,27 @@ def test_get_site_pages(ctx, pages_url_part: str, logger: MiddlewareLogger):
     # Default to SitePages
     pages_url_part = "/SitePages"
   
-  pages = spf.get_site_pages(ctx, pages_url_part, "", logger)
+  pages = cspf.get_site_pages(ctx, pages_url_part, "", logger)
   test("Returns list", isinstance(pages, list))
-  print(f"    Total site pages: {len(pages)}")
+  print(f"    {len(pages)} site page{'' if len(pages) == 1 else 's'} retrieved.")
   
   if len(pages) > 0:
-    test("Pages are SharePointFile", isinstance(pages[0], spf.SharePointFile))
+    test("Pages are SharePointFile", isinstance(pages[0], cspf.SharePointFile))
     print(f"    First page: '{pages[0].filename}'")
+  
+  # Test dry_run - should verify library exists but return empty list
+  dry_pages = cspf.get_site_pages(ctx, pages_url_part, "", logger, dry_run=True)
+  test("dry_run returns empty list", dry_pages == [])
   
   return pages
 
 def test_download_site_page_html(ctx, pages: list, temp_dir: str, logger: MiddlewareLogger):
+  """
+  Test site page HTML download.
+  - Downloads first .aspx page found
+  - Verifies HTML file is created with content
+  - Skips if no .aspx pages found
+  """
   section("download_site_page_html()")
   
   if ctx is None or len(pages) == 0:
@@ -312,15 +413,21 @@ def test_download_site_page_html(ctx, pages: list, temp_dir: str, logger: Middle
     return
   
   test_page = aspx_pages[0]
-  target_path = os.path.join(temp_dir, "pages", test_page.filename)
+  target_path = os.path.join(temp_dir, "03_sitepages", test_page.filename)
   
-  success, error = spf.download_site_page_html(ctx, test_page.server_relative_url, target_path, logger)
+  success, error = cspf.download_site_page_html(ctx, test_page.server_relative_url, target_path, logger)
   test("Download succeeds", success, error)
   test("File exists", os.path.exists(target_path))
   
   if os.path.exists(target_path):
     size = os.path.getsize(target_path)
     test("File has content", size > 0, f"Size: {size} bytes")
+  
+  # Test dry_run - should verify page exists but not download
+  dry_target = os.path.join(temp_dir, "03_sitepages", "dry_run.aspx")
+  dry_success, dry_error = cspf.download_site_page_html(ctx, test_page.server_relative_url, dry_target, logger, dry_run=True)
+  test("dry_run succeeds", dry_success, dry_error)
+  test("dry_run does not create file", not os.path.exists(dry_target))
 
 # ----------------------------------------- END: Test Cases ----------------------------------------------------------
 
@@ -335,9 +442,9 @@ def print_credentials_status():
   print(f"  CRAWLER_CLIENT_CERTIFICATE_PFX_FILE: {sharepoint_cert_file}" if sharepoint_cert_file else "  CRAWLER_CLIENT_CERTIFICATE_PFX_FILE: (not set)")
   print(f"  Cert full path: {sharepoint_cert_path}")
   if sharepoint_cert_path and os.path.exists(sharepoint_cert_path):
-    print(f"    -> Certificate file EXISTS")
+    print(f"    OK: Certificate file exists.")
   elif sharepoint_cert_path:
-    print(f"    -> Certificate file NOT FOUND")
+    print(f"    ERROR: Certificate file not found.")
 
 def main():
   global test_count, pass_count, fail_count, skip_count
@@ -351,12 +458,32 @@ def main():
   # Print credentials status
   print_credentials_status()
   
-  # Create temp directory for downloads
-  temp_dir = tempfile.mkdtemp(prefix="sp_test_")
-  print(f"Temp directory: {temp_dir}")
+  # Verify required credentials are available
+  missing_creds = []
+  if not sharepoint_client_id: missing_creds.append("CRAWLER_CLIENT_ID")
+  if not sharepoint_tenant_id: missing_creds.append("CRAWLER_TENANT_ID")
+  if not sharepoint_cert_file: missing_creds.append("CRAWLER_CLIENT_CERTIFICATE_PFX_FILE")
+  if not sharepoint_cert_password: missing_creds.append("CRAWLER_CLIENT_CERTIFICATE_PASSWORD")
+  if sharepoint_cert_path and not os.path.exists(sharepoint_cert_path): missing_creds.append(f"Certificate file not found: '{sharepoint_cert_path}'")
   
-  # Create logger
-  logger = MiddlewareLogger.create()
+  if missing_creds:
+    print(f"\nERROR: Missing required credentials:")
+    for mc in missing_creds: print(f"  - {mc}")
+    print("\nRESULT: FAIL (missing credentials)")
+    sys.exit(1)
+  
+  # Create test output directory (clear existing data first)
+  test_output_dir = os.path.join(persistent_storage_path, "crawler", "_common_sharepoint_functions_v2_test")
+  if os.path.exists(test_output_dir):
+    shutil.rmtree(test_output_dir)
+    print(f"Cleared existing test output directory: {test_output_dir}")
+  os.makedirs(test_output_dir, exist_ok=True)
+  print(f"Test output directory: {test_output_dir}")
+
+  print("=" * 70)
+  
+  # Create logger without line headers for cleaner test output
+  logger = MiddlewareLogger.create(include_line_header=False)
   
   try:
     # Test 1: SharePointFile dataclass (no external dependencies)
@@ -370,10 +497,10 @@ def main():
     try:
       domain = load_domain(persistent_storage_path, test_domain_id, logger)
       test("Domain loaded", domain is not None)
-      print(f"    Domain: {domain.name}")
-      print(f"    File sources: {len(domain.file_sources)}")
-      print(f"    List sources: {len(domain.list_sources)}")
-      print(f"    Site page sources: {len(domain.sitepage_sources)}")
+      print(f"    Domain: '{domain.name}'")
+      print(f"    {len(domain.file_sources)} file source{'' if len(domain.file_sources) == 1 else 's'}.")
+      print(f"    {len(domain.list_sources)} list source{'' if len(domain.list_sources) == 1 else 's'}.")
+      print(f"    {len(domain.sitepage_sources)} site page source{'' if len(domain.sitepage_sources) == 1 else 's'}.")
     except FileNotFoundError as e:
       test("Domain loaded", False, str(e))
       domain = None
@@ -387,9 +514,9 @@ def main():
     site_url = file_source.site_url
     library_url_part = file_source.sharepoint_url_part
     
-    print(f"\nUsing file source: {file_source.source_id}")
-    print(f"  Site URL: {site_url}")
-    print(f"  Library: {library_url_part}")
+    print(f"  Using file source: source_id='{file_source.source_id}'")
+    print(f"    Site: site_url='{site_url}'")
+    print(f"    Library: sharepoint_url_part='{library_url_part}'")
     
     # Test 3: Connection
     ctx = test_connect_to_site(site_url, sharepoint_client_id, sharepoint_tenant_id, sharepoint_cert_path, sharepoint_cert_password)
@@ -401,44 +528,54 @@ def main():
     files = test_get_document_library_files(ctx, library, logger)
     
     # Test 6: Download file
-    test_download_file(ctx, files, temp_dir)
+    test_download_file(ctx, files, test_output_dir)
     
     # Test 7: List operations (if list_sources configured)
     list_name = domain.list_sources[0].list_name if len(domain.list_sources) > 0 else ""
     test_get_list_items(ctx, list_name, logger)
-    test_export_list_to_csv(ctx, list_name, temp_dir, logger)
+    test_export_list_to_csv(ctx, list_name, test_output_dir, logger)
     
     # Test 8: Site pages (if sitepage_sources configured)
     pages_url_part = domain.sitepage_sources[0].sharepoint_url_part if len(domain.sitepage_sources) > 0 else "/SitePages"
     pages = test_get_site_pages(ctx, pages_url_part, logger)
-    test_download_site_page_html(ctx, pages, temp_dir, logger)
+    test_download_site_page_html(ctx, pages, test_output_dir, logger)
     
   finally:
     # Cleanup
-    print(f"\n{'=' * 70}")
-    print("Cleanup")
+    print("\nCleanup")
     print("=" * 70)
-    try:
-      shutil.rmtree(temp_dir)
-      print(f"  Removed temp directory: {temp_dir}")
-    except Exception as e:
-      print(f"  Failed to remove temp directory: {e}")
+    if delete_downloaded_files_after_test:
+      try:
+        shutil.rmtree(test_output_dir)
+        print(f"  Removed test output directory: {test_output_dir}")
+      except Exception as e:
+        print(f"  Failed to remove test output directory: {e}")
+    else:
+      print(f"  Keeping test output directory: {test_output_dir}")
   
   # Summary
-  print(f"\n{'=' * 70}")
-  print("TEST SUMMARY")
+  print("\nTEST SUMMARY")
   print("=" * 70)
-  print(f"  Total:   {test_count}")
-  print(f"  Passed:  {pass_count}")
-  print(f"  Failed:  {fail_count}")
-  print(f"  Skipped: {skip_count}")
+  print(f"  Sections: {section_num} / {total_sections}")
+  print(f"  Tests:    {test_count} total, {pass_count} passed, {fail_count} failed, {skip_count} skipped")
+  
+  if len(failed_tests) > 0:
+    print(f"\nFailed tests ({len(failed_tests)}):")
+    for ft in failed_tests:
+      print(f"  - {ft}")
+  
+  if len(skipped_tests) > 0:
+    print(f"\nSkipped tests ({len(skipped_tests)}):")
+    for st in skipped_tests:
+      print(f"  - {st}")
+  
   print("=" * 70)
   
   if fail_count > 0:
-    print("\nFAIL: Some tests failed")
+    print(f"\nRESULT: FAIL ({fail_count} test(s) failed)")
     sys.exit(1)
   else:
-    print("\nOK: All tests passed")
+    print(f"\nRESULT: OK (all {pass_count} tests passed)")
     sys.exit(0)
 
 if __name__ == "__main__":

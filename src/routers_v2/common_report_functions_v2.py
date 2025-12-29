@@ -5,7 +5,7 @@
 import zipfile, json, datetime, os, sys
 from pathlib import Path
 from typing import Optional
-from routers_v2.common_logging_functions_v2 import MiddlewareLogger
+from routers_v2.common_logging_functions_v2 import MiddlewareLogger, UNKNOWN
 
 # Module-level config - set via set_config()
 config = None
@@ -148,11 +148,11 @@ def list_reports(type_filter: str = None, logger: Optional[MiddlewareLogger] = N
       except json.JSONDecodeError:
         if logger: logger.log_function_output(f"  WARNING: Skipping '{zip_path}': invalid JSON in report.json")
       except Exception as e:
-        if logger: logger.log_function_output(f"  WARNING: Skipping '{zip_path}': {e}")
+        if logger: logger.log_function_output(f"  WARNING: Skipping '{zip_path}' -> {e}")
   
   # Sort by created_utc descending
   reports.sort(key=lambda r: r.get("created_utc", ""), reverse=True)
-  if logger: logger.log_function_output(f"  Found {len(reports)}" + (" report." if len(reports) == 1 else " reports."))
+  if logger: logger.log_function_output(f"  {len(reports)} report{'' if len(reports) == 1 else 's'} found.")
   return reports
 
 def get_report_metadata(report_id: str, logger: Optional[MiddlewareLogger] = None) -> dict | None:
@@ -168,7 +168,7 @@ def get_report_metadata(report_id: str, logger: Optional[MiddlewareLogger] = Non
       if "report.json" not in zf.namelist(): return None
       return json.loads(zf.read("report.json").decode("utf-8"))
   except (zipfile.BadZipFile, json.JSONDecodeError, Exception) as e:
-    if logger: logger.log_function_output(f"  WARNING: Failed to read report metadata for '{report_id}': {e}")
+    if logger: logger.log_function_output(f"  WARNING: Failed to read report metadata for '{report_id}' -> {e}")
     return None
 
 def get_report_file(report_id: str, file_path: str, logger: Optional[MiddlewareLogger] = None) -> bytes | None:
@@ -184,7 +184,7 @@ def get_report_file(report_id: str, file_path: str, logger: Optional[MiddlewareL
       if file_path not in zf.namelist(): return None
       return zf.read(file_path)
   except Exception as e:
-    if logger: logger.log_function_output(f"  WARNING: Failed to read file '{file_path}' from report '{report_id}': {e}")
+    if logger: logger.log_function_output(f"  WARNING: Failed to read file '{file_path}' from report '{report_id}' -> {e}")
     return None
 
 def delete_report(report_id: str, dry_run: bool = False, logger: Optional[MiddlewareLogger] = None) -> dict | None:
@@ -209,7 +209,7 @@ def delete_report(report_id: str, dry_run: bool = False, logger: Optional[Middle
     if logger: logger.log_function_output(f"  OK.")
     return metadata
   except Exception as e:
-    if logger: logger.log_function_output(f"  ERROR: Failed to delete report '{report_id}': {e}")
+    if logger: logger.log_function_output(f"  ERROR: Failed to delete report '{report_id}' -> {e}")
     raise
 
 def get_report_archive_path(report_id: str) -> Path | None:

@@ -12,6 +12,7 @@ Usage scenarios:
 **For the AI agent:**
 
 - In ALL user interactions, be extremely concise. Sacrifice grammar for the sake of consision.
+- NEVER ask the user for continuations when performing large edits or following given plans.
 - Before making too many assumptions, propose 2 or 3 implementation alternatives.
 - List your assumptions at the start of each specification and let the user verify if your assumptions are correct.
 - Optimize for simplicity.
@@ -38,8 +39,16 @@ Usage scenarios:
 **For the user:**
 - If the implementation idea is not very clear at the beginning, ask the agent for at least 3 implementation options.
 - Clarify object and entity names first. It's costly to rename later.
-- Remain in Chat mode (no code changes) until you get a complete implementation specifications.
+- Remain in Chat mode (no code changes) until you get a complete implementation specification.
 - Review data and action flow. It's costly to let misunderstandings remain undiscovered.
+- Before doing large edits, create reusable specs and plans:
+  1. `_VX_SPEC_[COMPONENT].md` Technical specifications; `_VX_SPEC_[COMPONENT]_UI.md` UI specifications
+  2. `_VX_IMPL_[COMPONENT].md` Implementation plans.
+    - For more complex implementation problems create A / B plans and compare them:
+    - `_VX_IMPL_[COMPONENT]_A.md`, `_VX_IMPL_[COMPONENT]_B.md`, `_VX_IMPL_[COMPONENT]_ABCOMPARISON.md`
+  3.  `_VX_FIX_[COMPONENT]` Changes and fixes with BEFORE / AFTER sections and TODO Checklist at end.
+- Use multiple verification steps after a spec / plan has been created. Preview with BEFORE
+- Before implementation, verify specs and plans against higher-order spec / rules before executing them. 
 
 ## Structure
 

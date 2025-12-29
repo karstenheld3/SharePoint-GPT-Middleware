@@ -5,7 +5,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
-from routers_v2.common_logging_functions_v2 import MiddlewareLogger
+from routers_v2.common_logging_functions_v2 import MiddlewareLogger, UNKNOWN
 
 @dataclass
 class FileSource:
@@ -59,16 +59,19 @@ def load_domain(storage_path: str, domain_id: str, logger: Optional[MiddlewareLo
     FileNotFoundError: If domain folder or domain.json doesn't exist
     ValueError: If domain data is invalid
   """
+  if logger:
+    logger.log_function_header("load_domain()")
   domains_path = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER)
   domain_json_path = os.path.join(domains_path, domain_id, CRAWLER_HARDCODED_CONFIG.DOMAIN_JSON)
   
   if logger:
-    logger.log_function_output(f"Loading domain '{domain_id}' from: {domain_json_path}")
+    logger.log_function_output(f"Loading domain '{domain_id}' from '{domain_json_path}'")
   
   if not os.path.exists(domain_json_path):
-    error_message = f"Domain configuration not found: {domain_json_path}"
+    error_message = f"Domain configuration not found: '{domain_json_path}'"
     if logger:
       logger.log_function_output(f"ERROR: {error_message}")
+      logger.log_function_footer()
     raise FileNotFoundError(error_message)
   
   try:
@@ -91,7 +94,8 @@ def load_domain(storage_path: str, domain_id: str, logger: Optional[MiddlewareLo
       )
       
       if logger:
-        logger.log_function_output(f"Successfully loaded domain: {domain_config.domain_id}")
+        logger.log_function_output(f"Successfully loaded domain: domain_id='{domain_config.domain_id}'")
+        logger.log_function_footer()
       
       return domain_config
       
@@ -99,11 +103,13 @@ def load_domain(storage_path: str, domain_id: str, logger: Optional[MiddlewareLo
     error_message = f"Missing required field in domain.json: {str(e)}"
     if logger:
       logger.log_function_output(f"ERROR: {error_message}")
+      logger.log_function_footer()
     raise ValueError(error_message)
   except Exception as e:
     error_message = f"Failed to load domain '{domain_id}': {str(e)}"
     if logger:
       logger.log_function_output(f"ERROR: {error_message}")
+      logger.log_function_footer()
     raise
 
 def load_all_domains(storage_path: str, logger: Optional[MiddlewareLogger] = None) -> List[DomainConfig]:
@@ -121,17 +127,17 @@ def load_all_domains(storage_path: str, logger: Optional[MiddlewareLogger] = Non
   domains_path = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER)
   
   if logger:
-    logger.log_function_output(f"Scanning domains path: {domains_path}")
+    logger.log_function_output(f"Scanning domains path='{domains_path}'...")
   
   if not os.path.exists(domains_path):
     os.makedirs(domains_path, exist_ok=True)
     if logger:
-      logger.log_function_output(f"Created domains folder: {domains_path}")
+      logger.log_function_output(f"Created domains folder path='{domains_path}'.")
   
   domain_folders = [d for d in os.listdir(domains_path) if os.path.isdir(os.path.join(domains_path, d))]
   
   if logger:
-    logger.log_function_output(f"Found {len(domain_folders)} domain folder(s)")
+    logger.log_function_output(f"{len(domain_folders)} domain folder{'' if len(domain_folders) == 1 else 's'} found.")
   
   domains_list = []
   for domain_folder in domain_folders:
@@ -144,7 +150,7 @@ def load_all_domains(storage_path: str, logger: Optional[MiddlewareLogger] = Non
       continue
   
   if logger:
-    logger.log_function_output(f"Successfully loaded {len(domains_list)} domain(s)")
+    logger.log_function_output(f"{len(domains_list)} domain{'' if len(domains_list) == 1 else 's'} loaded.")
   
   return domains_list
 
@@ -200,7 +206,7 @@ def save_domain_to_file(storage_path: str, domain_config: DomainConfig, logger: 
   os.makedirs(domain_folder, exist_ok=True)
   
   if logger:
-    logger.log_function_output(f"Saving domain to: {domain_json_path}")
+    logger.log_function_output(f"Saving domain to '{domain_json_path}'...")
   
   domain_dict = domain_config_to_dict(domain_config)
   domain_dict.pop('domain_id', None)  # Don't store domain_id in JSON - derived from folder name
@@ -209,7 +215,7 @@ def save_domain_to_file(storage_path: str, domain_config: DomainConfig, logger: 
     json.dump(domain_dict, f, indent=2, ensure_ascii=False)
   
   if logger:
-    logger.log_function_output(f"Domain saved successfully: {domain_config.domain_id}")
+    logger.log_function_output(f"Domain domain_id='{domain_config.domain_id}' saved.")
 
 def delete_domain_folder(storage_path: str, domain_id: str, logger: Optional[MiddlewareLogger] = None) -> None:
   """
@@ -234,7 +240,7 @@ def delete_domain_folder(storage_path: str, domain_id: str, logger: Optional[Mid
     raise FileNotFoundError(error_msg)
   
   if logger:
-    logger.log_function_output(f"Deleting domain folder: {domain_folder}")
+    logger.log_function_output(f"Deleting domain folder path='{domain_folder}'...")
   
   shutil.rmtree(domain_folder)
   
