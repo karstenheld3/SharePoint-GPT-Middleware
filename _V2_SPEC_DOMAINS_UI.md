@@ -79,6 +79,7 @@ A reactive web UI for managing knowledge domains with CRUD operations. The UI di
 3. **New domain** - Click [New Domain] to open modal form, submit to create new domain
 4. **Edit domain** - Click [Edit] on row to open modal form with current values, submit to update
 5. **Delete domain** - Click [Delete] on row with confirmation dialog
+6. **Crawl domain** - Click [Crawl] on row to open crawl options modal, configure and start crawl job
 
 ## UX Design
 
@@ -93,9 +94,9 @@ main page: /v2/domains?format=ui
 | +-------------+----------------+----------------------+---------------+-------------------+
 | | Domain ID   | Name           | Vector Store Name    | Vector Store ID | Actions        |
 | +-------------+----------------+----------------------+---------------+-------------------+
-| | DOMAIN01    | Sales Docs     | sales-vectorstore    | vs_abc123     | [Edit] [Delete]  |
-| | DOMAIN02    | HR Documents   | hr-vectorstore       | vs_def456     | [Edit] [Delete]  |
-| | DOMAIN03    | Engineering    | eng-vectorstore      | vs_ghi789     | [Edit] [Delete]  |
+| | DOMAIN01    | Sales Docs     | sales-vectorstore    | vs_abc123     | [Crawl] [Edit] [Delete] |
+| | DOMAIN02    | HR Documents   | hr-vectorstore       | vs_def456     | [Crawl] [Edit] [Delete] |
+| | DOMAIN03    | Engineering    | eng-vectorstore      | vs_ghi789     | [Crawl] [Edit] [Delete] |
 | +-------------+----------------+----------------------+---------------+-------------------+
 |                                                                                           |
 +-------------------------------------------------------------------------------------------+
@@ -192,6 +193,43 @@ Modal (Edit Domain):
 |                                                               |
 |                                      [OK] [Cancel]          |
 +---------------------------------------------------------------+
+
+Modal (Crawl Domain):
++---------------------------------------------------------------+
+|                                                          [x]  |
+| Crawl Domain                                                  |
+|                                                               |
+| Domain *                                                      |
+| [DOMAIN01 - Sales Docs_______________________________] [v]    |
+|                                                               |
+| Step *                                                        |
+| ( ) Full Crawl (download + process + embed)                   |
+| ( ) Download Data Only                                        |
+| ( ) Process Data Only                                         |
+| ( ) Embed Data Only                                           |
+|                                                               |
+| Mode *                                                        |
+| ( ) Full - Clear existing data first                          |
+| ( ) Incremental - Only process changes                        |
+|                                                               |
+| Scope *                                                       |
+| ( ) All Sources                                               |
+| ( ) Files Only                                                |
+| ( ) Lists Only                                                |
+| ( ) Site Pages Only                                           |
+|                                                               |
+| Source Filter (optional, only when scope != all)              |
+| [_________________________________________________________]   |
+|                                                               |
+| [ ] Run test without making changes (dry run)                 |
+|                                                               |
+| Endpoint Preview:                                             |
+| +-----------------------------------------------------------+ |
+| | /v2/crawler/crawl?domain_id=DOMAIN01&mode=full&scope=all  | |
+| +-----------------------------------------------------------+ |
+|                                                               |
+|                                           [OK] [Cancel]       |
++---------------------------------------------------------------+
 ```
 
 ## Functional Requirements
@@ -245,6 +283,35 @@ Modal (Edit Domain):
 - Confirm deletes domain via POST to `/v2/domains/delete?format=json&domain_id={id}`
 - Success: reload list, show success toast
 - Error: show error toast
+
+**V2DM-FR-06: Crawl Domain**
+- [Crawl] button on each row opens crawl options modal
+- Domain dropdown pre-selected with clicked row's domain
+- Form fields:
+  - Domain * (dropdown, pre-selected, can change to crawl different domain)
+  - Step * (radio buttons):
+    - `crawl` - Full Crawl (download + process + embed)
+    - `download_data` - Download Data Only
+    - `process_data` - Process Data Only
+    - `embed_data` - Embed Data Only
+  - Mode * (radio buttons):
+    - `full` - Full - Clear existing data first
+    - `incremental` - Incremental - Only process changes
+  - Scope * (radio buttons):
+    - `all` - All Sources
+    - `files` - Files Only
+    - `lists` - Lists Only
+    - `sitepages` - Site Pages Only
+  - Source Filter (text input, optional, enabled only when scope != all)
+  - Dry Run checkbox - "Run test without making changes"
+- Endpoint Preview: live-updated preview showing the endpoint URL to be called
+- [OK] button:
+  1. Shows console panel if hidden
+  2. Clears console content
+  3. Connects SSE stream to `/v2/crawler/{step}?domain_id={id}&mode={mode}&scope={scope}&source_id={source_id}&dry_run={dry_run}&format=stream`
+  4. Closes modal
+  5. Shows toast "Crawl started"
+- [Cancel] closes modal without action
 
 ## Implementation Guarantees
 
@@ -346,6 +413,11 @@ function submitEditDomainForm(event) { ... }
 
 // Delete
 function deleteDomain(domainId) { ... }
+
+// Crawl
+function showCrawlDomainForm(domainId) { ... }
+function updateCrawlEndpointPreview() { ... }
+function startCrawl(event) { ... }
 ```
 
 ### Edit Form with ID Change Support
@@ -560,17 +632,95 @@ interface Domain {
 }
 ```
 
+## Crawl Modal Mechanism
+
+### Form Field Values
+
+```
+Step (step):
+  crawl         -> /v2/crawler/crawl
+  download_data -> /v2/crawler/download_data
+  process_data  -> /v2/crawler/process_data
+  embed_data    -> /v2/crawler/embed_data
+
+Mode (mode):
+  full        -> mode=full
+  incremental -> mode=incremental
+
+Scope (scope):
+  all       -> scope=all (source_id disabled)
+  files     -> scope=files
+  lists     -> scope=lists
+  sitepages -> scope=sitepages
+
+Source Filter (source_id):
+  Only enabled when scope != all
+  If empty, omitted from URL
+
+Dry Run (dry_run):
+  Checked   -> dry_run=true
+  Unchecked -> omitted (server default: false)
+```
+
+### Endpoint Preview Logic
+
+```javascript
+function updateCrawlEndpointPreview() {
+  const form = document.getElementById('crawl-domain-form');
+  const domainId = form.querySelector('[name="domain_id"]').value;
+  const step = form.querySelector('[name="step"]:checked').value;
+  const mode = form.querySelector('[name="mode"]:checked').value;
+  const scope = form.querySelector('[name="scope"]:checked').value;
+  const sourceId = form.querySelector('[name="source_id"]').value.trim();
+  const dryRun = form.querySelector('[name="dry_run"]').checked;
+  
+  let url = `/v2/crawler/${step}?domain_id=${domainId}&mode=${mode}&scope=${scope}`;
+  if (scope !== 'all' && sourceId) url += `&source_id=${sourceId}`;
+  if (dryRun) url += '&dry_run=true';
+  url += '&format=stream';
+  
+  document.getElementById('crawl-endpoint-preview').textContent = url;
+}
+```
+
+### Start Crawl Action Flow
+
+```
+User clicks [OK]
+  -> Build endpoint URL from form values
+  -> closeModal()
+  -> showConsole()
+  -> clearConsole()
+  -> startSSE(endpointUrl)
+  -> showToast("Crawl started", "info")
+  -> SSE events append to console
+  -> On 'done' event: showToast(result summary)
+```
+
+### Source Filter Interaction
+
+```
+Scope radio changes:
+  if (scope === 'all'):
+    -> Disable source_id input
+    -> Clear source_id value
+  else:
+    -> Enable source_id input
+```
+
 ## Differences from demorouter2.py
 
 - **Bulk selection**: demorouter2=Yes, domains=No
-- **Streaming endpoints**: demorouter2=selftest+create_demo_items, domains=selftest
+- **Streaming endpoints**: demorouter2=selftest+create_demo_items, domains=selftest+crawl
 - **Console panel**: demorouter2=Yes, domains=Yes (initially hidden)
 - **Table columns**: demorouter2=ID/Name/Version, domains=Domain ID/Name/Vector Store Name/Vector Store ID
 - **Primary key**: demorouter2=item_id, domains=domain_id
 - **Storage**: demorouter2={storage}/demorouter2/items.json, domains={storage}/domains/{domain_id}/domain.json
+- **Crawl modal**: domains=Yes (calls /v2/crawler endpoints), demorouter2=No
 
 ## Spec Changes
 
+- 2025-12-29: Added [Crawl] button feature (V2DM-FR-06) with modal dialog for crawl options, endpoint preview, and SSE streaming
 - 2025-12-27: Updated spec to match implementation: added selftest endpoint, console panel (hidden), corrected DELETE method
 - 2025-12-27: Added Domain ID rename support in Edit form (follows demorouter2 pattern per DD-E014)
 - 2025-12-18: Initial specification created
