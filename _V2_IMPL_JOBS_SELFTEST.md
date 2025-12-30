@@ -1,5 +1,6 @@
 # Implementation Plan: Jobs Selftest Endpoint
 
+**Plan ID**: V2JB-IP01
 **Goal**: Add exhaustive selftest endpoint for jobs router that tests all CRUD operations, job state transitions, control actions, and SSE stream verification
 **Target file**: `src/routers_v2/jobs.py`
 
@@ -84,90 +85,76 @@ test_job_id_cancel = None  # For cancel test
 
 ### Category 1: Error Cases (10 tests)
 
-| # | Test | Expected | HTTP |
-|---|------|----------|------|
-| 1 | GET /get without job_id | ok=false, "Missing 'job_id'" | 200 |
-| 2 | GET /get with non-existent job_id | ok=false | 404 |
-| 3 | GET /monitor without job_id | ok=false | 200 |
-| 4 | GET /monitor with non-existent job_id | ok=false | 404 |
-| 5 | GET /control without job_id | ok=false | 200 |
-| 6 | GET /control without action | ok=false | 200 |
-| 7 | GET /control with invalid action | ok=false | 200 |
-| 8 | GET /control with non-existent job_id | ok=false | 404 |
-| 9 | GET /results without job_id | ok=false | 200 |
-| 10 | DELETE /delete without job_id | ok=false | 200 |
+- **V2JB-IP01-TST-01**: GET /get without job_id -> ok=false, "Missing 'job_id'" (200)
+- **V2JB-IP01-TST-02**: GET /get with non-existent job_id -> ok=false (404)
+- **V2JB-IP01-TST-03**: GET /monitor without job_id -> ok=false (200)
+- **V2JB-IP01-TST-04**: GET /monitor with non-existent job_id -> ok=false (404)
+- **V2JB-IP01-TST-05**: GET /control without job_id -> ok=false (200)
+- **V2JB-IP01-TST-06**: GET /control without action -> ok=false (200)
+- **V2JB-IP01-TST-07**: GET /control with invalid action -> ok=false (200)
+- **V2JB-IP01-TST-08**: GET /control with non-existent job_id -> ok=false (404)
+- **V2JB-IP01-TST-09**: GET /results without job_id -> ok=false (200)
+- **V2JB-IP01-TST-10**: DELETE /delete without job_id -> ok=false (200)
 
 ### Category 2: Job Creation and Basic Get (5 tests)
 
-| # | Test | Expected |
-|---|------|----------|
-| 11 | Create test job via internal helper | Job file created with .running extension |
-| 12 | Wait for job completion | Job file has .completed extension |
-| 13 | GET /get?job_id={id} | ok=true, state="completed" |
-| 14 | GET /?format=json | job_id in list, state="completed" |
-| 15 | GET /results?job_id={id} | ok=true, result data present |
+- **V2JB-IP01-TST-11**: Create test job via internal helper -> Job file created with .running extension
+- **V2JB-IP01-TST-12**: Wait for job completion -> Job file has .completed extension
+- **V2JB-IP01-TST-13**: GET /get?job_id={id} -> ok=true, state="completed"
+- **V2JB-IP01-TST-14**: GET /?format=json -> job_id in list, state="completed"
+- **V2JB-IP01-TST-15**: GET /results?job_id={id} -> ok=true, result data present
 
 ### Category 3: Monitor Endpoint (4 tests)
 
-| # | Test | Expected |
-|---|------|----------|
-| 16 | GET /monitor?job_id={id}&format=json | ok=true, includes "log" field |
-| 17 | GET /monitor?job_id={id}&format=html | HTML response |
-| 18 | GET /monitor?job_id={id}&format=stream | SSE stream with events |
-| 19 | Verify stream contains start_json, log, end_json events | Events present in order |
+- **V2JB-IP01-TST-16**: GET /monitor?job_id={id}&format=json -> ok=true, includes "log" field
+- **V2JB-IP01-TST-17**: GET /monitor?job_id={id}&format=html -> HTML response
+- **V2JB-IP01-TST-18**: GET /monitor?job_id={id}&format=stream -> SSE stream with events
+- **V2JB-IP01-TST-19**: Verify stream contains start_json, log, end_json events -> Events present in order
 
 ### Category 4: Control - Pause/Resume with Error Cases (10 tests)
 
 Tests reordered to validate error cases while job is in correct state.
 
-| # | Test | Job State | Expected |
-|---|------|-----------|----------|
-| 20 | Create slow test job (10 items × 1s) | running | Job file .running |
-| 21 | GET /control?action=resume (while running) | running | ok=false, "Cannot resume" |
-| 22 | GET /control?action=pause | running→paused | ok=true |
-| 23 | Verify job file extension is .paused | paused | File renamed |
-| 24 | GET /get?job_id={id} | paused | state="paused" |
-| 25 | Verify SSE contains state_json state="paused" | paused | Event present |
-| 26 | GET /control?action=pause (while paused) | paused | ok=false, "Cannot pause" |
-| 27 | GET /control?action=resume | paused→running | ok=true |
-| 28 | Verify job file extension is .running | running | File renamed back |
-| 29 | Verify SSE contains state_json state="running" | running | Event present |
+- **V2JB-IP01-TST-20**: Create slow test job (10 items × 1s) [running] -> Job file .running
+- **V2JB-IP01-TST-21**: GET /control?action=resume (while running) [running] -> ok=false, "Cannot resume"
+- **V2JB-IP01-TST-22**: GET /control?action=pause [running→paused] -> ok=true
+- **V2JB-IP01-TST-23**: Verify job file extension is .paused [paused] -> File renamed
+- **V2JB-IP01-TST-24**: GET /get?job_id={id} [paused] -> state="paused"
+- **V2JB-IP01-TST-25**: Verify SSE contains state_json state="paused" [paused] -> Event present
+- **V2JB-IP01-TST-26**: GET /control?action=pause (while paused) [paused] -> ok=false, "Cannot pause"
+- **V2JB-IP01-TST-27**: GET /control?action=resume [paused→running] -> ok=true
+- **V2JB-IP01-TST-28**: Verify job file extension is .running [running] -> File renamed back
+- **V2JB-IP01-TST-29**: Verify SSE contains state_json state="running" [running] -> Event present
 
 ### Category 5: Control - Cancel (5 tests)
 
-| # | Test | Expected |
-|---|------|----------|
-| 30 | Create another slow test job | Job file .running |
-| 31 | GET /control?job_id={id}&action=cancel | ok=true |
-| 32 | Wait for job to process cancel | Short delay |
-| 33 | Verify job file extension is .cancelled | File renamed |
-| 34 | Verify SSE stream contains state_json with state="cancelled" | Event present |
+- **V2JB-IP01-TST-30**: Create another slow test job -> Job file .running
+- **V2JB-IP01-TST-31**: GET /control?job_id={id}&action=cancel -> ok=true
+- **V2JB-IP01-TST-32**: Wait for job to process cancel -> Short delay
+- **V2JB-IP01-TST-33**: Verify job file extension is .cancelled -> File renamed
+- **V2JB-IP01-TST-34**: Verify SSE stream contains state_json with state="cancelled" -> Event present
 
 ### Category 6: Control Error Cases - Completed/Cancelled (4 tests)
 
-| # | Test | Job Used | Expected |
-|---|------|----------|----------|
-| 35 | GET /control?job_id={completed_id}&action=pause | completed_job_id | ok=false, "already completed" |
-| 36 | GET /control?job_id={cancelled_id}&action=resume | cancel_job_id | ok=false, "already cancelled" |
-| 37 | Force cancel job (after cancelling background task) | pause_resume_job_id | ok=true |
-| 38 | GET /get after force cancel | pause_resume_job_id | state="cancelled" |
+Note: Before TST-37, cancel Job 2's background task to release file handle (Windows can't rename open files).
 
-Note: Before Test 37, cancel Job 2's background task to release file handle (Windows can't rename open files).
+- **V2JB-IP01-TST-35**: GET /control?job_id={completed_id}&action=pause -> ok=false, "already completed"
+- **V2JB-IP01-TST-36**: GET /control?job_id={cancelled_id}&action=resume -> ok=false, "already cancelled"
+- **V2JB-IP01-TST-37**: Force cancel job (after cancelling background task) [pause_resume_job_id] -> ok=true
+- **V2JB-IP01-TST-38**: GET /get after force cancel [pause_resume_job_id] -> state="cancelled"
 
 ### Category 7: Delete Tests (8 tests)
 
-| # | Test | Job Used | Expected |
-|---|------|----------|----------|
-| 39 | Create slow job for delete test | running_for_delete_id | Job file .running |
-| 40 | DELETE /delete?job_id={running_id} | running_for_delete_id | ok=false, "Cannot delete active job" |
-| 41 | DELETE /delete?job_id={completed_id} | completed_job_id | ok=true |
-| 42 | GET /get?job_id={completed_id} | completed_job_id | 404 |
-| 43 | DELETE /delete?job_id={cancelled_id} | cancel_job_id | ok=true |
-| 44 | GET /?format=json | - | Neither job in list |
-| 45 | DELETE /delete?job_id={force_cancelled_id} | pause_resume_job_id | ok=true |
-| 46 | DELETE /delete same job again | pause_resume_job_id | 404 |
+- **V2JB-IP01-TST-39**: Create slow job for delete test [running_for_delete_id] -> Job file .running
+- **V2JB-IP01-TST-40**: DELETE /delete?job_id={running_id} [running_for_delete_id] -> ok=false, "Cannot delete active job"
+- **V2JB-IP01-TST-41**: DELETE /delete?job_id={completed_id} -> ok=true
+- **V2JB-IP01-TST-42**: GET /get?job_id={completed_id} -> 404
+- **V2JB-IP01-TST-43**: DELETE /delete?job_id={cancelled_id} -> ok=true
+- **V2JB-IP01-TST-44**: GET /?format=json -> Neither job in list
+- **V2JB-IP01-TST-45**: DELETE /delete?job_id={force_cancelled_id} [pause_resume_job_id] -> ok=true
+- **V2JB-IP01-TST-46**: DELETE /delete same job again [pause_resume_job_id] -> 404
 
-**Total: 46 tests**
+**Total: 46 tests (V2JB-IP01-TST-01 to TST-46)**
 
 ## Execution Timeline
 
@@ -587,17 +574,17 @@ Full async generator pattern following domains.py selftest
 
 ### Prerequisites
 
-- [x] jobs.py has all required endpoints implemented
-- [x] common_job_functions_v2.py has all functions: find_job_by_id, find_job_file, read_job_log, create_control_file, delete_job, force_cancel_job
+- [x] **V2JB-IP01-VC-01**: jobs.py has all required endpoints implemented
+- [x] **V2JB-IP01-VC-02**: common_job_functions_v2.py has all functions: find_job_by_id, find_job_file, read_job_log, create_control_file, delete_job, force_cancel_job
 
 ### Implementation
 
-- [x] Add imports: `asyncio`, `textwrap`, `uuid`, `httpx`, `generate_endpoint_caller_js`, `StreamingJobWriter`, `ControlAction`, `find_job_file`
-- [x] Add selftest to router docs endpoint list
-- [x] Add "Run Selftest" button to UI toolbar
-- [x] Implement `_run_test_job_to_completion()` helper
-- [x] Implement `_run_slow_test_job_in_background()` helper
-- [x] Implement `jobs_selftest` endpoint:
+- [x] **V2JB-IP01-VC-03**: Add imports: `asyncio`, `textwrap`, `uuid`, `httpx`, `generate_endpoint_caller_js`, `StreamingJobWriter`, `ControlAction`, `find_job_file`
+- [x] **V2JB-IP01-VC-04**: Add selftest to router docs endpoint list
+- [x] **V2JB-IP01-VC-05**: Add "Run Selftest" button to UI toolbar
+- [x] **V2JB-IP01-VC-06**: Implement `_run_test_job_to_completion()` helper
+- [x] **V2JB-IP01-VC-07**: Implement `_run_slow_test_job_in_background()` helper
+- [x] **V2JB-IP01-VC-08**: Implement `jobs_selftest` endpoint:
   - [x] Bare GET returns docstring documentation
   - [x] format != stream returns error
   - [x] StreamingJobWriter setup
@@ -607,35 +594,35 @@ Full async generator pattern following domains.py selftest
 ### Test Cases (46 total) ✓ ALL PASS
 
 **Error Cases (10):**
-- [x] Test 1-10: All error cases pass
+- [x] **V2JB-IP01-VC-09**: TST-01 to TST-10 all pass
 
 **Job Creation and Basic Get (5):**
-- [x] Test 11-15: All job creation tests pass
+- [x] **V2JB-IP01-VC-10**: TST-11 to TST-15 all pass
 
 **Monitor Endpoint (4):**
-- [x] Test 16-19: All monitor tests pass
+- [x] **V2JB-IP01-VC-11**: TST-16 to TST-19 all pass
 
 **Control - Pause/Resume + Error Cases (10):**
-- [x] Test 20-29: All pause/resume tests pass
+- [x] **V2JB-IP01-VC-12**: TST-20 to TST-29 all pass
 
 **Control - Cancel (5):**
-- [x] Test 30-34: All cancel tests pass
+- [x] **V2JB-IP01-VC-13**: TST-30 to TST-34 all pass
 
 **Control Error Cases - Completed/Cancelled (4):**
-- [x] Test 35-38: All control error cases pass
+- [x] **V2JB-IP01-VC-14**: TST-35 to TST-38 all pass
 
 **Delete Tests (8):**
-- [x] Test 39-46: All delete tests pass
+- [x] **V2JB-IP01-VC-15**: TST-39 to TST-46 all pass
 
 ### Final Verification
 
-- [x] Run selftest via UI
-- [x] Verify all 46 tests pass
-- [x] Verify 4 jobs created during test
-- [x] Verify cleanup removes all test jobs
-- [x] Verify no orphan job files remain
-- [ ] Test pause/resume visually in UI (manual)
-- [ ] Test cancel visually in UI (manual)
+- [x] **V2JB-IP01-VC-16**: Run selftest via UI
+- [x] **V2JB-IP01-VC-17**: Verify all 46 tests pass
+- [x] **V2JB-IP01-VC-18**: Verify 4 jobs created during test
+- [x] **V2JB-IP01-VC-19**: Verify cleanup removes all test jobs
+- [x] **V2JB-IP01-VC-20**: Verify no orphan job files remain
+- [ ] **V2JB-IP01-VC-21**: Test pause/resume visually in UI (manual)
+- [ ] **V2JB-IP01-VC-22**: Test cancel visually in UI (manual)
 
 ## Known Issues and Fixes
 
@@ -729,6 +716,11 @@ force_ok = force_cancel_job(get_persistent_storage_path(), pause_resume_job_id)
 ```
 
 ## Spec Changes
+
+**[2024-12-30 10:50]**
+- Added: Plan ID V2JB-IP01 to header block
+- Changed: Test Cases now use IDs V2JB-IP01-TST-01 to TST-46 (46 items)
+- Changed: Verification Checklist now uses IDs V2JB-IP01-VC-01 to VC-22 (22 items)
 
 **[2025-12-27 15:15]** Implementation completed
 - Added: `generate_endpoint_caller_js` import for "Run Selftest" button

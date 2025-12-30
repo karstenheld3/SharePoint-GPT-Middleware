@@ -1,5 +1,6 @@
-# Implementation Plan: /v2/crawler Router (Option C: Step-based Functions)
+# Implementation Plan: /v2/crawler Router (Option B: Step-based Functions)
 
+**Plan ID**: V2CR-IP01B
 **Goal**: Implement the V2 crawler router using composable step functions with shared helpers
 **Target files**:
 - `/src/routers_v2/crawler.py` (NEW)
@@ -788,82 +789,83 @@ def _generate_crawler_ui_page(jobs: list) -> str:
 
 ## 8. Edge Case Handling
 
-### A. SharePoint state changes
+### A. SharePoint state changes (V2CR-IP01B-EC-01 to EC-16)
 
-- **A1 ADDED**: `detect_changes()` -> added list -> download
-- **A2 REMOVED**: `detect_changes()` -> removed list -> delete local file
-- **A3 CONTENT_UPDATED**: `is_file_changed()` -> changed list -> re-download
-- **A4 RENAMED**: `is_file_changed()` (filename differs) -> re-download
-- **A5 MOVED**: `is_file_changed()` (server_relative_url differs) -> re-download
-- **A6-A9 Combined changes**: `is_file_changed()` catches any field difference
-- **A10 RESTORED**: ID reappears -> detected as ADDED
-- **A11 VERSION_ROLLBACK**: last_modified_utc differs -> CHANGED
-- **A12 COPIED**: New ID -> detected as ADDED
-- **A13 REPLACED**: Old ID REMOVED + new ID ADDED
-- **A14 CHECK-IN/CHECK-OUT**: If last_modified_utc changed -> CHANGED
-- **A15-A16 FOLDER_RENAMED/MOVED**: All files have new server_relative_url -> CHANGED
+- **V2CR-IP01B-EC-01** (ADDED): `detect_changes()` -> added list -> download
+- **V2CR-IP01B-EC-02** (REMOVED): `detect_changes()` -> removed list -> delete local file
+- **V2CR-IP01B-EC-03** (CONTENT_UPDATED): `is_file_changed()` -> changed list -> re-download
+- **V2CR-IP01B-EC-04** (RENAMED): `is_file_changed()` (filename differs) -> re-download
+- **V2CR-IP01B-EC-05** (MOVED): `is_file_changed()` (server_relative_url differs) -> re-download
+- **V2CR-IP01B-EC-06** (COMBINED_CHANGES): `is_file_changed()` catches any field difference
+- **V2CR-IP01B-EC-07** (RESTORED): ID reappears -> detected as ADDED
+- **V2CR-IP01B-EC-08** (VERSION_ROLLBACK): last_modified_utc differs -> CHANGED
+- **V2CR-IP01B-EC-09** (COPIED): New ID -> detected as ADDED
+- **V2CR-IP01B-EC-10** (REPLACED): Old ID REMOVED + new ID ADDED
+- **V2CR-IP01B-EC-11** (CHECK-IN/CHECK-OUT): If last_modified_utc changed -> CHANGED
+- **V2CR-IP01B-EC-12** (FOLDER_RENAMED): All files have new server_relative_url -> CHANGED
+- **V2CR-IP01B-EC-13** (FOLDER_MOVED): All files have new server_relative_url -> CHANGED
 
-### B. Local storage anomalies
+### B. Local storage anomalies (V2CR-IP01B-EC-14 to EC-20)
 
-- **B1 LOCAL_FILE_MISSING**: `step_integrity_check()` -> re-download
-- **B2 LOCAL_FILE_EXTRA**: `step_integrity_check()` -> delete orphan
-- **B3 LOCAL_FILE_WRONG_PATH**: `step_integrity_check()` -> move file
-- **B4 LOCAL_FILE_CORRUPTED**: Detected during embed (read fails) -> set error, move to 03_failed
-- **B5 LOCAL_FOLDER_MISSING**: `os.makedirs()` creates parent on download
-- **B6 MAP_FILE_MISSING**: Fallback to mode=full
-- **B7 MAP_FILE_CORRUPTED**: Fallback to mode=full, log warning
+- **V2CR-IP01B-EC-14** (LOCAL_FILE_MISSING): `step_integrity_check()` -> re-download
+- **V2CR-IP01B-EC-15** (LOCAL_FILE_EXTRA): `step_integrity_check()` -> delete orphan
+- **V2CR-IP01B-EC-16** (LOCAL_FILE_WRONG_PATH): `step_integrity_check()` -> move file
+- **V2CR-IP01B-EC-17** (LOCAL_FILE_CORRUPTED): Detected during embed (read fails) -> set error, move to 03_failed
+- **V2CR-IP01B-EC-18** (LOCAL_FOLDER_MISSING): `os.makedirs()` creates parent on download
+- **V2CR-IP01B-EC-19** (MAP_FILE_MISSING): Fallback to mode=full
+- **V2CR-IP01B-EC-20** (MAP_FILE_CORRUPTED): Fallback to mode=full, log warning
 
-### C. Vector store anomalies
+### C. Vector store anomalies (V2CR-IP01B-EC-21 to EC-25)
 
-- **C1 VS_FILE_MISSING**: `step_embed_source()` cleanup removes from vectorstore_map, re-embeds
-- **C2 VS_FILE_EXTRA**: Ignored (may belong to other source/domain)
-- **C3 VS_EMBEDDING_FAILED**: Move to 03_failed, set embedding_error in map
-- **C4 VS_DELETED**: Return 404 error, abort embed
-- **C5 OPENAI_FILE_DELETED**: Re-upload during embed
+- **V2CR-IP01B-EC-21** (VS_FILE_MISSING): `step_embed_source()` cleanup removes from vectorstore_map, re-embeds
+- **V2CR-IP01B-EC-22** (VS_FILE_EXTRA): Ignored (may belong to other source/domain)
+- **V2CR-IP01B-EC-23** (VS_EMBEDDING_FAILED): Move to 03_failed, set embedding_error in map
+- **V2CR-IP01B-EC-24** (VS_DELETED): Return 404 error, abort embed
+- **V2CR-IP01B-EC-25** (OPENAI_FILE_DELETED): Re-upload during embed
 
-### D. Timing/concurrency
+### D. Timing/concurrency (V2CR-IP01B-EC-26 to EC-31)
 
-- **D1 RAPID_CHANGES**: Only final state visible, handled normally
-- **D2 CONCURRENT_CRAWLS**: `MapFileWriter` with atomic writes, retry on error
-- **D3 PARTIAL_FAILURE**: Next run picks up from map file state
-- **D4 SHAREPOINT_TIMEOUT**: Retry with backoff in `download_file_from_sharepoint`
-- **D5 OPENAI_RATE_LIMIT**: Retry with backoff in `upload_file_to_openai`
-- **D6 OPENAI_TIMEOUT**: Retry with backoff, fail gracefully
+- **V2CR-IP01B-EC-26** (RAPID_CHANGES): Only final state visible, handled normally
+- **V2CR-IP01B-EC-27** (CONCURRENT_CRAWLS): `MapFileWriter` with atomic writes, retry on error
+- **V2CR-IP01B-EC-28** (PARTIAL_FAILURE): Next run picks up from map file state
+- **V2CR-IP01B-EC-29** (SHAREPOINT_TIMEOUT): Retry with backoff in `download_file_from_sharepoint`
+- **V2CR-IP01B-EC-30** (OPENAI_RATE_LIMIT): Retry with backoff in `upload_file_to_openai`
+- **V2CR-IP01B-EC-31** (OPENAI_TIMEOUT): Retry with backoff, fail gracefully
 
-### E. Data quality
+### E. Data quality (V2CR-IP01B-EC-32 to EC-37)
 
-- **E1 UNICODE_FILENAME**: UTF-8 encoding throughout
-- **E2 VERY_LONG_PATH**: `normalize_long_path()` from common_utility_functions
-- **E3 ZERO_BYTE_FILE**: Download succeeds, embed may fail -> 03_failed
-- **E4 UNSUPPORTED_TYPE**: Skip during embed, log warning
-- **E5 DUPLICATE_FILENAME**: Different server_relative_url -> different local paths
-- **E6 SPECIAL_CHARS_IN_PATH**: URL-decode for local path
+- **V2CR-IP01B-EC-32** (UNICODE_FILENAME): UTF-8 encoding throughout
+- **V2CR-IP01B-EC-33** (VERY_LONG_PATH): `normalize_long_path()` from common_utility_functions
+- **V2CR-IP01B-EC-34** (ZERO_BYTE_FILE): Download succeeds, embed may fail -> 03_failed
+- **V2CR-IP01B-EC-35** (UNSUPPORTED_TYPE): Skip during embed, log warning
+- **V2CR-IP01B-EC-36** (DUPLICATE_FILENAME): Different server_relative_url -> different local paths
+- **V2CR-IP01B-EC-37** (SPECIAL_CHARS_IN_PATH): URL-decode for local path
 
 ## 9. Implementation Order
 
 **Phase 1: Foundation (~2 hours)**
-1. `common_map_file_functions_v2.py` - dataclasses, MapFileWriter, read functions, change detection
-2. Extend `common_crawler_functions_v2.py` - path helpers, files_metadata helpers
+- **V2CR-IP01B-IS-01**: `common_map_file_functions_v2.py` - dataclasses, MapFileWriter, read functions, change detection
+- **V2CR-IP01B-IS-02**: Extend `common_crawler_functions_v2.py` - path helpers, files_metadata helpers
 
 **Phase 2: SharePoint operations (~1.5 hours)**
-3. Extend `common_sharepoint_functions_v2.py` - download_file_from_sharepoint, list operations, site page operations
+- **V2CR-IP01B-IS-03**: Extend `common_sharepoint_functions_v2.py` - download_file_from_sharepoint, list operations, site page operations
 
 **Phase 3: OpenAI operations (~1 hour)**
-4. `common_embed_functions_v2.py` - upload, vector store operations
+- **V2CR-IP01B-IS-04**: `common_embed_functions_v2.py` - upload, vector store operations
 
 **Phase 4: Step functions (~3 hours)**
-5. `crawler.py` - step_download_source (including integrity check)
-6. `crawler.py` - step_process_source
-7. `crawler.py` - step_embed_source
+- **V2CR-IP01B-IS-05**: `crawler.py` - step_download_source (including integrity check)
+- **V2CR-IP01B-IS-06**: `crawler.py` - step_process_source
+- **V2CR-IP01B-IS-07**: `crawler.py` - step_embed_source
 
 **Phase 5: Router endpoints (~1.5 hours)**
-8. `crawler.py` - orchestrator functions
-9. `crawler.py` - endpoints (/crawl, /download_data, /process_data, /embed_data)
-10. `crawler.py` - UI generation
+- **V2CR-IP01B-IS-08**: `crawler.py` - orchestrator functions
+- **V2CR-IP01B-IS-09**: `crawler.py` - endpoints (/crawl, /download_data, /process_data, /embed_data)
+- **V2CR-IP01B-IS-10**: `crawler.py` - UI generation
 
 **Phase 6: Integration (~1 hour)**
-11. Register router in app.py
-12. Integration testing
+- **V2CR-IP01B-IS-11**: Register router in app.py
+- **V2CR-IP01B-IS-12**: Integration testing
 
 ## 10. Verification Findings
 
@@ -1136,214 +1138,221 @@ Systematic verification that all plan items are implemented. Check each item exi
 ### A. common_map_file_functions_v2.py (NEW)
 
 **Dataclasses:**
-- [ ] `SharePointMapRow` with 10 fields: sharepoint_listitem_id, sharepoint_unique_file_id, filename, file_type, file_size, url, raw_url, server_relative_url, last_modified_utc, last_modified_timestamp
-- [ ] `FilesMapRow` with 13 fields: sharepoint_listitem_id, sharepoint_unique_file_id, filename, file_type, server_relative_url, file_relative_path, file_size, last_modified_utc, last_modified_timestamp, downloaded_utc, downloaded_timestamp, sharepoint_error, processing_error
-- [ ] `VectorStoreMapRow` with 19 fields: openai_file_id, vector_store_id, file_relative_path, sharepoint_listitem_id, sharepoint_unique_file_id, filename, file_type, file_size, last_modified_utc, last_modified_timestamp, downloaded_utc, downloaded_timestamp, uploaded_utc, uploaded_timestamp, embedded_utc, embedded_timestamp, sharepoint_error, processing_error, embedding_error
-- [ ] `ChangeDetectionResult` with 4 fields: added, removed, changed, unchanged
+- [ ] **V2CR-IP01B-VC-01**: `SharePointMapRow` with 10 fields: sharepoint_listitem_id, sharepoint_unique_file_id, filename, file_type, file_size, url, raw_url, server_relative_url, last_modified_utc, last_modified_timestamp
+- [ ] **V2CR-IP01B-VC-02**: `FilesMapRow` with 13 fields: sharepoint_listitem_id, sharepoint_unique_file_id, filename, file_type, server_relative_url, file_relative_path, file_size, last_modified_utc, last_modified_timestamp, downloaded_utc, downloaded_timestamp, sharepoint_error, processing_error
+- [ ] **V2CR-IP01B-VC-03**: `VectorStoreMapRow` with 19 fields: openai_file_id, vector_store_id, file_relative_path, sharepoint_listitem_id, sharepoint_unique_file_id, filename, file_type, file_size, last_modified_utc, last_modified_timestamp, downloaded_utc, downloaded_timestamp, uploaded_utc, uploaded_timestamp, embedded_utc, embedded_timestamp, sharepoint_error, processing_error, embedding_error
+- [ ] **V2CR-IP01B-VC-04**: `ChangeDetectionResult` with 4 fields: added, removed, changed, unchanged
 
 **Classes:**
-- [ ] `MapFileWriter.__init__(filepath, row_class, buffer_size)`
-- [ ] `MapFileWriter.write_header()` with atomic temp+rename
-- [ ] `MapFileWriter.append_row(row)` with buffering
-- [ ] `MapFileWriter.flush()`
-- [ ] `MapFileWriter.finalize()`
+- [ ] **V2CR-IP01B-VC-05**: `MapFileWriter.__init__(filepath, row_class, buffer_size)`
+- [ ] **V2CR-IP01B-VC-06**: `MapFileWriter.write_header()` with atomic temp+rename
+- [ ] **V2CR-IP01B-VC-07**: `MapFileWriter.append_row(row)` with buffering
+- [ ] **V2CR-IP01B-VC-08**: `MapFileWriter.flush()`
+- [ ] **V2CR-IP01B-VC-09**: `MapFileWriter.finalize()`
 
 **Functions:**
-- [ ] `read_sharepoint_map(filepath) -> list[SharePointMapRow]`
-- [ ] `read_files_map(filepath) -> list[FilesMapRow]`
-- [ ] `read_vectorstore_map(filepath) -> list[VectorStoreMapRow]`
-- [ ] `detect_changes(sharepoint_items, local_items) -> ChangeDetectionResult`
-- [ ] `is_file_changed(sp, local) -> bool` compares 4 fields
-- [ ] `is_file_changed_for_embed(files_row, vs_row) -> bool` compares 2 fields
+- [ ] **V2CR-IP01B-VC-10**: `read_sharepoint_map(filepath) -> list[SharePointMapRow]`
+- [ ] **V2CR-IP01B-VC-11**: `read_files_map(filepath) -> list[FilesMapRow]`
+- [ ] **V2CR-IP01B-VC-12**: `read_vectorstore_map(filepath) -> list[VectorStoreMapRow]`
+- [ ] **V2CR-IP01B-VC-13**: `detect_changes(sharepoint_items, local_items) -> ChangeDetectionResult`
+- [ ] **V2CR-IP01B-VC-14**: `is_file_changed(sp, local) -> bool` compares 4 fields
+- [ ] **V2CR-IP01B-VC-15**: `is_file_changed_for_embed(files_row, vs_row) -> bool` compares 2 fields
 
 ### B. common_embed_functions_v2.py (NEW)
 
 **Functions:**
-- [ ] `async upload_file_to_openai(client, filepath, purpose) -> tuple[str, str]`
-- [ ] `async delete_file_from_openai(client, file_id) -> tuple[bool, str]`
-- [ ] `async add_file_to_vector_store(client, vector_store_id, file_id) -> tuple[bool, str]`
-- [ ] `async remove_file_from_vector_store(client, vector_store_id, file_id) -> tuple[bool, str]`
-- [ ] `async list_vector_store_files(client, vector_store_id) -> list[dict]`
-- [ ] `async wait_for_vector_store_ready(client, vector_store_id, file_ids, timeout_seconds) -> list[dict]`
-- [ ] `async get_failed_embeddings(client, vector_store_id, file_ids) -> list[dict]`
+- [ ] **V2CR-IP01B-VC-16**: `async upload_file_to_openai(client, filepath, purpose) -> tuple[str, str]`
+- [ ] **V2CR-IP01B-VC-17**: `async delete_file_from_openai(client, file_id) -> tuple[bool, str]`
+- [ ] **V2CR-IP01B-VC-18**: `async add_file_to_vector_store(client, vector_store_id, file_id) -> tuple[bool, str]`
+- [ ] **V2CR-IP01B-VC-19**: `async remove_file_from_vector_store(client, vector_store_id, file_id) -> tuple[bool, str]`
+- [ ] **V2CR-IP01B-VC-20**: `async list_vector_store_files(client, vector_store_id) -> list[dict]`
+- [ ] **V2CR-IP01B-VC-21**: `async wait_for_vector_store_ready(client, vector_store_id, file_ids, timeout_seconds) -> list[dict]`
+- [ ] **V2CR-IP01B-VC-22**: `async get_failed_embeddings(client, vector_store_id, file_ids) -> list[dict]`
 
 ### C. common_sharepoint_functions_v2.py (EXTEND)
 
 **Modify existing:**
-- [ ] `SharePointFile` renamed fields: id->sharepoint_listitem_id (int), unique_id->sharepoint_unique_file_id
-- [ ] `SharePointFile` new fields: file_type, url, raw_url
-- [ ] `get_document_library_files()` populates new SharePointFile fields
+- [ ] **V2CR-IP01B-VC-23**: `SharePointFile` renamed fields: id->sharepoint_listitem_id (int), unique_id->sharepoint_unique_file_id
+- [ ] **V2CR-IP01B-VC-24**: `SharePointFile` new fields: file_type, url, raw_url
+- [ ] **V2CR-IP01B-VC-25**: `get_document_library_files()` populates new SharePointFile fields
 
 **Add functions:**
-- [ ] `download_file_from_sharepoint(ctx, server_relative_url, target_path, preserve_timestamp, last_modified_timestamp) -> tuple[bool, str]`
-- [ ] `get_list_items(ctx, list_name, filter, logger) -> list[dict]`
-- [ ] `export_list_to_csv(ctx, list_name, filter, target_path, logger) -> tuple[bool, str]`
-- [ ] `get_site_pages(ctx, pages_url_part, filter, logger) -> list[SharePointFile]`
-- [ ] `download_site_page_html(ctx, server_relative_url, target_path, logger) -> tuple[bool, str]`
+- [ ] **V2CR-IP01B-VC-26**: `download_file_from_sharepoint(ctx, server_relative_url, target_path, preserve_timestamp, last_modified_timestamp) -> tuple[bool, str]`
+- [ ] **V2CR-IP01B-VC-27**: `get_list_items(ctx, list_name, filter, logger) -> list[dict]`
+- [ ] **V2CR-IP01B-VC-28**: `export_list_to_csv(ctx, list_name, filter, target_path, logger) -> tuple[bool, str]`
+- [ ] **V2CR-IP01B-VC-29**: `get_site_pages(ctx, pages_url_part, filter, logger) -> list[SharePointFile]`
+- [ ] **V2CR-IP01B-VC-30**: `download_site_page_html(ctx, server_relative_url, target_path, logger) -> tuple[bool, str]`
 
 ### D. common_crawler_functions_v2.py (EXTEND)
 
 **Add constants:**
-- [ ] `SOURCE_TYPE_FOLDERS` dict mapping source_type to folder constants
+- [ ] **V2CR-IP01B-VC-31**: `SOURCE_TYPE_FOLDERS` dict mapping source_type to folder constants
 
 **Add path helpers:**
-- [ ] `get_source_folder_path(storage_path, domain_id, source_type, source_id) -> str`
-- [ ] `get_embedded_folder_path(storage_path, domain_id, source_type, source_id) -> str`
-- [ ] `get_failed_folder_path(storage_path, domain_id, source_type, source_id) -> str`
-- [ ] `get_originals_folder_path(storage_path, domain_id, source_type, source_id) -> str`
-- [ ] `server_relative_url_to_local_path(server_relative_url, sharepoint_url_part) -> str`
-- [ ] `get_file_relative_path(domain_id, source_type, source_id, subfolder, local_path) -> str`
+- [ ] **V2CR-IP01B-VC-32**: `get_source_folder_path(storage_path, domain_id, source_type, source_id) -> str`
+- [ ] **V2CR-IP01B-VC-33**: `get_embedded_folder_path(storage_path, domain_id, source_type, source_id) -> str`
+- [ ] **V2CR-IP01B-VC-34**: `get_failed_folder_path(storage_path, domain_id, source_type, source_id) -> str`
+- [ ] **V2CR-IP01B-VC-35**: `get_originals_folder_path(storage_path, domain_id, source_type, source_id) -> str`
+- [ ] **V2CR-IP01B-VC-36**: `server_relative_url_to_local_path(server_relative_url, sharepoint_url_part) -> str`
+- [ ] **V2CR-IP01B-VC-37**: `get_file_relative_path(domain_id, source_type, source_id, subfolder, local_path) -> str`
 
 **Add files_metadata helpers:**
-- [ ] `STANDARD_METADATA_FIELDS` set with 14 field names
-- [ ] `load_files_metadata(domain_path) -> list[dict]`
-- [ ] `save_files_metadata(domain_path, metadata)` with temp+rename
-- [ ] `update_files_metadata(domain_path, new_entries)`
-- [ ] `carry_over_custom_properties(new_entry, existing_entries) -> dict`
+- [ ] **V2CR-IP01B-VC-38**: `STANDARD_METADATA_FIELDS` set with 14 field names
+- [ ] **V2CR-IP01B-VC-39**: `load_files_metadata(domain_path) -> list[dict]`
+- [ ] **V2CR-IP01B-VC-40**: `save_files_metadata(domain_path, metadata)` with temp+rename
+- [ ] **V2CR-IP01B-VC-41**: `update_files_metadata(domain_path, new_entries)`
+- [ ] **V2CR-IP01B-VC-42**: `carry_over_custom_properties(new_entry, existing_entries) -> dict`
 
 **Add source filtering:**
-- [ ] `get_sources_for_scope(domain, scope, source_id) -> list[tuple[str, Source]]`
+- [ ] **V2CR-IP01B-VC-43**: `get_sources_for_scope(domain, scope, source_id) -> list[tuple[str, Source]]`
 
 **Add dry_run helpers:**
-- [ ] `get_map_filename(base_name, job_id) -> str`
-- [ ] `cleanup_temp_map_files(source_folder, job_id)`
+- [ ] **V2CR-IP01B-VC-44**: `get_map_filename(base_name, job_id) -> str`
+- [ ] **V2CR-IP01B-VC-45**: `cleanup_temp_map_files(source_folder, job_id)`
 
 **Add file type filtering:**
-- [ ] `is_file_embeddable(filename) -> bool`
-- [ ] `filter_embeddable_files(files) -> tuple[list, list]`
+- [ ] **V2CR-IP01B-VC-46**: `is_file_embeddable(filename) -> bool`
+- [ ] **V2CR-IP01B-VC-47**: `filter_embeddable_files(files) -> tuple[list, list]`
 
 ### E. crawler.py (NEW)
 
 **Module constants:**
-- [ ] `router = APIRouter()`
-- [ ] `config = None`
-- [ ] `router_prefix = None`
-- [ ] `router_name = "crawler"`
-- [ ] `main_page_nav_html` string
+- [ ] **V2CR-IP01B-VC-48**: `router = APIRouter()`
+- [ ] **V2CR-IP01B-VC-49**: `config = None`
+- [ ] **V2CR-IP01B-VC-50**: `router_prefix = None`
+- [ ] **V2CR-IP01B-VC-51**: `router_name = "crawler"`
+- [ ] **V2CR-IP01B-VC-52**: `main_page_nav_html` string
 
 **Result dataclasses:**
-- [ ] `DownloadResult` with 7 fields: source_id, source_type, total_files, downloaded, skipped, errors, removed
-- [ ] `ProcessResult` with 6 fields: source_id, source_type, total_files, processed, skipped, errors
-- [ ] `EmbedResult` with 7 fields: source_id, source_type, total_files, uploaded, embedded, failed, removed
-- [ ] `IntegrityResult` with 5 fields: source_id, files_verified, missing_redownloaded, orphans_deleted, wrong_path_moved
+- [ ] **V2CR-IP01B-VC-53**: `DownloadResult` with 7 fields: source_id, source_type, total_files, downloaded, skipped, errors, removed
+- [ ] **V2CR-IP01B-VC-54**: `ProcessResult` with 6 fields: source_id, source_type, total_files, processed, skipped, errors
+- [ ] **V2CR-IP01B-VC-55**: `EmbedResult` with 7 fields: source_id, source_type, total_files, uploaded, embedded, failed, removed
+- [ ] **V2CR-IP01B-VC-56**: `IntegrityResult` with 5 fields: source_id, files_verified, missing_redownloaded, orphans_deleted, wrong_path_moved
 
 **Step functions (async generators):**
-- [ ] `step_download_source(storage_path, domain, source, source_type, mode, dry_run, retry_batches, writer, logger, crawler_config)`
-- [ ] `step_integrity_check(storage_path, domain_id, source, source_type, dry_run, writer, logger, crawler_config)`
-- [ ] `step_process_source(storage_path, domain_id, source, source_type, dry_run, writer, logger)`
-- [ ] `step_embed_source(storage_path, domain, source, source_type, mode, dry_run, retry_batches, writer, logger, openai_client)`
+- [ ] **V2CR-IP01B-VC-57**: `step_download_source(storage_path, domain, source, source_type, mode, dry_run, retry_batches, writer, logger, crawler_config)`
+- [ ] **V2CR-IP01B-VC-58**: `step_integrity_check(storage_path, domain_id, source, source_type, dry_run, writer, logger, crawler_config)`
+- [ ] **V2CR-IP01B-VC-59**: `step_process_source(storage_path, domain_id, source, source_type, dry_run, writer, logger)`
+- [ ] **V2CR-IP01B-VC-60**: `step_embed_source(storage_path, domain, source, source_type, mode, dry_run, retry_batches, writer, logger, openai_client)`
 
 **Orchestrator functions:**
-- [ ] `async crawl_domain(storage_path, domain, mode, scope, source_id, dry_run, writer, logger, crawler_config, openai_client) -> dict`
-- [ ] `async download_domain_data(storage_path, domain, mode, scope, source_id, dry_run, writer, logger, crawler_config) -> dict`
-- [ ] `async process_domain_data(storage_path, domain, scope, source_id, writer, logger) -> dict`
-- [ ] `async embed_domain_data(storage_path, domain, mode, scope, source_id, dry_run, writer, logger, openai_client) -> dict`
-- [ ] `create_crawl_report(storage_path, domain_id, mode, scope, results, started_utc, finished_utc) -> str`
+- [ ] **V2CR-IP01B-VC-61**: `async crawl_domain(storage_path, domain, mode, scope, source_id, dry_run, writer, logger, crawler_config, openai_client) -> dict`
+- [ ] **V2CR-IP01B-VC-62**: `async download_domain_data(storage_path, domain, mode, scope, source_id, dry_run, writer, logger, crawler_config) -> dict`
+- [ ] **V2CR-IP01B-VC-63**: `async process_domain_data(storage_path, domain, scope, source_id, writer, logger) -> dict`
+- [ ] **V2CR-IP01B-VC-64**: `async embed_domain_data(storage_path, domain, mode, scope, source_id, dry_run, writer, logger, openai_client) -> dict`
+- [ ] **V2CR-IP01B-VC-65**: `create_crawl_report(storage_path, domain_id, mode, scope, results, started_utc, finished_utc) -> str`
 
 **Endpoints:**
-- [ ] `GET /v2/crawler` returns router docs or jobs list
-- [ ] `GET /v2/crawler/crawl` with params: domain_id, mode, scope, source_id, format, dry_run, retry_batches
-- [ ] `GET /v2/crawler/download_data` with same params
-- [ ] `GET /v2/crawler/process_data` with params: domain_id, scope, source_id, format
-- [ ] `GET /v2/crawler/embed_data` with same params as /crawl
-- [ ] `GET /v2/crawler/cleanup_metadata` with params: domain_id, format
+- [ ] **V2CR-IP01B-VC-66**: `GET /v2/crawler` returns router docs or jobs list
+- [ ] **V2CR-IP01B-VC-67**: `GET /v2/crawler/crawl` with params: domain_id, mode, scope, source_id, format, dry_run, retry_batches
+- [ ] **V2CR-IP01B-VC-68**: `GET /v2/crawler/download_data` with same params
+- [ ] **V2CR-IP01B-VC-69**: `GET /v2/crawler/process_data` with params: domain_id, scope, source_id, format
+- [ ] **V2CR-IP01B-VC-70**: `GET /v2/crawler/embed_data` with same params as /crawl
+- [ ] **V2CR-IP01B-VC-71**: `GET /v2/crawler/cleanup_metadata` with params: domain_id, format
 
 **UI generation:**
-- [ ] `_generate_crawler_ui_page(jobs) -> str`
-- [ ] `set_config(app_config, prefix)` function
+- [ ] **V2CR-IP01B-VC-72**: `_generate_crawler_ui_page(jobs) -> str`
+- [ ] **V2CR-IP01B-VC-73**: `set_config(app_config, prefix)` function
 
 ### F. app.py (MODIFY)
 
-- [ ] Import: `from routers_v2 import crawler`
-- [ ] Router registration: `app.include_router(crawler.router, ...)`
-- [ ] Config setup: `crawler.set_config(config, v2_router_prefix)`
-- [ ] Root page link to /v2/crawler
+- [ ] **V2CR-IP01B-VC-74**: Import: `from routers_v2 import crawler`
+- [ ] **V2CR-IP01B-VC-75**: Router registration: `app.include_router(crawler.router, ...)`
+- [ ] **V2CR-IP01B-VC-76**: Config setup: `crawler.set_config(config, v2_router_prefix)`
+- [ ] **V2CR-IP01B-VC-77**: Root page link to /v2/crawler
 
 ### G. dry_run Implementation
 
-- [ ] All step functions accept `dry_run: bool` parameter
-- [ ] Temp map filenames use `_[job_id]` suffix when dry_run=true
-- [ ] 12 mutation points guarded with `if not dry_run:`
-- [ ] `cleanup_temp_map_files()` called in finally block
+- [ ] **V2CR-IP01B-VC-78**: All step functions accept `dry_run: bool` parameter
+- [ ] **V2CR-IP01B-VC-79**: Temp map filenames use `_[job_id]` suffix when dry_run=true
+- [ ] **V2CR-IP01B-VC-80**: 12 mutation points guarded with `if not dry_run:`
+- [ ] **V2CR-IP01B-VC-81**: `cleanup_temp_map_files()` called in finally block
 
 ### H. Job Metadata
 
-- [ ] Job files include metadata: domain_id, vector_store_id, mode, scope, source_id, dry_run, retry_batches
+- [ ] **V2CR-IP01B-VC-82**: Job files include metadata: domain_id, vector_store_id, mode, scope, source_id, dry_run, retry_batches
 
 ### I. Spec Requirements Traceability (_V2_SPEC_CRAWLER.md)
 
 **Functional Requirements:**
-- [ ] **V2CR-FR-01**: Change detection uses `sharepoint_unique_file_id` as primary key
-- [ ] **V2CR-FR-02**: `is_file_changed()` compares 4 fields: filename, server_relative_url, file_size, last_modified_utc
-- [ ] **V2CR-FR-03**: `step_integrity_check()` runs after every `step_download_source()`
-- [ ] **V2CR-FR-04**: Integrity check re-downloads missing, deletes orphans, moves wrong-path
-- [ ] **V2CR-FR-05**: `MapFileWriter` uses buffered appends, atomic header write, retry on concurrency
-- [ ] **V2CR-FR-06**: `carry_over_custom_properties()` preserves non-standard fields on file update
+- [ ] **V2CR-IP01B-VC-83**: V2CR-FR-01 - Change detection uses `sharepoint_unique_file_id` as primary key
+- [ ] **V2CR-IP01B-VC-84**: V2CR-FR-02 - `is_file_changed()` compares 4 fields: filename, server_relative_url, file_size, last_modified_utc
+- [ ] **V2CR-IP01B-VC-85**: V2CR-FR-03 - `step_integrity_check()` runs after every `step_download_source()`
+- [ ] **V2CR-IP01B-VC-86**: V2CR-FR-04 - Integrity check re-downloads missing, deletes orphans, moves wrong-path
+- [ ] **V2CR-IP01B-VC-87**: V2CR-FR-05 - `MapFileWriter` uses buffered appends, atomic header write, retry on concurrency
+- [ ] **V2CR-IP01B-VC-88**: V2CR-FR-06 - `carry_over_custom_properties()` preserves non-standard fields on file update
 
 **Implementation Guarantees:**
-- [ ] **V2CR-IG-01**: Local storage mirrors SharePoint folder structure after download + integrity check
-- [ ] **V2CR-IG-02**: No orphan files remain after integrity check
-- [ ] **V2CR-IG-03**: `files_map.csv` accurately reflects disk state after integrity check
-- [ ] **V2CR-IG-04**: Custom properties in `files_metadata.json` survive file updates
-- [ ] **V2CR-IG-05**: All 38 edge cases handled (A1-A16, B1-B7, C1-C5, D1-D6, E1-E6)
-- [ ] **V2CR-IG-06**: All paths use `CRAWLER_HARDCODED_CONFIG` constants (no hardcoded strings)
+- [ ] **V2CR-IP01B-VC-89**: V2CR-IG-01 - Local storage mirrors SharePoint folder structure after download + integrity check
+- [ ] **V2CR-IP01B-VC-90**: V2CR-IG-02 - No orphan files remain after integrity check
+- [ ] **V2CR-IP01B-VC-91**: V2CR-IG-03 - `files_map.csv` accurately reflects disk state after integrity check
+- [ ] **V2CR-IP01B-VC-92**: V2CR-IG-04 - Custom properties in `files_metadata.json` survive file updates
+- [ ] **V2CR-IP01B-VC-93**: V2CR-IG-05 - All 37 edge cases handled (EC-01 to EC-37)
+- [ ] **V2CR-IP01B-VC-94**: V2CR-IG-06 - All paths use `CRAWLER_HARDCODED_CONFIG` constants (no hardcoded strings)
 
 **Design Decisions:**
-- [ ] **V2CR-DD-01**: `sharepoint_unique_file_id` used as immutable key throughout
-- [ ] **V2CR-DD-02**: Four-field change detection implemented
-- [ ] **V2CR-DD-03**: Integrity check always runs (no optional skip)
-- [ ] **V2CR-DD-04**: WRONG_PATH files moved (not re-downloaded)
-- [ ] **V2CR-DD-05**: `files_metadata.json` keyed by `openai_file_id`
+- [ ] **V2CR-IP01B-VC-95**: V2CR-DD-01 - `sharepoint_unique_file_id` used as immutable key throughout
+- [ ] **V2CR-IP01B-VC-96**: V2CR-DD-02 - Four-field change detection implemented
+- [ ] **V2CR-IP01B-VC-97**: V2CR-DD-03 - Integrity check always runs (no optional skip)
+- [ ] **V2CR-IP01B-VC-98**: V2CR-DD-04 - WRONG_PATH files moved (not re-downloaded)
+- [ ] **V2CR-IP01B-VC-99**: V2CR-DD-05 - `files_metadata.json` keyed by `openai_file_id`
 
 ### J. Map File Columns (_V2_SPEC_CRAWLER.md lines 275-333)
 
 **sharepoint_map.csv (10 columns):**
-- [ ] sharepoint_listitem_id, sharepoint_unique_file_id, filename, file_type, file_size
-- [ ] url, raw_url, server_relative_url, last_modified_utc, last_modified_timestamp
+- [ ] **V2CR-IP01B-VC-100**: sharepoint_listitem_id, sharepoint_unique_file_id, filename, file_type, file_size
+- [ ] **V2CR-IP01B-VC-101**: url, raw_url, server_relative_url, last_modified_utc, last_modified_timestamp
 
 **files_map.csv (13 columns):**
-- [ ] sharepoint_listitem_id, sharepoint_unique_file_id, filename, file_type, server_relative_url
-- [ ] file_relative_path, file_size, last_modified_utc, last_modified_timestamp
-- [ ] downloaded_utc, downloaded_timestamp, sharepoint_error, processing_error
+- [ ] **V2CR-IP01B-VC-102**: sharepoint_listitem_id, sharepoint_unique_file_id, filename, file_type, server_relative_url
+- [ ] **V2CR-IP01B-VC-103**: file_relative_path, file_size, last_modified_utc, last_modified_timestamp
+- [ ] **V2CR-IP01B-VC-104**: downloaded_utc, downloaded_timestamp, sharepoint_error, processing_error
 
 **vectorstore_map.csv (19 columns):**
-- [ ] openai_file_id, vector_store_id, file_relative_path
-- [ ] sharepoint_listitem_id, sharepoint_unique_file_id, filename, file_type, file_size
-- [ ] last_modified_utc, last_modified_timestamp, downloaded_utc, downloaded_timestamp
-- [ ] uploaded_utc, uploaded_timestamp, embedded_utc, embedded_timestamp
-- [ ] sharepoint_error, processing_error, embedding_error
+- [ ] **V2CR-IP01B-VC-105**: openai_file_id, vector_store_id, file_relative_path
+- [ ] **V2CR-IP01B-VC-106**: sharepoint_listitem_id, sharepoint_unique_file_id, filename, file_type, file_size
+- [ ] **V2CR-IP01B-VC-107**: last_modified_utc, last_modified_timestamp, downloaded_utc, downloaded_timestamp
+- [ ] **V2CR-IP01B-VC-108**: uploaded_utc, uploaded_timestamp, embedded_utc, embedded_timestamp
+- [ ] **V2CR-IP01B-VC-109**: sharepoint_error, processing_error, embedding_error
 
 ### K. UI Specification (_V2_SPEC_CRAWLER_UI.md)
 
 **Table Columns (8 columns):**
-- [ ] ID, Action, Domain ID, Vector Store ID, Mode, Scope, Source ID, Actions
+- [ ] **V2CR-IP01B-VC-110**: ID, Action, Domain ID, Vector Store ID, Mode, Scope, Source ID, Actions
 
 **Action Buttons by State:**
-- [ ] running: [Monitor] [Pause] [Cancel]
-- [ ] paused: [Monitor] [Resume] [Cancel]
-- [ ] done/cancelled/error: [Monitor] only
+- [ ] **V2CR-IP01B-VC-111**: running: [Monitor] [Pause] [Cancel]
+- [ ] **V2CR-IP01B-VC-112**: paused: [Monitor] [Resume] [Cancel]
+- [ ] **V2CR-IP01B-VC-113**: done/cancelled/error: [Monitor] only
 
 **Navigation Links:**
-- [ ] Back to Main Page -> `/`
-- [ ] Domains -> `/v2/domains?format=ui`
-- [ ] Crawl Results -> `/v2/crawl-results?format=ui`
+- [ ] **V2CR-IP01B-VC-114**: Back to Main Page -> `/`
+- [ ] **V2CR-IP01B-VC-115**: Domains -> `/v2/domains?format=ui`
+- [ ] **V2CR-IP01B-VC-116**: Crawl Results -> `/v2/crawl-results?format=ui`
 
 **Console Panel:**
-- [ ] Visible by default
-- [ ] Resizable via drag handle
-- [ ] [Clear] button clears content
-- [ ] SSE streaming for live output
-- [ ] Auto-scroll to bottom
+- [ ] **V2CR-IP01B-VC-117**: Visible by default
+- [ ] **V2CR-IP01B-VC-118**: Resizable via drag handle
+- [ ] **V2CR-IP01B-VC-119**: [Clear] button clears content
+- [ ] **V2CR-IP01B-VC-120**: SSE streaming for live output
+- [ ] **V2CR-IP01B-VC-121**: Auto-scroll to bottom
 
 **Job Filtering:**
-- [ ] Only jobs where `router == 'crawler'` displayed
+- [ ] **V2CR-IP01B-VC-122**: Only jobs where `router == 'crawler'` displayed
 
 **Router-Specific JavaScript:**
-- [ ] `refreshJobsTable()` fetches and re-renders jobs
-- [ ] `monitorJob(jobId)` connects SSE to console
-- [ ] `controlJob(jobId, action)` calls pause/resume/cancel endpoint
+- [ ] **V2CR-IP01B-VC-123**: `refreshJobsTable()` fetches and re-renders jobs
+- [ ] **V2CR-IP01B-VC-124**: `monitorJob(jobId)` connects SSE to console
+- [ ] **V2CR-IP01B-VC-125**: `controlJob(jobId, action)` calls pause/resume/cancel endpoint
 
 ## Spec Changes
+
+**[2024-12-30 10:45]**
+- Added: Plan ID V2CR-IP01B to header block
+- Changed: Edge Cases now use IDs V2CR-IP01B-EC-01 to EC-37 (37 items)
+- Changed: Implementation Order now uses IDs V2CR-IP01B-IS-01 to IS-12 (12 items)
+- Changed: Verification Checklist now uses IDs V2CR-IP01B-VC-01 to VC-125 (125 items)
+- Changed: Section I references now link VC IDs to spec requirement IDs (e.g., VC-83 traces to V2CR-FR-01)
 
 **[2024-12-27 18:25]**
 - Added: Section I - Spec Requirements Traceability (17 items: V2CR-FR-01 to FR-06, V2CR-IG-01 to IG-06, V2CR-DD-01 to DD-05)

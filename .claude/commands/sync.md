@@ -6,4 +6,5 @@ Sync Claude commands from Windsurf workflows.
    - Strip any YAML frontmatter (content between `---` markers at the start)
    - Create/overwrite a file in `.claude/commands/` with the same name
    - The new file should contain only the workflow instructions (no frontmatter)
+   - Use xcopy and file edits instead of re-generating all content via LLM
 3. Report: "Synced [x] workflows from Windsurf to Claude commands"

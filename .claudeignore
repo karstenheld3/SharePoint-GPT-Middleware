@@ -1,0 +1,10 @@
+# Local virtual environment
+.venv/
+
+# Python build/cache artifacts
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# OS cruft
+.DS_Store

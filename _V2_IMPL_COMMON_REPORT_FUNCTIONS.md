@@ -1,5 +1,6 @@
 # V2 Common Report Functions Implementation Plan
 
+**Plan ID**: V2RP-IP01
 **Goal**: Implement helper functions for report archive management
 **Target file**: `/src/routers_v2/common_report_functions_v2.py`
 **Test file**: `/src/routers_v2/common_report_functions_v2_test.py`
@@ -136,62 +137,62 @@ Windows extended path support. Adds `\\?\` prefix for paths >240 chars.
 
 ## Review Checklist (Corner Cases)
 
-### create_report()
+### create_report() (V2RP-IP01-EC-01 to EC-14)
 
-- **C1**: Valid inputs -> Creates zip, returns report_id
-- **C2**: Empty files list -> Creates zip with only report.json
-- **C3**: Files with nested paths, keep_folder_structure=True -> Paths preserved
-- **C4**: Files with nested paths, keep_folder_structure=False -> Flattened to root
-- **C5**: Duplicate filenames when flattened -> Last file wins
-- **C6**: Unknown report_type -> Creates folder anyway (no validation)
-- **C7**: Filename with special chars -> Works if filesystem allows
-- **C8**: Folder doesn't exist -> Auto-creates folder
-- **C9**: metadata missing mandatory fields -> Adds report_id, created_utc
-- **C10**: metadata has title, type, ok, error -> Preserved in report.json
-- **C11**: Binary file content -> Stored as-is
-- **C12**: Empty file content (0 bytes) -> Works
-- **C13**: Long path (>260 chars on Windows) -> Works with extended path prefix
-- **C14**: dry_run=True -> Returns report_id but does NOT create file
+- **V2RP-IP01-EC-01**: Valid inputs -> Creates zip, returns report_id
+- **V2RP-IP01-EC-02**: Empty files list -> Creates zip with only report.json
+- **V2RP-IP01-EC-03**: Files with nested paths, keep_folder_structure=True -> Paths preserved
+- **V2RP-IP01-EC-04**: Files with nested paths, keep_folder_structure=False -> Flattened to root
+- **V2RP-IP01-EC-05**: Duplicate filenames when flattened -> Last file wins
+- **V2RP-IP01-EC-06**: Unknown report_type -> Creates folder anyway (no validation)
+- **V2RP-IP01-EC-07**: Filename with special chars -> Works if filesystem allows
+- **V2RP-IP01-EC-08**: Folder doesn't exist -> Auto-creates folder
+- **V2RP-IP01-EC-09**: metadata missing mandatory fields -> Adds report_id, created_utc
+- **V2RP-IP01-EC-10**: metadata has title, type, ok, error -> Preserved in report.json
+- **V2RP-IP01-EC-11**: Binary file content -> Stored as-is
+- **V2RP-IP01-EC-12**: Empty file content (0 bytes) -> Works
+- **V2RP-IP01-EC-13**: Long path (>260 chars on Windows) -> Works with extended path prefix
+- **V2RP-IP01-EC-14**: dry_run=True -> Returns report_id but does NOT create file
 
-### list_reports()
+### list_reports() (V2RP-IP01-EC-15 to EC-21)
 
-- **L1**: No reports exist -> Returns []
-- **L2**: Reports exist, no filter -> Returns all, sorted by created_utc desc
-- **L3**: Filter by existing type -> Returns only matching type
-- **L4**: Filter by non-existent type -> Returns []
-- **L5**: Corrupt zip file -> Skip with warning
-- **L6**: Zip without report.json -> Skip with warning
-- **L7**: Invalid JSON in report.json -> Skip with warning
+- **V2RP-IP01-EC-15**: No reports exist -> Returns []
+- **V2RP-IP01-EC-16**: Reports exist, no filter -> Returns all, sorted by created_utc desc
+- **V2RP-IP01-EC-17**: Filter by existing type -> Returns only matching type
+- **V2RP-IP01-EC-18**: Filter by non-existent type -> Returns []
+- **V2RP-IP01-EC-19**: Corrupt zip file -> Skip with warning
+- **V2RP-IP01-EC-20**: Zip without report.json -> Skip with warning
+- **V2RP-IP01-EC-21**: Invalid JSON in report.json -> Skip with warning
 
-### get_report_metadata()
+### get_report_metadata() (V2RP-IP01-EC-22 to EC-26)
 
-- **M1**: Valid report_id -> Returns dict
-- **M2**: Non-existent report_id -> Returns None
-- **M3**: Invalid report_id format (no slash) -> Returns None
-- **M4**: Corrupt zip -> Returns None
-- **M5**: Missing report.json in zip -> Returns None
+- **V2RP-IP01-EC-22**: Valid report_id -> Returns dict
+- **V2RP-IP01-EC-23**: Non-existent report_id -> Returns None
+- **V2RP-IP01-EC-24**: Invalid report_id format (no slash) -> Returns None
+- **V2RP-IP01-EC-25**: Corrupt zip -> Returns None
+- **V2RP-IP01-EC-26**: Missing report.json in zip -> Returns None
 
-### get_report_file()
+### get_report_file() (V2RP-IP01-EC-27 to EC-31)
 
-- **F1**: Valid report_id and file_path -> Returns bytes
-- **F2**: Valid report_id, non-existent file_path -> Returns None
-- **F3**: Non-existent report_id -> Returns None
-- **F4**: report.json readable -> Returns bytes
-- **F5**: Binary file -> Returns bytes correctly
+- **V2RP-IP01-EC-27**: Valid report_id and file_path -> Returns bytes
+- **V2RP-IP01-EC-28**: Valid report_id, non-existent file_path -> Returns None
+- **V2RP-IP01-EC-29**: Non-existent report_id -> Returns None
+- **V2RP-IP01-EC-30**: report.json readable -> Returns bytes
+- **V2RP-IP01-EC-31**: Binary file -> Returns bytes correctly
 
-### delete_report()
+### delete_report() (V2RP-IP01-EC-32 to EC-35)
 
-- **D1**: Valid report_id -> Deletes file, returns metadata
-- **D2**: Non-existent report_id -> Returns None
-- **D3**: File locked/permission error -> Raises exception
-- **D4**: dry_run=True -> Returns metadata but does NOT delete file
+- **V2RP-IP01-EC-32**: Valid report_id -> Deletes file, returns metadata
+- **V2RP-IP01-EC-33**: Non-existent report_id -> Returns None
+- **V2RP-IP01-EC-34**: File locked/permission error -> Raises exception
+- **V2RP-IP01-EC-35**: dry_run=True -> Returns metadata but does NOT delete file
 
-### get_report_archive_path()
+### get_report_archive_path() (V2RP-IP01-EC-36 to EC-39)
 
-- **P1**: Valid existing report_id -> Returns Path
-- **P2**: Valid format but non-existent -> Returns None
-- **P3**: Invalid format (no slash) -> Returns None
-- **P4**: Long path (>260 chars) -> Works with extended path prefix
+- **V2RP-IP01-EC-36**: Valid existing report_id -> Returns Path
+- **V2RP-IP01-EC-37**: Valid format but non-existent -> Returns None
+- **V2RP-IP01-EC-38**: Invalid format (no slash) -> Returns None
+- **V2RP-IP01-EC-39**: Long path (>260 chars) -> Works with extended path prefix
 
 ## Test Coverage
 
@@ -216,8 +217,15 @@ All tests use a temporary directory and clean up after completion.
 
 ## Implementation Status
 
-- [x] Implementation complete: `common_report_functions_v2.py`
-- [x] Test suite complete: `common_report_functions_v2_test.py`
-- [x] All tests passing
-- [x] MiddlewareLogger and dry_run support added
-- [x] Long path support (Windows extended paths)
+- [x] **V2RP-IP01-VC-01**: Implementation complete: `common_report_functions_v2.py`
+- [x] **V2RP-IP01-VC-02**: Test suite complete: `common_report_functions_v2_test.py`
+- [x] **V2RP-IP01-VC-03**: All 68 tests passing
+- [x] **V2RP-IP01-VC-04**: MiddlewareLogger and dry_run support added
+- [x] **V2RP-IP01-VC-05**: Long path support (Windows extended paths)
+
+## Spec Changes
+
+**[2024-12-30 10:55]**
+- Added: Plan ID V2RP-IP01 to header block
+- Changed: Corner Cases now use IDs V2RP-IP01-EC-01 to EC-39 (39 items)
+- Changed: Implementation Status now uses IDs V2RP-IP01-VC-01 to VC-05 (5 items)

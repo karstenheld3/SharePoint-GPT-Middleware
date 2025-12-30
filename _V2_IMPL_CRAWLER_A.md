@@ -1,5 +1,6 @@
 # Implementation Plan: /v2/crawler Router
 
+**Plan ID**: V2CR-IP01A
 **Goal**: Implement the V2 crawler router with monitoring UI and streaming job support
 **Target files**:
 - `/src/routers_v2/crawler.py` (NEW)

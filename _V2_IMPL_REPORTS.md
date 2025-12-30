@@ -1,5 +1,6 @@
 # V2 Reports Router Implementation Plan
 
+**Plan ID**: V2RP-IP02
 **Goal**: Implement reports router with endpoints and UI for managing report archives
 **Target file**: `/src/routers_v2/reports.py`
 
@@ -590,55 +591,62 @@ function encodeId(id) {
 ### Spec Compliance Checklist
 
 **From _V2_SPEC_REPORTS.md:**
-- [ ] V2RP-FR-01: List all reports, sorted by created_utc desc
-- [ ] V2RP-FR-02: Filter by type
-- [ ] V2RP-FR-03: Get single report metadata
-- [ ] V2RP-FR-04: Get file from archive
-- [ ] V2RP-FR-05: Download as ZIP
-- [ ] V2RP-FR-06: Delete single report
-- [ ] V2RP-DD-05: Result pattern (-, OK, FAIL)
-- [ ] DD-E001: Self-documentation on bare GET
-- [ ] DD-E010: GET allowed for /delete
-- [ ] DD-E017: Delete returns full object
+- [ ] **V2RP-IP02-VC-01**: V2RP-FR-01 - List all reports, sorted by created_utc desc
+- [ ] **V2RP-IP02-VC-02**: V2RP-FR-02 - Filter by type
+- [ ] **V2RP-IP02-VC-03**: V2RP-FR-03 - Get single report metadata
+- [ ] **V2RP-IP02-VC-04**: V2RP-FR-04 - Get file from archive
+- [ ] **V2RP-IP02-VC-05**: V2RP-FR-05 - Download as ZIP
+- [ ] **V2RP-IP02-VC-06**: V2RP-FR-06 - Delete single report
+- [ ] **V2RP-IP02-VC-07**: V2RP-DD-05 - Result pattern (-, OK, FAIL)
+- [ ] **V2RP-IP02-VC-08**: DD-E001 - Self-documentation on bare GET
+- [ ] **V2RP-IP02-VC-09**: DD-E010 - GET allowed for /delete
+- [ ] **V2RP-IP02-VC-10**: DD-E017 - Delete returns full object
 
 **From _V2_SPEC_REPORTS_UI.md:**
-- [ ] Single-page UI with reports table
-- [ ] Console panel hidden by default
-- [ ] Bulk delete support
-- [ ] Result dialog modal
-- [ ] Navigation links (Back, Jobs, Crawler)
-- [ ] Row styling for failed reports
-- [ ] Empty state message
-- [ ] Timestamp formatting
+- [ ] **V2RP-IP02-VC-11**: Single-page UI with reports table
+- [ ] **V2RP-IP02-VC-12**: Console panel hidden by default
+- [ ] **V2RP-IP02-VC-13**: Bulk delete support
+- [ ] **V2RP-IP02-VC-14**: Result dialog modal
+- [ ] **V2RP-IP02-VC-15**: Navigation links (Back, Jobs, Crawler)
+- [ ] **V2RP-IP02-VC-16**: Row styling for failed reports
+- [ ] **V2RP-IP02-VC-17**: Empty state message
+- [ ] **V2RP-IP02-VC-18**: Timestamp formatting
 
 ### Test Scenarios
 
 **Endpoint Tests:**
-1. **List empty** - No reports, returns `[]`
-2. **List all** - Returns all reports sorted by created_utc desc
-3. **List filtered** - Returns only matching type
-4. **List self-doc** - Bare GET returns documentation
-5. **Get metadata** - Returns report.json content
-6. **Get metadata 404** - Returns error for non-existent
-7. **Get metadata self-doc** - Bare GET returns documentation
-8. **Get file raw** - Returns file content with correct Content-Type
-9. **Get file json** - Returns file content wrapped in JSON
-10. **Get file 404** - Returns error for non-existent
-11. **Get file self-doc** - Bare GET returns documentation
-12. **Download** - Returns ZIP with Content-Disposition header
-13. **Download 404** - Returns error for non-existent
-14. **Download self-doc** - Bare GET returns documentation
-15. **Delete** - Removes file, returns full metadata (DD-E017)
-16. **Delete 404** - Returns error for non-existent
-17. **Delete self-doc** - Bare GET returns documentation
-18. **Delete via GET** - Works same as DELETE (DD-E010)
+- **V2RP-IP02-TST-01**: List empty - No reports, returns `[]`
+- **V2RP-IP02-TST-02**: List all - Returns all reports sorted by created_utc desc
+- **V2RP-IP02-TST-03**: List filtered - Returns only matching type
+- **V2RP-IP02-TST-04**: List self-doc - Bare GET returns documentation
+- **V2RP-IP02-TST-05**: Get metadata - Returns report.json content
+- **V2RP-IP02-TST-06**: Get metadata 404 - Returns error for non-existent
+- **V2RP-IP02-TST-07**: Get metadata self-doc - Bare GET returns documentation
+- **V2RP-IP02-TST-08**: Get file raw - Returns file content with correct Content-Type
+- **V2RP-IP02-TST-09**: Get file json - Returns file content wrapped in JSON
+- **V2RP-IP02-TST-10**: Get file 404 - Returns error for non-existent
+- **V2RP-IP02-TST-11**: Get file self-doc - Bare GET returns documentation
+- **V2RP-IP02-TST-12**: Download - Returns ZIP with Content-Disposition header
+- **V2RP-IP02-TST-13**: Download 404 - Returns error for non-existent
+- **V2RP-IP02-TST-14**: Download self-doc - Bare GET returns documentation
+- **V2RP-IP02-TST-15**: Delete - Removes file, returns full metadata (DD-E017)
+- **V2RP-IP02-TST-16**: Delete 404 - Returns error for non-existent
+- **V2RP-IP02-TST-17**: Delete self-doc - Bare GET returns documentation
+- **V2RP-IP02-TST-18**: Delete via GET - Works same as DELETE (DD-E010)
 
 **UI Tests:**
-19. **UI loads** - Page renders with table structure
-20. **UI reload** - Fetches and re-renders reports
-21. **UI delete** - Removes row, shows toast
-22. **UI bulk delete** - Removes multiple, shows toast
-23. **UI result modal** - Shows report.json formatted
-24. **UI download** - Triggers file download
-25. **UI empty state** - Shows 'No reports found'
-26. **UI row styling** - Failed reports have red color
+- **V2RP-IP02-TST-19**: UI loads - Page renders with table structure
+- **V2RP-IP02-TST-20**: UI reload - Fetches and re-renders reports
+- **V2RP-IP02-TST-21**: UI delete - Removes row, shows toast
+- **V2RP-IP02-TST-22**: UI bulk delete - Removes multiple, shows toast
+- **V2RP-IP02-TST-23**: UI result modal - Shows report.json formatted
+- **V2RP-IP02-TST-24**: UI download - Triggers file download
+- **V2RP-IP02-TST-25**: UI empty state - Shows 'No reports found'
+- **V2RP-IP02-TST-26**: UI row styling - Failed reports have red color
+
+## Spec Changes
+
+**[2024-12-30 10:50]**
+- Added: Plan ID V2RP-IP02 to header block
+- Changed: Spec Compliance Checklist now uses IDs V2RP-IP02-VC-01 to VC-18 (18 items)
+- Changed: Test Scenarios now use IDs V2RP-IP02-TST-01 to TST-26 (26 items)

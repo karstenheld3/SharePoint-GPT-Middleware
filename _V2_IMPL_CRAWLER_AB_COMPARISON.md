@@ -1,5 +1,6 @@
 # Crawler Implementation Plan Comparison: A vs B
 
+**Plan ID**: V2CR-IP01AB (comparison of V2CR-IP01A and V2CR-IP01B)
 **Goal**: Compare two implementation approaches for the V2 crawler router
 **Documents compared**:
 - `_V2_IMPL_CRAWLER_A.md` - Consolidated approach (3 files)

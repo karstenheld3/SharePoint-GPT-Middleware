@@ -1,5 +1,6 @@
 # Implementation Plan: Domain ID Rename Feature
 
+**Plan ID**: V2DM-IP01
 **Goal**: Add ability to rename Domain ID via the Edit dialog in `/v2/domains?format=ui`
 **Design pattern**: Same as demorouter2.py (per DD-E014 from `_V2_SPEC_ROUTERS.md`)
 **Spec reference**: `_V2_SPEC_DOMAINS_UI.md` (V2DM-FR-03)

@@ -1,5 +1,6 @@
 # Implementation Plan: Domains Selftest Endpoint
 
+**Plan ID**: V2DM-IP02
 **Goal**: Add exhaustive selftest endpoint for domains router
 **Target file**: `src/routers_v2/domains.py`
 

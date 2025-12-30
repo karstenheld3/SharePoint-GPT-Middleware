@@ -1,5 +1,6 @@
 # Job State Event Implementation Plan
 
+**Plan ID**: V2JB-IP02
 **Goal**: Emit `state_json` SSE events when job state changes, enabling JavaScript UI to update console buttons and job table rows reactively.
 
 **Target files**:
@@ -240,25 +241,19 @@ These routers do not display job lists, so no `onJobStateChange()` callback is n
 
 ### 5.1 common_job_functions_v2.py
 
-| Location | Change |
-|----------|--------|
-| `StreamingJobWriter` class | Add `emit_state(state: JobState) -> str` method |
-| `check_control()` pause branch | Yield `emit_state("paused")` before log |
-| `check_control()` resume branch | Yield `emit_state("running")` before log |
-| `check_control()` cancel branch | Yield `emit_state("cancelled")` before ControlAction |
+- `StreamingJobWriter` class: Add `emit_state(state: JobState) -> str` method
+- `check_control()` pause branch: Yield `emit_state("paused")` before log
+- `check_control()` resume branch: Yield `emit_state("running")` before log
+- `check_control()` cancel branch: Yield `emit_state("cancelled")` before ControlAction
 
 ### 5.2 common_ui_functions_v2.py
 
-| Location | Change |
-|----------|--------|
-| `generate_console_js()` | Add `state_json` case in `handleSSEData()` with try/catch |
-| `generate_console_js()` | Add `handleStateChange(stateData)` function after `updatePauseResumeButton()` |
+- `generate_console_js()`: Add `state_json` case in `handleSSEData()` with try/catch
+- `generate_console_js()`: Add `handleStateChange(stateData)` function after `updatePauseResumeButton()`
 
 ### 5.3 jobs.py
 
-| Location | Change |
-|----------|--------|
-| `get_router_specific_js()` | Add `onJobStateChange(jobId, state)` function |
+- `get_router_specific_js()`: Add `onJobStateChange(jobId, state)` function
 
 ### 5.4 demorouter1.py, demorouter2.py, reports.py
 
@@ -297,61 +292,49 @@ These routers do not display job lists, so no `onJobStateChange()` callback is n
 
 ### 7.1 Timing and Race Conditions
 
-| Corner Case | Scenario | Handling |
-|-------------|----------|----------|
-| **Rapid pause/resume** | User clicks Pause then Resume within 100ms | Each click creates control file; `check_control()` processes them in order; UI receives both `state_json` events sequentially; final state is correct |
-| **Pause during iteration** | Pause requested mid-loop, between `check_control()` calls | Current item completes, pause detected on next `check_control()` call; no partial processing |
-| **Cancel during pause loop** | Job is paused, user clicks Cancel | Cancel file detected inside pause loop; `state_json(cancelled)` emitted; `ControlAction.CANCEL` returned |
-| **Double cancel click** | User clicks Cancel twice quickly | First click creates control file; job processes it and deletes file; second click has no file to create (job already exiting); no duplicate events |
-| **Button click during network lag** | User clicks Pause but SSE stream is delayed | Control file created immediately; job pauses; `state_json` eventually arrives; UI may show stale state for 0-2 seconds |
+- **Rapid pause/resume**: User clicks Pause then Resume within 100ms -> Each click creates control file; `check_control()` processes them in order; UI receives both `state_json` events sequentially; final state is correct
+- **Pause during iteration**: Pause requested mid-loop, between `check_control()` calls -> Current item completes, pause detected on next `check_control()` call; no partial processing
+- **Cancel during pause loop**: Job is paused, user clicks Cancel -> Cancel file detected inside pause loop; `state_json(cancelled)` emitted; `ControlAction.CANCEL` returned
+- **Double cancel click**: User clicks Cancel twice quickly -> First click creates control file; job processes it and deletes file; second click has no file to create (job already exiting); no duplicate events
+- **Button click during network lag**: User clicks Pause but SSE stream is delayed -> Control file created immediately; job pauses; `state_json` eventually arrives; UI may show stale state for 0-2 seconds
 
 ### 7.2 Stream Connection Issues
 
-| Corner Case | Scenario | Handling |
-|-------------|----------|----------|
-| **Stream disconnects mid-pause** | Browser loses connection while job is paused | Job continues waiting in pause loop; reconnecting via Monitor shows current file content (no live `state_json`); buttons reflect file extension state on page load |
-| **Reconnect after state change** | User reconnects after pause/resume occurred | Monitor endpoint streams full file content including past `state_json` events; JS replays all events; final button state is correct |
-| **Multiple tabs monitoring** | Two browser tabs monitoring same job | Both receive `state_json` via their own streams; both UIs update; control from either tab affects job |
-| **Tab monitors wrong job** | User starts monitoring jb_28, then clicks control for jb_29 in table | `currentJobId` tracks console job; control buttons use `currentJobId`; table row buttons use their own `data-url`; no cross-contamination |
+- **Stream disconnects mid-pause**: Browser loses connection while job is paused -> Job continues waiting in pause loop; reconnecting via Monitor shows current file content (no live `state_json`); buttons reflect file extension state on page load
+- **Reconnect after state change**: User reconnects after pause/resume occurred -> Monitor endpoint streams full file content including past `state_json` events; JS replays all events; final button state is correct
+- **Multiple tabs monitoring**: Two browser tabs monitoring same job -> Both receive `state_json` via their own streams; both UIs update; control from either tab affects job
+- **Tab monitors wrong job**: User starts monitoring jb_28, then clicks control for jb_29 in table -> `currentJobId` tracks console job; control buttons use `currentJobId`; table row buttons use their own `data-url`; no cross-contamination
 
 ### 7.3 Job State Edge Cases
 
-| Corner Case | Scenario | Handling |
-|-------------|----------|----------|
-| **Monitor completed job** | User clicks Monitor on already-completed job | Stream returns full file content ending with `end_json`; no `state_json` emitted (job not running); buttons disabled after `end_json` |
-| **Monitor cancelled job** | User clicks Monitor on already-cancelled job | Same as completed; `end_json` with `cancelled` state; buttons disabled |
-| **Pause on stalled job** | Job is stalled (not calling `check_control()`), user clicks Pause | Control file created but never processed; job remains stalled; UI shows Pause requested but no `state_json` arrives; user must Force Cancel |
-| **Force cancel stalled job** | Job stalled, user clicks Force Cancel | `force_cancel_job()` renames file directly; no `state_json` emitted (no active stream); table row updates via JSON response; console shows no change (stream is dead) |
-| **Job ends while paused** | Impossible scenario | Job cannot end while paused; pause loop blocks until resume or cancel; not a valid state |
+- **Monitor completed job**: User clicks Monitor on already-completed job -> Stream returns full file content ending with `end_json`; no `state_json` emitted (job not running); buttons disabled after `end_json`
+- **Monitor cancelled job**: User clicks Monitor on already-cancelled job -> Same as completed; `end_json` with `cancelled` state; buttons disabled
+- **Pause on stalled job**: Job is stalled (not calling `check_control()`), user clicks Pause -> Control file created but never processed; job remains stalled; UI shows Pause requested but no `state_json` arrives; user must Force Cancel
+- **Force cancel stalled job**: Job stalled, user clicks Force Cancel -> `force_cancel_job()` renames file directly; no `state_json` emitted (no active stream); table row updates via JSON response; console shows no change (stream is dead)
+- **Job ends while paused**: Impossible scenario -> Job cannot end while paused; pause loop blocks until resume or cancel; not a valid state
 
 ### 7.4 UI State Edge Cases
 
-| Corner Case | Scenario | Handling |
-|-------------|----------|----------|
-| **Console hidden during state change** | User hides console, state changes, user shows console | Buttons updated in DOM regardless of visibility; correct state when shown |
-| **No Pause/Resume buttons** | Console panel rendered without `include_pause_resume_cancel=False` | `handleStateChange()` checks `getElementById()` returns null; no error; graceful no-op |
-| **Job row not in table** | `onJobStateChange()` called for job not in `jobsState` Map | `jobsState.get(jobId)` returns undefined; function exits early; no error |
-| **Job row not rendered** | Job in `jobsState` but DOM row missing (scroll virtualization future) | `getElementById()` returns null; state updated in Map but DOM not touched; next full render will be correct |
-| **Page refresh during pause** | User refreshes page while job is paused | Fresh page load; job list fetched via JSON; row shows "paused" from file extension; Monitor reconnects and receives file content |
+- **Console hidden during state change**: User hides console, state changes, user shows console -> Buttons updated in DOM regardless of visibility; correct state when shown
+- **No Pause/Resume buttons**: Console panel rendered without `include_pause_resume_cancel=False` -> `handleStateChange()` checks `getElementById()` returns null; no error; graceful no-op
+- **Job row not in table**: `onJobStateChange()` called for job not in `jobsState` Map -> `jobsState.get(jobId)` returns undefined; function exits early; no error
+- **Job row not rendered**: Job in `jobsState` but DOM row missing (scroll virtualization future) -> `getElementById()` returns null; state updated in Map but DOM not touched; next full render will be correct
+- **Page refresh during pause**: User refreshes page while job is paused -> Fresh page load; job list fetched via JSON; row shows "paused" from file extension; Monitor reconnects and receives file content
 
 ### 7.5 Protocol Edge Cases
 
-| Corner Case | Scenario | Handling |
-|-------------|----------|----------|
-| **Malformed state_json** | Bug causes invalid JSON in `state_json` data | `JSON.parse()` throws; wrap in try/catch; log error to console; skip state update; UI remains in previous state |
-| **Unknown state value** | Future state like "queued" sent | `handleStateChange()` doesn't match any case; buttons unchanged; graceful degradation |
-| **Missing job_id field** | Bug omits `job_id` from `state_json` | `onJobStateChange()` called with undefined; `jobsState.get(undefined)` returns undefined; no row update; console buttons still update |
-| **state_json before start_json** | Bug in event ordering | Should not happen; if it does, `currentJobId` may be null; `onJobStateChange()` receives null; graceful no-op |
-| **Duplicate state_json** | Same state emitted twice | UI receives both; second one is no-op (button already in correct state); no harm |
+- **Malformed state_json**: Bug causes invalid JSON in `state_json` data -> `JSON.parse()` throws; wrap in try/catch; log error to console; skip state update; UI remains in previous state
+- **Unknown state value**: Future state like "queued" sent -> `handleStateChange()` doesn't match any case; buttons unchanged; graceful degradation
+- **Missing job_id field**: Bug omits `job_id` from `state_json` -> `onJobStateChange()` called with undefined; `jobsState.get(undefined)` returns undefined; no row update; console buttons still update
+- **state_json before start_json**: Bug in event ordering -> Should not happen; if it does, `currentJobId` may be null; `onJobStateChange()` receives null; graceful no-op
+- **Duplicate state_json**: Same state emitted twice -> UI receives both; second one is no-op (button already in correct state); no harm
 
 ### 7.6 Jobs Router Specific
 
-| Corner Case | Scenario | Handling |
-|-------------|----------|----------|
-| **Monitor job not in current list** | User monitors old job not in visible table | `onJobStateChange()` finds no job in `jobsState`; console buttons update; no table row update; correct behavior |
-| **Bulk delete includes monitored job** | User deletes job while monitoring it | Job file deleted; stream ends abruptly (read error or EOF); `end_json` may not arrive; buttons remain in last state; next action will fail gracefully |
-| **Row checkbox during state change** | Checkbox selected, state changes, row re-renders | `renderJobRow()` creates fresh checkbox (unchecked); selection lost; acceptable trade-off for simplicity |
-| **Concurrent monitors** | User monitors jb_28 in console, then clicks Monitor on jb_29 | `connectStream()` replaces current stream; `currentJobId` updated to jb_29; old stream closed; buttons now track jb_29 |
+- **Monitor job not in current list**: User monitors old job not in visible table -> `onJobStateChange()` finds no job in `jobsState`; console buttons update; no table row update; correct behavior
+- **Bulk delete includes monitored job**: User deletes job while monitoring it -> Job file deleted; stream ends abruptly (read error or EOF); `end_json` may not arrive; buttons remain in last state; next action will fail gracefully
+- **Row checkbox during state change**: Checkbox selected, state changes, row re-renders -> `renderJobRow()` creates fresh checkbox (unchecked); selection lost; acceptable trade-off for simplicity
+- **Concurrent monitors**: User monitors jb_28 in console, then clicks Monitor on jb_29 -> `connectStream()` replaces current stream; `currentJobId` updated to jb_29; old stream closed; buttons now track jb_29
 
 ### 7.7 Summary: Error Handling Strategy
 
@@ -375,56 +358,55 @@ These routers do not display job lists, so no `onJobStateChange()` callback is n
 
 ### Protocol Verification
 
-- [ ] `state_json` event emitted BEFORE `log` event on pause
-- [ ] `state_json` event emitted BEFORE `log` event on resume
-- [ ] `state_json` event emitted BEFORE `ControlAction.CANCEL` on cancel
-- [ ] `state_json` data contains `state` field with correct value
-- [ ] `state_json` data contains `job_id` field matching current job
-- [ ] Event format follows SSE spec: `event:` line, `data:` line, blank line
+- [ ] **V2JB-IP02-VC-01**: `state_json` event emitted BEFORE `log` event on pause
+- [ ] **V2JB-IP02-VC-02**: `state_json` event emitted BEFORE `log` event on resume
+- [ ] **V2JB-IP02-VC-03**: `state_json` event emitted BEFORE `ControlAction.CANCEL` on cancel
+- [ ] **V2JB-IP02-VC-04**: `state_json` data contains `state` field with correct value
+- [ ] **V2JB-IP02-VC-05**: `state_json` data contains `job_id` field matching current job
+- [ ] **V2JB-IP02-VC-06**: Event format follows SSE spec: `event:` line, `data:` line, blank line
 
 ### Console UI Verification (all routers)
 
-- [ ] **Pause**: Click Pause -> button changes to "Resume" immediately
-- [ ] **Resume**: Click Resume -> button changes to "Pause" immediately
-- [ ] **Cancel**: Click Cancel -> Pause button disabled, Cancel button disabled
-- [ ] **End of job**: Buttons reset to initial state after `end_json`
+- [ ] **V2JB-IP02-VC-07**: Pause - Click Pause -> button changes to "Resume" immediately
+- [ ] **V2JB-IP02-VC-08**: Resume - Click Resume -> button changes to "Pause" immediately
+- [ ] **V2JB-IP02-VC-09**: Cancel - Click Cancel -> Pause button disabled, Cancel button disabled
+- [ ] **V2JB-IP02-VC-10**: End of job - Buttons reset to initial state after `end_json`
 
 ### Jobs Router Table Verification
 
-- [ ] **Pause from console**: Job row State column updates to "paused"
-- [ ] **Resume from console**: Job row State column updates to "running"
-- [ ] **Cancel from console**: Job row State column updates to "cancelled"
-- [ ] **Action buttons**: Row action buttons update (Pause->Resume, etc.)
+- [ ] **V2JB-IP02-VC-11**: Pause from console - Job row State column updates to "paused"
+- [ ] **V2JB-IP02-VC-12**: Resume from console - Job row State column updates to "running"
+- [ ] **V2JB-IP02-VC-13**: Cancel from console - Job row State column updates to "cancelled"
+- [ ] **V2JB-IP02-VC-14**: Action buttons - Row action buttons update (Pause->Resume, etc.)
 
 ### Router Test Matrix
 
-| Router | Endpoint | Pause | Resume | Cancel | Row Update |
-|--------|----------|-------|--------|--------|------------|
-| demorouter1 | /create_demo_items | [ ] | [ ] | [ ] | N/A |
-| demorouter2 | /create_demo_items | [ ] | [ ] | [ ] | N/A |
-| reports | /create_demo_reports | [ ] | [ ] | [ ] | N/A |
-| jobs | /monitor (monitoring any job) | [ ] | [ ] | [ ] | [ ] |
+- [ ] **V2JB-IP02-VC-15**: demorouter1, demorouter2, reports - Pause/Resume/Cancel work
+- [ ] **V2JB-IP02-VC-16**: jobs router - Pause/Resume/Cancel work + row updates
 
 ### Edge Cases
 
-- [ ] Rapid pause/resume clicks do not cause UI desync
-- [ ] State events work when monitoring completed/cancelled jobs (no-op)
-- [ ] Multiple browser tabs monitoring same job receive state updates
-- [ ] Console panel hidden during state change -> buttons correct when shown
+- [ ] **V2JB-IP02-VC-17**: Rapid pause/resume clicks do not cause UI desync
+- [ ] **V2JB-IP02-VC-18**: State events work when monitoring completed/cancelled jobs (no-op)
+- [ ] **V2JB-IP02-VC-19**: Multiple browser tabs monitoring same job receive state updates
+- [ ] **V2JB-IP02-VC-20**: Console panel hidden during state change -> buttons correct when shown
 
 ### File Modification Summary
 
-| File | Lines Changed (est.) | Type |
-|------|---------------------|------|
-| `common_job_functions_v2.py` | ~20 | Core logic (emit_state + check_control) |
-| `common_ui_functions_v2.py` | ~25 | JavaScript (handleSSEData + handleStateChange) |
-| `jobs.py` | ~15 | Router JS (onJobStateChange) |
-| **Total** | ~60 | |
+- `common_job_functions_v2.py`: ~20 lines (Core logic: emit_state + check_control)
+- `common_ui_functions_v2.py`: ~25 lines (JavaScript: handleSSEData + handleStateChange)
+- `jobs.py`: ~15 lines (Router JS: onJobStateChange)
+- **Total**: ~60 lines
 
 ## Spec Changes
 
-- 2025-12-27: Initial implementation plan created
-- 2025-12-27: Review fixes applied:
+**[2024-12-30 10:55]**
+- Changed: Converted all tables to list format per project rules
+- Added: Verification Checklist now uses IDs V2JB-IP02-VC-01 to VC-20 (20 items)
+
+**[2025-12-27]** Initial implementation plan created
+
+**[2025-12-27]** Review fixes applied:
   - Added `_write_immediate()` to `emit_state()` for reconnect replay
   - Added try/catch to `state_json` handler in JS
   - Fixed `handleStateChange()` to update `isPaused` flag instead of changing `updatePauseResumeButton()` signature

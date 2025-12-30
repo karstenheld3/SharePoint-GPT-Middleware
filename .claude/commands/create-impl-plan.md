@@ -1,7 +1,3 @@
----
-description: Create implementation plan from spec or task description
----
-
 # Create Implementation Plan Workflow
 
 Creates a `_VX_IMPL_[COMPONENT].md` file following project conventions.
