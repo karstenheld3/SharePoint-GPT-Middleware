@@ -1,3 +1,4 @@
+
 # Create Implementation Plan Workflow
 
 Creates a `_VX_IMPL_[COMPONENT].md` file following project conventions.
