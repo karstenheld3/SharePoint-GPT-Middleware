@@ -73,6 +73,7 @@ class StreamingJobWriter:
     self._finished_utc: Optional[datetime.datetime] = None
     self._final_state: Optional[JobState] = None
     self._buffer: list[str] = []
+    self._sse_queue: list[str] = []  # Queue for SSE events to be yielded by outer generator
     self._job_id: str = ""
     self._job_file_path: str = ""
     self._file_handle = None
@@ -155,11 +156,21 @@ class StreamingJobWriter:
     """
     Emit log event. Buffered write to file (V2JB-FR-03).
     Message should already include timestamp from MiddlewareLogger.
+    Also queues SSE for outer generator to yield via drain_sse_queue().
     Returns SSE-formatted string for HTTP response.
     """
     sse = self._format_sse_event("log", message)
     self._write_buffered(sse)
+    self._sse_queue.append(sse)  # Queue for outer generator
     return sse
+  
+  def drain_sse_queue(self) -> list[str]:
+    """
+    Return and clear queued SSE events. Called by outer generator after await calls.
+    """
+    events = self._sse_queue.copy()
+    self._sse_queue.clear()
+    return events
   
   def emit_state(self, state: str) -> str:
     """

@@ -269,7 +269,10 @@ tr.row-cancel-or-fail { color: #b03030; }
   font-weight: 500;
 }
 
-.form-group input,
+.form-group input[type="text"],
+.form-group input[type="number"],
+.form-group input[type="password"],
+.form-group input[type="email"],
 .form-group textarea,
 .form-group select {
   width: 100%;
@@ -278,6 +281,28 @@ tr.row-cancel-or-fail { color: #b03030; }
   border-radius: 4px;
   font-size: 1rem;
   box-sizing: border-box;
+}
+
+/* Radio and checkbox inputs - inline with label */
+.form-group input[type="radio"],
+.form-group input[type="checkbox"] {
+  width: auto;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+}
+
+/* Labels inside flex containers (radio/checkbox groups) should be inline */
+.form-group > div label,
+.form-group label input[type="radio"],
+.form-group label input[type="checkbox"] {
+  display: inline;
+  font-weight: normal;
+}
+
+.form-group > div label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
 }
 
 .form-group input:focus,

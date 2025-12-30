@@ -293,6 +293,187 @@ function submitEditDomainForm(event) {{
   clearModalError();
   callEndpoint(btn, sourceDomainId, data);
 }}
+
+// ============================================
+// CRAWL DOMAIN FORM
+// ============================================
+
+const domainsState = new Map();
+
+document.addEventListener('DOMContentLoaded', async () => {{
+  await cacheDomains();
+}});
+
+async function cacheDomains() {{
+  try {{
+    const response = await fetch('{router_prefix}/{router_name}?format=json');
+    const result = await response.json();
+    if (result.ok) {{
+      domainsState.clear();
+      result.data.forEach(d => domainsState.set(d.domain_id, d));
+    }}
+  }} catch (e) {{
+    console.error('Failed to cache domains:', e);
+  }}
+}}
+
+function showCrawlDomainForm(domainId) {{
+  const domain = domainsState.get(domainId);
+  if (!domain) {{
+    showToast('Error', 'Domain not found in cache. Please reload the page.', 'error');
+    return;
+  }}
+  
+  const domainOptions = Array.from(domainsState.values())
+    .map(d => `<option value="${{escapeHtml(d.domain_id)}}" ${{d.domain_id === domainId ? 'selected' : ''}}>${{escapeHtml(d.domain_id)}} - ${{escapeHtml(d.name || '')}}</option>`)
+    .join('');
+  
+  const body = document.querySelector('#modal .modal-body');
+  body.innerHTML = `
+    <div class="modal-header"><h3>Crawl Domain</h3></div>
+    <div class="modal-scroll">
+      <form id="crawl-domain-form" onsubmit="return startCrawl(event)">
+        <div class="form-group">
+          <label>Domain *</label>
+          <select name="domain_id" onchange="onCrawlDomainChange()" required>
+            ${{domainOptions}}
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label>Step *</label>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="display: flex; align-items: center; font-weight: normal; cursor: pointer;"><input type="radio" name="step" value="crawl" checked onchange="updateCrawlEndpointPreview()" style="width: auto; margin-right: 0.5rem;"> Full Crawl (download + process + embed)</label>
+            <label style="display: flex; align-items: center; font-weight: normal; cursor: pointer;"><input type="radio" name="step" value="download_data" onchange="updateCrawlEndpointPreview()" style="width: auto; margin-right: 0.5rem;"> Download Data Only</label>
+            <label style="display: flex; align-items: center; font-weight: normal; cursor: pointer;"><input type="radio" name="step" value="process_data" onchange="updateCrawlEndpointPreview()" style="width: auto; margin-right: 0.5rem;"> Process Data Only</label>
+            <label style="display: flex; align-items: center; font-weight: normal; cursor: pointer;"><input type="radio" name="step" value="embed_data" onchange="updateCrawlEndpointPreview()" style="width: auto; margin-right: 0.5rem;"> Embed Data Only</label>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label>Mode *</label>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="display: flex; align-items: center; font-weight: normal; cursor: pointer;"><input type="radio" name="mode" value="full" onchange="updateCrawlEndpointPreview()" style="width: auto; margin-right: 0.5rem;"> Full - Clear existing data first</label>
+            <label style="display: flex; align-items: center; font-weight: normal; cursor: pointer;"><input type="radio" name="mode" value="incremental" checked onchange="updateCrawlEndpointPreview()" style="width: auto; margin-right: 0.5rem;"> Incremental - Only process changes</label>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label>Scope *</label>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="display: flex; align-items: center; font-weight: normal; cursor: pointer;"><input type="radio" name="scope" value="all" checked onchange="onScopeChange()" style="width: auto; margin-right: 0.5rem;"> All Sources</label>
+            <label style="display: flex; align-items: center; font-weight: normal; cursor: pointer;"><input type="radio" name="scope" value="files" onchange="onScopeChange()" style="width: auto; margin-right: 0.5rem;"> Files Only</label>
+            <label style="display: flex; align-items: center; font-weight: normal; cursor: pointer;"><input type="radio" name="scope" value="lists" onchange="onScopeChange()" style="width: auto; margin-right: 0.5rem;"> Lists Only</label>
+            <label style="display: flex; align-items: center; font-weight: normal; cursor: pointer;"><input type="radio" name="scope" value="sitepages" onchange="onScopeChange()" style="width: auto; margin-right: 0.5rem;"> Site Pages Only</label>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label>Source ID (optional)</label>
+          <select name="source_id" id="crawl-source-id" disabled onchange="updateCrawlEndpointPreview()">
+            <option value="">(empty - no filter)</option>
+          </select>
+          <small style="color: #666;">Enabled when scope is not "All Sources"</small>
+        </div>
+        
+        <div class="form-group">
+          <label><input type="checkbox" name="dry_run" onchange="updateCrawlEndpointPreview()"> Run test without making changes (dry run)</label>
+        </div>
+        
+        <div class="form-group">
+          <label>Endpoint Preview:</label>
+          <pre id="crawl-endpoint-preview" style="background: #f5f5f5; padding: 8px; border-radius: 4px; overflow-x: auto; font-size: 12px;">/v2/crawler/crawl?domain_id=${{escapeHtml(domainId)}}&mode=incremental&scope=all&format=stream</pre>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <p class="modal-error"></p>
+      <button type="submit" form="crawl-domain-form" class="btn-primary">OK</button>
+      <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
+    </div>
+  `;
+  openModal('700px');
+  updateCrawlEndpointPreview();
+}}
+
+function onCrawlDomainChange() {{
+  updateSourceIdDropdown();
+  updateCrawlEndpointPreview();
+}}
+
+function onScopeChange() {{
+  const form = document.getElementById('crawl-domain-form');
+  const scope = form.querySelector('[name="scope"]:checked').value;
+  const sourceIdSelect = document.getElementById('crawl-source-id');
+  
+  if (scope === 'all') {{
+    sourceIdSelect.disabled = true;
+    sourceIdSelect.value = '';
+  }} else {{
+    sourceIdSelect.disabled = false;
+    updateSourceIdDropdown();
+  }}
+  updateCrawlEndpointPreview();
+}}
+
+function updateSourceIdDropdown() {{
+  const form = document.getElementById('crawl-domain-form');
+  const domainId = form.querySelector('[name="domain_id"]').value;
+  const scope = form.querySelector('[name="scope"]:checked').value;
+  const sourceIdSelect = document.getElementById('crawl-source-id');
+  
+  const domain = domainsState.get(domainId);
+  if (!domain) return;
+  
+  let sources = [];
+  if (scope === 'files') sources = domain.file_sources || [];
+  else if (scope === 'lists') sources = domain.list_sources || [];
+  else if (scope === 'sitepages') sources = domain.sitepage_sources || [];
+  
+  sourceIdSelect.innerHTML = '<option value="">(empty - no filter)</option>' +
+    sources.map(s => `<option value="${{escapeHtml(s.source_id)}}">${{escapeHtml(s.source_id)}}</option>`).join('');
+}}
+
+function updateCrawlEndpointPreview() {{
+  const form = document.getElementById('crawl-domain-form');
+  if (!form) return;
+  
+  const domainId = form.querySelector('[name="domain_id"]').value;
+  const step = form.querySelector('[name="step"]:checked').value;
+  const mode = form.querySelector('[name="mode"]:checked').value;
+  const scope = form.querySelector('[name="scope"]:checked').value;
+  const sourceId = form.querySelector('[name="source_id"]').value.trim();
+  const dryRun = form.querySelector('[name="dry_run"]').checked;
+  
+  let url = `/v2/crawler/${{step}}?domain_id=${{domainId}}&mode=${{mode}}&scope=${{scope}}`;
+  if (scope !== 'all' && sourceId) url += `&source_id=${{sourceId}}`;
+  if (dryRun) url += '&dry_run=true';
+  url += '&format=stream';
+  
+  document.getElementById('crawl-endpoint-preview').textContent = url;
+}}
+
+function startCrawl(event) {{
+  event.preventDefault();
+  const form = document.getElementById('crawl-domain-form');
+  const domainId = form.querySelector('[name="domain_id"]').value;
+  const step = form.querySelector('[name="step"]:checked').value;
+  const mode = form.querySelector('[name="mode"]:checked').value;
+  const scope = form.querySelector('[name="scope"]:checked').value;
+  const sourceId = form.querySelector('[name="source_id"]').value.trim();
+  const dryRun = form.querySelector('[name="dry_run"]').checked;
+  
+  let url = `/v2/crawler/${{step}}?domain_id=${{domainId}}&mode=${{mode}}&scope=${{scope}}`;
+  if (scope !== 'all' && sourceId) url += `&source_id=${{sourceId}}`;
+  if (dryRun) url += '&dry_run=true';
+  url += '&format=stream';
+  
+  closeModal();
+  showConsole();
+  clearConsole();
+  connectStream(url, {{ reloadOnFinish: false, showResult: 'toast', clearConsole: false }});
+  showToast('Crawl Started', domainId, 'info');
+}}
 """
 
 # ----------------------------------------- END: Router-specific Form JS -----------------------------------------------------
@@ -356,6 +537,7 @@ async def domains_root(request: Request):
         "field": "actions",
         "header": "Actions",
         "buttons": [
+          {"text": "Crawl", "onclick": "showCrawlDomainForm('{itemId}')", "class": "btn-small"},
           {"text": "Edit", "onclick": "showEditDomainForm('{itemId}')", "class": "btn-small"},
           {
             "text": "Delete",

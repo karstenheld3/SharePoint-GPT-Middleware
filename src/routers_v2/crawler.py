@@ -374,13 +374,14 @@ async def crawler_crawl(request: Request):
   return json_result(False, "Use format=stream for crawl operations.", {})
 
 async def _crawl_stream(domain: DomainConfig, mode: str, scope: str, source_id: Optional[str], dry_run: bool, retry_batches: int, logger: MiddlewareLogger):
-  writer = StreamingJobWriter(persistent_storage_path=get_persistent_storage_path(), router_name=router_name, action="crawl", object_id=domain.domain_id, source_url=f"{router_prefix}/{router_name}/crawl?domain_id={domain.domain_id}&mode={mode}&scope={scope}&dry_run={dry_run}", router_prefix=router_prefix, metadata={"domain_id": domain.domain_id, "vector_store_id": domain.vector_store_id, "mode": mode, "scope": scope, "source_id": source_id, "dry_run": dry_run, "retry_batches": retry_batches})
+  writer = StreamingJobWriter(persistent_storage_path=get_persistent_storage_path(), router_name=router_name, action="crawl", object_id=domain.domain_id, source_url=f"{router_prefix}/{router_name}/crawl?domain_id={domain.domain_id}&mode={mode}&scope={scope}&dry_run={dry_run}", router_prefix=router_prefix)
   logger.stream_job_writer = writer
   started_utc, _ = _get_utc_now()
   try:
     yield writer.emit_start()
     yield logger.log_function_output(f"Starting crawl for domain '{domain.domain_id}'")
     results = await crawl_domain(get_persistent_storage_path(), domain, mode, scope, source_id, dry_run, retry_batches, writer, logger, get_crawler_config(), get_openai_client())
+    for sse in writer.drain_sse_queue(): yield sse  # Yield queued log events from nested calls
     finished_utc, _ = _get_utc_now()
     if not dry_run and results.get("ok", False):
       report_id = create_crawl_report(get_persistent_storage_path(), domain.domain_id, mode, scope, results, started_utc, finished_utc)
@@ -424,7 +425,7 @@ async def crawler_download_data(request: Request):
   return json_result(False, "Use format=stream.", {})
 
 async def _download_stream(domain: DomainConfig, mode: str, scope: str, source_id: Optional[str], dry_run: bool, retry_batches: int, logger: MiddlewareLogger):
-  writer = StreamingJobWriter(persistent_storage_path=get_persistent_storage_path(), router_name=router_name, action="download_data", object_id=domain.domain_id, source_url=f"{router_prefix}/{router_name}/download_data?domain_id={domain.domain_id}", router_prefix=router_prefix, metadata={"domain_id": domain.domain_id, "vector_store_id": domain.vector_store_id, "mode": mode, "scope": scope, "source_id": source_id, "dry_run": dry_run, "retry_batches": retry_batches})
+  writer = StreamingJobWriter(persistent_storage_path=get_persistent_storage_path(), router_name=router_name, action="download_data", object_id=domain.domain_id, source_url=f"{router_prefix}/{router_name}/download_data?domain_id={domain.domain_id}", router_prefix=router_prefix)
   logger.stream_job_writer = writer
   try:
     yield writer.emit_start()
@@ -432,6 +433,7 @@ async def _download_stream(domain: DomainConfig, mode: str, scope: str, source_i
     results = []
     for source_type, source in get_sources_for_scope(domain, scope, source_id):
       result = await step_download_source(get_persistent_storage_path(), domain, source, source_type, mode, dry_run, retry_batches, writer, logger, get_crawler_config(), job_id)
+      for sse in writer.drain_sse_queue(): yield sse
       results.append(asdict(result))
     yield writer.emit_end(ok=True, data={"results": results})
   except Exception as e:
@@ -468,7 +470,7 @@ async def crawler_process_data(request: Request):
   return json_result(False, "Use format=stream.", {})
 
 async def _process_stream(domain: DomainConfig, scope: str, source_id: Optional[str], dry_run: bool, logger: MiddlewareLogger):
-  writer = StreamingJobWriter(persistent_storage_path=get_persistent_storage_path(), router_name=router_name, action="process_data", object_id=domain.domain_id, source_url=f"{router_prefix}/{router_name}/process_data?domain_id={domain.domain_id}", router_prefix=router_prefix, metadata={"domain_id": domain.domain_id, "vector_store_id": domain.vector_store_id, "scope": scope, "source_id": source_id, "dry_run": dry_run})
+  writer = StreamingJobWriter(persistent_storage_path=get_persistent_storage_path(), router_name=router_name, action="process_data", object_id=domain.domain_id, source_url=f"{router_prefix}/{router_name}/process_data?domain_id={domain.domain_id}", router_prefix=router_prefix)
   logger.stream_job_writer = writer
   try:
     yield writer.emit_start()
@@ -477,6 +479,7 @@ async def _process_stream(domain: DomainConfig, scope: str, source_id: Optional[
     for source_type, source in get_sources_for_scope(domain, scope, source_id):
       if source_type in ("list_sources", "sitepage_sources"):
         result = await step_process_source(get_persistent_storage_path(), domain.domain_id, source, source_type, dry_run, writer, logger, job_id)
+        for sse in writer.drain_sse_queue(): yield sse
         results.append(asdict(result))
     yield writer.emit_end(ok=True, data={"results": results})
   except Exception as e:
@@ -511,7 +514,7 @@ async def crawler_embed_data(request: Request):
   return json_result(False, "Use format=stream.", {})
 
 async def _embed_stream(domain: DomainConfig, mode: str, scope: str, source_id: Optional[str], dry_run: bool, retry_batches: int, logger: MiddlewareLogger):
-  writer = StreamingJobWriter(persistent_storage_path=get_persistent_storage_path(), router_name=router_name, action="embed_data", object_id=domain.domain_id, source_url=f"{router_prefix}/{router_name}/embed_data?domain_id={domain.domain_id}", router_prefix=router_prefix, metadata={"domain_id": domain.domain_id, "vector_store_id": domain.vector_store_id, "mode": mode, "scope": scope, "source_id": source_id, "dry_run": dry_run, "retry_batches": retry_batches})
+  writer = StreamingJobWriter(persistent_storage_path=get_persistent_storage_path(), router_name=router_name, action="embed_data", object_id=domain.domain_id, source_url=f"{router_prefix}/{router_name}/embed_data?domain_id={domain.domain_id}", router_prefix=router_prefix)
   logger.stream_job_writer = writer
   try:
     yield writer.emit_start()
@@ -519,6 +522,7 @@ async def _embed_stream(domain: DomainConfig, mode: str, scope: str, source_id: 
     results = []
     for source_type, source in get_sources_for_scope(domain, scope, source_id):
       result = await step_embed_source(get_persistent_storage_path(), domain, source, source_type, mode, dry_run, retry_batches, writer, logger, get_openai_client(), job_id)
+      for sse in writer.drain_sse_queue(): yield sse
       results.append(asdict(result))
     yield writer.emit_end(ok=True, data={"results": results})
   except Exception as e:
