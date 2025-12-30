@@ -191,7 +191,7 @@ Modal (Edit Domain):
 | > Advanced: Sources Configuration (Optional)                  |
 |   (same as Create form)                                       |
 |                                                               |
-|                                      [OK] [Cancel]          |
+|                                      [OK] [Cancel]            |
 +---------------------------------------------------------------+
 
 Modal (Crawl Domain):
@@ -203,23 +203,25 @@ Modal (Crawl Domain):
 | [DOMAIN01 - Sales Docs_______________________________] [v]    |
 |                                                               |
 | Step *                                                        |
-| ( ) Full Crawl (download + process + embed)                   |
+| (x) Full Crawl (download + process + embed)                   |
 | ( ) Download Data Only                                        |
 | ( ) Process Data Only                                         |
 | ( ) Embed Data Only                                           |
 |                                                               |
 | Mode *                                                        |
 | ( ) Full - Clear existing data first                          |
-| ( ) Incremental - Only process changes                        |
+| (x) Incremental - Only process changes                        |
 |                                                               |
 | Scope *                                                       |
-| ( ) All Sources                                               |
+| (x) All Sources                                               |
 | ( ) Files Only                                                |
 | ( ) Lists Only                                                |
 | ( ) Site Pages Only                                           |
 |                                                               |
-| Source Filter (optional, only when scope != all)              |
-| [_________________________________________________________]   |
+| Source ID (optional, enabled when scope != all)               |
+| [(empty) - No filter_________________________________] [v]    |
+| | source_01                                          |        |
+| | source_02                                          |        |
 |                                                               |
 | [ ] Run test without making changes (dry run)                 |
 |                                                               |
@@ -302,7 +304,12 @@ Modal (Crawl Domain):
     - `files` - Files Only
     - `lists` - Lists Only
     - `sitepages` - Site Pages Only
-  - Source Filter (text input, optional, enabled only when scope != all)
+  - Source ID (dropdown, optional, enabled only when scope != all)
+    - First entry: empty (no filter)
+    - Populated from domain's sources based on selected scope:
+      - scope=files -> file_sources[].source_id
+      - scope=lists -> list_sources[].source_id
+      - scope=sitepages -> sitepage_sources[].source_id
   - Dry Run checkbox - "Run test without making changes"
 - Endpoint Preview: live-updated preview showing the endpoint URL to be called
 - [OK] button:
@@ -356,7 +363,7 @@ Modal (Crawl Domain):
 |  +-> domain_config_to_dict()             # Convert to dict                |
 +---------------------------------------------------------------------------+
 |  Storage                                                                  |
-|  +-> PERSISTENT_STORAGE_PATH/domains/{domain_id}/domain.json                 |
+|  +-> PERSISTENT_STORAGE_PATH/domains/{domain_id}/domain.json              |
 +---------------------------------------------------------------------------+
 ```
 
@@ -653,9 +660,13 @@ Scope (scope):
   lists     -> scope=lists
   sitepages -> scope=sitepages
 
-Source Filter (source_id):
-  Only enabled when scope != all
-  If empty, omitted from URL
+Source ID (source_id):
+  Dropdown, enabled when scope != all
+  First option: empty (no filter) -> omitted from URL
+  Options populated from selected domain's sources based on scope:
+    scope=files     -> file_sources[].source_id
+    scope=lists     -> list_sources[].source_id
+    scope=sitepages -> sitepage_sources[].source_id
 
 Dry Run (dry_run):
   Checked   -> dry_run=true
@@ -697,15 +708,24 @@ User clicks [OK]
   -> On 'done' event: showToast(result summary)
 ```
 
-### Source Filter Interaction
+### Source ID Dropdown Interaction
 
 ```
+Domain dropdown changes:
+  -> Store domain's sources (file_sources, list_sources, sitepage_sources)
+  -> Repopulate source_id dropdown based on current scope
+
 Scope radio changes:
   if (scope === 'all'):
-    -> Disable source_id input
-    -> Clear source_id value
+    -> Disable source_id dropdown
+    -> Reset to empty option
   else:
-    -> Enable source_id input
+    -> Enable source_id dropdown
+    -> Populate options from domain sources based on scope:
+       files     -> file_sources[].source_id
+       lists     -> list_sources[].source_id
+       sitepages -> sitepage_sources[].source_id
+    -> First option always: "" (empty = no filter)
 ```
 
 ## Differences from demorouter2.py
