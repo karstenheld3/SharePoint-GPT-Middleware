@@ -1,3 +1,4 @@
+
 Make sure you have no duplicates in your read list.
 Find all .md files in the workspace but ONLY in the /.windsurf/rules folder and all subfolders.
 Read these files.

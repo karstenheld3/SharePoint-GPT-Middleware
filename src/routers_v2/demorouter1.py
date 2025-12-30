@@ -1741,14 +1741,7 @@ async def demorouter_selftest(request: Request):
         if len(items_after) == 0:
           sse = check(isinstance(items_after, list), "Empty list returns [] not error", f"Expected [], got: {items_after}")
           if sse: yield sse
-      
-      # ===== Intentional failure for endpoint testing =====
-      sse = next_test("Intentional failure for endpoint testing...")
-      if sse: yield sse
-      
-      sse = check(False, "This test always fails (for endpoint testing)", "Intentional failure - remove this test in production")
-      if sse: yield sse
-      
+            
       # ===== Summary =====
       sse = log(f"")
       if sse: yield sse
