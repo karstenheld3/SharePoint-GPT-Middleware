@@ -400,3 +400,347 @@ def download_site_page_html(ctx: ClientContext, server_relative_url: str, target
     return False, str(e)
 
 # ----------------------------------------- END: Site Pages Operations ------------------------------------------------
+
+
+# ----------------------------------------- START: SharePoint Write Operations (Selftest) -----------------------------
+
+def create_document_library(ctx: ClientContext, library_name: str, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Create a document library. Returns (success, error_message)."""
+  logger.log_function_header("create_document_library()")
+  try:
+    from office365.sharepoint.lists.creation_information import ListCreationInformation
+    list_info = ListCreationInformation()
+    list_info.Title = library_name
+    list_info.BaseTemplate = 101  # Document Library template
+    ctx.web.lists.add(list_info).execute_query()
+    logger.log_function_output(f"Created document library '{library_name}'.")
+    logger.log_function_footer()
+    return True, ""
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to create document library '{library_name}' -> {str(e)}")
+    logger.log_function_footer()
+    return False, str(e)
+
+def add_number_field_to_list(ctx: ClientContext, list_name: str, field_name: str, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Add a number field to a list/library. Returns (success, error_message)."""
+  logger.log_function_header("add_number_field_to_list()")
+  try:
+    sp_list = ctx.web.lists.get_by_title(list_name)
+    from office365.sharepoint.fields.creation_information import FieldCreationInformation
+    field_info = FieldCreationInformation(field_name, 9)  # 9 = Number field type
+    sp_list.fields.add(field_info).execute_query()
+    logger.log_function_output(f"Added number field '{field_name}' to '{list_name}'.")
+    logger.log_function_footer()
+    return True, ""
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to add field '{field_name}' -> {str(e)}")
+    logger.log_function_footer()
+    return False, str(e)
+
+def add_text_field_to_list(ctx: ClientContext, list_name: str, field_name: str, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Add a text field to a list. Returns (success, error_message)."""
+  logger.log_function_header("add_text_field_to_list()")
+  try:
+    sp_list = ctx.web.lists.get_by_title(list_name)
+    from office365.sharepoint.fields.creation_information import FieldCreationInformation
+    field_info = FieldCreationInformation(field_name, 2)  # 2 = Text field type
+    sp_list.fields.add(field_info).execute_query()
+    logger.log_function_output(f"Added text field '{field_name}' to '{list_name}'.")
+    logger.log_function_footer()
+    return True, ""
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to add field '{field_name}' -> {str(e)}")
+    logger.log_function_footer()
+    return False, str(e)
+
+def upload_file_to_library(ctx: ClientContext, library_name: str, filename: str, content: bytes, metadata: dict, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Upload file to document library with optional metadata. Returns (success, error_message)."""
+  logger.log_function_header("upload_file_to_library()")
+  try:
+    sp_list = ctx.web.lists.get_by_title(library_name)
+    root_folder = sp_list.root_folder
+    uploaded_file = root_folder.upload_file(filename, content).execute_query()
+    if metadata:
+      list_item = uploaded_file.listItemAllFields.get().execute_query()
+      for key, value in metadata.items(): list_item.set_property(key, value)
+      list_item.update().execute_query()
+    logger.log_function_output(f"Uploaded '{filename}' to '{library_name}'.")
+    logger.log_function_footer()
+    return True, ""
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to upload '{filename}' -> {str(e)}")
+    logger.log_function_footer()
+    return False, str(e)
+
+def upload_file_to_folder(ctx: ClientContext, library_name: str, folder_path: str, filename: str, content: bytes, metadata: dict, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Upload file to a subfolder in document library. Creates folder if needed. Returns (success, error_message)."""
+  logger.log_function_header("upload_file_to_folder()")
+  try:
+    sp_list = ctx.web.lists.get_by_title(library_name)
+    root_folder = sp_list.root_folder.get().execute_query()
+    target_folder = root_folder.folders.add(folder_path).execute_query()
+    uploaded_file = target_folder.upload_file(filename, content).execute_query()
+    if metadata:
+      list_item = uploaded_file.listItemAllFields.get().execute_query()
+      for key, value in metadata.items(): list_item.set_property(key, value)
+      list_item.update().execute_query()
+    logger.log_function_output(f"Uploaded '{folder_path}/{filename}' to '{library_name}'.")
+    logger.log_function_footer()
+    return True, ""
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to upload '{folder_path}/{filename}' -> {str(e)}")
+    logger.log_function_footer()
+    return False, str(e)
+
+def update_file_content(ctx: ClientContext, server_relative_url: str, new_content: bytes, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Update file content. Returns (success, error_message)."""
+  logger.log_function_header("update_file_content()")
+  try:
+    sp_file = ctx.web.get_file_by_server_relative_url(server_relative_url)
+    sp_file.save_binary_stream(new_content).execute_query()
+    logger.log_function_output(f"Updated content of '{server_relative_url}'.")
+    logger.log_function_footer()
+    return True, ""
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to update '{server_relative_url}' -> {str(e)}")
+    logger.log_function_footer()
+    return False, str(e)
+
+def rename_file(ctx: ClientContext, server_relative_url: str, new_name: str, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Rename file (keeps same unique_id). Returns (success, error_message)."""
+  logger.log_function_header("rename_file()")
+  try:
+    sp_file = ctx.web.get_file_by_server_relative_url(server_relative_url)
+    list_item = sp_file.listItemAllFields.get().execute_query()
+    list_item.set_property("FileLeafRef", new_name)
+    list_item.update().execute_query()
+    logger.log_function_output(f"Renamed '{server_relative_url}' to '{new_name}'.")
+    logger.log_function_footer()
+    return True, ""
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to rename '{server_relative_url}' -> {str(e)}")
+    logger.log_function_footer()
+    return False, str(e)
+
+def move_file(ctx: ClientContext, server_relative_url: str, target_folder_url: str, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Move file to another folder. Returns (success, error_message)."""
+  logger.log_function_header("move_file()")
+  try:
+    sp_file = ctx.web.get_file_by_server_relative_url(server_relative_url)
+    filename = server_relative_url.split('/')[-1]
+    new_url = target_folder_url.rstrip('/') + '/' + filename
+    sp_file.moveto(new_url, 1).execute_query()  # 1 = Overwrite
+    logger.log_function_output(f"Moved '{server_relative_url}' to '{new_url}'.")
+    logger.log_function_footer()
+    return True, ""
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to move '{server_relative_url}' -> {str(e)}")
+    logger.log_function_footer()
+    return False, str(e)
+
+def delete_file(ctx: ClientContext, server_relative_url: str, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Delete file from library. Returns (success, error_message)."""
+  logger.log_function_header("delete_file()")
+  try:
+    sp_file = ctx.web.get_file_by_server_relative_url(server_relative_url)
+    sp_file.delete_object().execute_query()
+    logger.log_function_output(f"Deleted '{server_relative_url}'.")
+    logger.log_function_footer()
+    return True, ""
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to delete '{server_relative_url}' -> {str(e)}")
+    logger.log_function_footer()
+    return False, str(e)
+
+def create_folder_in_library(ctx: ClientContext, library_name: str, folder_path: str, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Create folder in document library. Returns (success, error_message)."""
+  logger.log_function_header("create_folder_in_library()")
+  try:
+    sp_list = ctx.web.lists.get_by_title(library_name)
+    root_folder = sp_list.root_folder.get().execute_query()
+    root_folder.folders.add(folder_path).execute_query()
+    logger.log_function_output(f"Created folder '{folder_path}' in '{library_name}'.")
+    logger.log_function_footer()
+    return True, ""
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to create folder '{folder_path}' -> {str(e)}")
+    logger.log_function_footer()
+    return False, str(e)
+
+def delete_document_library(ctx: ClientContext, library_name: str, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Delete entire document library. Returns (success, error_message)."""
+  logger.log_function_header("delete_document_library()")
+  try:
+    sp_list = ctx.web.lists.get_by_title(library_name)
+    sp_list.delete_object().execute_query()
+    logger.log_function_output(f"Deleted document library '{library_name}'.")
+    logger.log_function_footer()
+    return True, ""
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to delete library '{library_name}' -> {str(e)}")
+    logger.log_function_footer()
+    return False, str(e)
+
+def create_list(ctx: ClientContext, list_name: str, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Create a SharePoint list. Returns (success, error_message)."""
+  logger.log_function_header("create_list()")
+  try:
+    from office365.sharepoint.lists.creation_information import ListCreationInformation
+    list_info = ListCreationInformation()
+    list_info.Title = list_name
+    list_info.BaseTemplate = 100  # Generic List template
+    ctx.web.lists.add(list_info).execute_query()
+    logger.log_function_output(f"Created list '{list_name}'.")
+    logger.log_function_footer()
+    return True, ""
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to create list '{list_name}' -> {str(e)}")
+    logger.log_function_footer()
+    return False, str(e)
+
+def add_list_item(ctx: ClientContext, list_name: str, item_data: dict, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Add item to list. Returns (success, error_message)."""
+  logger.log_function_header("add_list_item()")
+  try:
+    sp_list = ctx.web.lists.get_by_title(list_name)
+    sp_list.add_item(item_data).execute_query()
+    logger.log_function_output(f"Added item to '{list_name}'.")
+    logger.log_function_footer()
+    return True, ""
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to add item -> {str(e)}")
+    logger.log_function_footer()
+    return False, str(e)
+
+def update_list_item(ctx: ClientContext, list_name: str, item_id: int, updates: dict, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Update list item fields. Returns (success, error_message)."""
+  logger.log_function_header("update_list_item()")
+  try:
+    sp_list = ctx.web.lists.get_by_title(list_name)
+    item = sp_list.get_item_by_id(item_id)
+    for key, value in updates.items(): item.set_property(key, value)
+    item.update().execute_query()
+    logger.log_function_output(f"Updated item {item_id} in '{list_name}'.")
+    logger.log_function_footer()
+    return True, ""
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to update item {item_id} -> {str(e)}")
+    logger.log_function_footer()
+    return False, str(e)
+
+def delete_list_item(ctx: ClientContext, list_name: str, item_id: int, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Delete list item. Returns (success, error_message)."""
+  logger.log_function_header("delete_list_item()")
+  try:
+    sp_list = ctx.web.lists.get_by_title(list_name)
+    item = sp_list.get_item_by_id(item_id)
+    item.delete_object().execute_query()
+    logger.log_function_output(f"Deleted item {item_id} from '{list_name}'.")
+    logger.log_function_footer()
+    return True, ""
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to delete item {item_id} -> {str(e)}")
+    logger.log_function_footer()
+    return False, str(e)
+
+def delete_list(ctx: ClientContext, list_name: str, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Delete entire list. Returns (success, error_message)."""
+  logger.log_function_header("delete_list()")
+  try:
+    sp_list = ctx.web.lists.get_by_title(list_name)
+    sp_list.delete_object().execute_query()
+    logger.log_function_output(f"Deleted list '{list_name}'.")
+    logger.log_function_footer()
+    return True, ""
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to delete list '{list_name}' -> {str(e)}")
+    logger.log_function_footer()
+    return False, str(e)
+
+def create_site_page(ctx: ClientContext, page_name: str, content: str, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Create a site page. Returns (success, error_message)."""
+  logger.log_function_header("create_site_page()")
+  try:
+    # Site pages are stored in the 'Site Pages' library
+    site_pages = ctx.web.lists.get_by_title("Site Pages")
+    html_content = f"<div>{content}</div>"
+    item_data = {"Title": page_name.replace('.aspx', ''), "FileLeafRef": page_name, "CanvasContent1": html_content}
+    site_pages.add_item(item_data).execute_query()
+    logger.log_function_output(f"Created site page '{page_name}'.")
+    logger.log_function_footer()
+    return True, ""
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to create site page '{page_name}' -> {str(e)}")
+    logger.log_function_footer()
+    return False, str(e)
+
+def update_site_page(ctx: ClientContext, page_name: str, new_content: str, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Update site page content. Returns (success, error_message)."""
+  logger.log_function_header("update_site_page()")
+  try:
+    site_pages = ctx.web.lists.get_by_title("Site Pages")
+    items = site_pages.items.filter(f"FileLeafRef eq '{page_name}'").get().execute_query()
+    if len(items) == 0:
+      logger.log_function_footer()
+      return False, f"Page '{page_name}' not found"
+    item = items[0]
+    item.set_property("CanvasContent1", f"<div>{new_content}</div>")
+    item.update().execute_query()
+    logger.log_function_output(f"Updated site page '{page_name}'.")
+    logger.log_function_footer()
+    return True, ""
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to update site page '{page_name}' -> {str(e)}")
+    logger.log_function_footer()
+    return False, str(e)
+
+def rename_site_page(ctx: ClientContext, old_name: str, new_name: str, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Rename site page. Returns (success, error_message)."""
+  logger.log_function_header("rename_site_page()")
+  try:
+    site_pages = ctx.web.lists.get_by_title("Site Pages")
+    items = site_pages.items.filter(f"FileLeafRef eq '{old_name}'").get().execute_query()
+    if len(items) == 0:
+      logger.log_function_footer()
+      return False, f"Page '{old_name}' not found"
+    item = items[0]
+    item.set_property("FileLeafRef", new_name)
+    item.set_property("Title", new_name.replace('.aspx', ''))
+    item.update().execute_query()
+    logger.log_function_output(f"Renamed site page '{old_name}' to '{new_name}'.")
+    logger.log_function_footer()
+    return True, ""
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to rename site page '{old_name}' -> {str(e)}")
+    logger.log_function_footer()
+    return False, str(e)
+
+def delete_site_page(ctx: ClientContext, page_name: str, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Delete site page. Returns (success, error_message)."""
+  logger.log_function_header("delete_site_page()")
+  try:
+    site_pages = ctx.web.lists.get_by_title("Site Pages")
+    items = site_pages.items.filter(f"FileLeafRef eq '{page_name}'").get().execute_query()
+    if len(items) == 0:
+      logger.log_function_output(f"Site page '{page_name}' not found, skipping.")
+      logger.log_function_footer()
+      return True, ""  # Already deleted, not an error
+    items[0].delete_object().execute_query()
+    logger.log_function_output(f"Deleted site page '{page_name}'.")
+    logger.log_function_footer()
+    return True, ""
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to delete site page '{page_name}' -> {str(e)}")
+    logger.log_function_footer()
+    return False, str(e)
+
+def file_exists_in_library(ctx: ClientContext, server_relative_url: str, logger: MiddlewareLogger) -> bool:
+  """Check if file exists in library. Returns True if exists."""
+  try:
+    sp_file = ctx.web.get_file_by_server_relative_url(server_relative_url)
+    sp_file.get().execute_query()
+    return True
+  except:
+    return False
+
+# ----------------------------------------- END: SharePoint Write Operations (Selftest) -------------------------------

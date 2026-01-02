@@ -62,6 +62,9 @@ CRAWLER_SHAREPOINT_TENANT_NAME=<your_sharepoint_tenant_name>
 # Search in Azure > App registrations > "PnP Rocks" > Overview > Application (client) ID
 PNP_CLIENT_ID=<your_pnp_client_id>
 
+# Selftest: SharePoint site URL for crawler selftest (optional, only needed for running /v2/crawler/selftest)
+CRAWLER_SELFTEST_SHAREPOINT_SITE=https://<your_sharepoint_tenant>.sharepoint.com/sites/<your_test_site>
+
 # ------------------------- END: Crawler Configuration ----------------------------------------------------------------
 
 # ------------------------- START: Global Configuration ---------------------------------------------------------------

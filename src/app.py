@@ -71,7 +71,37 @@ class Config:
 
 def load_config() -> Config:
   """Load configuration from environment variables."""
-  
+  return Config(
+    OPENAI_SERVICE_TYPE=os.environ.get("OPENAI_SERVICE_TYPE", "openai"),
+    AZURE_OPENAI_USE_KEY_AUTHENTICATION=os.environ.get("AZURE_OPENAI_USE_KEY_AUTHENTICATION", "true").lower() == "true",
+    AZURE_OPENAI_USE_MANAGED_IDENTITY=os.environ.get("AZURE_OPENAI_USE_MANAGED_IDENTITY", "false").lower() == "true",
+    AZURE_OPENAI_ENDPOINT=os.environ.get("AZURE_OPENAI_ENDPOINT"),
+    AZURE_OPENAI_API_KEY=os.environ.get("AZURE_OPENAI_API_KEY"),
+    AZURE_OPENAI_API_VERSION=os.environ.get("AZURE_OPENAI_API_VERSION", "2025-04-01-preview"),
+    AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME=os.environ.get("AZURE_OPENAI_DEFAULT_MODEL_DEPLOYMENT_NAME"),
+    AZURE_TENANT_ID=os.environ.get("AZURE_TENANT_ID"),
+    AZURE_CLIENT_ID=os.environ.get("AZURE_CLIENT_ID"),
+    AZURE_CLIENT_SECRET=os.environ.get("AZURE_CLIENT_SECRET"),
+    AZURE_CLIENT_NAME=os.environ.get("AZURE_CLIENT_NAME"),
+    AZURE_MANAGED_IDENTITY_CLIENT_ID=os.environ.get("AZURE_MANAGED_IDENTITY_CLIENT_ID"),
+    OPENAI_API_KEY=os.environ.get("OPENAI_API_KEY"),
+    OPENAI_ORGANIZATION=os.environ.get("OPENAI_ORGANIZATION"),
+    OPENAI_DEFAULT_MODEL_NAME=os.environ.get("OPENAI_DEFAULT_MODEL_NAME", "gpt-4o-mini"),
+    LOCAL_PERSISTENT_STORAGE_PATH=os.environ.get("LOCAL_PERSISTENT_STORAGE_PATH"),
+    SEARCH_DEFAULT_GLOBAL_VECTOR_STORE_ID=os.environ.get("SEARCH_DEFAULT_GLOBAL_VECTOR_STORE_ID"),
+    SEARCH_DEFAULT_MAX_NUM_RESULTS=int(os.environ.get("SEARCH_DEFAULT_MAX_NUM_RESULTS", "20")),
+    SEARCH_DEFAULT_TEMPERATURE=float(os.environ.get("SEARCH_DEFAULT_TEMPERATURE", "0.0")),
+    SEARCH_DEFAULT_INSTRUCTIONS=os.environ.get("SEARCH_DEFAULT_INSTRUCTIONS", "If the query can't be answered based on the available information, return N/A."),
+    SEARCH_DEFAULT_SHAREPOINT_ROOT_URL=os.environ.get("SEARCH_DEFAULT_SHAREPOINT_ROOT_URL", ""),
+    LOG_QUERIES_AND_RESPONSES=os.environ.get("LOG_QUERIES_AND_RESPONSES", "false").lower() == "true",
+    CRAWLER_CLIENT_ID=os.environ.get("CRAWLER_CLIENT_ID"),
+    CRAWLER_CLIENT_CERTIFICATE_PFX_FILE=os.environ.get("CRAWLER_CLIENT_CERTIFICATE_PFX_FILE"),
+    CRAWLER_CLIENT_CERTIFICATE_PASSWORD=os.environ.get("CRAWLER_CLIENT_CERTIFICATE_PASSWORD"),
+    CRAWLER_CLIENT_NAME=os.environ.get("CRAWLER_CLIENT_NAME"),
+    CRAWLER_TENANT_ID=os.environ.get("CRAWLER_TENANT_ID"),
+    CRAWLER_SELFTEST_SHAREPOINT_SITE=os.environ.get("CRAWLER_SELFTEST_SHAREPOINT_SITE"),
+  )
+
 def configure_logging():
   """Configure logging to suppress verbose Azure SDK and HTTP logs."""
   logging.getLogger('azure').setLevel(logging.WARNING)
