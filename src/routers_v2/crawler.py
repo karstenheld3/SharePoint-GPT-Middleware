@@ -34,7 +34,9 @@ def get_openai_client():
   return getattr(config, 'openai_client', None)
 
 def get_crawler_config() -> dict:
-  return {"client_id": getattr(config, 'SHAREPOINT_CLIENT_ID', ''), "tenant_id": getattr(config, 'SHAREPOINT_TENANT_ID', ''), "cert_path": getattr(config, 'SHAREPOINT_CERT_PATH', ''), "cert_password": getattr(config, 'SHAREPOINT_CERT_PASSWORD', '')}
+  cert_filename = getattr(config, 'CRAWLER_CLIENT_CERTIFICATE_PFX_FILE', '') or ''
+  cert_path = os.path.join(get_persistent_storage_path(), cert_filename) if cert_filename else ''
+  return {"client_id": getattr(config, 'CRAWLER_CLIENT_ID', '') or '', "tenant_id": getattr(config, 'CRAWLER_TENANT_ID', '') or '', "cert_path": cert_path, "cert_password": getattr(config, 'CRAWLER_CLIENT_CERTIFICATE_PASSWORD', '') or ''}
 
 @dataclass
 class DownloadResult:
@@ -1267,37 +1269,71 @@ function renderAllJobs() {{
   else {{ tbody.innerHTML = jobs.map(job => renderJobRow(job)).join(''); }}
   const countEl = document.getElementById('item-count'); if (countEl) countEl.textContent = jobs.length;
 }}
+function parseSourceUrl(url) {{
+  if (!url) return {{ endpoint: '-', domainId: '-', mode: '-', scope: '-' }};
+  try {{
+    const fullUrl = new URL(url, window.location.origin);
+    const pathParts = fullUrl.pathname.split('/').filter(p => p && p !== 'v2');
+    const endpoint = pathParts.slice(1).join('/') || '-';
+    const domainId = fullUrl.searchParams.get('domain_id') || '-';
+    const mode = fullUrl.searchParams.get('mode') || '-';
+    const scope = fullUrl.searchParams.get('scope') || '-';
+    return {{ endpoint, domainId, mode, scope }};
+  }} catch (e) {{ return {{ endpoint: '-', domainId: '-', mode: '-', scope: '-' }}; }}
+}}
+function formatResultOkFail(ok) {{
+  if (ok === true) return 'OK';
+  if (ok === false) return 'FAIL';
+  return '-';
+}}
+function formatTimestamp(ts) {{
+  if (!ts) return '-';
+  try {{ return ts.replace('T', ' ').substring(0, 19); }} catch (e) {{ return '-'; }}
+}}
 function renderJobRow(job) {{
-  const meta = job.metadata || {{}};
-  const action = job.action || '-';
-  const domainId = meta.domain_id || '-';
-  const vectorStoreId = meta.vector_store_id || '-';
-  const mode = meta.mode || '-';
-  const scope = meta.scope || '-';
-  const sourceId = meta.source_id || '-';
+  const parsed = parseSourceUrl(job.source_url);
+  const started = formatTimestamp(job.started_utc);
+  const finished = formatTimestamp(job.finished_utc);
+  const resultDisplay = formatResultOkFail(job.result?.ok);
+  const isCancelOrFail = job.state === 'cancelled' || (job.result && !job.result.ok);
+  const isRunning = job.state === 'running';
   const actions = renderJobActions(job);
   const rowId = sanitizeId(job.job_id);
-  const isRunning = job.state === 'running';
-  const rowClass = isRunning ? 'row-running' : '';
-  return `<tr id="job-${{rowId}}" class="${{rowClass}}"><td>${{escapeHtml(job.job_id)}}</td><td>${{escapeHtml(action)}}</td><td>${{escapeHtml(domainId)}}</td><td>${{escapeHtml(vectorStoreId)}}</td><td>${{escapeHtml(mode)}}</td><td>${{escapeHtml(scope)}}</td><td>${{escapeHtml(sourceId)}}</td><td>${{actions}}</td></tr>`;
+  const rowClass = isRunning ? 'row-running' : (isCancelOrFail ? 'row-cancel-or-fail' : '');
+  return '<tr id="job-' + rowId + '"' + (rowClass ? ' class="' + rowClass + '"' : '') + '>' +
+    '<td>' + escapeHtml(job.job_id) + '</td>' +
+    '<td>' + escapeHtml(parsed.endpoint) + '</td>' +
+    '<td>' + escapeHtml(parsed.domainId) + '</td>' +
+    '<td>' + escapeHtml(job.state || '-') + '</td>' +
+    '<td>' + escapeHtml(resultDisplay) + '</td>' +
+    '<td>' + escapeHtml(started) + '</td>' +
+    '<td>' + escapeHtml(finished) + '</td>' +
+    '<td class="actions">' + actions + '</td>' +
+    '</tr>';
 }}
 function renderJobActions(job) {{
-  let html = `<button class="btn btn-sm" onclick="monitorJob('${{job.job_id}}')">Monitor</button>`;
-  if (job.state === 'running') {{
-    html += ` <button class="btn btn-sm" onclick="controlJob('${{job.job_id}}', 'pause')">Pause</button>`;
-    html += ` <button class="btn btn-sm btn-danger" onclick="controlJob('${{job.job_id}}', 'cancel')">Cancel</button>`;
-  }} else if (job.state === 'paused') {{
-    html += ` <button class="btn btn-sm" onclick="controlJob('${{job.job_id}}', 'resume')">Resume</button>`;
-    html += ` <button class="btn btn-sm btn-danger" onclick="controlJob('${{job.job_id}}', 'cancel')">Cancel</button>`;
+  const jobId = job.job_id;
+  const state = job.state;
+  let actions = [];
+  if (state === 'completed' || state === 'cancelled') {{
+    actions.push('<button class="btn-small" onclick="window.open(\\'{router_prefix}/jobs/results?job_id=' + jobId + '&format=html\\', \\'_blank\\')">Result</button>');
   }}
-  return html;
+  actions.push('<button class="btn-small" onclick="monitorJob(\\'' + jobId + '\\')">Monitor</button>');
+  if (state === 'running') {{
+    actions.push('<button class="btn-small" onclick="controlJob(\\'' + jobId + '\\', \\'pause\\')">Pause</button>');
+    actions.push('<button class="btn-small" onclick="if(confirm(\\'Cancel job ' + jobId + '?\\')) controlJob(\\'' + jobId + '\\', \\'cancel\\')">Cancel</button>');
+  }} else if (state === 'paused') {{
+    actions.push('<button class="btn-small" onclick="controlJob(\\'' + jobId + '\\', \\'resume\\')">Resume</button>');
+    actions.push('<button class="btn-small" onclick="if(confirm(\\'Cancel job ' + jobId + '?\\')) controlJob(\\'' + jobId + '\\', \\'cancel\\')">Cancel</button>');
+  }}
+  return actions.join(' ');
 }}
 function monitorJob(jobId) {{
   connectStream('{router_prefix}/jobs/monitor?job_id=' + encodeURIComponent(jobId) + '&format=stream');
 }}
 async function controlJob(jobId, action) {{
   try {{
-    const response = await fetch('{router_prefix}/jobs/control?job_id=' + encodeURIComponent(jobId) + '&action=' + action, {{ method: 'POST' }});
+    const response = await fetch('{router_prefix}/jobs/control?job_id=' + encodeURIComponent(jobId) + '&action=' + action);
     const result = await response.json();
     if (result.ok) {{ showToast('Success', 'Job ' + action + ' requested', 'success'); refreshJobsTable(); }}
     else {{ showToast('Failed', result.error, 'error'); }}
@@ -1310,33 +1346,20 @@ function runSelftest() {{
 """
 
 def _generate_crawler_ui_page(jobs: list) -> str:
-  """Generate crawler jobs UI using generate_ui_page like demorouter2."""
+  """Generate crawler jobs UI matching Jobs page styling."""
   columns = [
-    {"field": "job_id", "header": "ID"},
-    {"field": "action", "header": "Action", "default": "-"},
+    {"field": "job_id", "header": "Job ID"},
+    {"field": "endpoint", "header": "Endpoint", "default": "-"},
     {"field": "domain_id", "header": "Domain ID", "default": "-"},
-    {"field": "vector_store_id", "header": "Vector Store ID", "default": "-"},
-    {"field": "mode", "header": "Mode", "default": "-"},
-    {"field": "scope", "header": "Scope", "default": "-"},
-    {"field": "source_id", "header": "Source ID", "default": "-"},
     {"field": "state", "header": "State", "default": "-"},
+    {"field": "result", "header": "Result", "default": "-"},
+    {"field": "started", "header": "Started", "default": "-"},
+    {"field": "finished", "header": "Finished", "default": "-"},
     {"field": "actions", "header": "Actions"}
   ]
   
-  # Flatten job metadata into row data
+  # Items are rendered by custom JS, just need structure for generate_ui_page
   items = []
-  for job in jobs:
-    meta = job.get("metadata", {}) or {}
-    items.append({
-      "job_id": job.get("job_id", ""),
-      "action": meta.get("action", job.get("action", "-")),
-      "domain_id": meta.get("domain_id", "-"),
-      "vector_store_id": meta.get("vector_store_id", "-"),
-      "mode": meta.get("mode", "-"),
-      "scope": meta.get("scope", "-"),
-      "source_id": meta.get("source_id", "-"),
-      "state": job.get("state", "-")
-    })
   
   return generate_ui_page(
     title="Crawler Jobs",
