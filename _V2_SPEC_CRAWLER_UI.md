@@ -45,6 +45,7 @@ Users need to monitor crawler progress, view real-time output, and control runni
 
 | Action | Trigger | Effect |
 |--------|---------|--------|
+| Result | Click [Result] button | Show job result in modal dialog |
 | Monitor | Click [Monitor] button | Stream live output to console panel |
 | Pause | Click [Pause] button | Pause running job, button changes to [Resume] |
 | Resume | Click [Resume] button | Resume paused job, button changes to [Pause] |
@@ -99,9 +100,49 @@ Users need to monitor crawler progress, view real-time output, and control runni
 |-------|-------------------|
 | `running` | [Monitor] [Pause] [Cancel] |
 | `paused` | [Monitor] [Resume] [Cancel] |
-| `done` | [Monitor] |
-| `cancelled` | [Monitor] |
-| `error` | [Monitor] |
+| `completed` | [Result] [Monitor] |
+| `cancelled` | [Result] [Monitor] |
+
+### Result Modal Dialog
+
+When user clicks [Result] on a completed/cancelled job, fetch result from `/v2/jobs/results?job_id={jobId}&format=json` and display in modal:
+
+```
++------------------------------------------+
+|  Job Result                         [x]  |
++------------------------------------------+
+|  Job ID: jb_42                           |
+|  Status: OK / FAIL                       |
+|                                          |
+|  Result Data:                            |
+|  {                                       |
+|    "tests_run": 25,                      |
+|    "ok": 20,                             |
+|    "fail": 3,                            |
+|    "skip": 2                             |
+|  }                                       |
+|                                          |
+|                              [Close]     |
++------------------------------------------+
+```
+
+Implementation uses `showResultModal()` from `common_ui_functions_v2.py`:
+
+```javascript
+async function showJobResult(jobId) {
+  try {
+    const response = await fetch('/v2/jobs/results?job_id=' + jobId + '&format=json');
+    const result = await response.json();
+    if (result.ok) {
+      showResultModal(result.data);
+    } else {
+      showToast('Error', result.error, 'error');
+    }
+  } catch (e) {
+    showToast('Error', e.message, 'error');
+  }
+}
+```
 
 ### Navigation Links
 
@@ -227,5 +268,7 @@ Minimal JS needed:
 - `refreshJobsTable()` - fetch and re-render jobs
 - `monitorJob(jobId)` - connect SSE to console
 - `controlJob(jobId, action)` - pause/resume/cancel
+- `showJobResult(jobId)` - fetch result and show in modal
+- `runSelftest()` - start crawler selftest
 
 Most functionality reuses common UI functions.

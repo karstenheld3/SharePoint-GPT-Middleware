@@ -1316,7 +1316,7 @@ function renderJobActions(job) {{
   const state = job.state;
   let actions = [];
   if (state === 'completed' || state === 'cancelled') {{
-    actions.push('<button class="btn-small" onclick="window.open(\\'{router_prefix}/jobs/results?job_id=' + jobId + '&format=html\\', \\'_blank\\')">Result</button>');
+    actions.push('<button class="btn-small" onclick="showJobResult(\\'' + jobId + '\\')">Result</button>');
   }}
   actions.push('<button class="btn-small" onclick="monitorJob(\\'' + jobId + '\\')">Monitor</button>');
   if (state === 'running') {{
@@ -1342,6 +1342,19 @@ async function controlJob(jobId, action) {{
 function runSelftest() {{
   showToast('Selftest', 'Starting crawler selftest...', 'info');
   connectStream('{router_prefix}/{router_name}/selftest?format=stream');
+}}
+async function showJobResult(jobId) {{
+  try {{
+    const response = await fetch('{router_prefix}/jobs/results?job_id=' + jobId + '&format=json');
+    const result = await response.json();
+    if (result.ok) {{
+      showResultModal(result.data);
+    }} else {{
+      showToast('Error', result.error, 'error');
+    }}
+  }} catch (e) {{
+    showToast('Error', e.message, 'error');
+  }}
 }}
 """
 
