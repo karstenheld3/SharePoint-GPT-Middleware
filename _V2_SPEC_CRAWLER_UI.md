@@ -45,11 +45,13 @@ Users need to monitor crawler progress, view real-time output, and control runni
 | Action | Trigger | Effect |
 |--------|---------|--------|
 | Run Selftest | Click [Run Selftest] button | Open selftest options dialog |
+| Delete Selected | Click [Delete (N)] button | Delete all checked jobs (with confirmation) |
 | Result | Click [Result] button | Show job result in modal dialog |
 | Monitor | Click [Monitor] button | Stream live output to console panel |
 | Pause | Click [Pause] button | Pause running job, button changes to [Resume] |
 | Resume | Click [Resume] button | Resume paused job, button changes to [Pause] |
 | Cancel | Click [Cancel] button | Stop job permanently |
+| Delete | Click [Delete] button | Delete individual job (with confirmation) |
 | Refresh | Click [Refresh] link | Reload jobs table |
 
 ## UX Design
@@ -58,18 +60,19 @@ Users need to monitor crawler progress, view real-time output, and control runni
 
 ```
 +---------------------------------------------------------------------------------------------------------------------+
-| Crawler Jobs (2) [Refresh]                                                                                                    |
+| Crawler Jobs (2) [Refresh]                                                                                          |
 |                                                                                                                     |
 | Back to Main Page | Domains | Crawler | Jobs | Reports                                                              |
 |                                                                                                                     |
-| [Run Selftest]                                                                                                      |
+| [Delete (0)] [Run Selftest]                                                                                         |
 |                                                                                                                     |
-| +---+-------------+-----------+-----------------+-------------+--------+-----------+--------------------------------+
-| |ID | Action      | Domain ID | Vector Store ID | Mode        | Scope  | Source ID | Actions                        |
-| +---+-------------+-----------+-----------------+-------------+--------+-----------+--------------------------------+
-| |42 | crawl       | domain_01 | vs_abc123       | full        | all    | -         | [Monitor] [Pause] [Cancel]     |
-| |41 | embed_data  | domain_02 | vs_def456       | incremental | all    | -         | [Monitor] [Resume] [Cancel]    |
-| +---+-------------+-----------+-----------------+-------------+--------+-----------+--------------------------------+
+| +---+----+-------------+-----------+--------+--------+---------+---------------------------------------------+      |
+| |[x]| ID | Endpoint    | Domain ID | State  | Result | Started | Actions                                     |      |
+| +---+----+-------------+-----------+--------+--------+---------+---------------------------------------------+      |
+| |[ ]| 42 | crawl       | domain_01 | running| -      | ...     | [Monitor] [Pause] [Cancel] [Delete]         |      |
+| |[ ]| 41 | embed_data  | domain_02 | paused | -      | ...     | [Monitor] [Resume] [Cancel] [Delete]        |      |
+| |[ ]| 40 | crawl       | domain_01 | done   | OK     | ...     | [Result] [Monitor] [Delete]                 |      |
+| +---+----+-------------+-----------+--------+--------+---------+---------------------------------------------+      |
 |                                                                                                                     |
 | +-------------------------------------------------------------------------------------------------------------------+
 | | [Resize Handle - Draggable]                                                                                       |
@@ -100,10 +103,10 @@ Users need to monitor crawler progress, view real-time output, and control runni
 
 | State | Available Actions |
 |-------|-------------------|
-| `running` | [Monitor] [Pause] [Cancel] |
-| `paused` | [Monitor] [Resume] [Cancel] |
-| `completed` | [Result] [Monitor] |
-| `cancelled` | [Result] [Monitor] |
+| `running` | [Monitor] [Pause] [Cancel] [Delete] |
+| `paused` | [Monitor] [Resume] [Cancel] [Delete] |
+| `completed` | [Result] [Monitor] [Delete] |
+| `cancelled` | [Result] [Monitor] [Delete] |
 
 ### Result Modal Dialog
 
@@ -324,11 +327,18 @@ Minimal JS needed:
 - `showSelftestDialog()` - open selftest options modal
 - `updateSelftestEndpointPreview()` - update endpoint preview on option change
 - `startSelftest(event)` - run selftest with selected options
+- `deleteJob(jobId)` - delete individual job
+- `bulkDelete()` - delete all selected jobs
+- `updateSelectedCount()` - update selection count and button state
+- `toggleSelectAll()` - toggle all checkboxes
+- `getSelectedJobIds()` - get array of selected job IDs
 
 Most functionality reuses common UI functions.
 
 ## Spec Changes
 
+- 2026-01-03: Added delete functionality (bulk delete toolbar button + individual delete action button)
+- 2026-01-03: Added checkbox column for job selection
 - 2026-01-03: Added Selftest Options Dialog with phase selection and skip_cleanup option
 - 2026-01-03: Updated navigation links to match current implementation
 - 2026-01-03: Added [Run Selftest] toolbar button
