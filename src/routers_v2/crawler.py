@@ -2161,7 +2161,7 @@ def _generate_crawler_ui_page(jobs: list) -> str:
     ],
     enable_selection=True,
     enable_bulk_delete=True,
-    delete_endpoint=f"{router_prefix}/jobs/delete",
+    delete_endpoint=f"{router_prefix}/jobs/delete?job_id={{itemId}}",
     list_endpoint=f"{router_prefix}/{router_name}?format=json",
     jobs_control_endpoint=f"{router_prefix}/jobs/control",
     additional_js=get_router_specific_js()
