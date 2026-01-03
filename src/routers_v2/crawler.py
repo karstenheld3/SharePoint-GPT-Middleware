@@ -1953,9 +1953,93 @@ async function controlJob(jobId, action) {{
     else {{ showToast('Failed', result.error, 'error'); }}
   }} catch (e) {{ showToast('Failed', e.message, 'error'); }}
 }}
-function runSelftest() {{
+function showSelftestDialog() {{
+  const phases = [
+    {{ value: 1, name: 'Phase 1: Pre-flight Validation' }},
+    {{ value: 2, name: 'Phase 2: Pre-cleanup' }},
+    {{ value: 3, name: 'Phase 3: SharePoint Setup' }},
+    {{ value: 4, name: 'Phase 4: Domain Setup' }},
+    {{ value: 5, name: 'Phase 5: Error Cases (I1-I4)' }},
+    {{ value: 6, name: 'Phase 6: Full Crawl Tests (A1-A4)' }},
+    {{ value: 7, name: 'Phase 7: source_id Filter Tests (B1-B5)' }},
+    {{ value: 8, name: 'Phase 8: dry_run Tests (D1-D4)' }},
+    {{ value: 9, name: 'Phase 9: Individual Steps Tests (E1-E3)' }},
+    {{ value: 10, name: 'Phase 10: SharePoint Mutations' }},
+    {{ value: 11, name: 'Phase 11: Incremental Tests (F1-F4)' }},
+    {{ value: 12, name: 'Phase 12: Incremental source_id Tests (G1-G2)' }},
+    {{ value: 13, name: 'Phase 13: Job Control Tests (H1-H2)' }},
+    {{ value: 14, name: 'Phase 14: Integrity Check Tests (J1-J4)' }},
+    {{ value: 15, name: 'Phase 15: Advanced Edge Cases (K1-K4)' }},
+    {{ value: 16, name: 'Phase 16: Metadata & Reports Tests (L1-L3)' }},
+    {{ value: 17, name: 'Phase 17: Map File Structure Tests (O1-O3)' }},
+    {{ value: 18, name: 'Phase 18: Empty State Tests (N1-N4)' }},
+    {{ value: 19, name: 'Phase 19: Cleanup' }}
+  ];
+  
+  const phaseOptions = phases.map(p => 
+    `<option value="${{p.value}}" ${{p.value === 19 ? 'selected' : ''}}>${{p.name}}</option>`
+  ).join('');
+  
+  const body = document.querySelector('#modal .modal-body');
+  body.innerHTML = `
+    <div class="modal-header"><h3>Selftest Options</h3></div>
+    <div class="modal-scroll">
+      <form id="selftest-form" onsubmit="return startSelftest(event)">
+        <div class="form-group">
+          <label>Run up to phase *</label>
+          <select name="max_phase" onchange="updateSelftestEndpointPreview()">
+            ${{phaseOptions}}
+          </select>
+          <small style="color: #666;">Phases are cumulative - selecting phase N runs phases 1 through N</small>
+        </div>
+        
+        <div class="form-group">
+          <label><input type="checkbox" name="skip_cleanup" onchange="updateSelftestEndpointPreview()"> Skip cleanup (keep test artifacts after completion)</label>
+        </div>
+        
+        <div class="form-group">
+          <label>Endpoint Preview:</label>
+          <pre id="selftest-endpoint-preview" style="background: #f5f5f5; padding: 8px; border-radius: 4px; overflow-x: auto; font-size: 12px;">/v2/crawler/selftest?format=stream</pre>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <p class="modal-error"></p>
+      <button type="submit" form="selftest-form" class="btn-primary">Run Selftest</button>
+      <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
+    </div>
+  `;
+  openModal('600px');
+  updateSelftestEndpointPreview();
+}}
+
+function updateSelftestEndpointPreview() {{
+  const form = document.getElementById('selftest-form');
+  if (!form) return;
+  
+  const maxPhase = form.querySelector('[name="max_phase"]').value;
+  const skipCleanup = form.querySelector('[name="skip_cleanup"]').checked;
+  
+  let url = '/v2/crawler/selftest?format=stream';
+  if (maxPhase !== '19') url += `&phase=${{maxPhase}}`;
+  if (skipCleanup) url += '&skip_cleanup=true';
+  
+  document.getElementById('selftest-endpoint-preview').textContent = url;
+}}
+
+function startSelftest(event) {{
+  event.preventDefault();
+  const form = document.getElementById('selftest-form');
+  const maxPhase = form.querySelector('[name="max_phase"]').value;
+  const skipCleanup = form.querySelector('[name="skip_cleanup"]').checked;
+  
+  let url = '{router_prefix}/{router_name}/selftest?format=stream';
+  if (maxPhase !== '19') url += `&phase=${{maxPhase}}`;
+  if (skipCleanup) url += '&skip_cleanup=true';
+  
+  closeModal();
   showToast('Selftest', 'Starting crawler selftest...', 'info');
-  connectStream('{router_prefix}/{router_name}/selftest?format=stream', {{ showResult: 'modal' }});
+  connectStream(url, {{ showResult: 'modal' }});
 }}
 async function showJobResult(jobId) {{
   try {{
@@ -1996,7 +2080,7 @@ def _generate_crawler_ui_page(jobs: list) -> str:
     row_id_field="job_id",
     row_id_prefix="job",
     navigation_html=main_page_nav_html.replace("{router_prefix}", router_prefix),
-    toolbar_buttons=[{"text": "Run Selftest", "onclick": "runSelftest()", "class": "btn-primary"}],
+    toolbar_buttons=[{"text": "Run Selftest", "onclick": "showSelftestDialog()", "class": "btn-primary"}],
     enable_selection=False,
     enable_bulk_delete=False,
     list_endpoint=f"{router_prefix}/{router_name}?format=json",

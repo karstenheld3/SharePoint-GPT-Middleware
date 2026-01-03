@@ -270,6 +270,7 @@ Updated `TOTAL_TESTS` from 33 to 50.
 
 ## Changelog
 
+- 2026-01-03 16:39: Added selftest options dialog with phase selection and skip_cleanup option
 - 2026-01-03 16:26: Added modal popup for selftest results + harmonized result format with jobs selftest
 - 2026-01-03 16:00: Fixed OpenAI client access - all 50 tests pass (50 OK, 0 FAIL, 0 SKIP)
 - 2026-01-03 15:32: Eliminated all 21 skips - all tests now produce OK or FAIL
