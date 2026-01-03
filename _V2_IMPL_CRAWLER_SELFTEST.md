@@ -390,8 +390,8 @@ Prerequisite: SNAP_FULL_ALL state + SharePoint mutations applied
 
 - **I1**: Missing domain_id -> ok=false
 - **I2**: Invalid domain_id -> 404
-- **I3**: Invalid scope value -> ok=false
-- **I4**: Invalid mode value -> ok=false
+- **I3**: Invalid scope value -> 400 Bad Request
+- **I4**: Invalid mode value -> 400 Bad Request
 - **I5**: Non-embeddable file type -> file skipped, no error
 - **I6**: Unicode filename -> handled correctly
 - **I7**: Same filename in different subfolders -> both downloaded
@@ -936,8 +936,8 @@ finally:
 **Error Cases (4 explicit + 4 implicit):**
 - [x] I1: Missing domain_id
 - [x] I2: Invalid domain_id
-- [x] I3: Invalid scope (defaults gracefully)
-- [x] I4: Invalid mode (defaults gracefully)
+- [x] I3: Invalid scope (returns 400)
+- [x] I4: Invalid mode (returns 400)
 - [x] I5: Non-embeddable file type (implicit via K3)
 - [x] I6: Unicode filename (implicit via A1)
 - [x] I7: Same filename in subfolders (implicit via K1)

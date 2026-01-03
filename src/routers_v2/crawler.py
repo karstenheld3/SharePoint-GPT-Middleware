@@ -20,6 +20,8 @@ router = APIRouter()
 config = None
 router_prefix = None
 router_name = "crawler"
+VALID_MODES = ["full", "incremental"]
+VALID_SCOPES = ["all", "files", "lists", "sitepages"]
 main_page_nav_html = '<a href="/">Back to Main Page</a> | <a href="{router_prefix}/domains?format=ui">Domains</a> | <a href="{router_prefix}/crawler?format=ui">Crawler</a> | <a href="{router_prefix}/jobs?format=ui">Jobs</a> | <a href="{router_prefix}/reports?format=ui">Reports</a>'
 
 def set_config(app_config, prefix):
@@ -466,6 +468,12 @@ Return (SSE stream):
     return json_result(False, f"Domain '{domain_id}' not found.", {})
   mode = params.get("mode", "full")
   scope = params.get("scope", "all")
+  if mode not in VALID_MODES:
+    logger.log_function_footer()
+    return JSONResponse(json_result(False, f"Invalid value '{mode}' for 'mode' param. Valid: {VALID_MODES}", {}), status_code=400)
+  if scope not in VALID_SCOPES:
+    logger.log_function_footer()
+    return JSONResponse(json_result(False, f"Invalid value '{scope}' for 'scope' param. Valid: {VALID_SCOPES}", {}), status_code=400)
   source_id = params.get("source_id")
   format_param = params.get("format", "json")
   dry_run = params.get("dry_run", "false").lower() == "true"
@@ -570,6 +578,12 @@ Return (SSE stream):
     logger.log_function_footer()
     return json_result(False, f"Domain '{domain_id}' not found.", {})
   mode, scope, source_id = params.get("mode", "full"), params.get("scope", "all"), params.get("source_id")
+  if mode not in VALID_MODES:
+    logger.log_function_footer()
+    return JSONResponse(json_result(False, f"Invalid value '{mode}' for 'mode' param. Valid: {VALID_MODES}", {}), status_code=400)
+  if scope not in VALID_SCOPES:
+    logger.log_function_footer()
+    return JSONResponse(json_result(False, f"Invalid value '{scope}' for 'scope' param. Valid: {VALID_SCOPES}", {}), status_code=400)
   format_param, dry_run = params.get("format", "json"), params.get("dry_run", "false").lower() == "true"
   retry_batches = int(params.get("retry_batches", "2"))
   if format_param == "stream":
@@ -1348,18 +1362,17 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       if not result.get("ok", True): yield check_ok("Correctly rejected invalid domain_id")
       else: yield check_fail("Should have rejected invalid domain_id")
       
-      # I3: Invalid scope - should default to 'all' and succeed
-      yield next_test("I3: Invalid scope defaults to 'all'")
+      # I3: Invalid scope - should return 400
+      yield next_test("I3: Invalid scope returns 400")
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="INVALID_SCOPE_XYZ")
-      if result.get("ok"): yield check_ok("Invalid scope gracefully defaulted")
-      else: yield check_fail(f"Unexpected failure -> {result.get('error', 'Unknown')}")
+      if not result.get("ok", True) and "scope" in result.get("error", "").lower(): yield check_ok("Correctly rejected invalid scope")
+      else: yield check_fail(f"Should have rejected invalid scope -> {result.get('error', 'No error')}")
       
-      # I4: Invalid mode - should default to 'full' and succeed
-      yield next_test("I4: Invalid mode defaults to 'full'")
-      _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
+      # I4: Invalid mode - should return 400
+      yield next_test("I4: Invalid mode returns 400")
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="INVALID_MODE_XYZ", scope="files")
-      if result.get("ok"): yield check_ok("Invalid mode gracefully defaulted")
-      else: yield check_fail(f"Unexpected failure -> {result.get('error', 'Unknown')}")
+      if not result.get("ok", True) and "mode" in result.get("error", "").lower(): yield check_ok("Correctly rejected invalid mode")
+      else: yield check_fail(f"Should have rejected invalid mode -> {result.get('error', 'No error')}")
       yield phase_end(5, "Error Cases")
     
     # ===================== Phase 6: Full Crawl Tests (A1-A4) =====================
