@@ -29,7 +29,7 @@ The `/v2/crawler` router provides a monitoring interface for running crawler job
 - Single-page UI with jobs table and console panel
 - Same UI pattern as demorouter (console visible by default)
 - Filters to crawler jobs only (not all streaming jobs)
-- No toolbar buttons (crawl initiated from domains UI)
+- [Run Selftest] toolbar button opens options dialog
 
 ## Scenario
 
@@ -37,7 +37,6 @@ The `/v2/crawler` router provides a monitoring interface for running crawler job
 Users need to monitor crawler progress, view real-time output, and control running jobs (pause/resume/cancel).
 
 **What we don't want:**
-- Ability to start crawls from this UI (that's in domains UI)
 - Complex filtering or search
 - Showing non-crawler jobs
 
@@ -45,6 +44,7 @@ Users need to monitor crawler progress, view real-time output, and control runni
 
 | Action | Trigger | Effect |
 |--------|---------|--------|
+| Run Selftest | Click [Run Selftest] button | Open selftest options dialog |
 | Result | Click [Result] button | Show job result in modal dialog |
 | Monitor | Click [Monitor] button | Stream live output to console panel |
 | Pause | Click [Pause] button | Pause running job, button changes to [Resume] |
@@ -58,9 +58,11 @@ Users need to monitor crawler progress, view real-time output, and control runni
 
 ```
 +---------------------------------------------------------------------------------------------------------------------+
-| Running Crawler Jobs (2) [Refresh]                                                                                  |
+| Crawler Jobs (2) [Refresh]                                                                                                    |
 |                                                                                                                     |
-| Back to Main Page | Domains | Crawl Results                                                                         |
+| Back to Main Page | Domains | Crawler | Jobs | Reports                                                              |
+|                                                                                                                     |
+| [Run Selftest]                                                                                                      |
 |                                                                                                                     |
 | +---+-------------+-----------+-----------------+-------------+--------+-----------+--------------------------------+
 | |ID | Action      | Domain ID | Vector Store ID | Mode        | Scope  | Source ID | Actions                        |
@@ -144,11 +146,61 @@ async function showJobResult(jobId) {
 }
 ```
 
+### Selftest Options Dialog
+
+When user clicks [Run Selftest], open modal with phase selection and skip_cleanup option:
+
+```
++----------------------------------------------------------+
+|  Selftest Options                                   [x]  |
++----------------------------------------------------------+
+|                                                          |
+|  Run up to phase *                                       |
+|  [Phase 19: Cleanup                              v]      |
+|  Phases are cumulative - selecting phase N runs 1..N     |
+|                                                          |
+|  [ ] Skip cleanup (keep test artifacts after completion) |
+|                                                          |
+|  Endpoint Preview:                                       |
+|  /v2/crawler/selftest?format=stream                      |
+|                                                          |
++----------------------------------------------------------+
+|                                       [OK] [Cancel]      |
++----------------------------------------------------------+
+```
+
+**Phase dropdown options:**
+- Phase 1: Pre-flight Validation
+- Phase 2: Pre-cleanup
+- Phase 3: SharePoint Setup
+- Phase 4: Domain Setup
+- Phase 5: Error Cases (I1-I4)
+- Phase 6: Full Crawl Tests (A1-A4)
+- Phase 7: source_id Filter Tests (B1-B5)
+- Phase 8: dry_run Tests (D1-D4)
+- Phase 9: Individual Steps Tests (E1-E3)
+- Phase 10: SharePoint Mutations
+- Phase 11: Incremental Tests (F1-F4)
+- Phase 12: Incremental source_id Tests (G1-G2)
+- Phase 13: Job Control Tests (H1-H2)
+- Phase 14: Integrity Check Tests (J1-J4)
+- Phase 15: Advanced Edge Cases (K1-K4)
+- Phase 16: Metadata & Reports Tests (L1-L3)
+- Phase 17: Map File Structure Tests (O1-O3)
+- Phase 18: Empty State Tests (N1-N4)
+- Phase 19: Cleanup (default)
+
+**Endpoint preview** updates dynamically as options change.
+
+**On OK**: Close modal, show toast, connect stream with `showResult: 'modal'` to display results after completion.
+
 ### Navigation Links
 
 - **Back to Main Page** - `/` root endpoint
 - **Domains** - `/v2/domains?format=ui`
-- **Crawl Results** - `/v2/crawl-results?format=ui`
+- **Crawler** - `/v2/crawler?format=ui`
+- **Jobs** - `/v2/jobs?format=ui`
+- **Reports** - `/v2/reports?format=ui`
 
 ## Domain Objects
 
@@ -269,6 +321,14 @@ Minimal JS needed:
 - `monitorJob(jobId)` - connect SSE to console
 - `controlJob(jobId, action)` - pause/resume/cancel
 - `showJobResult(jobId)` - fetch result and show in modal
-- `runSelftest()` - start crawler selftest
+- `showSelftestDialog()` - open selftest options modal
+- `updateSelftestEndpointPreview()` - update endpoint preview on option change
+- `startSelftest(event)` - run selftest with selected options
 
 Most functionality reuses common UI functions.
+
+## Spec Changes
+
+- 2026-01-03: Added Selftest Options Dialog with phase selection and skip_cleanup option
+- 2026-01-03: Updated navigation links to match current implementation
+- 2026-01-03: Added [Run Selftest] toolbar button
