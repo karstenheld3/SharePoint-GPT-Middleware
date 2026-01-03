@@ -980,10 +980,11 @@ async def crawler_selftest(request: Request):
   if format_param != "stream":
     logger.log_function_footer()
     return json_result(False, "Use format=stream for selftest.", {})
+  base_url = str(request.base_url).rstrip("/")
   openai_client = getattr(request.app.state, 'openai_client', None)
-  return StreamingResponse(_selftest_stream(skip_cleanup, max_phase, logger, openai_client), media_type="text/event-stream")
+  return StreamingResponse(_selftest_stream(skip_cleanup, max_phase, logger, openai_client, base_url), media_type="text/event-stream")
 
-async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: MiddlewareLogger, openai_client):
+async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: MiddlewareLogger, openai_client, base_url: str):
   """Execute selftest as SSE stream."""
   writer = StreamingJobWriter(persistent_storage_path=get_persistent_storage_path(), router_name=router_name, action="selftest", object_id=SELFTEST_DOMAIN_ID, source_url=f"{router_prefix}/{router_name}/selftest", router_prefix=router_prefix)
   logger.stream_job_writer = writer
@@ -1003,7 +1004,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
   ctx = None
   site_path = ""
   vector_store_id = ""
-  base_url = f"http://127.0.0.1:{getattr(config, 'PORT', 8000)}"
+  # base_url is passed from request.base_url
   
   def log(msg: str):
     sse = logger.log_function_output(msg)
