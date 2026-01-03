@@ -6,7 +6,7 @@ Find all .md files in the workspace but ONLY in the /.windsurf/rules folder and 
 Read these files.
 
 Then read:
-- /: SOPS.md, _V2_SPEC_ROUTERS.md, _V2_SPEC_CRAWLER.md, _V2_IMPL_CRAWLER_B.md, _V2_IMPL_CRAWLER_SELFTEST.md
+- /: _V2_SPEC_ROUTERS.md, _V2_SPEC_CRAWLER.md, _V2_IMPL_CRAWLER.md, _V2_IMPL_CRAWLER_SELFTEST.md
 - /src/: app.py, hardcoded_config.py
 - /src/routers_v2/: common_logging_functions_v2.py, crawler.py
 
