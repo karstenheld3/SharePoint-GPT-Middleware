@@ -941,6 +941,7 @@ async def crawler_selftest(request: Request):
   Parameters:
   - format: Response format - stream (required)
   - skip_cleanup: Keep test artifacts after completion (default: false)
+    Note: Cleanup always runs unless skip_cleanup=true, regardless of phase parameter
   - phase: Run only up to phase N (default: 99 = all phases)
   
   Required config: CRAWLER_SELFTEST_SHAREPOINT_SITE
