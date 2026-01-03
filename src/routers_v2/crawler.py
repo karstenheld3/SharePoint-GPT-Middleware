@@ -2211,11 +2211,10 @@ def _generate_crawler_ui_page(jobs: list) -> str:
     row_id_prefix="job",
     navigation_html=main_page_nav_html.replace("{router_prefix}", router_prefix),
     toolbar_buttons=[
-      {"text": "Delete (<span id='selected-count'>0</span>)", "onclick": "bulkDelete()", "class": "btn-primary btn-delete", "id": "btn-delete-selected", "disabled": True},
       {"text": "Run Selftest", "onclick": "showSelftestDialog()", "class": "btn-primary"}
     ],
     enable_selection=True,
-    enable_bulk_delete=False,
+    enable_bulk_delete=True,
     delete_endpoint=f"{router_prefix}/jobs/delete",
     list_endpoint=f"{router_prefix}/{router_name}?format=json",
     jobs_control_endpoint=f"{router_prefix}/jobs/control",
