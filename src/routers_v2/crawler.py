@@ -2113,36 +2113,11 @@ async function showJobResult(jobId) {{
 }}
 
 // ============================================
-// SELECTION & BULK DELETE
+// SELECTION & DELETE (uses common functions, adds deleteJob for row button)
 // ============================================
-const DELETE_ENDPOINT = '{router_prefix}/jobs/delete?job_id={{itemId}}';
-
-function updateSelectedCount() {{
-  const selected = document.querySelectorAll('.item-checkbox:checked');
-  const total = document.querySelectorAll('.item-checkbox');
-  const btn = document.getElementById('btn-delete-selected');
-  const countSpan = document.getElementById('selected-count');
-  if (btn) btn.disabled = selected.length === 0;
-  if (countSpan) countSpan.textContent = selected.length;
-  const selectAll = document.getElementById('select-all');
-  if (selectAll) selectAll.checked = total.length > 0 && selected.length === total.length;
-}}
-
-function toggleSelectAll() {{
-  const selectAll = document.getElementById('select-all');
-  const checkboxes = document.querySelectorAll('.item-checkbox');
-  checkboxes.forEach(cb => cb.checked = selectAll.checked);
-  updateSelectedCount();
-}}
-
-function getSelectedJobIds() {{
-  return Array.from(document.querySelectorAll('.item-checkbox:checked')).map(cb => cb.dataset.itemId);
-}}
-
 async function deleteJob(jobId) {{
   try {{
-    const url = DELETE_ENDPOINT.replace('{{itemId}}', jobId);
-    const response = await fetch(url, {{ method: 'DELETE' }});
+    const response = await fetch('{router_prefix}/jobs/delete?job_id=' + encodeURIComponent(jobId), {{ method: 'DELETE' }});
     const result = await response.json();
     if (result.ok) {{
       jobsState.delete(jobId);
@@ -2154,35 +2129,6 @@ async function deleteJob(jobId) {{
   }} catch (e) {{
     showToast('Error', e.message, 'error');
   }}
-}}
-
-async function bulkDelete() {{
-  const jobIds = getSelectedJobIds();
-  if (jobIds.length === 0) return;
-  if (!confirm('Delete ' + jobIds.length + ' selected job' + (jobIds.length === 1 ? '' : 's') + '?')) return;
-  
-  let deleted = 0;
-  let failed = 0;
-  
-  for (const jobId of jobIds) {{
-    try {{
-      const url = DELETE_ENDPOINT.replace('{{itemId}}', jobId);
-      const response = await fetch(url, {{ method: 'DELETE' }});
-      const result = await response.json();
-      if (result.ok) {{
-        jobsState.delete(jobId);
-        deleted++;
-      }} else {{
-        showToast('Delete Failed', jobId + ': ' + result.error, 'error');
-        failed++;
-      }}
-    }} catch (e) {{
-      failed++;
-    }}
-  }}
-  
-  if (deleted > 0) showToast('Deleted', deleted + ' job' + (deleted === 1 ? '' : 's') + ' deleted.', 'success');
-  renderAllJobs();
 }}
 """
 
