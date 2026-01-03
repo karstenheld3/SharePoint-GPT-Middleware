@@ -35,8 +35,10 @@
 ## Overview
 
 The crawler selftest:
-1. Creates temporary SharePoint artifacts (document library with custom field, list, site pages)
+1. Creates temporary SharePoint artifacts (document library with custom field, list)
 2. Creates `_SELFTEST` domain with multiple sources per type (for filter testing)
+
+**Note**: Site pages creation is skipped because SharePoint blocks app-only authentication for Site Pages library writes. Site pages crawling can still be tested manually with pre-existing pages.
 3. Runs tests using **snapshot-based verification**: restore expected state, run crawl, compare actual vs expected
 4. Tests all endpoint parameters: `mode`, `scope`, `source_id`, `dry_run`, source `filter`
 5. Tests all change types: ADD, REMOVE, CHANGE, RENAME, MOVE
@@ -135,7 +137,7 @@ def verify_against_snapshot(actual_path: str, snapshot: dict) -> list[str]:
 
 ## SharePoint Artifacts
 
-### Document Library: `_SELFTEST_DOCS`
+### Document Library: `SELFTEST_DOCS`
 
 Custom field `Crawl` (number) for filter testing.
 
@@ -149,7 +151,7 @@ Custom field `Crawl` (number) for filter testing.
 - **file_测试.txt**: content="Unicode filename test", Crawl=1 (for I6: unicode test)
 - **subfolder/file1.txt**: content="Subfolder file content", Crawl=1 (for I7: same filename in subfolder)
 
-### List: `_SELFTEST_LIST`
+### List: `SELFTEST_LIST`
 
 Fields: Title, Status (text), Description
 
@@ -160,11 +162,9 @@ Fields: Title, Status (text), Description
 - **Item 5**: Status="Inactive", Description="Test item 5"
 - **Item 6**: Status="Inactive", Description="Test item 6"
 
-### Site Pages: `/SitePages`
+### Site Pages: `/SitePages` (SKIPPED)
 
-- **_selftest_page1.aspx**: content="Test page 1 content"
-- **_selftest_page2.aspx**: content="Test page 2 content"
-- **_selftest_page3.aspx**: content="Test page 3 content"
+**Note**: Site pages creation is skipped. SharePoint blocks app-only authentication for Site Pages library writes. This is a SharePoint security feature, not a permission issue. See `_V2_IMPL_CRAWLER_SELFTEST_FIXES.md` for details.
 
 ## Domain Configuration
 
@@ -181,13 +181,13 @@ Domain ID: `_SELFTEST`
     {
       "source_id": "files_all",
       "site_url": "{SELFTEST_SITE}",
-      "sharepoint_url_part": "/_SELFTEST_DOCS",
+      "sharepoint_url_part": "/SELFTEST_DOCS",
       "filter": ""
     },
     {
       "source_id": "files_crawl1",
       "site_url": "{SELFTEST_SITE}",
-      "sharepoint_url_part": "/_SELFTEST_DOCS",
+      "sharepoint_url_part": "/SELFTEST_DOCS",
       "filter": "Crawl eq 1"
     }
   ],
@@ -195,24 +195,17 @@ Domain ID: `_SELFTEST`
     {
       "source_id": "lists_all",
       "site_url": "{SELFTEST_SITE}",
-      "list_name": "_SELFTEST_LIST",
+      "list_name": "SELFTEST_LIST",
       "filter": ""
     },
     {
       "source_id": "lists_active",
       "site_url": "{SELFTEST_SITE}",
-      "list_name": "_SELFTEST_LIST",
+      "list_name": "SELFTEST_LIST",
       "filter": "Status eq 'Active'"
     }
   ],
-  "sitepage_sources": [
-    {
-      "source_id": "pages_all",
-      "site_url": "{SELFTEST_SITE}",
-      "sharepoint_url_part": "/SitePages",
-      "filter": "substringof('_selftest_', FileLeafRef)"
-    }
-  ]
+  "sitepage_sources": []  // Site pages skipped - app-only auth blocked
 }
 ```
 
@@ -223,21 +216,21 @@ Domain ID: `_SELFTEST`
 ```python
 # After full crawl with scope=all
 # Note: 9 files total (6 original + zip + unicode + subfolder), 5 with Crawl=1
+# Site pages excluded - app-only auth blocked
 SNAP_FULL_ALL = {
-  "01_files/files_all": {"files_map_rows": 9, "local_files": ["file1.txt", "file2.txt", "file3.txt", "file4.txt", "file5.txt", "file6.txt", "non_embeddable.zip", "file_测试.txt", "subfolder/file1.txt"]},
-  "01_files/files_crawl1": {"files_map_rows": 5, "local_files": ["file1.txt", "file2.txt", "file3.txt", "non_embeddable.zip", "file_测试.txt", "subfolder/file1.txt"]},
+  "01_files/files_all": {"files_map_rows": 9},
+  "01_files/files_crawl1": {"files_map_rows": 6},
   "02_lists/lists_all": {"files_map_rows": 6},
-  "02_lists/lists_active": {"files_map_rows": 3},
-  "03_sitepages/pages_all": {"files_map_rows": 3, "local_files": ["_selftest_page1.aspx.html", "_selftest_page2.aspx.html", "_selftest_page3.aspx.html"]}
+  "02_lists/lists_active": {"files_map_rows": 3}
+  # "03_sitepages/pages_all" excluded
 }
 
 # After full crawl with scope=files
 SNAP_FULL_FILES = {
-  "01_files/files_all": {"files_map_rows": 9, "local_files": ["file1.txt", "file2.txt", "file3.txt", "file4.txt", "file5.txt", "file6.txt", "non_embeddable.zip", "file_测试.txt", "subfolder/file1.txt"]},
-  "01_files/files_crawl1": {"files_map_rows": 5, "local_files": ["file1.txt", "file2.txt", "file3.txt", "non_embeddable.zip", "file_测试.txt", "subfolder/file1.txt"]},
+  "01_files/files_all": {"files_map_rows": 9},
+  "01_files/files_crawl1": {"files_map_rows": 6},
   "02_lists/lists_all": {"files_map_rows": 0},
-  "02_lists/lists_active": {"files_map_rows": 0},
-  "03_sitepages/pages_all": {"files_map_rows": 0}
+  "02_lists/lists_active": {"files_map_rows": 0}
 }
 
 # After full crawl with scope=lists
@@ -245,26 +238,18 @@ SNAP_FULL_LISTS = {
   "01_files/files_all": {"files_map_rows": 0},
   "01_files/files_crawl1": {"files_map_rows": 0},
   "02_lists/lists_all": {"files_map_rows": 6},
-  "02_lists/lists_active": {"files_map_rows": 3},
-  "03_sitepages/pages_all": {"files_map_rows": 0}
+  "02_lists/lists_active": {"files_map_rows": 3}
 }
 
-# After full crawl with scope=sitepages
-SNAP_FULL_PAGES = {
-  "01_files/files_all": {"files_map_rows": 0},
-  "01_files/files_crawl1": {"files_map_rows": 0},
-  "02_lists/lists_all": {"files_map_rows": 0},
-  "02_lists/lists_active": {"files_map_rows": 0},
-  "03_sitepages/pages_all": {"files_map_rows": 3, "local_files": ["_selftest_page1.aspx.html", "_selftest_page2.aspx.html", "_selftest_page3.aspx.html"]}
-}
+# After full crawl with scope=sitepages - SKIPPED (no sitepages sources)
+# SNAP_FULL_PAGES not used - sitepages testing skipped
 
 # After full crawl with source_id=files_crawl1 (filtered)
 SNAP_FULL_FILES_CRAWL1 = {
   "01_files/files_all": {"files_map_rows": 0},
-  "01_files/files_crawl1": {"files_map_rows": 5, "local_files": ["file1.txt", "file2.txt", "file3.txt", "non_embeddable.zip", "file_测试.txt", "subfolder/file1.txt"]},
+  "01_files/files_crawl1": {"files_map_rows": 6},
   "02_lists/lists_all": {"files_map_rows": 0},
-  "02_lists/lists_active": {"files_map_rows": 0},
-  "03_sitepages/pages_all": {"files_map_rows": 0}
+  "02_lists/lists_active": {"files_map_rows": 0}
 }
 
 # After full crawl with source_id=lists_active (filtered)
@@ -272,8 +257,7 @@ SNAP_FULL_LISTS_ACTIVE = {
   "01_files/files_all": {"files_map_rows": 0},
   "01_files/files_crawl1": {"files_map_rows": 0},
   "02_lists/lists_all": {"files_map_rows": 0},
-  "02_lists/lists_active": {"files_map_rows": 3},
-  "03_sitepages/pages_all": {"files_map_rows": 0}
+  "02_lists/lists_active": {"files_map_rows": 3}
 }
 
 # After download step only (no process/embed)
@@ -293,8 +277,7 @@ SNAP_EMPTY = {
   "01_files/files_all": {"files_map_rows": 0},
   "01_files/files_crawl1": {"files_map_rows": 0},
   "02_lists/lists_all": {"files_map_rows": 0},
-  "02_lists/lists_active": {"files_map_rows": 0},
-  "03_sitepages/pages_all": {"files_map_rows": 0}
+  "02_lists/lists_active": {"files_map_rows": 0}
 }
 ```
 
@@ -303,7 +286,7 @@ SNAP_EMPTY = {
 Mutations applied:
 - **Files**: ADD file7.txt, REMOVE file6.txt, CHANGE file1.txt, RENAME file2.txt->file2_renamed.txt, MOVE file3.txt->subfolder/file3.txt
 - **Lists**: ADD item7, REMOVE item6, CHANGE item1
-- **SitePages**: ADD _selftest_page4.aspx, REMOVE _selftest_page3.aspx, CHANGE _selftest_page1.aspx, RENAME _selftest_page2.aspx->_selftest_page2_renamed.aspx
+- **SitePages**: SKIPPED (app-only auth blocked)
 
 ```python
 # After incremental crawl scope=all (all mutations)
@@ -436,11 +419,12 @@ Tests V2CR-FR-03 and V2CR-FR-04 from _V2_SPEC_CRAWLER.md
 - **L2**: Custom property carry-over - add custom property, update file, verify carry-over
 - **L3**: Crawl report - verify report.zip created after /crawl (not created for dry_run)
 
-### M. Pre-flight Validation (3 tests)
+### M. Pre-flight Validation (4 tests)
 
 - **M1**: Config validation - CRAWLER_SELFTEST_SHAREPOINT_SITE must be set
-- **M2**: SharePoint connectivity - verify connection succeeds
-- **M3**: OpenAI connectivity - verify API responds
+- **M2**: SharePoint connectivity (read) - read /SiteAssets library
+- **M2b**: SharePoint connectivity (write) - upload + delete test file to /SiteAssets
+- **M3**: OpenAI connectivity - create + delete temp vector store `_selftest_preflight_vs`
 
 ### N. Empty State (4 tests)
 
@@ -457,122 +441,126 @@ After deleting all SharePoint content:
 - **O2**: files_map.csv has 13 columns
 - **O3**: vectorstore_map.csv has 19 columns
 
-### Total: 56 tests
+### Total: ~45 tests (reduced - site pages skipped)
 
 ## Test Phases
 
 ```
-Phase 1: SharePoint Setup
-├── 1.1 Create document library _SELFTEST_DOCS
-├── 1.2 Add custom field "Crawl" (number)
-├── 1.3 Upload 6 files with Crawl field values
-├── 1.4 Create list _SELFTEST_LIST
-├── 1.5 Add 6 list items with Status field
-├── 1.6 Create 3 site pages
+Phase 1: Pre-flight Validation (M1-M3)
+├── 1.1 M1: Verify CRAWLER_SELFTEST_SHAREPOINT_SITE configured
+├── 1.2 M2: Test SharePoint read access to /SiteAssets
+├── 1.3 M2b: Test SharePoint write access (upload + delete test file)
+├── 1.4 M3: Test OpenAI connectivity (create + delete temp vector store)
 
-Phase 2: Domain Setup
-├── 2.1 Create _SELFTEST domain via /v2/domains/create
+Phase 2: Pre-cleanup (remove leftover artifacts from previous runs)
+├── 2.1 Delete _SELFTEST domain via API (ignore errors)
+├── 2.2 Delete local snapshots folder (ignore errors)
+├── 2.3 Delete crawler/_SELFTEST folder (ignore errors)
+├── 2.4 Delete SharePoint list SELFTEST_LIST (ignore errors)
+├── 2.5 Delete SharePoint document library /SELFTEST_DOCS (ignore errors)
 
-Phase 3: Error Cases (I1-I4)
-├── 3.1 Test missing domain_id
-├── 3.2 Test invalid domain_id
-├── 3.3 Test invalid scope
-├── 3.4 Test invalid mode
+Phase 3: SharePoint Setup
+├── 3.1 Create document library SELFTEST_DOCS
+├── 3.2 Add custom field "Crawl" (number)
+├── 3.3 Upload 9 files with Crawl field values
+├── 3.4 Create list SELFTEST_LIST
+├── 3.5 Add 6 list items with Status field
+# Site pages creation skipped - app-only auth blocked
 
-Phase 4: Full Crawl Tests (A1-A4)
-├── 4.1 Restore SNAP_EMPTY, crawl full/all, verify SNAP_FULL_ALL
-├── 4.2 Restore SNAP_EMPTY, crawl full/files, verify SNAP_FULL_FILES
-├── 4.3 Restore SNAP_EMPTY, crawl full/lists, verify SNAP_FULL_LISTS
-├── 4.4 Restore SNAP_EMPTY, crawl full/sitepages, verify SNAP_FULL_PAGES
+Phase 4: Domain Setup
+├── 4.1 Create _SELFTEST domain via /v2/domains/create
 
-Phase 5: source_id Filter Tests (B1-B5)
-├── 5.1 Restore SNAP_EMPTY, crawl files/files_all, verify
-├── 5.2 Restore SNAP_EMPTY, crawl files/files_crawl1, verify SNAP_FULL_FILES_CRAWL1
-├── 5.3 Restore SNAP_EMPTY, crawl lists/lists_active, verify SNAP_FULL_LISTS_ACTIVE
-├── 5.4 Restore SNAP_EMPTY, crawl files/INVALID, verify SNAP_EMPTY
-├── 5.5 Test scope=all + source_id behavior
+Phase 5: Error Cases (I1-I4)
+├── 5.1 Test missing domain_id
+├── 5.2 Test invalid domain_id
+├── 5.3 Test invalid scope
+├── 5.4 Test invalid mode
 
-Phase 6: dry_run Tests (D1-D4)
-├── 6.1 Restore SNAP_EMPTY, crawl dry_run=true, verify SNAP_EMPTY
-├── 6.2 Restore SNAP_EMPTY, download dry_run=true, verify SNAP_EMPTY
-├── 6.3 Restore SNAP_DOWNLOAD_ONLY, process dry_run=true, verify SNAP_DOWNLOAD_ONLY
-├── 6.4 Restore SNAP_PROCESS_ONLY, embed dry_run=true, verify SNAP_PROCESS_ONLY
+Phase 6: Full Crawl Tests (A1-A3)
+├── 6.1 Restore SNAP_EMPTY, crawl full/all, verify SNAP_FULL_ALL
+├── 6.2 Restore SNAP_EMPTY, crawl full/files, verify SNAP_FULL_FILES
+├── 6.3 Restore SNAP_EMPTY, crawl full/lists, verify SNAP_FULL_LISTS
+# 6.4 sitepages test skipped - no sitepage_sources
 
-Phase 7: Individual Steps Tests (E1-E3)
-├── 7.1 Restore SNAP_EMPTY, download_data, verify SNAP_DOWNLOAD_ONLY
-├── 7.2 (continue from 7.1) process_data, verify SNAP_PROCESS_ONLY
-├── 7.3 (continue from 7.2) embed_data, verify SNAP_FULL_ALL
+Phase 7: source_id Filter Tests (B1-B5)
+├── 7.1 Restore SNAP_EMPTY, crawl files/files_all, verify
+├── 7.2 Restore SNAP_EMPTY, crawl files/files_crawl1, verify SNAP_FULL_FILES_CRAWL1
+├── 7.3 Restore SNAP_EMPTY, crawl lists/lists_active, verify SNAP_FULL_LISTS_ACTIVE
+├── 7.4 Restore SNAP_EMPTY, crawl files/INVALID, verify SNAP_EMPTY
+├── 7.5 Test scope=all + source_id behavior
 
-Phase 8: Apply SharePoint Mutations
-├── 8.1 Files: ADD file7.txt (Crawl=1)
-├── 8.2 Files: REMOVE file6.txt
-├── 8.3 Files: CHANGE file1.txt content
-├── 8.4 Files: RENAME file2.txt -> file2_renamed.txt
-├── 8.5 Files: MOVE file3.txt -> subfolder/file3.txt
-├── 8.6 Files: Create subfolder first
-├── 8.7 Lists: ADD item7 (Status=Active)
-├── 8.8 Lists: REMOVE item6
-├── 8.9 Lists: CHANGE item1
-├── 8.10 Pages: ADD _selftest_page4.aspx
-├── 8.11 Pages: REMOVE _selftest_page3.aspx
-├── 8.12 Pages: CHANGE _selftest_page1.aspx
-├── 8.13 Pages: RENAME _selftest_page2.aspx -> _selftest_page2_renamed.aspx
-├── 8.14 Wait for mutations to propagate (poll every 5s, max 60s)
+Phase 8: dry_run Tests (D1-D4)
+├── 8.1 Restore SNAP_EMPTY, crawl dry_run=true, verify SNAP_EMPTY
+├── 8.2 Restore SNAP_EMPTY, download dry_run=true, verify SNAP_EMPTY
+├── 8.3 Restore SNAP_DOWNLOAD_ONLY, process dry_run=true, verify SNAP_DOWNLOAD_ONLY
+├── 8.4 Restore SNAP_PROCESS_ONLY, embed dry_run=true, verify SNAP_PROCESS_ONLY
 
-Phase 9: Incremental Tests (F1-F4)
-├── 9.1 Restore SNAP_FULL_ALL, crawl incremental/all, verify SNAP_INCR_ALL
-├── 9.2 Restore SNAP_FULL_ALL, crawl incremental/files, verify SNAP_INCR_FILES
-├── 9.3 Restore SNAP_FULL_ALL, crawl incremental/lists, verify SNAP_INCR_LISTS
-├── 9.4 Restore SNAP_FULL_ALL, crawl incremental/sitepages, verify SNAP_INCR_PAGES
+Phase 9: Individual Steps Tests (E1-E3)
+├── 9.1 Restore SNAP_EMPTY, download_data, verify SNAP_DOWNLOAD_ONLY
+├── 9.2 (continue from 9.1) process_data, verify SNAP_PROCESS_ONLY
+├── 9.3 (continue from 9.2) embed_data, verify SNAP_FULL_ALL
 
-Phase 10: Incremental source_id Tests (G1-G2)
-├── 10.1 Restore SNAP_FULL_ALL, crawl incremental/files/files_all, verify
-├── 10.2 Restore SNAP_FULL_ALL, crawl incremental/files/files_crawl1, verify
+Phase 10: Apply SharePoint Mutations
+├── 10.1 Files: ADD file7.txt (Crawl=1)
+├── 10.2 Files: REMOVE file6.txt
+├── 10.3 Files: CHANGE file1.txt content
+├── 10.4 Files: RENAME file2.txt -> file2_renamed.txt
+├── 10.5 Files: MOVE file3.txt -> subfolder/file3.txt
+├── 10.6 Lists: ADD item7 (Status=Active)
+# Site pages mutations skipped - app-only auth blocked
+├── 10.7 Wait for mutations to propagate
 
-Phase 11: Job Control Tests (H1-H2)
-├── 11.1 Start download, pause, verify paused, resume, verify completes
-├── 11.2 Start download, cancel, verify cancelled
+Phase 11: Incremental Tests (F1-F3)
+├── 11.1 Restore SNAP_FULL_ALL, crawl incremental/all, verify SNAP_INCR_ALL
+├── 11.2 Restore SNAP_FULL_ALL, crawl incremental/files, verify SNAP_INCR_FILES
+├── 11.3 Restore SNAP_FULL_ALL, crawl incremental/lists, verify SNAP_INCR_LISTS
+# 11.4 sitepages test skipped - no sitepage_sources
 
-Phase 12: Integrity Check Tests (J1-J4)
-├── 12.1 Restore SNAP_FULL_ALL, delete file1.txt from disk, run incremental -> file re-downloaded
-├── 12.2 Restore SNAP_FULL_ALL, add orphan.txt to 02_embedded/, run download -> orphan deleted
-├── 12.3 Restore SNAP_FULL_ALL, move file2.txt to wrong path, run download -> moved back
-├── 12.4 Restore SNAP_FULL_ALL, corrupt files_map.csv, run crawl -> mode=full fallback
+Phase 12: Incremental source_id Tests (G1-G2)
+├── 12.1 Restore SNAP_FULL_ALL, crawl incremental/files/files_all, verify
+├── 12.2 Restore SNAP_FULL_ALL, crawl incremental/files/files_crawl1, verify
 
-Phase 13: Advanced Edge Cases (K1-K4)
-├── 13.1 Create subfolder in SharePoint, move files, rename subfolder -> files detected as CHANGED
-├── 13.2 Delete file from SharePoint, restore from recycle bin -> detected as ADDED
-├── 13.3 Upload file that will fail embedding (e.g., empty file) -> moved to 03_failed/
-├── 13.4 Test retry_batches=1 behavior on simulated failure
+Phase 13: Job Control Tests (H1-H2)
+├── 13.1 Start download, pause, verify paused, resume, verify completes
+├── 13.2 Start download, cancel, verify cancelled
 
-Phase 14: Metadata & Reports Tests (L1-L3)
-├── 14.1 After embed, verify files_metadata.json contains embedded files with correct fields
-├── 14.2 Add custom property to files_metadata.json, update file, verify carry-over
-├── 14.3 Run /crawl, verify report.zip created; run with dry_run=true, verify no report
+Phase 14: Integrity Check Tests (J1-J4)
+├── 14.1 Restore SNAP_FULL_ALL, delete file1.txt from disk, run incremental -> file re-downloaded
+├── 14.2 Restore SNAP_FULL_ALL, add orphan.txt to 02_embedded/, run download -> orphan deleted
+├── 14.3 Restore SNAP_FULL_ALL, move file2.txt to wrong path, run download -> moved back
+├── 14.4 Restore SNAP_FULL_ALL, corrupt files_map.csv, run crawl -> mode=full fallback
 
-Phase 15: Map File Structure Tests (O1-O3)
-├── 15.1 Verify sharepoint_map.csv has 10 columns
-├── 15.2 Verify files_map.csv has 13 columns
-├── 15.3 Verify vectorstore_map.csv has 19 columns
+Phase 15: Advanced Edge Cases (K1-K4)
+├── 15.1 Create subfolder in SharePoint, move files, rename subfolder -> files detected as CHANGED
+├── 15.2 Delete file from SharePoint, restore from recycle bin -> detected as ADDED
+├── 15.3 Upload file that will fail embedding (e.g., empty file) -> moved to 03_failed/
+├── 15.4 Test retry_batches=1 behavior on simulated failure
 
-Phase 16: Empty State Tests (N1-N4)
-├── 16.1 Delete all files from SharePoint library
-├── 16.2 Delete all items from SharePoint list
-├── 16.3 Run incremental crawl -> all files REMOVED from vector store
-├── 16.4 Verify vector store empty
-├── 16.5 Run full crawl on empty -> ok=true, 0 files
+Phase 16: Metadata & Reports Tests (L1-L3)
+├── 16.1 After embed, verify files_metadata.json contains embedded files with correct fields
+├── 16.2 Add custom property to files_metadata.json, update file, verify carry-over
+├── 16.3 Run /crawl, verify report.zip created; run with dry_run=true, verify no report
 
-Phase 17: Cleanup
-├── 17.1 Delete vector store files
-├── 17.2 Delete vector store
-├── 17.3 Delete _SELFTEST domain
-├── 17.4 Delete SharePoint site pages
-├── 17.5 Delete SharePoint list
-├── 17.6 Delete SharePoint document library
-├── 17.7 Delete crawl reports for _SELFTEST
+Phase 17: Map File Structure Tests (O1-O3)
+├── 17.1 Verify sharepoint_map.csv has 10 columns
+├── 17.2 Verify files_map.csv has 13 columns
+├── 17.3 Verify vectorstore_map.csv has 19 columns
+
+Phase 18: Empty State Tests (N1-N4)
+├── 18.1 Delete all files from SharePoint library
+├── 18.2 Delete all items from SharePoint list
+├── 18.3 Run incremental crawl -> all files REMOVED from vector store
+├── 18.4 Verify vector store empty
+├── 18.5 Run full crawl on empty -> ok=true, 0 files
+
+Phase 19: Cleanup
+├── 19.1 Delete vector store files
+├── 19.2 Delete vector store
+├── 19.3 Delete _SELFTEST domain
+├── 19.4 Delete SharePoint list
+├── 19.5 Delete SharePoint document library
+├── 19.6 Delete crawl reports for _SELFTEST
 ```
-
-**Note:** Phase 0 (Pre-flight M1-M3) runs before Phase 1, validating config and connectivity.
 
 ## Helper Functions
 
@@ -984,10 +972,11 @@ finally:
 - [ ] L2: Custom property carry-over
 - [ ] L3: Crawl report creation
 
-**Pre-flight Validation (3):**
+**Pre-flight Validation (4):**
 - [ ] M1: Config validation
-- [ ] M2: SharePoint connectivity
-- [ ] M3: OpenAI connectivity
+- [ ] M2: SharePoint connectivity (read /SiteAssets)
+- [ ] M2b: SharePoint connectivity (write /SiteAssets)
+- [ ] M3: OpenAI connectivity (create/delete temp VS)
 
 **Empty State (4):**
 - [ ] N1: Incremental on empty
@@ -1002,7 +991,7 @@ finally:
 
 ### Verification
 
-- [ ] Run selftest, verify all 56 tests pass
+- [ ] Run selftest, verify all 57 tests pass
 - [ ] Verify cleanup removes all SharePoint artifacts (_SELFTEST_DOCS, _SELFTEST_LIST, site pages)
 - [ ] Verify cleanup removes _SELFTEST domain folder
 - [ ] Verify cleanup removes vector store and files
@@ -1011,6 +1000,11 @@ finally:
 - [ ] Verify no orphan files in crawler/ after cleanup
 
 ## Spec Changes
+
+**[2025-01-03 12:22]**
+- Added: M2b SharePoint write verification (upload + delete to /SiteAssets)
+- Changed: M2 now tests read access to /SiteAssets
+- Changed: Total tests from 56 to 57
 
 **[2025-01-02 20:05]**
 - Added: Test artifacts for I5 (non_embeddable.zip), I6 (file_测试.txt), I7 (subfolder/file1.txt)

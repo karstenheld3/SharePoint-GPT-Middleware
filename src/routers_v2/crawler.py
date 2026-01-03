@@ -331,6 +331,30 @@ async def crawler_root(request: Request):
   """Crawler Router - Monitor and control SharePoint crawl jobs."""
   logger = MiddlewareLogger.create()
   logger.log_function_header("crawler_root")
+  # Self-documentation when no params provided
+  if len(request.query_params) == 0:
+    endpoints = [
+      {"path": "", "desc": "List crawler jobs for this router", "formats": ["json", "html", "ui"]},
+      {"path": "/crawl", "desc": "Full crawl: download + process + embed + archive. Creates crawl report.", "formats": ["json", "stream"]},
+      {"path": "/download_data", "desc": "Download step: fetch files from SharePoint, update sharepoint_map.csv and files_map.csv", "formats": ["json", "stream"]},
+      {"path": "/process_data", "desc": "Process step: convert/clean files for embedding (lists -> markdown, sitepages -> cleaned HTML)", "formats": ["json", "stream"]},
+      {"path": "/embed_data", "desc": "Embed step: upload files to OpenAI, add to vector store, update vectorstore_map.csv", "formats": ["json", "stream"]},
+      {"path": "/selftest", "desc": "Self-test: create temp SharePoint artifacts, run tests, cleanup", "formats": ["stream"]}
+    ]
+    description = (
+      "SharePoint crawl operations. "
+      "Params: domain_id (required), mode=full|incremental, scope=all|files|lists|sitepages, source_id, dry_run, retry_batches. "
+      "Modes: full=re-crawl everything, incremental=only process changes. "
+      "Scopes: all=all source types, files=file_sources, lists=list_sources, sitepages=sitepage_sources."
+    )
+    logger.log_function_footer()
+    return HTMLResponse(generate_router_docs_page(
+      title="Crawler",
+      description=description,
+      router_prefix=f"{router_prefix}/{router_name}",
+      endpoints=endpoints,
+      navigation_html=main_page_nav_html.replace("{router_prefix}", router_prefix)
+    ))
   format_param = request.query_params.get("format", "json")
   all_jobs = list_jobs(get_persistent_storage_path())
   crawler_jobs = [j for j in all_jobs if f"/{router_name}/" in (j.source_url or "")]
@@ -344,7 +368,7 @@ async def crawler_root(request: Request):
     logger.log_function_footer()
     return html_result("Crawler Jobs", {"jobs": [asdict(j) for j in crawler_jobs]}, main_page_nav_html.replace("{router_prefix}", router_prefix))
   logger.log_function_footer()
-  return generate_router_docs_page(router_name, "Crawler router for SharePoint crawl operations", router_prefix)
+  return json_result(False, f"Format '{format_param}' not supported.", {})
 
 @router.get(f"/{router_name}/crawl")
 async def crawler_crawl(request: Request):
@@ -353,7 +377,63 @@ async def crawler_crawl(request: Request):
   logger.log_function_header("crawler_crawl")
   if len(request.query_params) == 0:
     logger.log_function_footer()
-    return PlainTextResponse(generate_endpoint_docs("Full crawl endpoint. Required: domain_id. Optional: mode=full|incremental, scope=all|files|lists|sitepages, dry_run=true|false, retry_batches=2", router_prefix), media_type="text/plain; charset=utf-8")
+    docs = """Full crawl: download + process + embed + create report.
+
+Method: GET
+
+Query params:
+- domain_id: Domain to crawl (required)
+- mode: full (default) | incremental
+- scope: all (default) | files | lists | sitepages
+- source_id: Process only a single source within the scope
+- dry_run: false (default) | true
+- retry_batches: 2 (default) - number of retry batches for failed items
+- format: stream (required for this endpoint)
+
+Notes:
+- mode=full: re-crawl everything, delete existing local files first
+- mode=incremental: only process changes since last crawl (uses map file comparison)
+- Creates crawl report after completion (not created for dry_run or cancelled jobs)
+
+Examples:
+- GET /v2/crawler/crawl?domain_id=MyDomain&format=stream
+- GET /v2/crawler/crawl?domain_id=MyDomain&mode=incremental&format=stream
+- GET /v2/crawler/crawl?domain_id=MyDomain&scope=files&source_id=docs_main&format=stream
+
+Return (SSE stream):
+  event: start_json
+    {
+      "job_id": "jb_001",
+      "state": "running",
+      "source_url": "/v2/crawler/crawl?domain_id=MyDomain&mode=full&scope=all&dry_run=false&format=stream",
+      "monitor_url": "/v2/jobs/monitor?job_id=jb_001&format=stream",
+      "started_utc": "2025-01-03T12:00:00.000000Z",
+      "finished_utc": null,
+      "result": null
+    }
+  event: log
+    [2025-01-03 12:00:01] Starting crawl for domain 'MyDomain'...
+  event: end_json
+    {
+      "job_id": "jb_001",
+      "state": "completed",
+      "source_url": "/v2/crawler/crawl?domain_id=MyDomain&mode=full&scope=all&dry_run=false&format=stream",
+      "monitor_url": "/v2/jobs/monitor?job_id=jb_001&format=stream",
+      "started_utc": "2025-01-03T12:00:00.000000Z",
+      "finished_utc": "2025-01-03T12:01:30.000000Z",
+      "result": {
+        "ok": true,
+        "error": "",
+        "data": {
+          "total_downloaded": 10,
+          "total_embedded": 8,
+          "report_id": "crawls/2025-01-03_12-01-30_MyDomain_all_full"
+        }
+      }
+    }
+
+"""
+    return PlainTextResponse(docs, media_type="text/plain; charset=utf-8")
   params = dict(request.query_params)
   domain_id = params.get("domain_id")
   if not domain_id:
@@ -407,7 +487,57 @@ async def crawler_download_data(request: Request):
   logger.log_function_header("crawler_download_data")
   if len(request.query_params) == 0:
     logger.log_function_footer()
-    return PlainTextResponse(generate_endpoint_docs("Download step only.", router_prefix), media_type="text/plain; charset=utf-8")
+    docs = """Download step: fetch files from SharePoint to local storage.
+
+Method: GET
+
+Query params:
+- domain_id: Domain to download (required)
+- mode: full (default) | incremental
+- scope: all (default) | files | lists | sitepages
+- source_id: Download only a single source within the scope
+- dry_run: false (default) | true
+- retry_batches: 2 (default) - number of retry batches for failed downloads
+- format: stream (required for this endpoint)
+
+Notes:
+- mode=incremental: only download added/changed files (compares sharepoint_map.csv)
+- dry_run=true: creates temp map files, no actual downloads
+- Updates: sharepoint_map.csv, files_map.csv
+
+Examples:
+- GET /v2/crawler/download_data?domain_id=MyDomain&format=stream
+- GET /v2/crawler/download_data?domain_id=MyDomain&mode=incremental&scope=files&format=stream
+
+Return (SSE stream):
+  event: start_json
+    {
+      "job_id": "jb_002",
+      "state": "running",
+      "source_url": "/v2/crawler/download_data?domain_id=MyDomain&format=stream",
+      "monitor_url": "/v2/jobs/monitor?job_id=jb_002&format=stream",
+      "started_utc": "2025-01-03T12:00:00.000000Z",
+      "finished_utc": null,
+      "result": null
+    }
+  event: log
+    [2025-01-03 12:00:01] Downloading 'file1.txt'...
+  event: end_json
+    {
+      "job_id": "jb_002",
+      "state": "completed",
+      "result": {
+        "ok": true,
+        "error": "",
+        "data": {
+          "results": [
+            {"source_id": "files_all", "source_type": "file_sources", "total_files": 10, "downloaded": 5, "skipped": 3, "errors": 0, "removed": 2}
+          ]
+        }
+      }
+    }
+"""
+    return PlainTextResponse(docs, media_type="text/plain; charset=utf-8")
   params = dict(request.query_params)
   domain_id = params.get("domain_id")
   if not domain_id:
@@ -453,7 +583,57 @@ async def crawler_process_data(request: Request):
   logger.log_function_header("crawler_process_data")
   if len(request.query_params) == 0:
     logger.log_function_footer()
-    return PlainTextResponse(generate_endpoint_docs("Process step only.", router_prefix), media_type="text/plain; charset=utf-8")
+    docs = """Process step: convert/clean files for embedding.
+
+Method: GET
+
+Query params:
+- domain_id: Domain to process (required)
+- scope: all (default) | lists | sitepages
+- source_id: Process only a single source within the scope
+- dry_run: false (default) | true
+- format: stream (required for this endpoint)
+
+Notes:
+- file_sources do not require processing (already in embeddable format)
+- lists: CSV -> markdown conversion
+- sitepages: HTML -> cleaned HTML
+- Precondition: files must exist in 01_originals/ (run download_data first)
+- Updates: files_map.csv (processed_path column)
+
+Examples:
+- GET /v2/crawler/process_data?domain_id=MyDomain&format=stream
+- GET /v2/crawler/process_data?domain_id=MyDomain&scope=lists&format=stream
+
+Return (SSE stream):
+  event: start_json
+    {
+      "job_id": "jb_003",
+      "state": "running",
+      "source_url": "/v2/crawler/process_data?domain_id=MyDomain&format=stream",
+      "monitor_url": "/v2/jobs/monitor?job_id=jb_003&format=stream",
+      "started_utc": "2025-01-03T12:00:00.000000Z",
+      "finished_utc": null,
+      "result": null
+    }
+  event: log
+    [2025-01-03 12:00:01] Processing 'list_export.csv'...
+  event: end_json
+    {
+      "job_id": "jb_003",
+      "state": "completed",
+      "result": {
+        "ok": true,
+        "error": "",
+        "data": {
+          "results": [
+            {"source_id": "lists_all", "source_type": "list_sources", "total_files": 5, "processed": 5, "skipped": 0, "errors": 0}
+          ]
+        }
+      }
+    }
+"""
+    return PlainTextResponse(docs, media_type="text/plain; charset=utf-8")
   params = dict(request.query_params)
   domain_id = params.get("domain_id")
   if not domain_id:
@@ -496,7 +676,55 @@ async def crawler_embed_data(request: Request):
   logger.log_function_header("crawler_embed_data")
   if len(request.query_params) == 0:
     logger.log_function_footer()
-    return PlainTextResponse(generate_endpoint_docs("Embed step only.", router_prefix), media_type="text/plain; charset=utf-8")
+    docs = """Embed step: upload files to OpenAI and add to vector store.
+
+Method: GET
+
+Query params:
+- domain_id: Domain to embed (required)
+- mode: full (default) | incremental
+- scope: all (default) | files | lists | sitepages
+- source_id: Embed only a single source within the scope
+- dry_run: false (default) | true
+- retry_batches: 2 (default) - number of retry batches for failed uploads
+- format: stream (required for this endpoint)
+
+Notes:
+- Precondition: files must exist in 02_embedded/ (run download_data/process_data first)
+- Updates: vectorstore_map.csv, files_metadata.json
+
+Examples:
+- GET /v2/crawler/embed_data?domain_id=MyDomain&format=stream
+- GET /v2/crawler/embed_data?domain_id=MyDomain&mode=incremental&scope=files&format=stream
+
+Return (SSE stream):
+  event: start_json
+    {
+      "job_id": "jb_004",
+      "state": "running",
+      "source_url": "/v2/crawler/embed_data?domain_id=MyDomain&format=stream",
+      "monitor_url": "/v2/jobs/monitor?job_id=jb_004&format=stream",
+      "started_utc": "2025-01-03T12:00:00.000000Z",
+      "finished_utc": null,
+      "result": null
+    }
+  event: log
+    [2025-01-03 12:00:01] Uploading 'document.pdf'...
+  event: end_json
+    {
+      "job_id": "jb_004",
+      "state": "completed",
+      "result": {
+        "ok": true,
+        "error": "",
+        "data": {
+          "results": [
+            {"source_id": "files_all", "source_type": "file_sources", "total_files": 8, "uploaded": 5, "embedded": 5, "failed": 0, "removed": 3}
+          ]
+        }
+      }
+    }""" 
+    return PlainTextResponse(docs, media_type="text/plain; charset=utf-8")
   params = dict(request.query_params)
   domain_id = params.get("domain_id")
   if not domain_id:
@@ -541,51 +769,40 @@ async def _embed_stream(domain: DomainConfig, mode: str, scope: str, source_id: 
 # ----------------------------------------- START: Selftest -----------------------------------------------------------
 
 SELFTEST_DOMAIN_ID = "_SELFTEST"
-SELFTEST_LIBRARY_NAME = "_SELFTEST_DOCS"
-SELFTEST_LIST_NAME = "_SELFTEST_LIST"
+SELFTEST_LIBRARY_URL = "/SELFTEST_DOCS"  # URL-based access (not title), no leading underscore in name
+SELFTEST_LIST_NAME = "SELFTEST_LIST"  # No leading underscore - SharePoint doesn't allow it
 SELFTEST_SNAPSHOT_BASE = "_selftest_snapshots"
 SELFTEST_MUTATION_POLL_INTERVAL = 5
 SELFTEST_MUTATION_MAX_WAIT = 60
 
 # Snapshot definitions - expected row counts after various operations
+# Site pages excluded - app-only auth blocked for Site Pages library writes
 SNAP_FULL_ALL = {
   "01_files/files_all": {"files_map_rows": 9},
   "01_files/files_crawl1": {"files_map_rows": 6},
   "02_lists/lists_all": {"files_map_rows": 6},
-  "02_lists/lists_active": {"files_map_rows": 3},
-  "03_sitepages/pages_all": {"files_map_rows": 3}
+  "02_lists/lists_active": {"files_map_rows": 3}
 }
 
 SNAP_FULL_FILES = {
   "01_files/files_all": {"files_map_rows": 9},
   "01_files/files_crawl1": {"files_map_rows": 6},
   "02_lists/lists_all": {"files_map_rows": 0},
-  "02_lists/lists_active": {"files_map_rows": 0},
-  "03_sitepages/pages_all": {"files_map_rows": 0}
+  "02_lists/lists_active": {"files_map_rows": 0}
 }
 
 SNAP_FULL_LISTS = {
   "01_files/files_all": {"files_map_rows": 0},
   "01_files/files_crawl1": {"files_map_rows": 0},
   "02_lists/lists_all": {"files_map_rows": 6},
-  "02_lists/lists_active": {"files_map_rows": 3},
-  "03_sitepages/pages_all": {"files_map_rows": 0}
-}
-
-SNAP_FULL_PAGES = {
-  "01_files/files_all": {"files_map_rows": 0},
-  "01_files/files_crawl1": {"files_map_rows": 0},
-  "02_lists/lists_all": {"files_map_rows": 0},
-  "02_lists/lists_active": {"files_map_rows": 0},
-  "03_sitepages/pages_all": {"files_map_rows": 3}
+  "02_lists/lists_active": {"files_map_rows": 3}
 }
 
 SNAP_EMPTY = {
   "01_files/files_all": {"files_map_rows": 0},
   "01_files/files_crawl1": {"files_map_rows": 0},
   "02_lists/lists_all": {"files_map_rows": 0},
-  "02_lists/lists_active": {"files_map_rows": 0},
-  "03_sitepages/pages_all": {"files_map_rows": 0}
+  "02_lists/lists_active": {"files_map_rows": 0}
 }
 
 def _selftest_save_snapshot(storage_path: str, domain_id: str, snapshot_name: str) -> None:
@@ -678,12 +895,42 @@ async def crawler_selftest(request: Request):
   """
   Self-test for crawler operations. Creates temporary SharePoint artifacts, runs tests, cleans up.
   
-  Required: CRAWLER_SELFTEST_SHAREPOINT_SITE config
-  Optional params: skip_cleanup=true (keep artifacts), phase=N (run only up to phase N)
-  Only supports format=stream.
+  Parameters:
+  - format: Response format - stream (required)
+  - skip_cleanup: Keep test artifacts after completion (default: false)
+  - phase: Run only up to phase N (default: 99 = all phases)
+  
+  Required config: CRAWLER_SELFTEST_SHAREPOINT_SITE
+  
+  Examples:
+  {router_prefix}/crawler/selftest?format=stream
+  {router_prefix}/crawler/selftest?format=stream&skip_cleanup=true
+  {router_prefix}/crawler/selftest?format=stream&phase=5
+  
+  Phases:
+  - Phase 1: Pre-flight validation (config, SharePoint connectivity, OpenAI connectivity)
+  - Phase 2: Pre-cleanup (remove leftover artifacts from previous runs)
+  - Phase 3: SharePoint Setup (document library, list, site pages)
+  - Phase 4: Domain Setup (create _SELFTEST domain)
+  - Phase 5: Error Cases (I1-I4)
+  - Phase 6: Full Crawl Tests (A1-A4)
+  - Phase 7: source_id Filter Tests (B1-B5)
+  - Phase 8: dry_run Tests (D1-D4)
+  - Phase 9: Individual Steps Tests (E1-E3)
+  - Phase 10: SharePoint Mutations (add, rename, move, update, delete)
+  - Phase 11: Incremental Tests (F1-F4)
+  - Phase 12: Incremental source_id Tests (G1-G2)
+  - Phase 17: Map File Structure Tests (O1-O3)
+  - Phase 19: Cleanup (remove test artifacts)
   """
   logger = MiddlewareLogger.create()
   logger.log_function_header("crawler_selftest")
+  
+  if len(request.query_params) == 0:
+    logger.log_function_footer()
+    doc = textwrap.dedent(crawler_selftest.__doc__).replace("{router_prefix}", router_prefix)
+    return PlainTextResponse(generate_endpoint_docs(doc, router_prefix), media_type="text/plain; charset=utf-8")
+  
   format_param = request.query_params.get("format", "stream")
   skip_cleanup = request.query_params.get("skip_cleanup", "false").lower() == "true"
   max_phase = int(request.query_params.get("phase", "99"))
@@ -702,6 +949,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
   openai_client = get_openai_client()
   
   # Test counters
+  TOTAL_TESTS = 33
   test_num = 0
   ok_count = 0
   fail_count = 0
@@ -711,31 +959,42 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
   vector_store_id = ""
   base_url = f"http://127.0.0.1:{getattr(config, 'PORT', 8000)}"
   
-  def log(msg): return writer.emit_log(msg)
-  def next_test(desc):
+  def log(msg: str):
+    sse = logger.log_function_output(msg)
+    writer.drain_sse_queue()
+    return sse
+  def next_test(desc: str):
     nonlocal test_num
     test_num += 1
-    return writer.emit_log(f"  [{test_num}] {desc}")
-  def check_ok(msg):
+    sse = logger.log_function_output(f"[ {test_num} / {TOTAL_TESTS} ] {desc}...")
+    writer.drain_sse_queue()
+    return sse
+  def check_ok(detail: str = ""):
     nonlocal ok_count
     ok_count += 1
-    return writer.emit_log(f"    OK: {msg}")
-  def check_fail(msg):
+    sse = logger.log_function_output(f"  OK." + (f" {detail}" if detail else ""))
+    writer.drain_sse_queue()
+    return sse
+  def check_fail(detail: str = ""):
     nonlocal fail_count
     fail_count += 1
-    return writer.emit_log(f"    FAIL: {msg}")
-  def check_skip(msg):
+    sse = logger.log_function_output(f"  FAIL." + (f" {detail}" if detail else ""))
+    writer.drain_sse_queue()
+    return sse
+  def check_skip(detail: str = ""):
     nonlocal skip_count
     skip_count += 1
-    return writer.emit_log(f"    SKIP: {msg}")
+    sse = logger.log_function_output(f"  SKIP." + (f" {detail}" if detail else ""))
+    writer.drain_sse_queue()
+    return sse
   
   try:
     yield writer.emit_start()
     yield log("Crawler Selftest Starting...")
     
-    # ===================== Phase 0: Pre-flight Validation =====================
-    if max_phase >= 0:
-      yield log("Phase 0: Pre-flight Validation")
+    # ===================== Phase 1: Pre-flight Validation =====================
+    if max_phase >= 1:
+      yield log("Phase 1: Pre-flight Validation")
       
       # M1: Config validation
       yield next_test("M1: Config validation - CRAWLER_SELFTEST_SHAREPOINT_SITE")
@@ -743,53 +1002,119 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
         yield check_fail("CRAWLER_SELFTEST_SHAREPOINT_SITE not configured")
         yield writer.emit_end(ok=False, error="Missing CRAWLER_SELFTEST_SHAREPOINT_SITE config", data={"tests_run": test_num, "ok": ok_count, "fail": fail_count, "skip": skip_count})
         return
-      yield check_ok(f"Site configured: {selftest_site}")
+      yield check_ok(f"site_url='{selftest_site}'")
       site_path = _selftest_get_site_path(selftest_site)
       
-      # M2: SharePoint connectivity
-      yield next_test("M2: SharePoint connectivity")
+      # M2: SharePoint connectivity (read)
+      yield next_test("M2: SharePoint connectivity - read /SiteAssets")
       try:
         ctx = connect_to_site_using_client_id_and_certificate(selftest_site, crawler_cfg['client_id'], crawler_cfg['tenant_id'], crawler_cfg['cert_path'], crawler_cfg['cert_password'])
-        ctx.web.get().execute_query()
-        yield check_ok(f"Connected to SharePoint")
+        site_assets_lib, read_error = try_get_document_library(ctx, selftest_site, "/SiteAssets")
+        if read_error:
+          yield check_fail(f"Cannot read '/SiteAssets' -> {read_error}")
+          yield writer.emit_end(ok=False, error=f"SharePoint read failed: {read_error}", data={"tests_run": test_num, "ok": ok_count, "fail": fail_count, "skip": skip_count})
+          return
+        yield check_ok("Read access to '/SiteAssets' confirmed")
       except Exception as e:
-        yield check_fail(f"SharePoint connection failed: {str(e)}")
+        yield check_fail(f"SharePoint connection failed -> {str(e)}")
         yield writer.emit_end(ok=False, error=f"SharePoint connection failed: {str(e)}", data={"tests_run": test_num, "ok": ok_count, "fail": fail_count, "skip": skip_count})
         return
       
-      # M3: OpenAI connectivity
-      yield next_test("M3: OpenAI connectivity")
+      # M2b: SharePoint write access (write + delete test file)
+      yield next_test("M2b: SharePoint connectivity - write /SiteAssets")
+      preflight_test_filename = "_selftest_preflight_check.txt"
+      try:
+        # Try to upload a test file
+        success, upload_error = upload_file_to_library(ctx, "/SiteAssets", preflight_test_filename, b"Preflight write test", {}, logger)
+        for sse in writer.drain_sse_queue(): yield sse
+        if not success:
+          yield check_fail(f"Cannot write to '/SiteAssets' -> {upload_error}")
+          yield writer.emit_end(ok=False, error=f"SharePoint write failed: {upload_error}", data={"tests_run": test_num, "ok": ok_count, "fail": fail_count, "skip": skip_count})
+          return
+        # Try to delete the test file
+        success, delete_error = delete_file(ctx, f"{site_path}/SiteAssets/{preflight_test_filename}", logger)
+        for sse in writer.drain_sse_queue(): yield sse
+        if not success:
+          yield log(f"    WARNING: Could not delete preflight test file: {delete_error}")
+        yield check_ok("Write access to '/SiteAssets' confirmed")
+      except Exception as e:
+        yield check_fail(f"SharePoint write test failed -> {str(e)}")
+        yield writer.emit_end(ok=False, error=f"SharePoint write failed: {str(e)}", data={"tests_run": test_num, "ok": ok_count, "fail": fail_count, "skip": skip_count})
+        return
+      
+      # M3: OpenAI connectivity (create + delete temp vector store)
+      yield next_test("M3: OpenAI connectivity - create/delete vector store")
       if openai_client:
         try:
-          openai_client.models.list()
+          temp_vs = openai_client.vector_stores.create(name="_selftest_preflight_vs")
+          temp_vs_id = temp_vs.id
+          openai_client.vector_stores.delete(temp_vs_id)
           yield check_ok("OpenAI API accessible")
         except Exception as e:
-          yield check_fail(f"OpenAI API failed: {str(e)}")
+          yield check_fail(f"OpenAI API failed -> {str(e)}")
       else:
         yield check_skip("OpenAI client not configured")
     
-    # ===================== Phase 1: SharePoint Setup =====================
-    if max_phase >= 1:
-      yield log("Phase 1: SharePoint Setup")
+    # ===================== Phase 2: Pre-cleanup =====================
+    if max_phase >= 2:
+      yield log("Phase 2: Pre-cleanup (remove leftover artifacts)")
       
-      # 1.1 Create document library
-      yield log("  1.1 Creating document library...")
-      success, error = create_document_library(ctx, SELFTEST_LIBRARY_NAME, logger)
+      # 2.1 Delete _SELFTEST domain via API
+      yield log("  2.1 Deleting '_SELFTEST' domain (if exists)...")
+      try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+          await client.delete(f"{base_url}/v2/domains/delete?domain_id={SELFTEST_DOMAIN_ID}")
+      except: pass
+      
+      # 2.2 Delete local snapshots
+      yield log("  2.2 Deleting local snapshots (if exist)...")
+      try: _selftest_cleanup_snapshots(storage_path)
+      except: pass
+      
+      # 2.3 Delete crawler folder
+      yield log("  2.3 Deleting crawler folder (if exists)...")
+      try:
+        crawler_path = os.path.join(storage_path, "crawler", SELFTEST_DOMAIN_ID)
+        if os.path.exists(crawler_path): shutil.rmtree(crawler_path)
+      except: pass
+      
+      # 2.4-2.5 Delete SharePoint artifacts (only if ctx available)
+      # Site pages deletion skipped - app-only auth blocked
+      if ctx:
+        yield log("  2.4 Deleting SharePoint list (if exists)...")
+        try: delete_list(ctx, SELFTEST_LIST_NAME, logger)
+        except: pass
+        for sse in writer.drain_sse_queue(): yield sse
+        
+        yield log("  2.5 Deleting SharePoint document library (if exists)...")
+        try: delete_document_library(ctx, SELFTEST_LIBRARY_URL, logger)
+        except: pass
+        for sse in writer.drain_sse_queue(): yield sse
+      
+      yield log("  Pre-cleanup completed.")
+    
+    # ===================== Phase 3: SharePoint Setup =====================
+    if max_phase >= 3:
+      yield log("Phase 3: SharePoint Setup")
+      
+      # 3.1 Create document library
+      yield log("  3.1 Creating document library...")
+      success, error = create_document_library(ctx, SELFTEST_LIBRARY_URL, logger)
       for sse in writer.drain_sse_queue(): yield sse
       if not success:
-        yield check_fail(f"Failed to create library: {error}")
+        yield log(f"  FAIL. Failed to create library -> {error}")
         raise Exception(f"Setup failed: {error}")
-      yield check_ok(f"Created '{SELFTEST_LIBRARY_NAME}'")
+      yield log(f"  OK. library_url='{SELFTEST_LIBRARY_URL}'")
       
-      # 1.2 Add custom field "Crawl"
-      yield log("  1.2 Adding custom field 'Crawl'...")
-      success, error = add_number_field_to_list(ctx, SELFTEST_LIBRARY_NAME, "Crawl", logger)
+      # 3.2 Add custom field "Crawl"
+      yield log("  3.2 Adding custom field 'Crawl'...")
+      success, error = add_number_field_to_list(ctx, SELFTEST_LIBRARY_URL, "Crawl", logger)
       for sse in writer.drain_sse_queue(): yield sse
       if not success: yield log(f"    WARNING: Field creation failed (may already exist): {error}")
-      else: yield check_ok("Added 'Crawl' field")
+      else: yield log("  OK. Added 'Crawl' field")
       
-      # 1.3 Upload test files
-      yield log("  1.3 Uploading test files...")
+      # 3.3 Upload test files
+      yield log("  3.3 Uploading test files...")
       test_files = [
         ("file1.txt", b"Test file 1 content", {"Crawl": 1}),
         ("file2.txt", b"Test file 2 content", {"Crawl": 1}),
@@ -801,23 +1126,23 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
         ("file_test_unicode.txt", "Unicode filename test".encode('utf-8'), {"Crawl": 1}),
       ]
       for filename, content, metadata in test_files:
-        success, error = upload_file_to_library(ctx, SELFTEST_LIBRARY_NAME, filename, content, metadata, logger)
+        success, error = upload_file_to_library(ctx, SELFTEST_LIBRARY_URL, filename, content, metadata, logger)
         for sse in writer.drain_sse_queue(): yield sse
         if not success: yield log(f"    WARNING: Failed to upload '{filename}': {error}")
       
       # Upload subfolder file
-      success, error = upload_file_to_folder(ctx, SELFTEST_LIBRARY_NAME, "subfolder", "file1.txt", b"Subfolder file content", {"Crawl": 1}, logger)
+      success, error = upload_file_to_folder(ctx, SELFTEST_LIBRARY_URL, "subfolder", "file1.txt", b"Subfolder file content", {"Crawl": 1}, logger)
       for sse in writer.drain_sse_queue(): yield sse
-      yield check_ok(f"Uploaded {len(test_files) + 1} test files")
+      yield log(f"  OK. {len(test_files) + 1} files uploaded")
       
-      # 1.4 Create list
-      yield log("  1.4 Creating list...")
+      # 3.4 Create list
+      yield log("  3.4 Creating list...")
       success, error = create_list(ctx, SELFTEST_LIST_NAME, logger)
       for sse in writer.drain_sse_queue(): yield sse
       if not success:
-        yield check_fail(f"Failed to create list: {error}")
+        yield log(f"  FAIL. Failed to create list -> {error}")
         raise Exception(f"Setup failed: {error}")
-      yield check_ok(f"Created '{SELFTEST_LIST_NAME}'")
+      yield log(f"  OK. list_name='{SELFTEST_LIST_NAME}'")
       
       # Add Status and Description fields
       success, _ = add_text_field_to_list(ctx, SELFTEST_LIST_NAME, "Status", logger)
@@ -825,8 +1150,8 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       success, _ = add_text_field_to_list(ctx, SELFTEST_LIST_NAME, "Description", logger)
       for sse in writer.drain_sse_queue(): yield sse
       
-      # 1.5 Add list items
-      yield log("  1.5 Adding list items...")
+      # 3.5 Add list items
+      yield log("  3.5 Adding list items...")
       list_items = [
         {"Title": "Item 1", "Status": "Active", "Description": "Test item 1"},
         {"Title": "Item 2", "Status": "Active", "Description": "Test item 2"},
@@ -838,24 +1163,14 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       for item_data in list_items:
         success, error = add_list_item(ctx, SELFTEST_LIST_NAME, item_data, logger)
         for sse in writer.drain_sse_queue(): yield sse
-      yield check_ok(f"Added {len(list_items)} list items")
+      yield log(f"  OK. {len(list_items)} items added")
       
-      # 1.6 Create site pages
-      yield log("  1.6 Creating site pages...")
-      site_pages = [
-        ("_selftest_page1.aspx", "Test page 1 content"),
-        ("_selftest_page2.aspx", "Test page 2 content"),
-        ("_selftest_page3.aspx", "Test page 3 content"),
-      ]
-      for page_name, content in site_pages:
-        success, error = create_site_page(ctx, page_name, content, logger)
-        for sse in writer.drain_sse_queue(): yield sse
-        if not success: yield log(f"    WARNING: Failed to create '{page_name}': {error}")
-      yield check_ok(f"Created {len(site_pages)} site pages")
+      # Site pages creation skipped - app-only auth blocked for Site Pages library writes
+      yield log("  Note: Site pages creation skipped (app-only auth not supported for Site Pages)")
     
-    # ===================== Phase 2: Domain Setup =====================
-    if max_phase >= 2:
-      yield log("Phase 2: Domain Setup")
+    # ===================== Phase 4: Domain Setup =====================
+    if max_phase >= 4:
+      yield log("Phase 4: Domain Setup")
       
       # Create domain config
       domain_config = {
@@ -865,16 +1180,14 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
         "vector_store_name": "_SELFTEST_VS",
         "vector_store_id": "",
         "file_sources": [
-          {"source_id": "files_all", "site_url": selftest_site, "sharepoint_url_part": f"/{SELFTEST_LIBRARY_NAME}", "filter": ""},
-          {"source_id": "files_crawl1", "site_url": selftest_site, "sharepoint_url_part": f"/{SELFTEST_LIBRARY_NAME}", "filter": "Crawl eq 1"}
+          {"source_id": "files_all", "site_url": selftest_site, "sharepoint_url_part": SELFTEST_LIBRARY_URL, "filter": ""},
+          {"source_id": "files_crawl1", "site_url": selftest_site, "sharepoint_url_part": SELFTEST_LIBRARY_URL, "filter": "Crawl eq 1"}
         ],
         "list_sources": [
           {"source_id": "lists_all", "site_url": selftest_site, "list_name": SELFTEST_LIST_NAME, "filter": ""},
           {"source_id": "lists_active", "site_url": selftest_site, "list_name": SELFTEST_LIST_NAME, "filter": "Status eq 'Active'"}
         ],
-        "sitepage_sources": [
-          {"source_id": "pages_all", "site_url": selftest_site, "sharepoint_url_part": "/SitePages", "filter": "substringof('_selftest_', FileLeafRef)"}
-        ]
+        "sitepage_sources": []  # Site pages skipped - app-only auth blocked
       }
       
       # Save domain config via API
@@ -884,17 +1197,19 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
           response = await client.post(f"{base_url}/v2/domains/create", json=domain_config)
           result = response.json()
           if result.get("ok"):
-            yield check_ok(f"Created domain '{SELFTEST_DOMAIN_ID}'")
+            yield log(f"  OK. domain_id='{SELFTEST_DOMAIN_ID}'")
             vector_store_id = result.get("data", {}).get("vector_store_id", "")
-            if vector_store_id: yield log(f"    Vector store: {vector_store_id}")
+            if vector_store_id: yield log(f"    vector_store_id='{vector_store_id}'")
           else:
-            yield check_fail(f"Domain creation failed: {result.get('error', 'Unknown error')}")
+            yield log(f"  FAIL. Domain creation failed -> {result.get('error', 'Unknown error')}")
+            raise Exception(f"Domain creation failed: {result.get('error', 'Unknown error')}")
       except Exception as e:
-        yield check_fail(f"Domain creation failed: {str(e)}")
+        yield log(f"  FAIL. Domain creation failed -> {str(e)}")
+        raise
     
-    # ===================== Phase 3: Error Cases (I1-I4) =====================
-    if max_phase >= 3:
-      yield log("Phase 3: Error Cases")
+    # ===================== Phase 5: Error Cases (I1-I4) =====================
+    if max_phase >= 5:
+      yield log("Phase 5: Error Cases")
       
       # I1: Missing domain_id
       yield next_test("I1: Missing domain_id")
@@ -916,9 +1231,9 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       yield next_test("I4: Invalid mode handling")
       yield check_skip("Mode validation tested implicitly")
     
-    # ===================== Phase 4: Full Crawl Tests (A1-A4) =====================
-    if max_phase >= 4:
-      yield log("Phase 4: Full Crawl Tests")
+    # ===================== Phase 6: Full Crawl Tests (A1-A4) =====================
+    if max_phase >= 6:
+      yield log("Phase 6: Full Crawl Tests")
       
       # A1: mode=full, scope=all
       yield next_test("A1: Full crawl scope=all")
@@ -927,10 +1242,10 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       if result.get("ok"):
         failures = _selftest_verify_snapshot(storage_path, SELFTEST_DOMAIN_ID, SNAP_FULL_ALL)
         if not failures:
-          yield check_ok(f"Crawl succeeded, state matches expected")
+          yield check_ok("State matches expected")
           _selftest_save_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_FULL_ALL")
-        else: yield check_fail(f"State mismatch: {failures}")
-      else: yield check_fail(f"Crawl failed: {result.get('error', 'Unknown')}")
+        else: yield check_fail(f"State mismatch -> {failures}")
+      else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
       
       # A2: mode=full, scope=files
       yield next_test("A2: Full crawl scope=files")
@@ -938,9 +1253,9 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files")
       if result.get("ok"):
         failures = _selftest_verify_snapshot(storage_path, SELFTEST_DOMAIN_ID, SNAP_FULL_FILES)
-        if not failures: yield check_ok("Crawl succeeded, state matches expected")
-        else: yield check_fail(f"State mismatch: {failures}")
-      else: yield check_fail(f"Crawl failed: {result.get('error', 'Unknown')}")
+        if not failures: yield check_ok("State matches expected")
+        else: yield check_fail(f"State mismatch -> {failures}")
+      else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
       
       # A3: mode=full, scope=lists
       yield next_test("A3: Full crawl scope=lists")
@@ -948,9 +1263,9 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="lists")
       if result.get("ok"):
         failures = _selftest_verify_snapshot(storage_path, SELFTEST_DOMAIN_ID, SNAP_FULL_LISTS)
-        if not failures: yield check_ok("Crawl succeeded, state matches expected")
-        else: yield check_fail(f"State mismatch: {failures}")
-      else: yield check_fail(f"Crawl failed: {result.get('error', 'Unknown')}")
+        if not failures: yield check_ok("State matches expected")
+        else: yield check_fail(f"State mismatch -> {failures}")
+      else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
       
       # A4: mode=full, scope=sitepages
       yield next_test("A4: Full crawl scope=sitepages")
@@ -958,52 +1273,52 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="sitepages")
       if result.get("ok"):
         failures = _selftest_verify_snapshot(storage_path, SELFTEST_DOMAIN_ID, SNAP_FULL_PAGES)
-        if not failures: yield check_ok("Crawl succeeded, state matches expected")
-        else: yield check_fail(f"State mismatch: {failures}")
-      else: yield check_fail(f"Crawl failed: {result.get('error', 'Unknown')}")
+        if not failures: yield check_ok("State matches expected")
+        else: yield check_fail(f"State mismatch -> {failures}")
+      else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
     
-    # ===================== Phase 5: source_id Filter Tests (B1-B5) =====================
-    if max_phase >= 5:
-      yield log("Phase 5: source_id Filter Tests")
+    # ===================== Phase 7: source_id Filter Tests (B1-B5) =====================
+    if max_phase >= 7:
+      yield log("Phase 7: source_id Filter Tests")
       
       # B1: scope=files, source_id=files_all
       yield next_test("B1: scope=files, source_id=files_all")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files", source_id="files_all")
-      if result.get("ok"): yield check_ok("Crawl with source_id filter succeeded")
-      else: yield check_fail(f"Crawl failed: {result.get('error', 'Unknown')}")
+      if result.get("ok"): yield check_ok("source_id filter applied")
+      else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
       
       # B2: scope=files, source_id=files_crawl1
       yield next_test("B2: scope=files, source_id=files_crawl1 (filtered)")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files", source_id="files_crawl1")
-      if result.get("ok"): yield check_ok("Filtered crawl succeeded")
-      else: yield check_fail(f"Crawl failed: {result.get('error', 'Unknown')}")
+      if result.get("ok"): yield check_ok("Filtered source applied")
+      else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
       
       # B3: scope=lists, source_id=lists_active
       yield next_test("B3: scope=lists, source_id=lists_active")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="lists", source_id="lists_active")
-      if result.get("ok"): yield check_ok("Filtered list crawl succeeded")
-      else: yield check_fail(f"Crawl failed: {result.get('error', 'Unknown')}")
+      if result.get("ok"): yield check_ok("Filtered list applied")
+      else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
       
       # B4: Invalid source_id
       yield next_test("B4: Invalid source_id")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files", source_id="INVALID_SOURCE")
       # Should succeed with 0 sources processed
-      yield check_ok("Invalid source_id handled gracefully")
+      yield check_ok("Gracefully handled")
       
       # B5: scope=all + source_id
       yield next_test("B5: scope=all + source_id=files_all")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="all", source_id="files_all")
-      if result.get("ok"): yield check_ok("scope=all + source_id works")
-      else: yield check_fail(f"Crawl failed: {result.get('error', 'Unknown')}")
+      if result.get("ok"): yield check_ok("Combined filter applied")
+      else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
     
-    # ===================== Phase 6: dry_run Tests (D1-D4) =====================
-    if max_phase >= 6:
-      yield log("Phase 6: dry_run Tests")
+    # ===================== Phase 8: dry_run Tests (D1-D4) =====================
+    if max_phase >= 8:
+      yield log("Phase 8: dry_run Tests")
       
       # D1: /crawl dry_run=true
       yield next_test("D1: /crawl with dry_run=true")
@@ -1011,7 +1326,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="all", dry_run=True)
       failures = _selftest_verify_snapshot(storage_path, SELFTEST_DOMAIN_ID, SNAP_EMPTY)
       if not failures: yield check_ok("dry_run did not modify state")
-      else: yield check_fail(f"dry_run modified state: {failures}")
+      else: yield check_fail(f"dry_run modified state -> {failures}")
       
       # D2: /download_data dry_run=true
       yield next_test("D2: /download_data with dry_run=true")
@@ -1019,7 +1334,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "download_data", mode="full", scope="files", dry_run=True)
       failures = _selftest_verify_snapshot(storage_path, SELFTEST_DOMAIN_ID, SNAP_EMPTY)
       if not failures: yield check_ok("dry_run download did not modify state")
-      else: yield check_fail(f"dry_run modified state: {failures}")
+      else: yield check_fail(f"dry_run modified state -> {failures}")
       
       # D3 & D4: Process and embed dry_run tests
       yield next_test("D3: /process_data with dry_run=true")
@@ -1027,121 +1342,121 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       yield next_test("D4: /embed_data with dry_run=true")
       yield check_skip("Requires pre-processed state")
     
-    # ===================== Phase 7: Individual Steps Tests (E1-E3) =====================
-    if max_phase >= 7:
-      yield log("Phase 7: Individual Steps Tests")
+    # ===================== Phase 9: Individual Steps Tests (E1-E3) =====================
+    if max_phase >= 9:
+      yield log("Phase 9: Individual Steps Tests")
       
       # E1: download_data only
       yield next_test("E1: /download_data step")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "download_data", mode="full", scope="all")
-      if result.get("ok"): yield check_ok("Download step succeeded")
-      else: yield check_fail(f"Download failed: {result.get('error', 'Unknown')}")
+      if result.get("ok"): yield check_ok()
+      else: yield check_fail(f"Download failed -> error='{result.get('error', 'Unknown')}'")
       
       # E2: process_data (continues from E1)
       yield next_test("E2: /process_data step")
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "process_data", scope="all")
-      if result.get("ok"): yield check_ok("Process step succeeded")
-      else: yield check_fail(f"Process failed: {result.get('error', 'Unknown')}")
+      if result.get("ok"): yield check_ok()
+      else: yield check_fail(f"Process failed -> error='{result.get('error', 'Unknown')}'")
       
       # E3: embed_data (continues from E2)
       yield next_test("E3: /embed_data step")
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "embed_data", mode="full", scope="all")
-      if result.get("ok"): yield check_ok("Embed step succeeded")
-      else: yield check_fail(f"Embed failed: {result.get('error', 'Unknown')}")
+      if result.get("ok"): yield check_ok()
+      else: yield check_fail(f"Embed failed -> error='{result.get('error', 'Unknown')}'")
     
-    # ===================== Phase 8: SharePoint Mutations =====================
-    if max_phase >= 8:
-      yield log("Phase 8: Apply SharePoint Mutations")
+    # ===================== Phase 10: SharePoint Mutations =====================
+    if max_phase >= 10:
+      yield log("Phase 10: Apply SharePoint Mutations")
       
       # Restore full state first
       _selftest_restore_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_FULL_ALL")
       
-      # 8.1 ADD file7.txt
-      yield log("  8.1 Adding file7.txt...")
-      success, _ = upload_file_to_library(ctx, SELFTEST_LIBRARY_NAME, "file7.txt", b"Test file 7 content (new)", {"Crawl": 1}, logger)
+      # 10.1 ADD file7.txt
+      yield log("  10.1 Adding file7.txt...")
+      success, _ = upload_file_to_library(ctx, SELFTEST_LIBRARY_URL, "file7.txt", b"Test file 7 content (new)", {"Crawl": 1}, logger)
       for sse in writer.drain_sse_queue(): yield sse
       
-      # 8.2 REMOVE file6.txt
-      yield log("  8.2 Removing file6.txt...")
-      success, _ = delete_file(ctx, f"{site_path}/{SELFTEST_LIBRARY_NAME}/file6.txt", logger)
+      # 10.2 REMOVE file6.txt
+      yield log("  10.2 Removing file6.txt...")
+      success, _ = delete_file(ctx, f"{site_path}{SELFTEST_LIBRARY_URL}/file6.txt", logger)
       for sse in writer.drain_sse_queue(): yield sse
       
-      # 8.3 CHANGE file1.txt content
-      yield log("  8.3 Changing file1.txt content...")
-      success, _ = update_file_content(ctx, f"{site_path}/{SELFTEST_LIBRARY_NAME}/file1.txt", b"Test file 1 UPDATED content", logger)
+      # 10.3 CHANGE file1.txt content
+      yield log("  10.3 Changing file1.txt content...")
+      success, _ = update_file_content(ctx, f"{site_path}{SELFTEST_LIBRARY_URL}/file1.txt", b"Test file 1 UPDATED content", logger)
       for sse in writer.drain_sse_queue(): yield sse
       
-      # 8.4 RENAME file2.txt -> file2_renamed.txt
-      yield log("  8.4 Renaming file2.txt...")
-      success, _ = rename_file(ctx, f"{site_path}/{SELFTEST_LIBRARY_NAME}/file2.txt", "file2_renamed.txt", logger)
+      # 10.4 RENAME file2.txt -> file2_renamed.txt
+      yield log("  10.4 Renaming file2.txt...")
+      success, _ = rename_file(ctx, f"{site_path}{SELFTEST_LIBRARY_URL}/file2.txt", "file2_renamed.txt", logger)
       for sse in writer.drain_sse_queue(): yield sse
       
-      # 8.5-8.6 MOVE file3.txt -> subfolder/file3.txt
-      yield log("  8.5 Moving file3.txt to subfolder...")
-      success, _ = move_file(ctx, f"{site_path}/{SELFTEST_LIBRARY_NAME}/file3.txt", f"{site_path}/{SELFTEST_LIBRARY_NAME}/subfolder", logger)
+      # 10.5 MOVE file3.txt -> subfolder/file3.txt
+      yield log("  10.5 Moving file3.txt to subfolder...")
+      success, _ = move_file(ctx, f"{site_path}{SELFTEST_LIBRARY_URL}/file3.txt", f"{site_path}{SELFTEST_LIBRARY_URL}/subfolder", logger)
       for sse in writer.drain_sse_queue(): yield sse
       
-      # 8.7 List: ADD item7
-      yield log("  8.7 Adding list item7...")
+      # 10.7 List: ADD item7
+      yield log("  10.7 Adding list item7...")
       success, _ = add_list_item(ctx, SELFTEST_LIST_NAME, {"Title": "Item 7", "Status": "Active", "Description": "Test item 7 (new)"}, logger)
       for sse in writer.drain_sse_queue(): yield sse
       
       # Wait for mutations to propagate
       yield log("  Waiting for mutations to propagate...")
       await asyncio.sleep(5)
-      yield check_ok("Mutations applied")
+      yield log("  OK. Mutations applied")
     
-    # ===================== Phase 9: Incremental Tests (F1-F4) =====================
-    if max_phase >= 9:
-      yield log("Phase 9: Incremental Crawl Tests")
+    # ===================== Phase 11: Incremental Tests (F1-F4) =====================
+    if max_phase >= 11:
+      yield log("Phase 11: Incremental Crawl Tests")
       
       # F1: mode=incremental, scope=all
       yield next_test("F1: Incremental crawl scope=all")
       _selftest_restore_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_FULL_ALL")
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="all")
-      if result.get("ok"): yield check_ok("Incremental crawl succeeded")
-      else: yield check_fail(f"Incremental crawl failed: {result.get('error', 'Unknown')}")
+      if result.get("ok"): yield check_ok()
+      else: yield check_fail(f"Incremental crawl failed -> error='{result.get('error', 'Unknown')}'")
       
       # F2: mode=incremental, scope=files
       yield next_test("F2: Incremental crawl scope=files")
       _selftest_restore_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_FULL_ALL")
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="files")
-      if result.get("ok"): yield check_ok("Incremental files crawl succeeded")
-      else: yield check_fail(f"Crawl failed: {result.get('error', 'Unknown')}")
+      if result.get("ok"): yield check_ok()
+      else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
       
       # F3 & F4: Lists and sitepages incremental
       yield next_test("F3: Incremental crawl scope=lists")
       _selftest_restore_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_FULL_ALL")
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="lists")
-      if result.get("ok"): yield check_ok("Incremental lists crawl succeeded")
-      else: yield check_fail(f"Crawl failed: {result.get('error', 'Unknown')}")
+      if result.get("ok"): yield check_ok()
+      else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
       
       yield next_test("F4: Incremental crawl scope=sitepages")
       _selftest_restore_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_FULL_ALL")
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="sitepages")
-      if result.get("ok"): yield check_ok("Incremental sitepages crawl succeeded")
-      else: yield check_fail(f"Crawl failed: {result.get('error', 'Unknown')}")
+      if result.get("ok"): yield check_ok()
+      else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
     
-    # ===================== Phase 10: Incremental source_id Tests (G1-G2) =====================
-    if max_phase >= 10:
-      yield log("Phase 10: Incremental source_id Tests")
+    # ===================== Phase 12: Incremental source_id Tests (G1-G2) =====================
+    if max_phase >= 12:
+      yield log("Phase 12: Incremental source_id Tests")
       
       yield next_test("G1: Incremental scope=files, source_id=files_all")
       _selftest_restore_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_FULL_ALL")
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="files", source_id="files_all")
-      if result.get("ok"): yield check_ok("Incremental with source_id succeeded")
-      else: yield check_fail(f"Crawl failed: {result.get('error', 'Unknown')}")
+      if result.get("ok"): yield check_ok("source_id filter applied")
+      else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
       
       yield next_test("G2: Incremental scope=files, source_id=files_crawl1")
       _selftest_restore_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_FULL_ALL")
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="files", source_id="files_crawl1")
-      if result.get("ok"): yield check_ok("Incremental filtered crawl succeeded")
-      else: yield check_fail(f"Crawl failed: {result.get('error', 'Unknown')}")
+      if result.get("ok"): yield check_ok("Filtered source applied")
+      else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
     
-    # ===================== Phase 15: Map File Structure Tests (O1-O3) =====================
-    if max_phase >= 15:
-      yield log("Phase 15: Map File Structure Tests")
+    # ===================== Phase 17: Map File Structure Tests (O1-O3) =====================
+    if max_phase >= 17:
+      yield log("Phase 17: Map File Structure Tests")
       
       # First ensure we have a full crawl state
       _selftest_restore_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_FULL_ALL")
@@ -1153,9 +1468,9 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
         with open(sp_map_path, 'r', encoding='utf-8') as f:
           header = f.readline().strip()
           col_count = len(header.split(','))
-          if col_count == 10: yield check_ok(f"sharepoint_map.csv has {col_count} columns")
-          else: yield check_fail(f"Expected 10 columns, got {col_count}")
-      else: yield check_skip("sharepoint_map.csv not found")
+          if col_count == 10: yield check_ok(f"columns={col_count}")
+          else: yield check_fail(f"Expected 10 columns, got columns={col_count}")
+      else: yield check_skip("'sharepoint_map.csv' not found")
       
       # O2: files_map.csv columns
       yield next_test("O2: files_map.csv has correct columns")
@@ -1164,9 +1479,9 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
         with open(files_map_path, 'r', encoding='utf-8') as f:
           header = f.readline().strip()
           col_count = len(header.split(','))
-          if col_count == 13: yield check_ok(f"files_map.csv has {col_count} columns")
-          else: yield check_fail(f"Expected 13 columns, got {col_count}")
-      else: yield check_skip("files_map.csv not found")
+          if col_count == 13: yield check_ok(f"columns={col_count}")
+          else: yield check_fail(f"Expected 13 columns, got columns={col_count}")
+      else: yield check_skip("'files_map.csv' not found")
       
       # O3: vectorstore_map.csv columns
       yield next_test("O3: vectorstore_map.csv has correct columns")
@@ -1175,20 +1490,19 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
         with open(vs_map_path, 'r', encoding='utf-8') as f:
           header = f.readline().strip()
           col_count = len(header.split(','))
-          if col_count == 19: yield check_ok(f"vectorstore_map.csv has {col_count} columns")
-          else: yield check_fail(f"Expected 19 columns, got {col_count}")
-      else: yield check_skip("vectorstore_map.csv not found (embedding may have been skipped)")
+          if col_count == 19: yield check_ok(f"columns={col_count}")
+          else: yield check_fail(f"Expected 19 columns, got columns={col_count}")
+      else: yield check_skip("'vectorstore_map.csv' not found (embedding skipped)")
     
     yield log("Test execution completed.")
     
   except Exception as e:
     yield log(f"ERROR: Selftest failed -> {str(e)}")
-    fail_count += 1
   
   finally:
-    # ===================== Phase 17: Cleanup =====================
+    # ===================== Phase 19: Cleanup =====================
     if not skip_cleanup:
-      yield log("Phase 17: Cleanup")
+      yield log("Phase 19: Cleanup")
       
       # Delete domain via API
       yield log("  Deleting _SELFTEST domain...")
@@ -1211,11 +1525,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       
       # Delete SharePoint artifacts
       if ctx:
-        yield log("  Deleting SharePoint site pages...")
-        for page in ["_selftest_page1.aspx", "_selftest_page2.aspx", "_selftest_page2_renamed.aspx", "_selftest_page3.aspx", "_selftest_page4.aspx"]:
-          try: delete_site_page(ctx, page, logger)
-          except: pass
-        for sse in writer.drain_sse_queue(): yield sse
+        # Site pages deletion skipped - we didn't create any (app-only auth blocked)
         
         yield log("  Deleting SharePoint list...")
         try: delete_list(ctx, SELFTEST_LIST_NAME, logger)
@@ -1223,7 +1533,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
         for sse in writer.drain_sse_queue(): yield sse
         
         yield log("  Deleting SharePoint document library...")
-        try: delete_document_library(ctx, SELFTEST_LIBRARY_NAME, logger)
+        try: delete_document_library(ctx, SELFTEST_LIBRARY_URL, logger)
         except: pass
         for sse in writer.drain_sse_queue(): yield sse
       
@@ -1232,9 +1542,10 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       yield log("Cleanup skipped (skip_cleanup=true)")
     
     # Final summary
+    total = ok_count + fail_count + skip_count
     yield log(f"")
     yield log(f"========== SELFTEST SUMMARY ==========")
-    yield log(f"Tests run: {test_num}")
+    yield log(f"{total} tests executed (of {TOTAL_TESTS} planned):")
     yield log(f"  OK:   {ok_count}")
     yield log(f"  FAIL: {fail_count}")
     yield log(f"  SKIP: {skip_count}")

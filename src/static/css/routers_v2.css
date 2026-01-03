@@ -347,4 +347,12 @@ tr.row-cancel-or-fail { color: #b03030; }
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 0.875rem;
   white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Error messages in modal header - handle long URLs and text */
+.modal-header p {
+  font-size: small;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }

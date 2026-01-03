@@ -404,32 +404,39 @@ def download_site_page_html(ctx: ClientContext, server_relative_url: str, target
 
 # ----------------------------------------- START: SharePoint Write Operations (Selftest) -----------------------------
 
-def create_document_library(ctx: ClientContext, library_name: str, logger: MiddlewareLogger) -> tuple[bool, str]:
-  """Create a document library. Returns (success, error_message)."""
+def create_document_library(ctx: ClientContext, library_url_part: str, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Create a document library. Accepts URL part (e.g., '/_SELFTEST_DOCS' or '_SELFTEST_DOCS'). Returns (success, error_message)."""
   logger.log_function_header("create_document_library()")
   try:
+    # Strip leading slash - Title doesn't have it
+    library_title = library_url_part.lstrip('/')
     from office365.sharepoint.lists.creation_information import ListCreationInformation
     list_info = ListCreationInformation()
-    list_info.Title = library_name
+    list_info.Title = library_title
     list_info.BaseTemplate = 101  # Document Library template
     ctx.web.lists.add(list_info).execute_query()
-    logger.log_function_output(f"Created document library '{library_name}'.")
+    logger.log_function_output(f"Created document library '{library_title}'.")
     logger.log_function_footer()
     return True, ""
   except Exception as e:
-    logger.log_function_output(f"  ERROR: Failed to create document library '{library_name}' -> {str(e)}")
+    logger.log_function_output(f"  ERROR: Failed to create document library '{library_url_part}' -> {str(e)}")
     logger.log_function_footer()
     return False, str(e)
 
-def add_number_field_to_list(ctx: ClientContext, list_name: str, field_name: str, logger: MiddlewareLogger) -> tuple[bool, str]:
-  """Add a number field to a list/library. Returns (success, error_message)."""
+def add_number_field_to_list(ctx: ClientContext, list_url_part: str, field_name: str, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Add a number field to a list/library. Uses URL-based access. Returns (success, error_message)."""
   logger.log_function_header("add_number_field_to_list()")
   try:
-    sp_list = ctx.web.lists.get_by_title(list_name)
+    # Get site path and construct server-relative URL
+    web = ctx.web.get().execute_query()
+    site_path = urlparse(web.url).path.rstrip('/')
+    if not list_url_part.startswith('/'): list_url_part = '/' + list_url_part
+    list_relative_url = site_path + list_url_part
+    sp_list = ctx.web.get_list(list_relative_url)
     from office365.sharepoint.fields.creation_information import FieldCreationInformation
     field_info = FieldCreationInformation(field_name, 9)  # 9 = Number field type
     sp_list.fields.add(field_info).execute_query()
-    logger.log_function_output(f"Added number field '{field_name}' to '{list_name}'.")
+    logger.log_function_output(f"Added number field '{field_name}' to '{list_url_part}'.")
     logger.log_function_footer()
     return True, ""
   except Exception as e:
@@ -453,18 +460,24 @@ def add_text_field_to_list(ctx: ClientContext, list_name: str, field_name: str, 
     logger.log_function_footer()
     return False, str(e)
 
-def upload_file_to_library(ctx: ClientContext, library_name: str, filename: str, content: bytes, metadata: dict, logger: MiddlewareLogger) -> tuple[bool, str]:
-  """Upload file to document library with optional metadata. Returns (success, error_message)."""
+def upload_file_to_library(ctx: ClientContext, library_url_part: str, filename: str, content: bytes, metadata: dict, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Upload file to document library root folder. Uses URL-based access (not title). Returns (success, error_message)."""
   logger.log_function_header("upload_file_to_library()")
   try:
-    sp_list = ctx.web.lists.get_by_title(library_name)
+    # Get site path from context and construct server-relative URL
+    web = ctx.web.get().execute_query()
+    site_path = urlparse(web.url).path.rstrip('/')
+    if not library_url_part.startswith('/'): library_url_part = '/' + library_url_part
+    library_relative_url = site_path + library_url_part
+    # Get library by URL (not by title) and upload to root folder
+    sp_list = ctx.web.get_list(library_relative_url)
     root_folder = sp_list.root_folder
     uploaded_file = root_folder.upload_file(filename, content).execute_query()
     if metadata:
       list_item = uploaded_file.listItemAllFields.get().execute_query()
       for key, value in metadata.items(): list_item.set_property(key, value)
       list_item.update().execute_query()
-    logger.log_function_output(f"Uploaded '{filename}' to '{library_name}'.")
+    logger.log_function_output(f"Uploaded '{filename}' to '{library_url_part}'.")
     logger.log_function_footer()
     return True, ""
   except Exception as e:
@@ -472,11 +485,17 @@ def upload_file_to_library(ctx: ClientContext, library_name: str, filename: str,
     logger.log_function_footer()
     return False, str(e)
 
-def upload_file_to_folder(ctx: ClientContext, library_name: str, folder_path: str, filename: str, content: bytes, metadata: dict, logger: MiddlewareLogger) -> tuple[bool, str]:
-  """Upload file to a subfolder in document library. Creates folder if needed. Returns (success, error_message)."""
+def upload_file_to_folder(ctx: ClientContext, library_url_part: str, folder_path: str, filename: str, content: bytes, metadata: dict, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Upload file to a subfolder in document library. Uses URL-based access. Creates folder if needed. Returns (success, error_message)."""
   logger.log_function_header("upload_file_to_folder()")
   try:
-    sp_list = ctx.web.lists.get_by_title(library_name)
+    # Get site path from context and construct server-relative URL
+    web = ctx.web.get().execute_query()
+    site_path = urlparse(web.url).path.rstrip('/')
+    if not library_url_part.startswith('/'): library_url_part = '/' + library_url_part
+    library_relative_url = site_path + library_url_part
+    # Get library by URL (not by title) and upload to subfolder
+    sp_list = ctx.web.get_list(library_relative_url)
     root_folder = sp_list.root_folder.get().execute_query()
     target_folder = root_folder.folders.add(folder_path).execute_query()
     uploaded_file = target_folder.upload_file(filename, content).execute_query()
@@ -484,7 +503,7 @@ def upload_file_to_folder(ctx: ClientContext, library_name: str, folder_path: st
       list_item = uploaded_file.listItemAllFields.get().execute_query()
       for key, value in metadata.items(): list_item.set_property(key, value)
       list_item.update().execute_query()
-    logger.log_function_output(f"Uploaded '{folder_path}/{filename}' to '{library_name}'.")
+    logger.log_function_output(f"Uploaded '{folder_path}/{filename}' to '{library_url_part}'.")
     logger.log_function_footer()
     return True, ""
   except Exception as e:
@@ -567,17 +586,22 @@ def create_folder_in_library(ctx: ClientContext, library_name: str, folder_path:
     logger.log_function_footer()
     return False, str(e)
 
-def delete_document_library(ctx: ClientContext, library_name: str, logger: MiddlewareLogger) -> tuple[bool, str]:
-  """Delete entire document library. Returns (success, error_message)."""
+def delete_document_library(ctx: ClientContext, library_url_part: str, logger: MiddlewareLogger) -> tuple[bool, str]:
+  """Delete entire document library. Uses URL-based access. Returns (success, error_message)."""
   logger.log_function_header("delete_document_library()")
   try:
-    sp_list = ctx.web.lists.get_by_title(library_name)
+    # Get site path and construct server-relative URL
+    web = ctx.web.get().execute_query()
+    site_path = urlparse(web.url).path.rstrip('/')
+    if not library_url_part.startswith('/'): library_url_part = '/' + library_url_part
+    library_relative_url = site_path + library_url_part
+    sp_list = ctx.web.get_list(library_relative_url)
     sp_list.delete_object().execute_query()
-    logger.log_function_output(f"Deleted document library '{library_name}'.")
+    logger.log_function_output(f"Deleted document library '{library_url_part}'.")
     logger.log_function_footer()
     return True, ""
   except Exception as e:
-    logger.log_function_output(f"  ERROR: Failed to delete library '{library_name}' -> {str(e)}")
+    logger.log_function_output(f"  ERROR: Failed to delete library '{library_url_part}' -> {str(e)}")
     logger.log_function_footer()
     return False, str(e)
 
@@ -658,14 +682,13 @@ def delete_list(ctx: ClientContext, list_name: str, logger: MiddlewareLogger) ->
     return False, str(e)
 
 def create_site_page(ctx: ClientContext, page_name: str, content: str, logger: MiddlewareLogger) -> tuple[bool, str]:
-  """Create a site page. Returns (success, error_message)."""
+  """Create a site page by uploading an .aspx file to Site Pages library. Returns (success, error_message)."""
   logger.log_function_header("create_site_page()")
   try:
-    # Site pages are stored in the 'Site Pages' library
-    site_pages = ctx.web.lists.get_by_title("Site Pages")
-    html_content = f"<div>{content}</div>"
-    item_data = {"Title": page_name.replace('.aspx', ''), "FileLeafRef": page_name, "CanvasContent1": html_content}
-    site_pages.add_item(item_data).execute_query()
+    # Site Pages is a document library, not a list - must upload file, not add item
+    site_pages_folder = ctx.web.get_folder_by_server_relative_url("SitePages")
+    html_content = f"<html><head><title>{page_name.replace('.aspx', '')}</title></head><body><div>{content}</div></body></html>"
+    site_pages_folder.upload_file(page_name, html_content.encode('utf-8')).execute_query()
     logger.log_function_output(f"Created site page '{page_name}'.")
     logger.log_function_footer()
     return True, ""

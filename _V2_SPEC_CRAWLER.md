@@ -61,6 +61,49 @@ A **Domain** represents a knowledge base configuration for crawling SharePoint c
 - `sitepage_sources` - list of SharePoint site page sources
 - `vector_store_id` - target OpenAI vector store for embeddings
 
+**domain.json schema:**
+
+```json
+{
+  "name": "My Domain",
+  "description": "Domain description",
+  "vector_store_name": "my-vector-store",
+  "vector_store_id": "vs_abc123",
+  "file_sources": [
+    {
+      "source_id": "docs_main",
+      "site_url": "https://contoso.sharepoint.com/sites/MyProject",
+      "sharepoint_url_part": "/Shared Documents",
+      "filter": ""
+    }
+  ],
+  "list_sources": [
+    {
+      "source_id": "tasks",
+      "site_url": "https://contoso.sharepoint.com/sites/MyProject",
+      "list_name": "Project Tasks",
+      "filter": "Status eq 'Active'"
+    }
+  ],
+  "sitepage_sources": [
+    {
+      "source_id": "pages_all",
+      "site_url": "https://contoso.sharepoint.com/sites/MyProject",
+      "sharepoint_url_part": "/SitePages",
+      "filter": ""
+    }
+  ]
+}
+```
+
+**Source field definitions:**
+
+- `source_id` (All) - Unique identifier for this source within the domain
+- `site_url` (All) - SharePoint site URL (e.g., `https://contoso.sharepoint.com/sites/MyProject`)
+- `sharepoint_url_part` (FileSource, SitePageSource) - **URL path** to the library (e.g., `/Shared Documents`, `/SiteAssets`, `/SitePages`). Not the display title.
+- `list_name` (ListSource) - Display title of the SharePoint list (e.g., `Project Tasks`)
+- `filter` (All) - OData filter expression (empty string for no filter)
+
 ### Crawl
 
 A **Crawl** is a single execution of the crawling process for a domain. It performs download, processing, and embedding steps.
@@ -183,6 +226,8 @@ SharePoint ──► download_data ──► sharepoint_map.csv ─┐
 **V2CR-DD-04:** Move over re-download for WRONG_PATH. Moving files is faster and preserves download timestamps; content is already correct.
 
 **V2CR-DD-05:** files_metadata.json keyed by `openai_file_id`. Allows multiple entries for same SharePoint file (version history) while enabling carry-over of extracted metadata.
+
+**V2CR-DD-06: URL-based library access.** Document libraries are accessed by their URL path (`sharepoint_url_part`), not by display title. This avoids issues where the library URL differs from its title (e.g., URL `/SiteAssets` vs title `Site Assets`). The implementation uses `ctx.web.get_list(server_relative_url)` instead of `ctx.web.lists.get_by_title(title)`.
 
 ## Implementation Guarantees
 
@@ -743,6 +788,12 @@ Endpoint: `GET /v2/crawler/cleanup_metadata?domain_id={id}`
 - **File restored (A10):** New entry created, carry-over from historical entry if exists
 
 ## Spec Changes
+
+**[2026-01-03 13:10]**
+- Added `domain.json` schema with complete example
+- Added source field definitions table
+- Added **V2CR-DD-06**: URL-based library access - document libraries accessed by `sharepoint_url_part` (URL path), not by display title
+- Clarified: `FileSource` and `SitePageSource` use `sharepoint_url_part`, `ListSource` uses `list_name`
 
 **[2024-12-27 17:38]**
 - Added `retry_batches=2` parameter for retry logic (download, process, embed steps)

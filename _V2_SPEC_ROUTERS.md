@@ -681,6 +681,13 @@ Two types of self-documentation exist:
 
 2. **Action endpoints** (e.g., `/v2/demorouter1/demo_endpoint`, `/v2/domains/get`) return **plain text (UTF-8)** with:
    - Docstring content with `{router_prefix}` placeholder replaced at runtime
+   - Required sections:
+     - **Description** - One-line summary of the endpoint
+     - **Method** - HTTP method (GET, POST, PUT, DELETE)
+     - **Query params** - List with (required) / (default) markers
+     - **Notes** - Behavioral details, preconditions, side effects
+     - **Examples** - Full URLs with HTTP method prefix
+     - **Return** - Full JSON objects with proper indentation for readability (not abbreviated with `...`)
 
 The `router_prefix` variable is set via `set_config()` when the router is initialized.
 
