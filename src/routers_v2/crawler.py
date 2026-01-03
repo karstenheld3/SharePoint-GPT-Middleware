@@ -11,7 +11,7 @@ from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from routers_v2.common_ui_functions_v2 import generate_router_docs_page, generate_endpoint_docs, json_result, html_result, generate_ui_page
 from routers_v2.common_logging_functions_v2 import MiddlewareLogger, UNKNOWN
 from routers_v2.common_job_functions_v2 import list_jobs, StreamingJobWriter, ControlAction
-from routers_v2.common_crawler_functions_v2 import DomainConfig, FileSource, ListSource, SitePageSource, load_domain, get_sources_for_scope, get_source_folder_path, get_embedded_folder_path, get_failed_folder_path, get_originals_folder_path, server_relative_url_to_local_path, get_file_relative_path, get_map_filename, cleanup_temp_map_files, is_file_embeddable, filter_embeddable_files, load_files_metadata, save_files_metadata, update_files_metadata, get_domain_path, SOURCE_TYPE_FOLDERS
+from routers_v2.common_crawler_functions_v2 import DomainConfig, FileSource, ListSource, SitePageSource, load_domain, save_domain_to_file, delete_domain_folder, get_sources_for_scope, get_source_folder_path, get_embedded_folder_path, get_failed_folder_path, get_originals_folder_path, server_relative_url_to_local_path, get_file_relative_path, get_map_filename, cleanup_temp_map_files, is_file_embeddable, filter_embeddable_files, load_files_metadata, save_files_metadata, update_files_metadata, get_domain_path, SOURCE_TYPE_FOLDERS
 from routers_v2.common_map_file_functions_v2 import SharePointMapRow, FilesMapRow, VectorStoreMapRow, ChangeDetectionResult, MapFileWriter, read_sharepoint_map, read_files_map, read_vectorstore_map, detect_changes, is_file_changed, is_file_changed_for_embed, sharepoint_map_row_to_files_map_row, files_map_row_to_vectorstore_map_row
 from routers_v2.common_sharepoint_functions_v2 import SharePointFile, connect_to_site_using_client_id_and_certificate, try_get_document_library, get_document_library_files, download_file_from_sharepoint, get_list_items, get_list_items_as_sharepoint_files, export_list_to_csv, get_site_pages, download_site_page_html, create_document_library, add_number_field_to_list, add_text_field_to_list, upload_file_to_library, upload_file_to_folder, update_file_content, rename_file, move_file, delete_file, create_folder_in_library, delete_document_library, create_list, add_list_item, update_list_item, delete_list_item, delete_list, create_site_page, update_site_page, rename_site_page, delete_site_page, file_exists_in_library
 from routers_v2.common_embed_functions_v2 import upload_file_to_openai, delete_file_from_openai, add_file_to_vector_store, remove_file_from_vector_store, list_vector_store_files, wait_for_vector_store_ready, get_failed_embeddings, upload_and_embed_file, remove_and_delete_file
@@ -1125,18 +1125,18 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       yield next_test("P2: Pre-cleanup (remove leftover artifacts)")
       cleanup_errors = []
       
-      # 2.1 Delete _SELFTEST domain via API (check if exists first)
+      # 2.1 Delete _SELFTEST domain (check if exists first) - use direct function calls to avoid HTTP deadlock
       yield log("  Checking domain...")
-      domain_existed = False
       try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-          r = await client.get(f"{base_url}/v2/domains/get?domain_id={SELFTEST_DOMAIN_ID}&format=json")
-          if r.status_code == 200:
-            domain_existed = True
-            yield log(f"    Found domain '{SELFTEST_DOMAIN_ID}', deleting...")
-            await client.delete(f"{base_url}/v2/domains/delete?domain_id={SELFTEST_DOMAIN_ID}")
-          else:
-            yield log(f"    Domain '{SELFTEST_DOMAIN_ID}' not found (OK)")
+        existing_domain = load_domain(storage_path, SELFTEST_DOMAIN_ID)
+        if existing_domain:
+          yield log(f"    Found domain '{SELFTEST_DOMAIN_ID}', deleting...")
+          delete_domain_folder(storage_path, SELFTEST_DOMAIN_ID, logger)
+          for sse in writer.drain_sse_queue(): yield sse
+        else:
+          yield log(f"    Domain '{SELFTEST_DOMAIN_ID}' not found (OK)")
+      except FileNotFoundError:
+        yield log(f"    Domain '{SELFTEST_DOMAIN_ID}' not found (OK)")
       except Exception as e:
         cleanup_errors.append(f"Domain cleanup failed: {e}")
       
@@ -1304,23 +1304,29 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
         "sources_json": json.dumps(sources)
       }
       
-      # Save domain config via API
-      yield log("  Creating domain via API...")
-      domain_created = False
+      # Save domain config directly (avoid HTTP to prevent deadlock)
+      yield log("  Creating domain...")
       try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-          response = await client.post(f"{base_url}/v2/domains/create", json=domain_config)
-          result = response.json()
-          if result.get("ok"):
-            domain_created = True
-            vector_store_id = result.get("data", {}).get("vector_store_id", "")
-            yield check_ok(f"domain_id='{SELFTEST_DOMAIN_ID}'" + (f", vector_store_id='{vector_store_id}'" if vector_store_id else ""))
-          else:
-            yield check_fail(f"Domain creation failed -> {result.get('error', 'Unknown error')}")
-            raise Exception(f"Domain creation failed: {result.get('error', 'Unknown error')}")
+        # Parse sources from the sources dict we already built
+        file_sources = [FileSource(**src) for src in sources.get('file_sources', [])]
+        list_sources = [ListSource(**src) for src in sources.get('list_sources', [])]
+        sitepage_sources = [SitePageSource(**src) for src in sources.get('sitepage_sources', [])]
+        
+        domain = DomainConfig(
+          domain_id=SELFTEST_DOMAIN_ID,
+          name="Crawler Selftest Domain",
+          description="Temporary domain for crawler selftest",
+          vector_store_name="_SELFTEST_VS",
+          vector_store_id="",
+          file_sources=file_sources,
+          list_sources=list_sources,
+          sitepage_sources=sitepage_sources
+        )
+        save_domain_to_file(storage_path, domain, logger)
+        for sse in writer.drain_sse_queue(): yield sse
+        yield check_ok(f"domain_id='{SELFTEST_DOMAIN_ID}'")
       except Exception as e:
-        if not domain_created:
-          yield check_fail(f"Domain creation failed -> {str(e)}")
+        yield check_fail(f"Domain creation failed -> {str(e)}")
         raise
       yield phase_end(4, "Domain Setup")
     
@@ -1854,11 +1860,11 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
     if not skip_cleanup:
       yield phase_start(19, "Cleanup")
       
-      # Delete domain via API
+      # Delete domain directly (avoid HTTP deadlock)
       yield log("  Deleting _SELFTEST domain...")
       try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-          await client.delete(f"{base_url}/v2/domains/delete?domain_id={SELFTEST_DOMAIN_ID}")
+        delete_domain_folder(storage_path, SELFTEST_DOMAIN_ID, logger)
+        for sse in writer.drain_sse_queue(): yield sse
       except: pass
       
       # Delete local snapshots
