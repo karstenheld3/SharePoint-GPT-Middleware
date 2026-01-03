@@ -253,8 +253,24 @@ Updated `TOTAL_TESTS` from 33 to 50.
 **Files changed**:
 - `src/routers_v2/crawler.py`: Updated client access pattern
 
+### Feature: Show selftest results in modal + harmonize result format
+
+**Status**: RESOLVED
+
+**Problem**: Crawler selftest did not show results in a modal like the Jobs selftest did. Also, the result data format was different (used `ok`, `fail`, `skip`, `tests_run` instead of `passed`, `failed`, `passed_tests`, `failed_tests`).
+
+**Fix**:
+1. Added `passed_tests` and `failed_tests` arrays to track test descriptions
+2. Updated `check_ok()` / `check_fail()` to append current test description to arrays
+3. Changed `emit_end` data format to match jobs selftest: `{passed, failed, passed_tests, failed_tests}`
+4. Updated `runSelftest()` to pass `{ showResult: 'modal' }` to `connectStream()`
+
+**Files changed**:
+- `src/routers_v2/crawler.py`: Harmonized result format and modal display
+
 ## Changelog
 
+- 2026-01-03 16:26: Added modal popup for selftest results + harmonized result format with jobs selftest
 - 2026-01-03 16:00: Fixed OpenAI client access - all 50 tests pass (50 OK, 0 FAIL, 0 SKIP)
 - 2026-01-03 15:32: Eliminated all 21 skips - all tests now produce OK or FAIL
 - 2026-01-03 15:07: Full selftest passes (50 tests: 29 OK, 0 FAIL, 21 SKIP)

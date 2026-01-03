@@ -997,6 +997,9 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
   ok_count = 0
   fail_count = 0
   skip_count = 0
+  passed_tests = []
+  failed_tests = []
+  current_test_desc = ""
   ctx = None
   site_path = ""
   vector_store_id = ""
@@ -1021,20 +1024,23 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
     writer.drain_sse_queue()
     return sse
   def next_test(desc: str):
-    nonlocal test_num
+    nonlocal test_num, current_test_desc
     test_num += 1
+    current_test_desc = desc
     sse = logger.log_function_output(f"[ {test_num} / {TOTAL_TESTS} ] {desc}...")
     writer.drain_sse_queue()
     return sse
   def check_ok(detail: str = ""):
     nonlocal ok_count
     ok_count += 1
+    passed_tests.append(current_test_desc + (f" -> {detail}" if detail else ""))
     sse = logger.log_function_output(f"  OK." + (f" {detail}" if detail else ""))
     writer.drain_sse_queue()
     return sse
   def check_fail(detail: str = ""):
     nonlocal fail_count
     fail_count += 1
+    failed_tests.append(current_test_desc + (f" -> {detail}" if detail else ""))
     sse = logger.log_function_output(f"  FAIL." + (f" {detail}" if detail else ""))
     writer.drain_sse_queue()
     return sse
@@ -1849,7 +1855,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
     yield log(f"=======================================")
     
     all_passed = fail_count == 0
-    yield writer.emit_end(ok=all_passed, error="" if all_passed else f"{fail_count} test(s) failed", data={"tests_run": test_num, "ok": ok_count, "fail": fail_count, "skip": skip_count})
+    yield writer.emit_end(ok=all_passed, error="" if all_passed else f"{fail_count} test(s) failed", data={"passed": ok_count, "failed": fail_count, "passed_tests": passed_tests, "failed_tests": failed_tests})
     writer.finalize()
 
 # ----------------------------------------- END: Selftest -------------------------------------------------------------
@@ -1949,7 +1955,7 @@ async function controlJob(jobId, action) {{
 }}
 function runSelftest() {{
   showToast('Selftest', 'Starting crawler selftest...', 'info');
-  connectStream('{router_prefix}/{router_name}/selftest?format=stream');
+  connectStream('{router_prefix}/{router_name}/selftest?format=stream', {{ showResult: 'modal' }});
 }}
 async function showJobResult(jobId) {{
   try {{
