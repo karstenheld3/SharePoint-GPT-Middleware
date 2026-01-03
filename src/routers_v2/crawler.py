@@ -470,10 +470,10 @@ Return (SSE stream):
   scope = params.get("scope", "all")
   if mode not in VALID_MODES:
     logger.log_function_footer()
-    return JSONResponse(json_result(False, f"Invalid value '{mode}' for 'mode' param. Valid: {VALID_MODES}", {}), status_code=400)
+    return JSONResponse({"ok": False, "error": f"Invalid value '{mode}' for 'mode' param. Valid: {VALID_MODES}", "data": {}}, status_code=400)
   if scope not in VALID_SCOPES:
     logger.log_function_footer()
-    return JSONResponse(json_result(False, f"Invalid value '{scope}' for 'scope' param. Valid: {VALID_SCOPES}", {}), status_code=400)
+    return JSONResponse({"ok": False, "error": f"Invalid value '{scope}' for 'scope' param. Valid: {VALID_SCOPES}", "data": {}}, status_code=400)
   source_id = params.get("source_id")
   format_param = params.get("format", "json")
   dry_run = params.get("dry_run", "false").lower() == "true"
@@ -580,10 +580,10 @@ Return (SSE stream):
   mode, scope, source_id = params.get("mode", "full"), params.get("scope", "all"), params.get("source_id")
   if mode not in VALID_MODES:
     logger.log_function_footer()
-    return JSONResponse(json_result(False, f"Invalid value '{mode}' for 'mode' param. Valid: {VALID_MODES}", {}), status_code=400)
+    return JSONResponse({"ok": False, "error": f"Invalid value '{mode}' for 'mode' param. Valid: {VALID_MODES}", "data": {}}, status_code=400)
   if scope not in VALID_SCOPES:
     logger.log_function_footer()
-    return JSONResponse(json_result(False, f"Invalid value '{scope}' for 'scope' param. Valid: {VALID_SCOPES}", {}), status_code=400)
+    return JSONResponse({"ok": False, "error": f"Invalid value '{scope}' for 'scope' param. Valid: {VALID_SCOPES}", "data": {}}, status_code=400)
   format_param, dry_run = params.get("format", "json"), params.get("dry_run", "false").lower() == "true"
   retry_batches = int(params.get("retry_batches", "2"))
   if format_param == "stream":
@@ -927,6 +927,13 @@ async def _selftest_run_crawl(base_url: str, domain_id: str, endpoint: str, mode
   try:
     async with httpx.AsyncClient(timeout=timeout) as client:
       async with client.stream("GET", url, params=params) as response:
+        # Handle non-2xx responses (e.g., 400 for invalid params)
+        if response.status_code != 200:
+          body = await response.aread()
+          try:
+            result = json.loads(body)
+            return {"ok": result.get("ok", False), "error": result.get("error", f"HTTP {response.status_code}")}
+          except: return {"ok": False, "error": f"HTTP {response.status_code}"}
         current_event_type = None
         async for line in response.aiter_lines():
           if line.startswith("event: "):
@@ -995,6 +1002,12 @@ async def crawler_selftest(request: Request):
   if format_param != "stream":
     logger.log_function_footer()
     return json_result(False, "Use format=stream for selftest.", {})
+  # CRST-DD-08: Concurrent execution prevention - check for running selftest jobs
+  running_jobs = list_jobs(get_persistent_storage_path(), router_name, state_filter="running")
+  selftest_running = any("/selftest" in j.source_url for j in running_jobs)
+  if selftest_running:
+    logger.log_function_footer()
+    return JSONResponse({"ok": False, "error": "Selftest already running.", "data": {}}, status_code=409)
   base_url = str(request.base_url).rstrip("/")
   openai_client = getattr(request.app.state, 'openai_client', None)
   return StreamingResponse(_selftest_stream(skip_cleanup, max_phase, logger, openai_client, base_url), media_type="text/event-stream")

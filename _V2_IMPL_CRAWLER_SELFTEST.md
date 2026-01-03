@@ -78,6 +78,8 @@ The crawler selftest:
 
 **CRST-DD-06:** List items exported as CSV to `01_originals/`, then converted to `.md` in `02_embedded/`.
 
+**CRST-DD-08:** Concurrent execution prevention using job system. Before starting selftest, check for existing running selftest jobs. Return 409 Conflict if already running. Uses existing job infrastructure for consistency.
+
 ## Test Strategy
 
 ### Snapshot-Based Verification
