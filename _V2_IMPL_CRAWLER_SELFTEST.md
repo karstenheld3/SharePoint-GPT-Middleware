@@ -441,9 +441,9 @@ After deleting all SharePoint content:
 - **O2**: files_map.csv has 13 columns
 - **O3**: vectorstore_map.csv has 19 columns
 
-### Total: 50 tests (site pages skipped, I5-I8 tested implicitly)
+### Total: 53 tests (site pages skipped, I5-I8 tested implicitly)
 
-**Implementation Status**: All 50 tests implemented and passing (2026-01-03)
+**Implementation Status**: All 53 tests implemented and passing (2026-01-03)
 
 ## Test Phases
 
@@ -920,13 +920,18 @@ finally:
 - [x] Implement test runner with all 19 phases
 - [x] Implement cleanup logic in finally block
 
-### Test Implementation (50 tests) - ALL COMPLETE
+### Test Implementation (53 tests) - ALL COMPLETE
 
 **Pre-flight Validation (4):**
 - [x] M1: Config validation
 - [x] M2: SharePoint connectivity (read /SiteAssets)
 - [x] M2b: SharePoint connectivity (write /SiteAssets)
 - [x] M3: OpenAI connectivity (create/delete temp VS)
+
+**Phase-Level Setup Tests (3):**
+- [x] P2: Pre-cleanup (checks existence, removes leftover artifacts)
+- [x] P3: SharePoint Setup (library, list, files)
+- [x] P4: Domain Setup (create domain with sources)
 
 **Error Cases (4 explicit + 4 implicit):**
 - [x] I1: Missing domain_id
@@ -993,7 +998,7 @@ finally:
 
 ### Verification
 
-- [x] Run selftest, verify all 50 tests pass (2026-01-03: 50 OK, 0 FAIL, 0 SKIP)
+- [x] Run selftest, verify all 53 tests pass (2026-01-03: 53 OK, 0 FAIL, 0 SKIP)
 - [x] Verify cleanup removes all SharePoint artifacts (SELFTEST_DOCS, SELFTEST_LIST)
 - [x] Verify cleanup removes _SELFTEST domain folder
 - [x] Verify cleanup removes vector store and files (when OpenAI configured)
@@ -1002,6 +1007,12 @@ finally:
 - [x] Verify no orphan files in crawler/ after cleanup
 
 ## Spec Changes
+
+**[2026-01-03 17:35]**
+- Added: P2, P3, P4 phase-level tests (Pre-cleanup, SharePoint Setup, Domain Setup)
+- Changed: Total tests from 50 to 53
+- Changed: Phase 2 now checks artifact existence before cleanup (no false ERRORs)
+- Changed: Phases 3/4 now use check_ok/check_fail for proper test assertions
 
 **[2026-01-03 16:00]**
 - Updated: All 50 tests implemented and passing
