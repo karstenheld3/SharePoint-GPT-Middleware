@@ -30,9 +30,6 @@ def set_config(app_config, prefix):
 def get_persistent_storage_path() -> str:
   return getattr(config, 'LOCAL_PERSISTENT_STORAGE_PATH', None) or ''
 
-def get_openai_client():
-  return getattr(config, 'openai_client', None)
-
 def get_crawler_config() -> dict:
   cert_filename = getattr(config, 'CRAWLER_CLIENT_CERTIFICATE_PFX_FILE', '') or ''
   cert_path = os.path.join(get_persistent_storage_path(), cert_filename) if cert_filename else ''
@@ -474,18 +471,19 @@ Return (SSE stream):
   dry_run = params.get("dry_run", "false").lower() == "true"
   retry_batches = int(params.get("retry_batches", "2"))
   if format_param == "stream":
-    return StreamingResponse(_crawl_stream(domain, mode, scope, source_id, dry_run, retry_batches, logger), media_type="text/event-stream")
+    openai_client = getattr(request.app.state, 'openai_client', None)
+    return StreamingResponse(_crawl_stream(domain, mode, scope, source_id, dry_run, retry_batches, logger, openai_client), media_type="text/event-stream")
   logger.log_function_footer()
   return json_result(False, "Use format=stream for crawl operations.", {})
 
-async def _crawl_stream(domain: DomainConfig, mode: str, scope: str, source_id: Optional[str], dry_run: bool, retry_batches: int, logger: MiddlewareLogger):
+async def _crawl_stream(domain: DomainConfig, mode: str, scope: str, source_id: Optional[str], dry_run: bool, retry_batches: int, logger: MiddlewareLogger, openai_client):
   writer = StreamingJobWriter(persistent_storage_path=get_persistent_storage_path(), router_name=router_name, action="crawl", object_id=domain.domain_id, source_url=f"{router_prefix}/{router_name}/crawl?domain_id={domain.domain_id}&mode={mode}&scope={scope}&dry_run={dry_run}", router_prefix=router_prefix)
   logger.stream_job_writer = writer
   started_utc, _ = _get_utc_now()
   try:
     yield writer.emit_start()
     yield logger.log_function_output(f"Starting crawl for domain '{domain.domain_id}'")
-    results = await crawl_domain(get_persistent_storage_path(), domain, mode, scope, source_id, dry_run, retry_batches, writer, logger, get_crawler_config(), get_openai_client())
+    results = await crawl_domain(get_persistent_storage_path(), domain, mode, scope, source_id, dry_run, retry_batches, writer, logger, get_crawler_config(), openai_client)
     for sse in writer.drain_sse_queue(): yield sse  # Yield queued log events from nested calls
     finished_utc, _ = _get_utc_now()
     if not dry_run and results.get("ok", False):
@@ -762,11 +760,12 @@ Return (SSE stream):
   format_param, dry_run = params.get("format", "json"), params.get("dry_run", "false").lower() == "true"
   retry_batches = int(params.get("retry_batches", "2"))
   if format_param == "stream":
-    return StreamingResponse(_embed_stream(domain, mode, scope, source_id, dry_run, retry_batches, logger), media_type="text/event-stream")
+    openai_client = getattr(request.app.state, 'openai_client', None)
+    return StreamingResponse(_embed_stream(domain, mode, scope, source_id, dry_run, retry_batches, logger, openai_client), media_type="text/event-stream")
   logger.log_function_footer()
   return json_result(False, "Use format=stream.", {})
 
-async def _embed_stream(domain: DomainConfig, mode: str, scope: str, source_id: Optional[str], dry_run: bool, retry_batches: int, logger: MiddlewareLogger):
+async def _embed_stream(domain: DomainConfig, mode: str, scope: str, source_id: Optional[str], dry_run: bool, retry_batches: int, logger: MiddlewareLogger, openai_client):
   writer = StreamingJobWriter(persistent_storage_path=get_persistent_storage_path(), router_name=router_name, action="embed_data", object_id=domain.domain_id, source_url=f"{router_prefix}/{router_name}/embed_data?domain_id={domain.domain_id}", router_prefix=router_prefix)
   logger.stream_job_writer = writer
   try:
@@ -774,7 +773,7 @@ async def _embed_stream(domain: DomainConfig, mode: str, scope: str, source_id: 
     job_id = writer.job_id if dry_run else None
     results = []
     for source_type, source in get_sources_for_scope(domain, scope, source_id):
-      result = await step_embed_source(get_persistent_storage_path(), domain, source, source_type, mode, dry_run, retry_batches, writer, logger, get_openai_client(), job_id)
+      result = await step_embed_source(get_persistent_storage_path(), domain, source, source_type, mode, dry_run, retry_batches, writer, logger, openai_client, job_id)
       for sse in writer.drain_sse_queue(): yield sse
       results.append(asdict(result))
     yield writer.emit_end(ok=True, data={"results": results})
@@ -981,16 +980,16 @@ async def crawler_selftest(request: Request):
   if format_param != "stream":
     logger.log_function_footer()
     return json_result(False, "Use format=stream for selftest.", {})
-  return StreamingResponse(_selftest_stream(skip_cleanup, max_phase, logger), media_type="text/event-stream")
+  openai_client = getattr(request.app.state, 'openai_client', None)
+  return StreamingResponse(_selftest_stream(skip_cleanup, max_phase, logger, openai_client), media_type="text/event-stream")
 
-async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: MiddlewareLogger):
+async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: MiddlewareLogger, openai_client):
   """Execute selftest as SSE stream."""
   writer = StreamingJobWriter(persistent_storage_path=get_persistent_storage_path(), router_name=router_name, action="selftest", object_id=SELFTEST_DOMAIN_ID, source_url=f"{router_prefix}/{router_name}/selftest", router_prefix=router_prefix)
   logger.stream_job_writer = writer
   storage_path = get_persistent_storage_path()
   selftest_site = getattr(config, 'CRAWLER_SELFTEST_SHAREPOINT_SITE', None)
   crawler_cfg = get_crawler_config()
-  openai_client = get_openai_client()
   
   # Test counters (M1-M3=4, I1-I4=4, A1-A4=4, B1-B5=5, D1-D4=4, E1-E3=3, F1-F4=4, G1-G2=2, H1-H2=2, J1-J4=4, K1-K4=4, L1-L3=3, O1-O3=3, N1-N4=4 = 50)
   TOTAL_TESTS = 50
@@ -1090,9 +1089,9 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       yield next_test("M3: OpenAI connectivity - create/delete vector store")
       if openai_client:
         try:
-          temp_vs = openai_client.vector_stores.create(name="_selftest_preflight_vs")
+          temp_vs = await openai_client.vector_stores.create(name="_selftest_preflight_vs")
           temp_vs_id = temp_vs.id
-          openai_client.vector_stores.delete(temp_vs_id)
+          await openai_client.vector_stores.delete(temp_vs_id)
           yield check_ok("OpenAI API accessible")
         except Exception as e:
           yield check_fail(f"OpenAI API failed -> {str(e)}")

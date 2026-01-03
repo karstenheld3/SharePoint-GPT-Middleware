@@ -233,8 +233,29 @@ Updated `TOTAL_TESTS` from 33 to 50.
 
 **Result**: All 50 tests now produce OK or FAIL, zero skips.
 
+### Issue: OpenAI client not accessible in crawler v2
+
+**Status**: RESOLVED
+
+**Problem**: M3 test failed with "OpenAI API failed -> 'coroutine' object has no attribute 'id'". OpenAI client was not being passed to streaming functions.
+
+**Root cause**: 
+1. `get_openai_client()` looked for `config.openai_client` which didn't exist
+2. In `app.py`, OpenAI client is stored in `app.state.openai_client`, not config
+3. Existing routers (v1 crawler, inventory) use `request.app.state.openai_client` pattern
+
+**Fix**:
+1. Updated endpoints (`/crawl`, `/embed_data`, `/selftest`) to get client from `request.app.state.openai_client`
+2. Pass `openai_client` as parameter to streaming functions (`_crawl_stream`, `_embed_stream`, `_selftest_stream`)
+3. Removed unused `get_openai_client()` helper function
+4. Added `await` to async OpenAI client calls in M3 test
+
+**Files changed**:
+- `src/routers_v2/crawler.py`: Updated client access pattern
+
 ## Changelog
 
+- 2026-01-03 16:00: Fixed OpenAI client access - all 50 tests pass (50 OK, 0 FAIL, 0 SKIP)
 - 2026-01-03 15:32: Eliminated all 21 skips - all tests now produce OK or FAIL
 - 2026-01-03 15:07: Full selftest passes (50 tests: 29 OK, 0 FAIL, 21 SKIP)
 - 2026-01-03 15:05: Implemented missing phases 13-18 (Job Control, Integrity, Edge Cases, Metadata, Empty State)
