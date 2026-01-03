@@ -992,8 +992,8 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
   selftest_site = getattr(config, 'CRAWLER_SELFTEST_SHAREPOINT_SITE', None)
   crawler_cfg = get_crawler_config()
   
-  # Test counters (M1-M3=4, I1-I4=4, A1-A4=4, B1-B5=5, D1-D4=4, E1-E3=3, F1-F4=4, G1-G2=2, H1-H2=2, J1-J4=4, K1-K4=4, L1-L3=3, O1-O3=3, N1-N4=4 = 50)
-  TOTAL_TESTS = 50
+  # Test counters: M1-M3=4, P2=1, P3=1, P4=1, I1-I4=4, A1-A4=4, B1-B5=5, D1-D4=4, E1-E3=3, F1-F4=4, G1-G2=2, H1-H2=2, J1-J4=4, K1-K4=4, L1-L3=3, O1-O3=3, N1-N4=4 = 53
+  TOTAL_TESTS = 53
   test_num = 0
   ok_count = 0
   fail_count = 0
@@ -1012,7 +1012,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
     return sse
   def phase_start(phase_num: int, name: str):
     marker = f"------------------ START: Phase {phase_num}: {name} "
-    marker = marker + "-" * max(0, 100 - len(marker))
+    marker = marker + "-" * max(0, 70 - len(marker))
     sse = logger.log_function_output("")
     writer.drain_sse_queue()
     sse = logger.log_function_output(marker)
@@ -1020,7 +1020,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
     return sse
   def phase_end(phase_num: int, name: str):
     marker = f"------------------ END: Phase {phase_num}: {name} "
-    marker = marker + "-" * max(0, 100 - len(marker))
+    marker = marker + "-" * max(0, 70 - len(marker))
     sse = logger.log_function_output(marker)
     writer.drain_sse_queue()
     return sse
@@ -1122,121 +1122,166 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
     # ===================== Phase 2: Pre-cleanup =====================
     if max_phase >= 2:
       yield phase_start(2, "Pre-cleanup")
+      yield next_test("P2: Pre-cleanup (remove leftover artifacts)")
+      cleanup_errors = []
       
-      # 2.1 Delete _SELFTEST domain via API
-      yield log("  2.1 Deleting '_SELFTEST' domain (if exists)...")
+      # 2.1 Delete _SELFTEST domain via API (check if exists first)
+      yield log("  Checking domain...")
+      domain_existed = False
       try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-          await client.delete(f"{base_url}/v2/domains/delete?domain_id={SELFTEST_DOMAIN_ID}")
-      except: pass
+          r = await client.get(f"{base_url}/v2/domains/get?domain_id={SELFTEST_DOMAIN_ID}&format=json")
+          if r.status_code == 200:
+            domain_existed = True
+            yield log(f"    Found domain '{SELFTEST_DOMAIN_ID}', deleting...")
+            await client.delete(f"{base_url}/v2/domains/delete?domain_id={SELFTEST_DOMAIN_ID}")
+          else:
+            yield log(f"    Domain '{SELFTEST_DOMAIN_ID}' not found (OK)")
+      except Exception as e:
+        cleanup_errors.append(f"Domain cleanup failed: {e}")
       
       # 2.2 Delete local snapshots
-      yield log("  2.2 Deleting local snapshots (if exist)...")
-      try: _selftest_cleanup_snapshots(storage_path)
-      except: pass
+      yield log("  Checking local snapshots...")
+      snapshots_path = os.path.join(storage_path, SELFTEST_SNAPSHOT_BASE)
+      if os.path.exists(snapshots_path):
+        yield log(f"    Found snapshots, deleting...")
+        try: _selftest_cleanup_snapshots(storage_path)
+        except Exception as e: cleanup_errors.append(f"Snapshot cleanup failed: {e}")
+      else:
+        yield log(f"    No snapshots found (OK)")
       
       # 2.3 Delete crawler folder
-      yield log("  2.3 Deleting crawler folder (if exists)...")
-      try:
-        crawler_path = os.path.join(storage_path, "crawler", SELFTEST_DOMAIN_ID)
-        if os.path.exists(crawler_path): shutil.rmtree(crawler_path)
-      except: pass
+      yield log("  Checking crawler folder...")
+      crawler_path = os.path.join(storage_path, "crawler", SELFTEST_DOMAIN_ID)
+      if os.path.exists(crawler_path):
+        yield log(f"    Found crawler folder, deleting...")
+        try: shutil.rmtree(crawler_path)
+        except Exception as e: cleanup_errors.append(f"Crawler folder cleanup failed: {e}")
+      else:
+        yield log(f"    No crawler folder found (OK)")
       
       # 2.4-2.5 Delete SharePoint artifacts (only if ctx available)
-      # Site pages deletion skipped - app-only auth blocked
       if ctx:
-        yield log("  2.4 Deleting SharePoint list (if exists)...")
-        try: delete_list(ctx, SELFTEST_LIST_NAME, logger)
-        except: pass
-        for sse in writer.drain_sse_queue(): yield sse
+        # Check and delete list
+        yield log("  Checking SharePoint list...")
+        try:
+          list_info = ctx.web.lists.get_by_title(SELFTEST_LIST_NAME).get().execute_query()
+          if list_info:
+            yield log(f"    Found list '{SELFTEST_LIST_NAME}', deleting...")
+            delete_list(ctx, SELFTEST_LIST_NAME, logger)
+            for sse in writer.drain_sse_queue(): yield sse
+        except:
+          yield log(f"    List '{SELFTEST_LIST_NAME}' not found (OK)")
         
-        yield log("  2.5 Deleting SharePoint document library (if exists)...")
-        try: delete_document_library(ctx, SELFTEST_LIBRARY_URL, logger)
-        except: pass
-        for sse in writer.drain_sse_queue(): yield sse
+        # Check and delete document library
+        yield log("  Checking SharePoint document library...")
+        try:
+          lib_info = ctx.web.get_list(f"/sites/{site_path}{SELFTEST_LIBRARY_URL}").get().execute_query()
+          if lib_info:
+            yield log(f"    Found library '{SELFTEST_LIBRARY_URL}', deleting...")
+            delete_document_library(ctx, SELFTEST_LIBRARY_URL, logger)
+            for sse in writer.drain_sse_queue(): yield sse
+        except:
+          yield log(f"    Library '{SELFTEST_LIBRARY_URL}' not found (OK)")
       
-      yield log("  Pre-cleanup completed.")
+      if cleanup_errors:
+        yield check_fail(f"{len(cleanup_errors)} error(s): {'; '.join(cleanup_errors)}")
+      else:
+        yield check_ok("Pre-cleanup completed")
       yield phase_end(2, "Pre-cleanup")
     
     # ===================== Phase 3: SharePoint Setup =====================
     if max_phase >= 3:
       yield phase_start(3, "SharePoint Setup")
+      yield next_test("P3: SharePoint Setup (library, list, files)")
+      setup_errors = []
       
       # 3.1 Create document library
-      yield log("  3.1 Creating document library...")
+      yield log("  Creating document library...")
       success, error = create_document_library(ctx, SELFTEST_LIBRARY_URL, logger)
       for sse in writer.drain_sse_queue(): yield sse
       if not success:
-        yield log(f"  FAIL. Failed to create library -> {error}")
-        raise Exception(f"Setup failed: {error}")
-      yield log(f"  OK. library_url='{SELFTEST_LIBRARY_URL}'")
+        setup_errors.append(f"Library creation failed: {error}")
+      else:
+        yield log(f"    OK. library_url='{SELFTEST_LIBRARY_URL}'")
       
       # 3.2 Add custom field "Crawl"
-      yield log("  3.2 Adding custom field 'Crawl'...")
-      success, error = add_number_field_to_list(ctx, SELFTEST_LIBRARY_URL, "Crawl", logger)
-      for sse in writer.drain_sse_queue(): yield sse
-      if not success: yield log(f"    WARNING: Field creation failed (may already exist): {error}")
-      else: yield log("  OK. Added 'Crawl' field")
+      if not setup_errors:
+        yield log("  Adding custom field 'Crawl'...")
+        success, error = add_number_field_to_list(ctx, SELFTEST_LIBRARY_URL, "Crawl", logger)
+        for sse in writer.drain_sse_queue(): yield sse
+        if not success: yield log(f"    WARNING: Field creation failed (may already exist): {error}")
+        else: yield log("    OK.")
       
       # 3.3 Upload test files
-      yield log("  3.3 Uploading test files...")
-      test_files = [
-        ("file1.txt", b"Test file 1 content", {"Crawl": 1}),
-        ("file2.txt", b"Test file 2 content", {"Crawl": 1}),
-        ("file3.txt", b"Test file 3 content", {"Crawl": 1}),
-        ("file4.txt", b"Test file 4 content", {"Crawl": 0}),
-        ("file5.txt", b"Test file 5 content", {"Crawl": 0}),
-        ("file6.txt", b"Test file 6 content", {"Crawl": 0}),
-        ("non_embeddable.zip", b"PK\x03\x04", {"Crawl": 1}),
-        ("file_test_unicode.txt", "Unicode filename test".encode('utf-8'), {"Crawl": 1}),
-      ]
-      for filename, content, metadata in test_files:
-        success, error = upload_file_to_library(ctx, SELFTEST_LIBRARY_URL, filename, content, metadata, logger)
+      if not setup_errors:
+        yield log("  Uploading test files...")
+        test_files = [
+          ("file1.txt", b"Test file 1 content", {"Crawl": 1}),
+          ("file2.txt", b"Test file 2 content", {"Crawl": 1}),
+          ("file3.txt", b"Test file 3 content", {"Crawl": 1}),
+          ("file4.txt", b"Test file 4 content", {"Crawl": 0}),
+          ("file5.txt", b"Test file 5 content", {"Crawl": 0}),
+          ("file6.txt", b"Test file 6 content", {"Crawl": 0}),
+          ("non_embeddable.zip", b"PK\x03\x04", {"Crawl": 1}),
+          ("file_test_unicode.txt", "Unicode filename test".encode('utf-8'), {"Crawl": 1}),
+        ]
+        for filename, content, metadata in test_files:
+          success, error = upload_file_to_library(ctx, SELFTEST_LIBRARY_URL, filename, content, metadata, logger)
+          for sse in writer.drain_sse_queue(): yield sse
+          if not success: yield log(f"    WARNING: Failed to upload '{filename}': {error}")
+        
+        # Upload subfolder file
+        success, error = upload_file_to_folder(ctx, SELFTEST_LIBRARY_URL, "subfolder", "file1.txt", b"Subfolder file content", {"Crawl": 1}, logger)
         for sse in writer.drain_sse_queue(): yield sse
-        if not success: yield log(f"    WARNING: Failed to upload '{filename}': {error}")
-      
-      # Upload subfolder file
-      success, error = upload_file_to_folder(ctx, SELFTEST_LIBRARY_URL, "subfolder", "file1.txt", b"Subfolder file content", {"Crawl": 1}, logger)
-      for sse in writer.drain_sse_queue(): yield sse
-      yield log(f"  OK. {len(test_files) + 1} files uploaded")
+        yield log(f"    OK. {len(test_files) + 1} files uploaded")
       
       # 3.4 Create list
-      yield log("  3.4 Creating list...")
-      success, error = create_list(ctx, SELFTEST_LIST_NAME, logger)
-      for sse in writer.drain_sse_queue(): yield sse
-      if not success:
-        yield log(f"  FAIL. Failed to create list -> {error}")
-        raise Exception(f"Setup failed: {error}")
-      yield log(f"  OK. list_name='{SELFTEST_LIST_NAME}'")
-      
-      # Add Status and Description fields
-      success, _ = add_text_field_to_list(ctx, SELFTEST_LIST_NAME, "Status", logger)
-      for sse in writer.drain_sse_queue(): yield sse
-      success, _ = add_text_field_to_list(ctx, SELFTEST_LIST_NAME, "Description", logger)
-      for sse in writer.drain_sse_queue(): yield sse
+      if not setup_errors:
+        yield log("  Creating list...")
+        success, error = create_list(ctx, SELFTEST_LIST_NAME, logger)
+        for sse in writer.drain_sse_queue(): yield sse
+        if not success:
+          setup_errors.append(f"List creation failed: {error}")
+        else:
+          yield log(f"    OK. list_name='{SELFTEST_LIST_NAME}'")
+          
+          # Add Status and Description fields
+          success, _ = add_text_field_to_list(ctx, SELFTEST_LIST_NAME, "Status", logger)
+          for sse in writer.drain_sse_queue(): yield sse
+          success, _ = add_text_field_to_list(ctx, SELFTEST_LIST_NAME, "Description", logger)
+          for sse in writer.drain_sse_queue(): yield sse
       
       # 3.5 Add list items
-      yield log("  3.5 Adding list items...")
-      list_items = [
-        {"Title": "Item 1", "Status": "Active", "Description": "Test item 1"},
-        {"Title": "Item 2", "Status": "Active", "Description": "Test item 2"},
-        {"Title": "Item 3", "Status": "Active", "Description": "Test item 3"},
-        {"Title": "Item 4", "Status": "Inactive", "Description": "Test item 4"},
-        {"Title": "Item 5", "Status": "Inactive", "Description": "Test item 5"},
-        {"Title": "Item 6", "Status": "Inactive", "Description": "Test item 6"},
-      ]
-      for item_data in list_items:
-        success, error = add_list_item(ctx, SELFTEST_LIST_NAME, item_data, logger)
-        for sse in writer.drain_sse_queue(): yield sse
-      yield log(f"  OK. {len(list_items)} items added")
+      if not setup_errors:
+        yield log("  Adding list items...")
+        list_items = [
+          {"Title": "Item 1", "Status": "Active", "Description": "Test item 1"},
+          {"Title": "Item 2", "Status": "Active", "Description": "Test item 2"},
+          {"Title": "Item 3", "Status": "Active", "Description": "Test item 3"},
+          {"Title": "Item 4", "Status": "Inactive", "Description": "Test item 4"},
+          {"Title": "Item 5", "Status": "Inactive", "Description": "Test item 5"},
+          {"Title": "Item 6", "Status": "Inactive", "Description": "Test item 6"},
+        ]
+        for item_data in list_items:
+          success, error = add_list_item(ctx, SELFTEST_LIST_NAME, item_data, logger)
+          for sse in writer.drain_sse_queue(): yield sse
+        yield log(f"    OK. {len(list_items)} items added")
       
       # Site pages creation skipped - app-only auth blocked for Site Pages library writes
       yield log("  Note: Site pages creation skipped (app-only auth)")
+      
+      if setup_errors:
+        yield check_fail(f"{len(setup_errors)} error(s): {'; '.join(setup_errors)}")
+        raise Exception(f"SharePoint setup failed: {setup_errors[0]}")
+      else:
+        yield check_ok(f"library='{SELFTEST_LIBRARY_URL}', list='{SELFTEST_LIST_NAME}', 9 files, 6 items")
       yield phase_end(3, "SharePoint Setup")
     
     # ===================== Phase 4: Domain Setup =====================
     if max_phase >= 4:
       yield phase_start(4, "Domain Setup")
+      yield next_test("P4: Domain Setup (create domain with sources)")
       
       # Create domain config - sources must be wrapped in sources_json string
       sources = {
@@ -1261,19 +1306,21 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       
       # Save domain config via API
       yield log("  Creating domain via API...")
+      domain_created = False
       try:
         async with httpx.AsyncClient(timeout=30.0) as client:
           response = await client.post(f"{base_url}/v2/domains/create", json=domain_config)
           result = response.json()
           if result.get("ok"):
-            yield log(f"  OK. domain_id='{SELFTEST_DOMAIN_ID}'")
+            domain_created = True
             vector_store_id = result.get("data", {}).get("vector_store_id", "")
-            if vector_store_id: yield log(f"    vector_store_id='{vector_store_id}'")
+            yield check_ok(f"domain_id='{SELFTEST_DOMAIN_ID}'" + (f", vector_store_id='{vector_store_id}'" if vector_store_id else ""))
           else:
-            yield log(f"  FAIL. Domain creation failed -> {result.get('error', 'Unknown error')}")
+            yield check_fail(f"Domain creation failed -> {result.get('error', 'Unknown error')}")
             raise Exception(f"Domain creation failed: {result.get('error', 'Unknown error')}")
       except Exception as e:
-        yield log(f"  FAIL. Domain creation failed -> {str(e)}")
+        if not domain_created:
+          yield check_fail(f"Domain creation failed -> {str(e)}")
         raise
       yield phase_end(4, "Domain Setup")
     
