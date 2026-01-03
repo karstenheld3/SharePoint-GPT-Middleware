@@ -268,8 +268,28 @@ Updated `TOTAL_TESTS` from 33 to 50.
 **Files changed**:
 - `src/routers_v2/crawler.py`: Harmonized result format and modal display
 
+### Fix: HTTP deadlock causing Phase 4 timeout
+
+**Status**: RESOLVED
+
+**Problem**: Phase 4 (Domain Setup) was timing out after 31 seconds with an empty error message. The selftest was making HTTP requests to itself (`/v2/domains/create`, `/v2/domains/delete`) during a streaming response, causing a deadlock in the async event loop.
+
+**Root cause**: FastAPI/uvicorn single-worker async handling. The streaming response was waiting for the HTTP request to complete, but the HTTP request couldn't complete because the server was busy with the streaming response.
+
+**Fix**:
+1. Replaced HTTP calls with direct function calls:
+   - Phase 2: `load_domain()` + `delete_domain_folder()` instead of GET/DELETE HTTP calls
+   - Phase 4: `save_domain_to_file()` instead of POST HTTP call
+   - Cleanup: `delete_domain_folder()` instead of DELETE HTTP call
+2. Added `save_domain_to_file` and `delete_domain_folder` to imports
+
+**Files changed**:
+- `src/routers_v2/crawler.py`: Replaced HTTP calls with direct function calls
+
 ## Changelog
 
+- 2026-01-03 17:48: Fixed HTTP deadlock in Phase 2/4/cleanup - use direct function calls instead of HTTP
+- 2026-01-03 17:35: Added P2, P3, P4 phase-level tests (53 total tests)
 - 2026-01-03 16:39: Added selftest options dialog with phase selection and skip_cleanup option
 - 2026-01-03 16:26: Added modal popup for selftest results + harmonized result format with jobs selftest
 - 2026-01-03 16:00: Fixed OpenAI client access - all 50 tests pass (50 OK, 0 FAIL, 0 SKIP)
