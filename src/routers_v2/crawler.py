@@ -993,8 +993,9 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
   selftest_site = getattr(config, 'CRAWLER_SELFTEST_SHAREPOINT_SITE', None)
   crawler_cfg = get_crawler_config()
   
-  # Test counters: M1-M4=4, P2=1, P3=1, P4=1, I1-I4=4, A1-A4=4, B1-B5=5, D1-D4=4, E1-E3=3, F1-F4=4, G1-G2=2, H1-H2=2, J1-J4=4, K1-K4=4, L1-L3=3, O1-O3=3, N1-N4=4 = 53
-  TOTAL_TESTS = 53
+  # Tests per phase: P1=4(M1-M4), P2=1, P3=1, P4=1, P5=4(I), P6=4(A), P7=5(B), P8=4(D), P9=3(E), P10=0, P11=4(F), P12=2(G), P13=2(H), P14=4(J), P15=4(K), P16=3(L), P17=3(O), P18=4(N), P19=0
+  PHASE_TESTS = {1: 4, 2: 1, 3: 1, 4: 1, 5: 4, 6: 4, 7: 5, 8: 4, 9: 3, 10: 0, 11: 4, 12: 2, 13: 2, 14: 4, 15: 4, 16: 3, 17: 3, 18: 4, 19: 0}
+  TOTAL_TESTS = sum(PHASE_TESTS.get(p, 0) for p in range(1, min(max_phase, 19) + 1))
   test_num = 0
   ok_count = 0
   fail_count = 0
