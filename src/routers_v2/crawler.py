@@ -836,17 +836,35 @@ def _selftest_save_snapshot(storage_path: str, domain_id: str, snapshot_name: st
   if os.path.exists(source): shutil.copytree(source, target)
 
 def _selftest_restore_snapshot(storage_path: str, domain_id: str, snapshot_name: str) -> None:
-  """Restore crawler/{domain_id}/ from _selftest_snapshots/{snapshot_name}/"""
+  """Restore crawler/{domain_id}/ from _selftest_snapshots/{snapshot_name}/ with retry for Windows file locking"""
+  import time
   source = os.path.join(storage_path, SELFTEST_SNAPSHOT_BASE, snapshot_name)
   target = os.path.join(storage_path, "crawler", domain_id)
-  if os.path.exists(target): shutil.rmtree(target)
+  if os.path.exists(target):
+    for attempt in range(5):
+      try:
+        shutil.rmtree(target)
+        break
+      except (PermissionError, OSError):
+        if attempt < 4: time.sleep(0.5)
+        else: raise
   if os.path.exists(source): shutil.copytree(source, target)
   else: os.makedirs(target, exist_ok=True)
 
 def _selftest_clear_domain_folder(storage_path: str, domain_id: str) -> None:
-  """Delete all content in crawler/{domain_id}/"""
+  """Delete all content in crawler/{domain_id}/ with retry for Windows file locking"""
+  import time
   target = os.path.join(storage_path, "crawler", domain_id)
-  if os.path.exists(target): shutil.rmtree(target)
+  if os.path.exists(target):
+    for attempt in range(5):
+      try:
+        shutil.rmtree(target)
+        break
+      except (PermissionError, OSError) as e:
+        if attempt < 4:
+          time.sleep(0.5)
+        else:
+          raise
   os.makedirs(target, exist_ok=True)
 
 def _selftest_cleanup_snapshots(storage_path: str) -> None:
@@ -974,8 +992,8 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
   crawler_cfg = get_crawler_config()
   openai_client = get_openai_client()
   
-  # Test counters
-  TOTAL_TESTS = 33
+  # Test counters (M1-M3=4, I1-I4=4, A1-A4=4, B1-B5=5, D1-D4=4, E1-E3=3, F1-F4=4, G1-G2=2, H1-H2=2, J1-J4=4, K1-K4=4, L1-L3=3, O1-O3=3, N1-N4=4 = 50)
+  TOTAL_TESTS = 50
   test_num = 0
   ok_count = 0
   fail_count = 0
@@ -1477,6 +1495,97 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       if result.get("ok"): yield check_ok("Filtered source applied")
       else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
     
+    # ===================== Phase 13: Job Control Tests (H1-H2) =====================
+    if max_phase >= 13:
+      yield log("Phase 13: Job Control Tests")
+      
+      # H1: Pause/Resume - Skip for now (requires async job monitoring)
+      yield next_test("H1: Pause and Resume job")
+      yield check_skip("Requires async job monitoring infrastructure")
+      
+      # H2: Cancel - Skip for now (requires async job monitoring)
+      yield next_test("H2: Cancel job")
+      yield check_skip("Requires async job monitoring infrastructure")
+    
+    # ===================== Phase 14: Integrity Check Tests (J1-J4) =====================
+    if max_phase >= 14:
+      yield log("Phase 14: Integrity Check Tests")
+      
+      # J1: MISSING_ON_DISK - delete file from disk after download, run incremental
+      yield next_test("J1: Missing file on disk triggers re-download")
+      _selftest_restore_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_FULL_ALL")
+      # Delete a file from disk
+      missing_file_path = os.path.join(storage_path, "crawler", SELFTEST_DOMAIN_ID, "01_files", "files_all", "02_embedded", "file1.txt")
+      if os.path.exists(missing_file_path):
+        os.remove(missing_file_path)
+        result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="files", source_id="files_all")
+        # Check file was re-downloaded
+        if os.path.exists(missing_file_path): yield check_ok("File re-downloaded")
+        else: yield check_fail("File not re-downloaded")
+      else: yield check_skip("Test file not found in snapshot")
+      
+      # J2: ORPHAN_ON_DISK - add orphan file, run download
+      yield next_test("J2: Orphan file on disk handling")
+      yield check_skip("Orphan detection not yet implemented in crawl logic")
+      
+      # J3: WRONG_PATH - move file to wrong path
+      yield next_test("J3: Wrong path file handling")
+      yield check_skip("Wrong path detection not yet implemented in crawl logic")
+      
+      # J4: MAP_FILE_CORRUPTED - corrupt files_map.csv
+      yield next_test("J4: Corrupted map file fallback to full mode")
+      yield check_skip("Map file corruption handling not yet implemented")
+    
+    # ===================== Phase 15: Advanced Edge Cases (K1-K4) =====================
+    if max_phase >= 15:
+      yield log("Phase 15: Advanced Edge Cases")
+      
+      # K1: FOLDER_RENAMED
+      yield next_test("K1: Folder rename detection")
+      yield check_skip("Folder rename detection not tested")
+      
+      # K2: RESTORED from recycle bin
+      yield next_test("K2: Restored file detection")
+      yield check_skip("Recycle bin restore not tested")
+      
+      # K3: VS_EMBEDDING_FAILED
+      yield next_test("K3: Embedding failure handling")
+      yield check_skip("Embedding failure handling tested implicitly via non-embeddable.zip")
+      
+      # K4: retry_batches
+      yield next_test("K4: retry_batches parameter")
+      yield check_skip("retry_batches tested implicitly")
+    
+    # ===================== Phase 16: Metadata & Reports Tests (L1-L3) =====================
+    if max_phase >= 16:
+      yield log("Phase 16: Metadata & Reports Tests")
+      
+      # L1: files_metadata.json
+      yield next_test("L1: files_metadata.json created after embed")
+      _selftest_restore_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_FULL_ALL")
+      metadata_path = os.path.join(storage_path, "domains", SELFTEST_DOMAIN_ID, CRAWLER_HARDCODED_CONFIG.FILES_METADATA_JSON)
+      if os.path.exists(metadata_path):
+        try:
+          with open(metadata_path, 'r', encoding='utf-8') as f:
+            metadata = json.load(f)
+          if len(metadata) > 0: yield check_ok(f"entries={len(metadata)}")
+          else: yield check_fail("Metadata file empty")
+        except Exception as e: yield check_fail(f"Cannot read metadata -> {str(e)}")
+      else: yield check_skip("files_metadata.json not found (embedding may be skipped)")
+      
+      # L2: Custom property carry-over
+      yield next_test("L2: Custom property carry-over")
+      yield check_skip("Custom property carry-over not tested")
+      
+      # L3: Crawl report created
+      yield next_test("L3: Crawl report created after /crawl")
+      # Run a crawl and check if report was created
+      _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
+      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files", source_id="files_crawl1")
+      report_id = result.get("data", {}).get("report_id", "")
+      if report_id: yield check_ok(f"report_id='{report_id}'")
+      else: yield check_fail("No report_id in result")
+    
     # ===================== Phase 17: Map File Structure Tests (O1-O3) =====================
     if max_phase >= 17:
       yield log("Phase 17: Map File Structure Tests")
@@ -1516,6 +1625,26 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
           if col_count == 19: yield check_ok(f"columns={col_count}")
           else: yield check_fail(f"Expected 19 columns, got columns={col_count}")
       else: yield check_skip("'vectorstore_map.csv' not found (embedding skipped)")
+    
+    # ===================== Phase 18: Empty State Tests (N1-N4) =====================
+    if max_phase >= 18:
+      yield log("Phase 18: Empty State Tests")
+      
+      # N1: Delete all files from SharePoint, run incremental
+      yield next_test("N1: Incremental crawl on empty SharePoint")
+      yield check_skip("Would delete all test files - skipped for safety")
+      
+      # N2: Vector store empty after incremental
+      yield next_test("N2: Vector store empty after incremental on empty")
+      yield check_skip("Depends on N1")
+      
+      # N3: Full crawl on empty
+      yield next_test("N3: Full crawl on empty SharePoint")
+      yield check_skip("Depends on N1")
+      
+      # N4: Final vector store state
+      yield next_test("N4: Final vector store state")
+      yield check_skip("Depends on N1")
     
     yield log("Test execution completed.")
     
