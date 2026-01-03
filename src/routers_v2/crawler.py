@@ -2005,7 +2005,7 @@ function showSelftestDialog() {{
     </div>
     <div class="modal-footer">
       <p class="modal-error"></p>
-      <button type="submit" form="selftest-form" class="btn-primary">Run Selftest</button>
+      <button type="submit" form="selftest-form" class="btn-primary">OK</button>
       <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
     </div>
   `;
