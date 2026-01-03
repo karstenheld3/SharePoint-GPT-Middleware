@@ -308,6 +308,10 @@ finally:
 
 ### Verification
 
-- [ ] Run selftest via UI
-- [ ] Verify all 29 tests pass
-- [ ] Verify cleanup removes test domains
+- [x] Run selftest via UI
+- [x] Verify all 29 tests pass
+- [x] Verify cleanup removes test domains
+
+## Spec Changes
+
+- 2026-01-03: All checklist items marked complete - implementation verified
