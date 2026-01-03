@@ -423,8 +423,8 @@ Tests V2CR-FR-03 and V2CR-FR-04 from _V2_SPEC_CRAWLER.md
 
 - **M1**: Config validation - CRAWLER_SELFTEST_SHAREPOINT_SITE must be set
 - **M2**: SharePoint connectivity (read) - read /SiteAssets library
-- **M2b**: SharePoint connectivity (write) - upload + delete test file to /SiteAssets
-- **M3**: OpenAI connectivity - create + delete temp vector store `_selftest_preflight_vs`
+- **M3**: SharePoint connectivity (write) - upload + delete test file to /SiteAssets
+- **M4**: OpenAI connectivity - create + delete temp vector store `_selftest_preflight_vs`
 
 ### N. Empty State (4 tests)
 
@@ -448,11 +448,11 @@ After deleting all SharePoint content:
 ## Test Phases
 
 ```
-Phase 1: Pre-flight Validation (M1-M3)
+Phase 1: Pre-flight Validation (M1-M4)
 ├── 1.1 M1: Verify CRAWLER_SELFTEST_SHAREPOINT_SITE configured
 ├── 1.2 M2: Test SharePoint read access to /SiteAssets
-├── 1.3 M2b: Test SharePoint write access (upload + delete test file)
-├── 1.4 M3: Test OpenAI connectivity (create + delete temp vector store)
+├── 1.3 M3: Test SharePoint write access (upload + delete test file)
+├── 1.4 M4: Test OpenAI connectivity (create + delete temp vector store)
 
 Phase 2: Pre-cleanup (remove leftover artifacts from previous runs)
 ├── 2.1 Delete _SELFTEST domain via API (ignore errors)
@@ -925,8 +925,8 @@ finally:
 **Pre-flight Validation (4):**
 - [x] M1: Config validation
 - [x] M2: SharePoint connectivity (read /SiteAssets)
-- [x] M2b: SharePoint connectivity (write /SiteAssets)
-- [x] M3: OpenAI connectivity (create/delete temp VS)
+- [x] M3: SharePoint connectivity (write /SiteAssets)
+- [x] M4: OpenAI connectivity (create/delete temp VS)
 
 **Phase-Level Setup Tests (3):**
 - [x] P2: Pre-cleanup (checks existence, removes leftover artifacts)
@@ -1021,7 +1021,7 @@ finally:
 - Fixed: OpenAI client access using request.app.state pattern
 
 **[2025-01-03 12:22]**
-- Added: M2b SharePoint write verification (upload + delete to /SiteAssets)
+- Added: M3 SharePoint write verification (upload + delete to /SiteAssets)
 - Changed: M2 now tests read access to /SiteAssets
 - Changed: Total tests from 56 to 57
 

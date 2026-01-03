@@ -993,7 +993,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
   selftest_site = getattr(config, 'CRAWLER_SELFTEST_SHAREPOINT_SITE', None)
   crawler_cfg = get_crawler_config()
   
-  # Test counters: M1-M3=4, P2=1, P3=1, P4=1, I1-I4=4, A1-A4=4, B1-B5=5, D1-D4=4, E1-E3=3, F1-F4=4, G1-G2=2, H1-H2=2, J1-J4=4, K1-K4=4, L1-L3=3, O1-O3=3, N1-N4=4 = 53
+  # Test counters: M1-M4=4, P2=1, P3=1, P4=1, I1-I4=4, A1-A4=4, B1-B5=5, D1-D4=4, E1-E3=3, F1-F4=4, G1-G2=2, H1-H2=2, J1-J4=4, K1-K4=4, L1-L3=3, O1-O3=3, N1-N4=4 = 53
   TOTAL_TESTS = 53
   test_num = 0
   ok_count = 0
@@ -1085,8 +1085,8 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
         yield writer.emit_end(ok=False, error=f"SharePoint connection failed: {str(e)}", data={"tests_run": test_num, "ok": ok_count, "fail": fail_count, "skip": skip_count})
         return
       
-      # M2b: SharePoint write access (write + delete test file)
-      yield next_test("M2b: SharePoint connectivity - write /SiteAssets")
+      # M3: SharePoint write access (write + delete test file)
+      yield next_test("M3: SharePoint connectivity - write /SiteAssets")
       preflight_test_filename = "_selftest_preflight_check.txt"
       try:
         # Try to upload a test file
@@ -1107,8 +1107,8 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
         yield writer.emit_end(ok=False, error=f"SharePoint write failed: {str(e)}", data={"tests_run": test_num, "ok": ok_count, "fail": fail_count, "skip": skip_count})
         return
       
-      # M3: OpenAI connectivity (create + delete temp vector store)
-      yield next_test("M3: OpenAI connectivity - create/delete vector store")
+      # M4: OpenAI connectivity (create + delete temp vector store)
+      yield next_test("M4: OpenAI connectivity - create/delete vector store")
       if openai_client:
         try:
           temp_vs = await openai_client.vector_stores.create(name="_selftest_preflight_vs")
