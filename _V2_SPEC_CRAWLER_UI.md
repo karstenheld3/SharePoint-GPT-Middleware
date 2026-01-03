@@ -42,17 +42,15 @@ Users need to monitor crawler progress, view real-time output, and control runni
 
 ## User Actions
 
-| Action | Trigger | Effect |
-|--------|---------|--------|
-| Run Selftest | Click [Run Selftest] button | Open selftest options dialog |
-| Delete Selected | Click [Delete (N)] button | Delete all checked jobs (with confirmation) |
-| Result | Click [Result] button | Show job result in modal dialog |
-| Monitor | Click [Monitor] button | Stream live output to console panel |
-| Pause | Click [Pause] button | Pause running job, button changes to [Resume] |
-| Resume | Click [Resume] button | Resume paused job, button changes to [Pause] |
-| Cancel | Click [Cancel] button | Stop job permanently |
-| Delete | Click [Delete] button | Delete individual job (with confirmation) |
-| Refresh | Click [Refresh] link | Reload jobs table |
+- **Run Selftest**: Click [Run Selftest] button -> Open selftest options dialog
+- **Delete Selected**: Click [Delete (N)] button -> Delete all checked jobs (with confirmation)
+- **Result**: Click [Result] button -> Show job result in modal dialog
+- **Monitor**: Click [Monitor] button -> Stream live output to console panel
+- **Pause**: Click [Pause] button -> Pause running job, button changes to [Resume]
+- **Resume**: Click [Resume] button -> Resume paused job, button changes to [Pause]
+- **Cancel**: Click [Cancel] button -> Stop job permanently
+- **Delete**: Click [Delete] button -> Delete individual job (with confirmation)
+- **Refresh**: Click [Refresh] link -> Reload jobs table
 
 ## UX Design
 
@@ -88,26 +86,22 @@ Users need to monitor crawler progress, view real-time output, and control runni
 
 ### Table Columns
 
-| Column | Source | Notes |
-|--------|--------|-------|
-| (checkbox) | - | Selection checkbox for bulk operations |
-| Job ID | `job.job_id` | Job identifier |
-| Endpoint | `job.source_url` | Parsed from source URL: `crawl`, `selftest`, etc. |
-| Domain ID | `job.source_url` | Parsed from `domain_id` query param |
-| State | `job.state` | `running`, `paused`, `completed`, `cancelled` |
-| Result | `job.result.ok` | `OK`, `FAIL`, or `-` |
-| Started | `job.started_utc` | Formatted timestamp |
-| Finished | `job.finished_utc` | Formatted timestamp or `-` |
-| Actions | - | Context-sensitive buttons |
+- **(checkbox)**: Selection checkbox for bulk operations
+- **Job ID**: `job.job_id` - Job identifier
+- **Endpoint**: `job.source_url` - Parsed from source URL: `crawl`, `selftest`, etc.
+- **Domain ID**: `job.source_url` - Parsed from `domain_id` query param
+- **State**: `job.state` - `running`, `paused`, `completed`, `cancelled`
+- **Result**: `job.result.ok` - `OK`, `FAIL`, or `-`
+- **Started**: `job.started_utc` - Formatted timestamp
+- **Finished**: `job.finished_utc` - Formatted timestamp or `-`
+- **Actions**: Context-sensitive buttons
 
-### Action Buttons
+### Action Buttons by State
 
-| State | Available Actions |
-|-------|-------------------|
-| `running` | [Monitor] [Pause] [Cancel] [Delete] |
-| `paused` | [Monitor] [Resume] [Cancel] [Delete] |
-| `completed` | [Result] [Monitor] [Delete] |
-| `cancelled` | [Result] [Monitor] [Delete] |
+- **running**: [Monitor] [Pause] [Cancel] [Delete]
+- **paused**: [Monitor] [Resume] [Cancel] [Delete]
+- **completed**: [Result] [Monitor] [Delete]
+- **cancelled**: [Result] [Monitor] [Delete]
 
 ### Result Modal Dialog
 
@@ -338,8 +332,7 @@ Most functionality reuses common UI functions.
 
 ## Spec Changes
 
-- 2026-01-03: Added delete functionality (bulk delete toolbar button + individual delete action button)
-- 2026-01-03: Added checkbox column for job selection
-- 2026-01-03: Added Selftest Options Dialog with phase selection and skip_cleanup option
-- 2026-01-03: Updated navigation links to match current implementation
-- 2026-01-03: Added [Run Selftest] toolbar button
+- 2026-01-03: Fixed Table Columns section to match implementation
+- 2026-01-03: Added delete functionality (bulk + individual), checkbox column
+- 2026-01-03: Added Selftest Options Dialog with phase selection and skip_cleanup
+- 2026-01-03: Added [Run Selftest] toolbar button, updated navigation links
