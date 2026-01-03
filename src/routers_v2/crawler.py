@@ -1010,7 +1010,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
     writer.drain_sse_queue()
     return sse
   def phase_start(phase_num: int, name: str):
-    marker = f"----------------------------------------- START: Phase {phase_num}: {name} "
+    marker = f"------------------ START: Phase {phase_num}: {name} "
     marker = marker + "-" * max(0, 100 - len(marker))
     sse = logger.log_function_output("")
     writer.drain_sse_queue()
@@ -1018,7 +1018,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
     writer.drain_sse_queue()
     return sse
   def phase_end(phase_num: int, name: str):
-    marker = f"----------------------------------------- END: Phase {phase_num}: {name} "
+    marker = f"------------------ END: Phase {phase_num}: {name} "
     marker = marker + "-" * max(0, 100 - len(marker))
     sse = logger.log_function_output(marker)
     writer.drain_sse_queue()
