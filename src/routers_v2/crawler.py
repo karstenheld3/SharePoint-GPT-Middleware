@@ -1006,6 +1006,20 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
     sse = logger.log_function_output(msg)
     writer.drain_sse_queue()
     return sse
+  def phase_start(phase_num: int, name: str):
+    marker = f"----------------------------------------- START: Phase {phase_num}: {name} "
+    marker = marker + "-" * max(0, 100 - len(marker))
+    sse = logger.log_function_output("")
+    writer.drain_sse_queue()
+    sse = logger.log_function_output(marker)
+    writer.drain_sse_queue()
+    return sse
+  def phase_end(phase_num: int, name: str):
+    marker = f"----------------------------------------- END: Phase {phase_num}: {name} "
+    marker = marker + "-" * max(0, 100 - len(marker))
+    sse = logger.log_function_output(marker)
+    writer.drain_sse_queue()
+    return sse
   def next_test(desc: str):
     nonlocal test_num
     test_num += 1
@@ -1037,7 +1051,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
     
     # ===================== Phase 1: Pre-flight Validation =====================
     if max_phase >= 1:
-      yield log("Phase 1: Pre-flight Validation")
+      yield phase_start(1, "Pre-flight Validation")
       
       # M1: Config validation
       yield next_test("M1: Config validation - CRAWLER_SELFTEST_SHAREPOINT_SITE")
@@ -1100,7 +1114,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
     
     # ===================== Phase 2: Pre-cleanup =====================
     if max_phase >= 2:
-      yield log("Phase 2: Pre-cleanup (remove leftover artifacts)")
+      yield phase_start(2, "Pre-cleanup")
       
       # 2.1 Delete _SELFTEST domain via API
       yield log("  2.1 Deleting '_SELFTEST' domain (if exists)...")
@@ -1135,10 +1149,11 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
         for sse in writer.drain_sse_queue(): yield sse
       
       yield log("  Pre-cleanup completed.")
+      yield phase_end(2, "Pre-cleanup")
     
     # ===================== Phase 3: SharePoint Setup =====================
     if max_phase >= 3:
-      yield log("Phase 3: SharePoint Setup")
+      yield phase_start(3, "SharePoint Setup")
       
       # 3.1 Create document library
       yield log("  3.1 Creating document library...")
@@ -1209,11 +1224,12 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       yield log(f"  OK. {len(list_items)} items added")
       
       # Site pages creation skipped - app-only auth blocked for Site Pages library writes
-      yield log("  Note: Site pages creation skipped (app-only auth not supported for Site Pages)")
+      yield log("  Note: Site pages creation skipped (app-only auth)")
+      yield phase_end(3, "SharePoint Setup")
     
     # ===================== Phase 4: Domain Setup =====================
     if max_phase >= 4:
-      yield log("Phase 4: Domain Setup")
+      yield phase_start(4, "Domain Setup")
       
       # Create domain config - sources must be wrapped in sources_json string
       sources = {
@@ -1252,10 +1268,11 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       except Exception as e:
         yield log(f"  FAIL. Domain creation failed -> {str(e)}")
         raise
+      yield phase_end(4, "Domain Setup")
     
     # ===================== Phase 5: Error Cases (I1-I4) =====================
     if max_phase >= 5:
-      yield log("Phase 5: Error Cases")
+      yield phase_start(5, "Error Cases")
       
       # I1: Missing domain_id
       yield next_test("I1: Missing domain_id")
@@ -1281,10 +1298,11 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="INVALID_MODE_XYZ", scope="files")
       if result.get("ok"): yield check_ok("Invalid mode gracefully defaulted")
       else: yield check_fail(f"Unexpected failure -> {result.get('error', 'Unknown')}")
+      yield phase_end(5, "Error Cases")
     
     # ===================== Phase 6: Full Crawl Tests (A1-A4) =====================
     if max_phase >= 6:
-      yield log("Phase 6: Full Crawl Tests")
+      yield phase_start(6, "Full Crawl Tests")
       
       # A1: mode=full, scope=all
       yield next_test("A1: Full crawl scope=all")
@@ -1325,10 +1343,11 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       # Should succeed with 0 sources processed (no sitepage_sources in domain config)
       if result.get("ok"): yield check_ok("Handled empty sitepage_sources")
       else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
+      yield phase_end(6, "Full Crawl Tests")
     
     # ===================== Phase 7: source_id Filter Tests (B1-B5) =====================
     if max_phase >= 7:
-      yield log("Phase 7: source_id Filter Tests")
+      yield phase_start(7, "source_id Filter Tests")
       
       # B1: scope=files, source_id=files_all
       yield next_test("B1: scope=files, source_id=files_all")
@@ -1364,10 +1383,11 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="all", source_id="files_all")
       if result.get("ok"): yield check_ok("Combined filter applied")
       else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
+      yield phase_end(7, "source_id Filter Tests")
     
     # ===================== Phase 8: dry_run Tests (D1-D4) =====================
     if max_phase >= 8:
-      yield log("Phase 8: dry_run Tests")
+      yield phase_start(8, "dry_run Tests")
       
       # D1: /crawl dry_run=true
       yield next_test("D1: /crawl with dry_run=true")
@@ -1407,10 +1427,11 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       vs_map_check = os.path.join(storage_path, "crawler", SELFTEST_DOMAIN_ID, "01_files", "files_crawl1", CRAWLER_HARDCODED_CONFIG.VECTOR_STORE_MAP_CSV)
       if not os.path.exists(vs_map_check): yield check_ok("dry_run embed did not create vectorstore_map")
       else: yield check_fail("dry_run created vectorstore_map.csv")
+      yield phase_end(8, "dry_run Tests")
     
     # ===================== Phase 9: Individual Steps Tests (E1-E3) =====================
     if max_phase >= 9:
-      yield log("Phase 9: Individual Steps Tests")
+      yield phase_start(9, "Individual Steps Tests")
       
       # E1: download_data only
       yield next_test("E1: /download_data step")
@@ -1430,10 +1451,11 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "embed_data", mode="full", scope="all")
       if result.get("ok"): yield check_ok()
       else: yield check_fail(f"Embed failed -> error='{result.get('error', 'Unknown')}'")
+      yield phase_end(9, "Individual Steps Tests")
     
     # ===================== Phase 10: SharePoint Mutations =====================
     if max_phase >= 10:
-      yield log("Phase 10: Apply SharePoint Mutations")
+      yield phase_start(10, "SharePoint Mutations")
       
       # Restore full state first
       _selftest_restore_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_FULL_ALL")
@@ -1472,10 +1494,11 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       yield log("  Waiting for mutations to propagate...")
       await asyncio.sleep(5)
       yield log("  OK. Mutations applied")
+      yield phase_end(10, "SharePoint Mutations")
     
     # ===================== Phase 11: Incremental Tests (F1-F4) =====================
     if max_phase >= 11:
-      yield log("Phase 11: Incremental Crawl Tests")
+      yield phase_start(11, "Incremental Crawl Tests")
       
       # F1: mode=incremental, scope=all
       yield next_test("F1: Incremental crawl scope=all")
@@ -1503,10 +1526,11 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="sitepages")
       if result.get("ok"): yield check_ok()
       else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
+      yield phase_end(11, "Incremental Crawl Tests")
     
     # ===================== Phase 12: Incremental source_id Tests (G1-G2) =====================
     if max_phase >= 12:
-      yield log("Phase 12: Incremental source_id Tests")
+      yield phase_start(12, "Incremental source_id Tests")
       
       yield next_test("G1: Incremental scope=files, source_id=files_all")
       _selftest_restore_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_FULL_ALL")
@@ -1519,10 +1543,11 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="files", source_id="files_crawl1")
       if result.get("ok"): yield check_ok("Filtered source applied")
       else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
+      yield phase_end(12, "Incremental source_id Tests")
     
     # ===================== Phase 13: Job Control Tests (H1-H2) =====================
     if max_phase >= 13:
-      yield log("Phase 13: Job Control Tests")
+      yield phase_start(13, "Job Control Tests")
       
       # H1: Verify job control endpoint exists
       yield next_test("H1: Job control endpoint accessible")
@@ -1542,10 +1567,11 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
           yield check_ok("Endpoint accessible")
       except Exception as e:
         yield check_fail(f"Endpoint not accessible -> {str(e)}")
+      yield phase_end(13, "Job Control Tests")
     
     # ===================== Phase 14: Integrity Check Tests (J1-J4) =====================
     if max_phase >= 14:
-      yield log("Phase 14: Integrity Check Tests")
+      yield phase_start(14, "Integrity Check Tests")
       
       # J1: MISSING_ON_DISK - delete file from disk after download, run incremental
       yield next_test("J1: Missing file on disk triggers re-download")
@@ -1604,10 +1630,11 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
         if result.get("ok"): yield check_ok("Full crawl recovered from corruption")
         else: yield check_fail(f"Recovery failed -> {result.get('error', 'Unknown')}")
       else: yield check_fail("Map file not found")
+      yield phase_end(14, "Integrity Check Tests")
     
     # ===================== Phase 15: Advanced Edge Cases (K1-K4) =====================
     if max_phase >= 15:
-      yield log("Phase 15: Advanced Edge Cases")
+      yield phase_start(15, "Advanced Edge Cases")
       
       # K1: FOLDER_RENAMED - verify subfolder handling
       yield next_test("K1: Subfolder file handling")
@@ -1645,10 +1672,11 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       # K4: retry_batches - verified via normal embed operation (default retry used)
       yield next_test("K4: retry_batches parameter")
       yield check_ok("Default retry_batches used in embed operations")
+      yield phase_end(15, "Advanced Edge Cases")
     
     # ===================== Phase 16: Metadata & Reports Tests (L1-L3) =====================
     if max_phase >= 16:
-      yield log("Phase 16: Metadata & Reports Tests")
+      yield phase_start(16, "Metadata & Reports Tests")
       
       # L1: files_metadata.json - check if it exists in domains folder
       yield next_test("L1: files_metadata.json exists in domain folder")
@@ -1688,10 +1716,11 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       report_id = result.get("data", {}).get("report_id", "")
       if report_id: yield check_ok(f"report_id='{report_id}'")
       else: yield check_fail("No report_id in result")
+      yield phase_end(16, "Metadata & Reports Tests")
     
     # ===================== Phase 17: Map File Structure Tests (O1-O3) =====================
     if max_phase >= 17:
-      yield log("Phase 17: Map File Structure Tests")
+      yield phase_start(17, "Map File Structure Tests")
       
       # First ensure we have a full crawl state
       _selftest_restore_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_FULL_ALL")
@@ -1728,10 +1757,11 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
           if col_count == 19: yield check_ok(f"columns={col_count}")
           else: yield check_fail(f"Expected 19 columns, got columns={col_count}")
       else: yield check_ok("vectorstore_map.csv not created (OpenAI not configured)")
+      yield phase_end(17, "Map File Structure Tests")
     
     # ===================== Phase 18: Empty State Tests (N1-N4) =====================
     if max_phase >= 18:
-      yield log("Phase 18: Empty State Tests")
+      yield phase_start(18, "Empty State Tests")
       
       # N1: Test crawl with empty domain folder
       yield next_test("N1: Full crawl on clean state")
@@ -1758,6 +1788,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       data = result.get("data", {})
       if "sources_processed" in str(data) or "files" in str(data).lower(): yield check_ok("Result contains processing info")
       else: yield check_ok("Result structure valid")
+      yield phase_end(18, "Empty State Tests")
     
     yield log("Test execution completed.")
     
@@ -1767,7 +1798,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
   finally:
     # ===================== Phase 19: Cleanup =====================
     if not skip_cleanup:
-      yield log("Phase 19: Cleanup")
+      yield phase_start(19, "Cleanup")
       
       # Delete domain via API
       yield log("  Deleting _SELFTEST domain...")
@@ -1803,6 +1834,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
         for sse in writer.drain_sse_queue(): yield sse
       
       yield log("  Cleanup completed.")
+      yield phase_end(19, "Cleanup")
     else:
       yield log("Cleanup skipped (skip_cleanup=true)")
     
