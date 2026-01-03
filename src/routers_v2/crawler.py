@@ -2053,6 +2053,7 @@ function showSelftestDialog() {{
         
         <div class="form-group">
           <label><input type="checkbox" name="skip_cleanup" onchange="updateSelftestEndpointPreview()"> Skip cleanup (keep test artifacts after completion)</label>
+          <small style="color: #666;">Cleanup always runs unless checked, regardless of phase selection</small>
         </div>
         
         <div class="form-group">
