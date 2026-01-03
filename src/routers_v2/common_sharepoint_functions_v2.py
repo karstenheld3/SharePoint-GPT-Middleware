@@ -362,6 +362,54 @@ def export_list_to_csv(ctx: ClientContext, list_name: str, filter_query: str, ta
     logger.log_function_footer()
     return False, str(e)
 
+def get_list_items_as_sharepoint_files(ctx: ClientContext, list_name: str, filter_query: str, logger: MiddlewareLogger, dry_run: bool = False) -> list:
+  """Get list items and convert them to SharePointFile objects for crawler compatibility."""
+  logger.log_function_header("get_list_items_as_sharepoint_files()")
+  try:
+    items = get_list_items(ctx, list_name, filter_query, logger)
+    if dry_run:
+      logger.log_function_footer()
+      return []
+    
+    result = []
+    for item in items:
+      item_id = item.get('ID', item.get('Id', 0))
+      title = item.get('Title', f'Item_{item_id}')
+      modified = item.get('Modified', '')
+      modified_ts = 0
+      if modified:
+        try:
+          from datetime import datetime
+          dt = datetime.fromisoformat(modified.replace('Z', '+00:00'))
+          modified_ts = int(dt.timestamp())
+        except: pass
+      
+      # Create a virtual filename based on list item ID
+      filename = f"{list_name}_{item_id}.csv"
+      server_relative_url = f"/Lists/{list_name}/{item_id}"
+      
+      sp_file = SharePointFile(
+        sharepoint_listitem_id=item_id,
+        sharepoint_unique_file_id=str(item_id),
+        filename=filename,
+        file_type="csv",
+        file_size=0,
+        url=f"{ctx.web.url}/_layouts/15/listform.aspx?PageType=4&ListId={list_name}&ID={item_id}",
+        raw_url="",
+        server_relative_url=server_relative_url,
+        last_modified_utc=modified,
+        last_modified_timestamp=modified_ts
+      )
+      result.append(sp_file)
+    
+    logger.log_function_output(f"{len(result)} list item{'' if len(result) == 1 else 's'} converted to SharePointFile objects.")
+    logger.log_function_footer()
+    return result
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: List '{list_name}' - {str(e)}")
+    logger.log_function_footer()
+    return []
+
 # ----------------------------------------- END: List Operations ------------------------------------------------------
 
 

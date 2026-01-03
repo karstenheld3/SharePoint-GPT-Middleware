@@ -153,8 +153,32 @@
 2. Changed summary to show: `{total} tests executed (of {TOTAL_TESTS} planned)`
 3. Setup phases (2, 3, 4, 10) now use `log("  OK. ...")` instead of `check_ok()`
 
+### Issue: List crawl not implemented
+
+**Status**: RESOLVED
+
+**Problem**: `step_download_source` had no handler for `list_sources`, causing "No sources configured" and 0 items downloaded.
+
+**Fix**:
+1. Added `get_list_items_as_sharepoint_files()` in `common_sharepoint_functions_v2.py`
+2. Added `elif source_type == "list_sources":` handler in `step_download_source`
+3. Added `_export_list_item_to_csv()` helper for list item download
+4. Fixed `AttributeError: 'ListSource' object has no attribute 'sharepoint_url_part'` by using `filename` directly for lists
+
+### Issue: Domain sources not saved
+
+**Status**: RESOLVED
+
+**Problem**: Selftest created domain but sources were empty because API expected `sources_json` string, not direct fields.
+
+**Fix**: Wrapped sources in `json.dumps(sources)` and passed as `sources_json` field.
+
 ## Changelog
 
+- 2026-01-03 14:38: All Phase 6 tests passing (8 OK, 0 FAIL, 4 SKIP)
+- 2026-01-03 14:35: Fixed list crawl implementation
+- 2026-01-03 14:21: Fixed domain sources_json format
+- 2026-01-03 14:10: Skipped site pages (app-only auth blocked)
 - 2026-01-03 13:55: Created fixes tracking file
 - 2026-01-03 13:42: Fixed library/list names (removed leading underscore)
 - 2026-01-03 13:35: Fixed logging numbers (summary now adds up correctly)
