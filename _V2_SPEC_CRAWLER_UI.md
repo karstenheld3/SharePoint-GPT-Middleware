@@ -90,13 +90,14 @@ Users need to monitor crawler progress, view real-time output, and control runni
 
 | Column | Source | Notes |
 |--------|--------|-------|
-| ID | `job.id` | Job ID |
-| Action | `job.endpoint` | `crawl`, `download_data`, `process_data`, `embed_data` |
-| Domain ID | `job.metadata.domain_id` | From job metadata |
-| Vector Store ID | `job.metadata.vector_store_id` | From job metadata |
-| Mode | `job.metadata.mode` | `full` or `incremental` |
-| Scope | `job.metadata.scope` | `all` or `source` |
-| Source ID | `job.metadata.source_id` | Source ID or `-` if scope=all |
+| (checkbox) | - | Selection checkbox for bulk operations |
+| Job ID | `job.job_id` | Job identifier |
+| Endpoint | `job.source_url` | Parsed from source URL: `crawl`, `selftest`, etc. |
+| Domain ID | `job.source_url` | Parsed from `domain_id` query param |
+| State | `job.state` | `running`, `paused`, `completed`, `cancelled` |
+| Result | `job.result.ok` | `OK`, `FAIL`, or `-` |
+| Started | `job.started_utc` | Formatted timestamp |
+| Finished | `job.finished_utc` | Formatted timestamp or `-` |
 | Actions | - | Context-sensitive buttons |
 
 ### Action Buttons
