@@ -540,10 +540,15 @@ Phase 15: Advanced Edge Cases (K1-K4)
 ├── 15.3 Upload file that will fail embedding (e.g., empty file) -> moved to 03_failed/
 ├── 15.4 Test retry_batches=1 behavior on simulated failure
 
-Phase 16: Metadata & Reports Tests (L1-L3)
+Phase 16: Metadata & Reports Tests (L1-L4)
 ├── 16.1 After embed, verify files_metadata.json contains embedded files with correct fields
 ├── 16.2 Add custom property to files_metadata.json, update file, verify carry-over
-├── 16.3 Run /crawl, verify report.zip created; run with dry_run=true, verify no report
+├── 16.3 Run /crawl, verify report.zip:
+│   ├── report.json exists
+│   ├── Required fields: report_id, title, type, created_utc, ok, error, files
+│   ├── files array uses object format: {filename, file_path, file_size, last_modified_utc}
+│   └── Map files included: sharepoint_map.csv, files_map.csv, vectorstore_map.csv
+├── 16.4 Run /crawl with dry_run=true, verify no report created
 
 Phase 17: Map File Structure Tests (O1-O3)
 ├── 17.1 Verify sharepoint_map.csv has 10 columns

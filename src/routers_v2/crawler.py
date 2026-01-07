@@ -336,13 +336,69 @@ async def crawl_domain(storage_path: str, domain: DomainConfig, mode: str, scope
   return {"ok": total_errors == 0, "error": f"{total_errors} errors" if total_errors > 0 else "", "data": {"domain_id": domain.domain_id, "mode": mode, "scope": scope, "dry_run": dry_run, "sources_processed": len(sources), "total_downloaded": total_downloaded, "total_embedded": total_embedded, "total_errors": total_errors}}
 
 def create_crawl_report(storage_path: str, domain_id: str, mode: str, scope: str, results: dict, started_utc: str, finished_utc: str) -> str:
+  """
+  Create crawl report zip per _V2_SPEC_REPORTS.md.
+  Contains report.json and all map files from crawler folder.
+  Files array uses object format: {filename, file_path, file_size, last_modified_utc}
+  """
   timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d_%H-%M-%S')
   report_id = f"crawls/{timestamp}_{domain_id}_{scope}_{mode}"
   reports_folder = os.path.join(storage_path, "reports", "crawls")
   os.makedirs(reports_folder, exist_ok=True)
-  report = {"report_id": report_id, "title": f"Crawl Report: {domain_id}", "type": "crawl", "created_utc": finished_utc, "ok": results.get("ok", False), "parameters": {"domain_id": domain_id, "mode": mode, "scope": scope}, "timing": {"started_utc": started_utc, "finished_utc": finished_utc}, "data": results.get("data", {})}
+  
   zip_path = os.path.join(reports_folder, f"{timestamp}_{domain_id}_{scope}_{mode}.zip")
-  with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf: zf.writestr("report.json", json.dumps(report, indent=2))
+  crawler_folder = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_CRAWLER_SUBFOLDER, domain_id)
+  map_file_names = [CRAWLER_HARDCODED_CONFIG.SHAREPOINT_MAP_CSV, CRAWLER_HARDCODED_CONFIG.FILE_MAP_CSV, CRAWLER_HARDCODED_CONFIG.VECTOR_STORE_MAP_CSV]
+  
+  # Collect files with metadata per V2RP-IG-02
+  files_list = []
+  
+  with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+    # Add map files from each source type and source folder
+    if os.path.exists(crawler_folder):
+      for source_type in sorted(os.listdir(crawler_folder)):
+        source_type_path = os.path.join(crawler_folder, source_type)
+        if not os.path.isdir(source_type_path): continue
+        for source_id in sorted(os.listdir(source_type_path)):
+          source_path = os.path.join(source_type_path, source_id)
+          if not os.path.isdir(source_path): continue
+          for map_file in map_file_names:
+            map_file_path = os.path.join(source_path, map_file)
+            if os.path.exists(map_file_path):
+              arcname = f"{source_type}/{source_id}/{map_file}"
+              file_stat = os.stat(map_file_path)
+              file_mtime = datetime.datetime.fromtimestamp(file_stat.st_mtime, tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+              zf.write(map_file_path, arcname)
+              files_list.append({
+                "filename": map_file,
+                "file_path": arcname,
+                "file_size": file_stat.st_size,
+                "last_modified_utc": file_mtime
+              })
+    
+    # Build report metadata per V2RP-IG-02
+    report = {
+      "report_id": report_id,
+      "title": f"Crawl Report: {domain_id}",
+      "type": "crawl",
+      "created_utc": finished_utc,
+      "ok": results.get("ok", False),
+      "error": results.get("error", ""),
+      "files": [{"filename": "report.json", "file_path": "report.json", "file_size": 0, "last_modified_utc": finished_utc}] + files_list,
+      "domain_id": domain_id,
+      "scope": scope,
+      "mode": mode,
+      "started_utc": started_utc,
+      "finished_utc": finished_utc,
+      "data": results.get("data", {})
+    }
+    
+    # Write report.json and update its size in files list
+    report_json_str = json.dumps(report, indent=2)
+    report["files"][0]["file_size"] = len(report_json_str.encode('utf-8'))
+    report_json_str = json.dumps(report, indent=2)  # Re-serialize with correct size
+    zf.writestr("report.json", report_json_str)
+  
   return report_id
 
 
@@ -1189,7 +1245,28 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       else:
         yield log(f"    No crawler folder found (OK)")
       
-      # 2.4-2.5 Delete SharePoint artifacts (only if ctx available)
+      # 2.4 Delete selftest reports
+      yield log("  Checking selftest reports...")
+      try:
+        reports_path = os.path.join(storage_path, "reports", "crawls")
+        if os.path.exists(reports_path):
+          deleted_count = 0
+          for filename in os.listdir(reports_path):
+            if SELFTEST_DOMAIN_ID in filename:
+              filepath = os.path.join(reports_path, filename)
+              if os.path.isfile(filepath):
+                os.unlink(filepath)
+                deleted_count += 1
+          if deleted_count > 0:
+            yield log(f"    Found and deleted {deleted_count} report(s)")
+          else:
+            yield log(f"    No selftest reports found (OK)")
+        else:
+          yield log(f"    No reports folder found (OK)")
+      except Exception as e:
+        cleanup_errors.append(f"Report cleanup failed: {e}")
+      
+      # 2.5-2.6 Delete SharePoint artifacts (only if ctx available)
       if ctx:
         # Check and delete list
         yield log("  Checking SharePoint list...")
@@ -1766,7 +1843,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       yield check_ok("Default retry_batches used in embed operations")
       yield phase_end(15, "Advanced Edge Cases")
     
-    # ===================== Phase 16: Metadata & Reports Tests (L1-L3) =====================
+    # ===================== Phase 16: Metadata & Reports Tests (L1-L4) =====================
     if max_phase >= 16:
       yield phase_start(16, "Metadata & Reports Tests")
       
@@ -1800,14 +1877,61 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       else:
         yield check_fail("sharepoint_map.csv not found for files_crawl1")
       
-      # L3: Crawl report created
-      yield next_test("L3: Crawl report created after /crawl")
-      # Run a crawl and check if report was created
+      # L3: Crawl report created with map files and correct structure
+      yield next_test("L3: Crawl report created with map files")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files", source_id="files_crawl1")
       report_id = result.get("data", {}).get("report_id", "")
-      if report_id: yield check_ok(f"report_id='{report_id}'")
-      else: yield check_fail("No report_id in result")
+      l3_errors = []
+      if not report_id:
+        l3_errors.append("No report_id in result")
+      else:
+        # Verify report zip exists and contains correct files
+        report_zip_path = os.path.join(storage_path, "reports", "crawls", report_id.split("/")[-1] + ".zip")
+        if not os.path.exists(report_zip_path):
+          l3_errors.append(f"Report zip not found at '{report_zip_path}'")
+        else:
+          try:
+            with zipfile.ZipFile(report_zip_path, 'r') as zf:
+              zip_files = zf.namelist()
+              # Verify report.json exists
+              if "report.json" not in zip_files:
+                l3_errors.append("report.json missing from zip")
+              else:
+                # Verify report.json structure per V2RP-IG-02
+                report_content = json.loads(zf.read("report.json").decode('utf-8'))
+                required_fields = ["report_id", "title", "type", "created_utc", "ok", "error", "files"]
+                for field in required_fields:
+                  if field not in report_content:
+                    l3_errors.append(f"Missing required field '{field}' in report.json")
+                # Verify files array has correct object structure
+                if "files" in report_content and len(report_content["files"]) > 0:
+                  first_file = report_content["files"][0]
+                  file_fields = ["filename", "file_path", "file_size", "last_modified_utc"]
+                  for ff in file_fields:
+                    if ff not in first_file:
+                      l3_errors.append(f"Files array missing '{ff}' field")
+              # Verify map files exist in zip
+              map_file_count = sum(1 for f in zip_files if f.endswith('.csv'))
+              if map_file_count == 0:
+                l3_errors.append("No map files (*.csv) found in zip")
+          except Exception as e:
+            l3_errors.append(f"Error reading zip: {str(e)}")
+      if l3_errors: yield check_fail("; ".join(l3_errors))
+      else: yield check_ok(f"report_id='{report_id}', structure valid, map_files included")
+      
+      # L4: dry_run=true creates no report
+      yield next_test("L4: dry_run=true creates no report")
+      # Count reports before
+      reports_folder = os.path.join(storage_path, "reports", "crawls")
+      reports_before = len([f for f in os.listdir(reports_folder) if SELFTEST_DOMAIN_ID in f]) if os.path.exists(reports_folder) else 0
+      # Run crawl with dry_run=true
+      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files", source_id="files_crawl1", dry_run=True)
+      # Count reports after
+      reports_after = len([f for f in os.listdir(reports_folder) if SELFTEST_DOMAIN_ID in f]) if os.path.exists(reports_folder) else 0
+      if reports_after == reports_before: yield check_ok("No new report created with dry_run=true")
+      else: yield check_fail(f"Report created despite dry_run=true (before={reports_before}, after={reports_after})")
+      
       yield phase_end(16, "Metadata & Reports Tests")
     
     # ===================== Phase 17: Map File Structure Tests (O1-O3) =====================
@@ -1910,6 +2034,27 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
         crawler_path = os.path.join(storage_path, "crawler", SELFTEST_DOMAIN_ID)
         if os.path.exists(crawler_path): shutil.rmtree(crawler_path)
       except: pass
+      
+      # Delete selftest reports
+      yield log("  Deleting selftest reports...")
+      try:
+        reports_path = os.path.join(storage_path, "reports", "crawls")
+        if os.path.exists(reports_path):
+          deleted_count = 0
+          for filename in os.listdir(reports_path):
+            if SELFTEST_DOMAIN_ID in filename:
+              filepath = os.path.join(reports_path, filename)
+              if os.path.isfile(filepath):
+                os.unlink(filepath)
+                deleted_count += 1
+          if deleted_count > 0:
+            yield log(f"    Deleted {deleted_count} report(s)")
+          else:
+            yield log(f"    No selftest reports found (OK)")
+        else:
+          yield log(f"    No reports folder found (OK)")
+      except Exception as e:
+        yield log(f"    Warning: Failed to delete reports: {e}")
       
       # Delete SharePoint artifacts
       if ctx:
@@ -2059,7 +2204,7 @@ function showSelftestDialog() {{
     {{ value: 13, name: 'Phase 13: Job Control Tests (H1-H2)' }},
     {{ value: 14, name: 'Phase 14: Integrity Check Tests (J1-J4)' }},
     {{ value: 15, name: 'Phase 15: Advanced Edge Cases (K1-K4)' }},
-    {{ value: 16, name: 'Phase 16: Metadata & Reports Tests (L1-L3)' }},
+    {{ value: 16, name: 'Phase 16: Metadata & Reports Tests (L1-L4)' }},
     {{ value: 17, name: 'Phase 17: Map File Structure Tests (O1-O3)' }},
     {{ value: 18, name: 'Phase 18: Empty State Tests (N1-N4)' }},
     {{ value: 19, name: 'Phase 19: Cleanup' }}
