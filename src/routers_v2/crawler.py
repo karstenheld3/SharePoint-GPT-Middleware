@@ -1258,7 +1258,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
                 os.unlink(filepath)
                 deleted_count += 1
           if deleted_count > 0:
-            yield log(f"    Found and deleted {deleted_count} report(s)")
+            yield log(f"    Found and deleted {deleted_count} {'report' if deleted_count == 1 else 'reports'}")
           else:
             yield log(f"    No selftest reports found (OK)")
         else:
@@ -2048,7 +2048,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
                 os.unlink(filepath)
                 deleted_count += 1
           if deleted_count > 0:
-            yield log(f"    Deleted {deleted_count} report(s)")
+            yield log(f"    Deleted {deleted_count} {'report' if deleted_count == 1 else 'reports'}")
           else:
             yield log(f"    No selftest reports found (OK)")
         else:

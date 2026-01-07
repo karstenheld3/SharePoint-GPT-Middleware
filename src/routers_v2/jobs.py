@@ -339,10 +339,8 @@ async function bulkDelete() {{
       const result = await response.json();
       if (result.ok) {{
         jobsState.delete(jobId);
-        showToast('Job Deleted', jobId, 'success');
         deleted++;
       }} else {{
-        showToast('Delete Failed', jobId + ': ' + result.error, 'error');
         failed++;
       }}
     }} catch (e) {{
@@ -351,6 +349,13 @@ async function bulkDelete() {{
   }}
   
   renderAllJobs();
+  
+  if (failed === 0) {{
+    const msg = deleted === 1 ? '1 job deleted' : deleted + ' jobs deleted';
+    showToast('Bulk Delete', msg, 'success');
+  }} else {{
+    showToast('Bulk Delete', deleted + ' deleted, ' + failed + ' failed', 'warning');
+  }}
 }}
 """
 

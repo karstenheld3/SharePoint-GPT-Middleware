@@ -462,24 +462,34 @@ async function bulkDelete() {
   if (selected.length === 0) return;
   if (!confirm(`Delete ${selected.length} selected jobs?`)) return;
   
+  let deleted = 0;
+  let failed = 0;
+  
   for (const jobId of selected) {
     const response = await fetch(`/v2/jobs/delete?job_id=${jobId}`, { method: 'DELETE' });
     const result = await response.json();
     if (result.ok) {
       jobsState.delete(jobId);
-      showToast('Job Deleted', jobId, 'success');
+      deleted++;
     } else {
-      showToast('Delete Failed', `${jobId}: ${result.error}`, 'error');
+      failed++;
     }
   }
   renderAllJobs();
-  updateSelectedCount();
+  
+  // Single summary toast (not per-job)
+  if (failed === 0) {
+    const msg = deleted === 1 ? '1 job deleted' : deleted + ' jobs deleted';
+    showToast('Bulk Delete', msg, 'success');
+  } else {
+    showToast('Bulk Delete', deleted + ' deleted, ' + failed + ' failed', 'warning');
+  }
 }
 ```
 
 **Toast Messages:**
-- Success: title="Job Deleted", message="{job_id}", type="success"
-- Error: title="Delete Failed", message="{job_id}: {error}", type="error"
+- Success: title="Bulk Delete", message="{N} jobs deleted", type="success"
+- Partial: title="Bulk Delete", message="{N} deleted, {M} failed", type="warning"
 
 ## Action Flow
 
