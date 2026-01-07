@@ -1040,7 +1040,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
     writer.drain_sse_queue()
     return sse
   def phase_start(phase_num: int, name: str):
-    marker = f"------------------ START: Phase {phase_num}: {name} "
+    marker = f"------------------ START: Phase {phase_num} - {name} "
     marker = marker + "-" * max(0, 70 - len(marker))
     sse = logger.log_function_output("")
     writer.drain_sse_queue()
@@ -1048,7 +1048,7 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
     writer.drain_sse_queue()
     return sse
   def phase_end(phase_num: int, name: str):
-    marker = f"------------------ END: Phase {phase_num}: {name} "
+    marker = f"------------------ END: Phase {phase_num} - {name} "
     marker = marker + "-" * max(0, 70 - len(marker))
     sse = logger.log_function_output(marker)
     writer.drain_sse_queue()
@@ -1197,8 +1197,10 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
           list_info = ctx.web.lists.get_by_title(SELFTEST_LIST_NAME).get().execute_query()
           if list_info:
             yield log(f"    Found list '{SELFTEST_LIST_NAME}', deleting...")
-            delete_list(ctx, SELFTEST_LIST_NAME, logger)
+            success, error = delete_list(ctx, SELFTEST_LIST_NAME, logger)
             for sse in writer.drain_sse_queue(): yield sse
+            if not success:
+              cleanup_errors.append(f"List deletion failed: {error}")
         except:
           yield log(f"    List '{SELFTEST_LIST_NAME}' not found (OK)")
         
@@ -1208,8 +1210,10 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
           lib_info = ctx.web.get_list(f"/sites/{site_path}{SELFTEST_LIBRARY_URL}").get().execute_query()
           if lib_info:
             yield log(f"    Found library '{SELFTEST_LIBRARY_URL}', deleting...")
-            delete_document_library(ctx, SELFTEST_LIBRARY_URL, logger)
+            success, error = delete_document_library(ctx, SELFTEST_LIBRARY_URL, logger)
             for sse in writer.drain_sse_queue(): yield sse
+            if not success:
+              cleanup_errors.append(f"Library deletion failed: {error}")
         except:
           yield log(f"    Library '{SELFTEST_LIBRARY_URL}' not found (OK)")
       
