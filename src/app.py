@@ -590,8 +590,8 @@ def root() -> str:
   <p>This middleware provides OpenAI proxy endpoints, SharePoint search functionality, and inventory management for vector stores.</p>
   
   <div class="toolbar">
-    <a href="/v1/domains?format=ui" class="btn-primary"> Domains </a>
-    <a href="/v1/crawler/?format=ui" class="btn-primary">  Crawler </a>
+    <a href="/v2/domains?format=ui" class="btn-primary"> Domains </a>
+    <a href="/v2/crawler/?format=ui" class="btn-primary">  Crawler </a>
     <a href="/v1/inventory/vectorstores?format=ui" class="btn-primary"> Vector Stores </a>
     <a href="/v1/inventory/files?format=ui" class="btn-primary"> Files </a>
     <a href="/v1/inventory/assistants?format=ui" class="btn-primary"> Assistants </a>
