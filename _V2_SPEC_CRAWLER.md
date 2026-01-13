@@ -838,6 +838,10 @@ Endpoint: `GET /v2/crawler/cleanup_metadata?domain_id={id}`
 - Added `MapFileWriter` class with `APPEND_TO_MAP_FILES_EVERY_X_LINES` config
 - Force flush triggers: header creation, first item, last item
 
+**[2026-01-13 14:18]**
+- Fixed: FIX-04 - crawl_domain now streams SSE logs in real-time (async generator pattern)
+- Fixed: FIX-05 - non-embeddable files skipped during download, tracked in sharepoint_map only
+
 **[2024-12-27 16:48]**
 - Added `file_type` column to `files_map.csv`
 - Clarified `downloaded_utc` semantics: files_map = when downloaded to disk, vectorstore_map = copied from files_map

@@ -1351,10 +1351,12 @@ Systematic verification that all plan items are implemented. Check each item exi
 
 ## Spec Changes
 
+**[2026-01-13 14:18]**
+- Fixed: FIX-04 (SSE streaming) - converted crawl_domain to async generator for real-time log streaming
+
 **[2026-01-13 13:12]**
 - Added: Reference to `_V2_IMPL_CRAWLER_FIXES.md` for post-implementation fixes
 - Fixed: FIX-01 (auto-create vector store), FIX-03 (site_url parameter), FIX-05 (skip non-embeddable)
-- Pending: FIX-04 (SSE streaming)
 
 **[2024-12-30 10:45]**
 - Added: Plan ID V2CR-IP01B to header block
