@@ -1101,8 +1101,8 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
   selftest_site = getattr(config, 'CRAWLER_SELFTEST_SHAREPOINT_SITE', None)
   crawler_cfg = get_crawler_config()
   
-  # Tests per phase: P1=4(M1-M4), P2=1, P3=1, P4=1, P5=5(I), P6=4(A), P7=5(B), P8=4(D), P9=3(E), P10=0, P11=4(F), P12=2(G), P13=2(H), P14=4(J), P15=4(K), P16=3(L), P17=3(O), P18=4(N), P19=0
-  PHASE_TESTS = {1: 4, 2: 1, 3: 1, 4: 1, 5: 5, 6: 4, 7: 5, 8: 4, 9: 3, 10: 0, 11: 4, 12: 2, 13: 2, 14: 4, 15: 4, 16: 3, 17: 3, 18: 4, 19: 0}
+  # Tests per phase: P1=4(M1-M4), P2=1, P3=1, P4=1, P5=5(I1-I4,I9), P6=4(A), P7=5(B), P8=4(D), P9=3(E), P10=0, P11=4(F), P12=2(G), P13=2(H), P14=5(J), P15=4(K), P16=3(L), P17=3(O), P18=4(N), P19=0
+  PHASE_TESTS = {1: 4, 2: 1, 3: 1, 4: 1, 5: 5, 6: 4, 7: 5, 8: 4, 9: 3, 10: 0, 11: 4, 12: 2, 13: 2, 14: 5, 15: 4, 16: 3, 17: 3, 18: 4, 19: 0}
   TOTAL_TESTS = sum(PHASE_TESTS.get(p, 0) for p in range(1, min(max_phase, 19) + 1))
   test_num = 0
   ok_count = 0
@@ -1911,16 +1911,20 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
         else: yield check_ok("File tracking active")  # Column name may vary
       else: yield check_fail("sharepoint_map.csv not found")
       
-      # K3: VS_EMBEDDING_FAILED - verified via non_embeddable.zip in full crawl
-      yield next_test("K3: Embedding failure handling")
-      # Check that non_embeddable.zip was handled (should be in files_map but not vectorstore_map)
+      # K3: Non-embeddable file handling - FIX-05: non-embeddable files tracked in sharepoint_map only
+      yield next_test("K3: Non-embeddable file handling")
+      # Check that non_embeddable.zip is in sharepoint_map (tracked) but NOT in files_map (not downloaded)
+      sp_map_path = os.path.join(storage_path, "crawler", SELFTEST_DOMAIN_ID, "01_files", "files_all", CRAWLER_HARDCODED_CONFIG.SHAREPOINT_MAP_CSV)
       files_map_path = os.path.join(storage_path, "crawler", SELFTEST_DOMAIN_ID, "01_files", "files_all", CRAWLER_HARDCODED_CONFIG.FILE_MAP_CSV)
-      if os.path.exists(files_map_path):
-        with open(files_map_path, 'r', encoding='utf-8') as f:
-          content = f.read()
-        if "non_embeddable.zip" in content: yield check_ok("non_embeddable.zip in files_map (handled)")
-        else: yield check_fail("non_embeddable.zip not found in files_map")
-      else: yield check_fail("files_map.csv not found")
+      if os.path.exists(sp_map_path) and os.path.exists(files_map_path):
+        with open(sp_map_path, 'r', encoding='utf-8') as f: sp_content = f.read()
+        with open(files_map_path, 'r', encoding='utf-8') as f: files_content = f.read()
+        in_sp = "non_embeddable.zip" in sp_content
+        not_in_files = "non_embeddable.zip" not in files_content
+        if in_sp and not_in_files: yield check_ok("non_embeddable.zip in sharepoint_map, not in files_map")
+        elif not in_sp: yield check_fail("non_embeddable.zip not found in sharepoint_map")
+        else: yield check_fail("non_embeddable.zip should not be in files_map (FIX-05)")
+      else: yield check_fail("Map files not found")
       
       # K4: retry_batches - verified via normal embed operation (default retry used)
       yield next_test("K4: retry_batches parameter")
