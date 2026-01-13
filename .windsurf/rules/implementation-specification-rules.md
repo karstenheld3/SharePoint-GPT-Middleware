@@ -32,7 +32,7 @@ Usage scenarios:
 - For documentation or UI output, avoid "typographic quotes" and use typewriter / ASCII "double quotes" or 'single quotes'
 - No emojis in the documentation. Use extended ASCII characters only.
 - Avoid Markdown tables when possible for enumerations use simple unnumberred lists with indented properties
-- When creating hierarchies and maps, use "└─" for indenting
+- When creating hierarchies and maps, use Unicode box-drawing characters (├── └── │) for tree structures
 - Place a Table of Contents (TOC)at the start of the spec
 - No `---` markers between sections!
 

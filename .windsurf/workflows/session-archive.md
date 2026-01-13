@@ -1,0 +1,29 @@
+---
+description: Archive a completed session folder
+---
+
+# Archive Session Workflow
+
+Use this workflow to move a completed session folder to the archive.
+
+## Steps
+
+1. **Move session folder to Archive**
+// turbo
+   ```powershell
+   Move-Item -Path "_[SESSION_FOLDER]" -Destination "_Archive\"
+   ```
+   Replace `[SESSION_FOLDER]` with actual folder name (e.g., `_2026-01-10_DontOverwriteWithEmptyValues`)
+
+2. **Commit archive**
+// turbo
+   ```powershell
+   git add -A && git commit -m "[type](scope): [description] - archive session"
+   ```
+
+## Example
+
+```powershell
+Move-Item -Path "_2026-01-10_DontOverwriteWithEmptyValues" -Destination "_Archive\"
+git add -A && git commit -m "fix(sap-import): preserve user data during SAP import - archive session"
+```
