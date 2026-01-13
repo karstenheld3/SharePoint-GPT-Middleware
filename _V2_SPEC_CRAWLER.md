@@ -215,6 +215,13 @@ SharePoint ──► download_data ──► sharepoint_map.csv ─┐
 - Preserve custom properties when file is updated (same `sharepoint_unique_file_id`)
 - Support multiple `openai_file_id` entries per `sharepoint_unique_file_id` (version history)
 
+**V2CR-FR-07: Auto-Create Vector Store on First Crawl**
+- If `vector_store_id` is empty on first embed, create new vector store using `vector_store_name` from domain.json
+- If `vector_store_name` is also empty, use `domain_id` as the vector store name
+- Write the new `vector_store_id` back to `domain.json`
+- If vector store creation fails, log error and skip embedding (do not fail entire crawl)
+- Log: "Created vector store '{name}' (ID={id})"
+
 ## Design Decisions
 
 **V2CR-DD-01:** `sharepoint_unique_file_id` as immutable key. SharePoint assigns this GUID on file creation; it never changes on rename/move/update. This enables reliable tracking across all edge cases.
@@ -477,8 +484,12 @@ Expected outcome:
 1. Crawler loads domain config for `domain_id` and loads all sources of specified `source_type` (404 for missing domain)
 2. If optional `source_id` is given, filters out all other sources (404 for missing source)
 3. Get target vector store
-    - If `vector_store_id` is given, sets this vector store as target (404 for missing)
-    - Otherwise uses `vector_store_id` from `domain.json` to get domain vector store (404 if missing, 500 if not configured)
+    - If `vector_store_id` in domain.json is empty:
+      - Create new vector store using `vector_store_name` (or `domain_id` if name is empty)
+      - Write new `vector_store_id` back to domain.json
+      - Log: "Created vector store '{name}' (ID={id})"
+      - If creation fails: log error, skip embedding for all sources (continue crawl without embed)
+    - Validate vector store exists (404 if missing)
     - Load all vector store files 
 4. [For each source]
     - Loads `files_map.csv` (skip source if not found)
@@ -544,6 +555,7 @@ Expected outcome:
 - **C3. VS_EMBEDDING_FAILED** - File uploaded but status != 'completed'
 - **C4. VS_DELETED** - Target vector store no longer exists
 - **C5. OPENAI_FILE_DELETED** - File in global storage deleted externally
+- **C6. VS_CREATION_FAILED** - Auto-create vector store failed (API error, quota, permissions)
 
 **D. Timing/concurrency:**
 - **D1. RAPID_CHANGES** - Multiple changes between crawls (only final state visible)
@@ -600,6 +612,7 @@ Compare `sharepoint_map.csv` (current SharePoint state) with `files_map.csv` (la
 - **C3. VS_EMBEDDING_FAILED** - Move to `03_failed/`, log error
 - **C4. VS_DELETED** - Return 404 error, abort embed
 - **C5. OPENAI_FILE_DELETED** - Re-upload during embed
+- **C6. VS_CREATION_FAILED** - Log error, skip embedding, continue crawl (download/process still succeed)
 - **D1. RAPID_CHANGES** - Only final state matters, handled normally
 - **D2. CONCURRENT_CRAWLS** - Graceful read/write with retry handles conflicts
 - **D3. PARTIAL_FAILURE** - Next run picks up from `files_map.csv` state
@@ -788,6 +801,13 @@ Endpoint: `GET /v2/crawler/cleanup_metadata?domain_id={id}`
 - **File restored (A10):** New entry created, carry-over from historical entry if exists
 
 ## Spec Changes
+
+**[2026-01-13 11:04]**
+- Added **V2CR-FR-07**: Auto-Create Vector Store on First Crawl
+- Updated Embed Data step: auto-create vector store when `vector_store_id` is empty
+- Added fallback: use `domain_id` as name when `vector_store_name` is also empty
+- Added error handling: skip embedding if vector store creation fails (crawl continues)
+- Added **C6. VS_CREATION_FAILED** edge case and resolution
 
 **[2026-01-03 13:10]**
 - Added `domain.json` schema with complete example

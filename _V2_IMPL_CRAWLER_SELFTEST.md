@@ -388,7 +388,7 @@ Prerequisite: SNAP_FULL_ALL state + SharePoint mutations applied
 - **H1**: pause during download -> job pauses, resumes on resume
 - **H2**: cancel during download -> job stops, partial state
 
-### I. Error Cases (8 tests)
+### I. Error Cases (9 tests)
 
 - **I1**: Missing domain_id -> ok=false
 - **I2**: Invalid domain_id -> 404
@@ -398,6 +398,7 @@ Prerequisite: SNAP_FULL_ALL state + SharePoint mutations applied
 - **I6**: Unicode filename -> handled correctly
 - **I7**: Same filename in different subfolders -> both downloaded
 - **I8**: Empty domain (no sources) -> ok=true, sources_processed=0
+- **I9**: Unreachable SharePoint URL -> source skipped gracefully, other sources still processed, ok=true with errors logged
 
 ### J. Integrity Check (4 tests)
 
@@ -443,9 +444,9 @@ After deleting all SharePoint content:
 - **O2**: files_map.csv has 13 columns
 - **O3**: vectorstore_map.csv has 19 columns
 
-### Total: 53 tests (site pages skipped, I5-I8 tested implicitly)
+### Total: 54 tests (site pages skipped, I5-I8 tested implicitly)
 
-**Implementation Status**: All 53 tests implemented and passing (2026-01-03)
+**Implementation Status**: All 54 tests implemented (2026-01-13)
 
 ## Test Phases
 
@@ -474,11 +475,12 @@ Phase 3: SharePoint Setup
 Phase 4: Domain Setup
 ├── 4.1 Create _SELFTEST domain via /v2/domains/create
 
-Phase 5: Error Cases (I1-I4)
+Phase 5: Error Cases (I1-I4, I9)
 ├── 5.1 Test missing domain_id
 ├── 5.2 Test invalid domain_id
 ├── 5.3 Test invalid scope
 ├── 5.4 Test invalid mode
+├── 5.5 Test unreachable SharePoint URL (I9)
 
 Phase 6: Full Crawl Tests (A1-A3)
 ├── 6.1 Restore SNAP_EMPTY, crawl full/all, verify SNAP_FULL_ALL
@@ -940,7 +942,7 @@ finally:
 - [x] P3: SharePoint Setup (library, list, files)
 - [x] P4: Domain Setup (create domain with sources)
 
-**Error Cases (4 explicit + 4 implicit):**
+**Error Cases (5 explicit + 4 implicit):**
 - [x] I1: Missing domain_id
 - [x] I2: Invalid domain_id
 - [x] I3: Invalid scope (returns 400)
@@ -949,6 +951,7 @@ finally:
 - [x] I6: Unicode filename (implicit via A1)
 - [x] I7: Same filename in subfolders (implicit via K1)
 - [x] I8: Empty domain (implicit via A4)
+- [x] I9: Unreachable SharePoint URL (graceful handling)
 
 **Full Crawl (4):**
 - [x] A1: scope=all
@@ -1014,6 +1017,15 @@ finally:
 - [x] Verify no orphan files in crawler/ after cleanup
 
 ## Spec Changes
+
+**[2026-01-13 12:50]**
+- Fixed: I9 test implemented in `crawler.py` - creates temp domain with unreachable source, verifies graceful handling
+- Changed: PHASE_TESTS[5] from 4 to 5
+
+**[2026-01-13 12:45]**
+- Added: I9 test case for unreachable SharePoint URL graceful handling
+- Changed: Total tests from 53 to 54
+- Changed: Error Cases from 8 to 9 tests
 
 **[2026-01-03 17:35]**
 - Added: P2, P3, P4 phase-level tests (Pre-cleanup, SharePoint Setup, Domain Setup)
