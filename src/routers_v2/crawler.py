@@ -320,11 +320,13 @@ async def step_embed_source(storage_path: str, domain: DomainConfig, source, sou
   logger.log_function_output(f"  {result.embedded} embedded, {result.failed} failed.")
   return result
 
-async def crawl_domain(storage_path: str, domain: DomainConfig, mode: str, scope: str, source_id: Optional[str], dry_run: bool, retry_batches: int, writer: StreamingJobWriter, logger: MiddlewareLogger, crawler_config: dict, openai_client) -> dict:
+# FIX-04: Convert to async generator for real-time SSE streaming
+async def crawl_domain(storage_path: str, domain: DomainConfig, mode: str, scope: str, source_id: Optional[str], dry_run: bool, retry_batches: int, writer: StreamingJobWriter, logger: MiddlewareLogger, crawler_config: dict, openai_client) -> AsyncGenerator[str, None]:
   sources = get_sources_for_scope(domain, scope, source_id)
   if not sources:
     logger.log_function_output("WARNING: No sources configured")
-    return {"ok": True, "data": {"sources_processed": 0}}
+    writer.set_crawl_results({"ok": True, "data": {"sources_processed": 0}})
+    return
   # FIX-01: Auto-create vector store if empty (per _V2_SPEC_CRAWLER.md:487-491)
   skip_embedding = False
   if not domain.vector_store_id:
@@ -343,21 +345,26 @@ async def crawl_domain(storage_path: str, domain: DomainConfig, mode: str, scope
         logger.log_function_output("  Embedding will be skipped for all sources.")
         skip_embedding = True
   logger.log_function_output(f"Crawling {len(sources)} source(s)")
+  for sse in writer.drain_sse_queue(): yield sse  # FIX-04: Drain after initial logs
   job_id = writer.job_id if dry_run else None
   download_results, embed_results = [], []
   for source_type, source in sources:
     result = await step_download_source(storage_path, domain, source, source_type, mode, dry_run, retry_batches, writer, logger, crawler_config, job_id)
     download_results.append(result)
+    for sse in writer.drain_sse_queue(): yield sse  # FIX-04: Drain after download
     await step_integrity_check(storage_path, domain.domain_id, source, source_type, dry_run, writer, logger, crawler_config, job_id)
+    for sse in writer.drain_sse_queue(): yield sse  # FIX-04: Drain after integrity
     if source_type in ("list_sources", "sitepage_sources"):
       await step_process_source(storage_path, domain.domain_id, source, source_type, dry_run, writer, logger, job_id)
+      for sse in writer.drain_sse_queue(): yield sse  # FIX-04: Drain after process
     if not skip_embedding:
       result = await step_embed_source(storage_path, domain, source, source_type, mode, dry_run, retry_batches, writer, logger, openai_client, job_id)
       embed_results.append(result)
+      for sse in writer.drain_sse_queue(): yield sse  # FIX-04: Drain after embed
   total_downloaded = sum(r.downloaded for r in download_results)
   total_embedded = sum(r.embedded for r in embed_results)
   total_errors = sum(r.errors for r in download_results) + sum(r.failed for r in embed_results)
-  return {"ok": total_errors == 0, "error": f"{total_errors} errors" if total_errors > 0 else "", "data": {"domain_id": domain.domain_id, "mode": mode, "scope": scope, "dry_run": dry_run, "sources_processed": len(sources), "total_downloaded": total_downloaded, "total_embedded": total_embedded, "total_errors": total_errors}}
+  writer.set_crawl_results({"ok": total_errors == 0, "error": f"{total_errors} errors" if total_errors > 0 else "", "data": {"domain_id": domain.domain_id, "mode": mode, "scope": scope, "dry_run": dry_run, "sources_processed": len(sources), "total_downloaded": total_downloaded, "total_embedded": total_embedded, "total_errors": total_errors}})
 
 def create_crawl_report(storage_path: str, domain_id: str, mode: str, scope: str, results: dict, started_utc: str, finished_utc: str) -> str:
   """
@@ -564,6 +571,7 @@ Return (SSE stream):
   logger.log_function_footer()
   return json_result(False, "Use format=stream for crawl operations.", {})
 
+# FIX-04: Updated to iterate over crawl_domain generator for real-time streaming
 async def _crawl_stream(domain: DomainConfig, mode: str, scope: str, source_id: Optional[str], dry_run: bool, retry_batches: int, logger: MiddlewareLogger, openai_client):
   writer = StreamingJobWriter(persistent_storage_path=get_persistent_storage_path(), router_name=router_name, action="crawl", object_id=domain.domain_id, source_url=f"{router_prefix}/{router_name}/crawl?domain_id={domain.domain_id}&mode={mode}&scope={scope}&dry_run={dry_run}", router_prefix=router_prefix)
   logger.stream_job_writer = writer
@@ -571,8 +579,10 @@ async def _crawl_stream(domain: DomainConfig, mode: str, scope: str, source_id: 
   try:
     yield writer.emit_start()
     yield logger.log_function_output(f"Starting crawl for domain '{domain.domain_id}'")
-    results = await crawl_domain(get_persistent_storage_path(), domain, mode, scope, source_id, dry_run, retry_batches, writer, logger, get_crawler_config(), openai_client)
-    for sse in writer.drain_sse_queue(): yield sse  # Yield queued log events from nested calls
+    # FIX-04: Iterate over async generator for real-time SSE streaming
+    async for sse in crawl_domain(get_persistent_storage_path(), domain, mode, scope, source_id, dry_run, retry_batches, writer, logger, get_crawler_config(), openai_client):
+      yield sse
+    results = writer.get_crawl_results()  # FIX-04: Retrieve results from writer
     finished_utc, _ = _get_utc_now()
     if not dry_run and results.get("ok", False):
       report_id = create_crawl_report(get_persistent_storage_path(), domain.domain_id, mode, scope, results, started_utc, finished_utc)
