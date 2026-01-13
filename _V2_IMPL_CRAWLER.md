@@ -18,6 +18,10 @@
 **Does not depend on:**
 - `_V1_SPEC_COMMON_UI_FUNCTIONS.md` (V1 UI functions superseded by V2)
 
+**Related:**
+- `_V2_IMPL_CRAWLER_FIXES.md` - post-implementation fixes (FIX-01 to FIX-05)
+- `_V2_IMPL_CRAWLER_SELFTEST.md` - selftest implementation plan
+
 ## Table of Contents
 
 1. File Structure
@@ -1346,6 +1350,11 @@ Systematic verification that all plan items are implemented. Check each item exi
 - [ ] **V2CR-IP01B-VC-125**: `controlJob(jobId, action)` calls pause/resume/cancel endpoint
 
 ## Spec Changes
+
+**[2026-01-13 13:12]**
+- Added: Reference to `_V2_IMPL_CRAWLER_FIXES.md` for post-implementation fixes
+- Fixed: FIX-01 (auto-create vector store), FIX-03 (site_url parameter), FIX-05 (skip non-embeddable)
+- Pending: FIX-04 (SSE streaming)
 
 **[2024-12-30 10:45]**
 - Added: Plan ID V2CR-IP01B to header block

@@ -453,20 +453,22 @@ Applies to: `file_sources`, `list_sources`, `sitepage_sources`
         - REMOVED: `sharepoint_unique_file_id` in `file_map` but not in SharePoint
         - CHANGED: any of `filename`, `server_relative_url`, `file_size`, or `last_modified_utc` differs
       - REMOVED: Deletes all removed files from target folders and from `file_map`. Writes `files_map.csv` gracefully.
-      - ADDED: Downloads added items to target folder, applying SharePoint last modified timestamp. **If download fails:** Log error, set `sharepoint_error` in files_map, skip item. Writes updated `files_map.csv` gracefully.
+      - ADDED/CHANGED: Filter to embeddable files only (using `DEFAULT_FILETYPES_ACCEPTED_BY_VECTOR_STORES`). Non-embeddable files are logged and skipped (tracked in `sharepoint_map.csv` only).
+      - ADDED: Downloads added embeddable items to target folder, applying SharePoint last modified timestamp. **If download fails:** Log error, set `sharepoint_error` in files_map, skip item. Writes updated `files_map.csv` gracefully.
       - CHANGED: Deletes all changed items from target folders.
-      - CHANGED: Downloads changed items to target folder, applying SharePoint last modified timestamp. **If download fails:** Log error, set `sharepoint_error` in files_map, skip item. Writes updated `files_map.csv` gracefully.
+      - CHANGED: Downloads changed embeddable items to target folder, applying SharePoint last modified timestamp. **If download fails:** Log error, set `sharepoint_error` in files_map, skip item. Writes updated `files_map.csv` gracefully.
     - If `mode=full`:
       - Deletes all subfolders in `01_originals/`, `02_embedded/`, and `03_failed/` folders (fresh start)
       - Deletes `files_map.csv` and creates new internal `file_map`
-      - ALL: Downloads all items to target folder, applying SharePoint last modified timestamp. **If download fails:** Log error, set `sharepoint_error` in files_map, skip item. Writes updated `files_map.csv` gracefully.
+      - ALL: Filter to embeddable files only (using `DEFAULT_FILETYPES_ACCEPTED_BY_VECTOR_STORES`). Non-embeddable files are logged and skipped (tracked in `sharepoint_map.csv` only).
+      - ALL: Downloads all embeddable items to target folder, applying SharePoint last modified timestamp. **If download fails:** Log error, set `sharepoint_error` in files_map, skip item. Writes updated `files_map.csv` gracefully.
 
 5. Runs Integrity Check for this source (see "Integrity Check" section)
 
 Expected outcome:
 - `sharepoint_map.csv` contains all items (rows) that could be identified in SharePoint
 - `sharepoint_map.csv` does not contain items not existing in SharePoint
-- `files_map.csv` contains all items (rows) as `sharepoint_map.csv` with additional column data
+- `files_map.csv` contains only embeddable files (non-embeddable tracked in `sharepoint_map.csv` only)
 - `files_map.csv` > `file_relative_path` column is empty if download failed
 - Target folders do not contain items not existing in SharePoint
 - Target folders might be missing items that could not be downloaded from SharePoint

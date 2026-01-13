@@ -112,8 +112,16 @@ Option 2 is simpler but requires `crawl_domain()` to become an async generator.
   - [ ] Convert `crawl_domain()` to async generator
   - [ ] Add drain points after each step
   - [ ] Update `_crawl_stream()` to iterate generator
+- [x] **FIX-05**: Skip downloading non-embeddable files
+  - [x] Filter to_download list by is_file_embeddable()
+  - [x] Non-embeddable files tracked in sharepoint_map.csv only (not in files_map.csv)
+  - [x] Log skipped count
+  - [x] Update spec
 
 ## Spec Changes
+
+**[2026-01-13 13:05]**
+- Added: FIX-05 for skipping download of non-embeddable files
 
 **[2026-01-13 12:56]**
 - Fixed: FIX-03 - added site_url parameter to get_site_pages() instead of using ctx.web.url
