@@ -15,6 +15,7 @@ from routers_v2.common_crawler_functions_v2 import DomainConfig, FileSource, Lis
 from routers_v2.common_map_file_functions_v2 import SharePointMapRow, FilesMapRow, VectorStoreMapRow, ChangeDetectionResult, MapFileWriter, read_sharepoint_map, read_files_map, read_vectorstore_map, detect_changes, is_file_changed, is_file_changed_for_embed, sharepoint_map_row_to_files_map_row, files_map_row_to_vectorstore_map_row
 from routers_v2.common_sharepoint_functions_v2 import SharePointFile, connect_to_site_using_client_id_and_certificate, try_get_document_library, get_document_library_files, download_file_from_sharepoint, get_list_items, get_list_items_as_sharepoint_files, export_list_to_csv, get_site_pages, download_site_page_html, create_document_library, add_number_field_to_list, add_text_field_to_list, upload_file_to_library, upload_file_to_folder, update_file_content, rename_file, move_file, delete_file, create_folder_in_library, delete_document_library, create_list, add_list_item, update_list_item, delete_list_item, delete_list, create_site_page, update_site_page, rename_site_page, delete_site_page, file_exists_in_library
 from routers_v2.common_embed_functions_v2 import upload_file_to_openai, delete_file_from_openai, add_file_to_vector_store, remove_file_from_vector_store, list_vector_store_files, wait_for_vector_store_ready, get_failed_embeddings, upload_and_embed_file, remove_and_delete_file
+from routers_v2.common_openai_functions_v2 import create_vector_store
 
 router = APIRouter()
 config = None
@@ -118,7 +119,7 @@ async def step_download_source(storage_path: str, domain: DomainConfig, source, 
         return result
       sp_files = get_document_library_files(ctx, library, source.filter, logger, dry_run)
     elif source_type == "sitepage_sources":
-      sp_files = get_site_pages(ctx, source.sharepoint_url_part, source.filter, logger, dry_run)
+      sp_files = get_site_pages(ctx, source.site_url, source.sharepoint_url_part, source.filter, logger, dry_run)
     elif source_type == "list_sources":
       sp_files = get_list_items_as_sharepoint_files(ctx, source.list_name, source.filter, logger, dry_run)
     sp_items = [_sharepoint_file_to_map_row(f) for f in sp_files]
@@ -319,6 +320,23 @@ async def crawl_domain(storage_path: str, domain: DomainConfig, mode: str, scope
   if not sources:
     logger.log_function_output("WARNING: No sources configured")
     return {"ok": True, "data": {"sources_processed": 0}}
+  # FIX-01: Auto-create vector store if empty (per _V2_SPEC_CRAWLER.md:487-491)
+  skip_embedding = False
+  if not domain.vector_store_id:
+    if dry_run:
+      logger.log_function_output(f"Vector store would be created: '{domain.vector_store_name or domain.domain_id}'")
+    else:
+      try:
+        vs_name = domain.vector_store_name or domain.domain_id
+        logger.log_function_output(f"Creating vector store '{vs_name}'...")
+        new_vs = await create_vector_store(openai_client, vs_name)
+        domain.vector_store_id = new_vs.id
+        save_domain_to_file(storage_path, domain, logger)
+        logger.log_function_output(f"  Created vector store '{vs_name}' (ID={new_vs.id})")
+      except Exception as e:
+        logger.log_function_output(f"  ERROR: Failed to create vector store -> {str(e)}")
+        logger.log_function_output("  Embedding will be skipped for all sources.")
+        skip_embedding = True
   logger.log_function_output(f"Crawling {len(sources)} source(s)")
   job_id = writer.job_id if dry_run else None
   download_results, embed_results = [], []
@@ -328,8 +346,9 @@ async def crawl_domain(storage_path: str, domain: DomainConfig, mode: str, scope
     await step_integrity_check(storage_path, domain.domain_id, source, source_type, dry_run, writer, logger, crawler_config, job_id)
     if source_type in ("list_sources", "sitepage_sources"):
       await step_process_source(storage_path, domain.domain_id, source, source_type, dry_run, writer, logger, job_id)
-    result = await step_embed_source(storage_path, domain, source, source_type, mode, dry_run, retry_batches, writer, logger, openai_client, job_id)
-    embed_results.append(result)
+    if not skip_embedding:
+      result = await step_embed_source(storage_path, domain, source, source_type, mode, dry_run, retry_batches, writer, logger, openai_client, job_id)
+      embed_results.append(result)
   total_downloaded = sum(r.downloaded for r in download_results)
   total_embedded = sum(r.embedded for r in embed_results)
   total_errors = sum(r.errors for r in download_results) + sum(r.failed for r in embed_results)
@@ -1033,7 +1052,7 @@ async def crawler_selftest(request: Request):
   - Phase 2: Pre-cleanup (remove leftover artifacts from previous runs)
   - Phase 3: SharePoint Setup (document library, list, site pages)
   - Phase 4: Domain Setup (create _SELFTEST domain)
-  - Phase 5: Error Cases (I1-I4)
+  - Phase 5: Error Cases (I1-I4, I9)
   - Phase 6: Full Crawl Tests (A1-A4)
   - Phase 7: source_id Filter Tests (B1-B5)
   - Phase 8: dry_run Tests (D1-D4)
@@ -1076,8 +1095,8 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
   selftest_site = getattr(config, 'CRAWLER_SELFTEST_SHAREPOINT_SITE', None)
   crawler_cfg = get_crawler_config()
   
-  # Tests per phase: P1=4(M1-M4), P2=1, P3=1, P4=1, P5=4(I), P6=4(A), P7=5(B), P8=4(D), P9=3(E), P10=0, P11=4(F), P12=2(G), P13=2(H), P14=4(J), P15=4(K), P16=3(L), P17=3(O), P18=4(N), P19=0
-  PHASE_TESTS = {1: 4, 2: 1, 3: 1, 4: 1, 5: 4, 6: 4, 7: 5, 8: 4, 9: 3, 10: 0, 11: 4, 12: 2, 13: 2, 14: 4, 15: 4, 16: 3, 17: 3, 18: 4, 19: 0}
+  # Tests per phase: P1=4(M1-M4), P2=1, P3=1, P4=1, P5=5(I), P6=4(A), P7=5(B), P8=4(D), P9=3(E), P10=0, P11=4(F), P12=2(G), P13=2(H), P14=4(J), P15=4(K), P16=3(L), P17=3(O), P18=4(N), P19=0
+  PHASE_TESTS = {1: 4, 2: 1, 3: 1, 4: 1, 5: 5, 6: 4, 7: 5, 8: 4, 9: 3, 10: 0, 11: 4, 12: 2, 13: 2, 14: 4, 15: 4, 16: 3, 17: 3, 18: 4, 19: 0}
   TOTAL_TESTS = sum(PHASE_TESTS.get(p, 0) for p in range(1, min(max_phase, 19) + 1))
   test_num = 0
   ok_count = 0
@@ -1467,6 +1486,63 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
       result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="INVALID_MODE_XYZ", scope="files")
       if not result.get("ok", True) and "mode" in result.get("error", "").lower(): yield check_ok("Correctly rejected invalid mode")
       else: yield check_fail(f"Should have rejected invalid mode -> {result.get('error', 'No error')}")
+      
+      # I9: Unreachable SharePoint URL - source skipped gracefully, other sources still processed
+      yield next_test("I9: Unreachable SharePoint URL handled gracefully")
+      # Create a temporary domain with an unreachable source alongside a valid source
+      unreachable_domain_id = "_SELFTEST_UNREACHABLE"
+      try:
+        # Create domain with one valid source and one unreachable source
+        unreachable_domain = DomainConfig(
+          domain_id=unreachable_domain_id,
+          name="Unreachable URL Test",
+          description="Test graceful handling of unreachable SharePoint",
+          vector_store_name="",
+          vector_store_id="",
+          file_sources=[
+            FileSource(source_id="valid_source", site_url=selftest_site, sharepoint_url_part=SELFTEST_LIBRARY_URL, filter=""),
+            FileSource(source_id="unreachable_source", site_url="https://unreachable-fake-site-12345.sharepoint.com/sites/FakeSite", sharepoint_url_part="/FakeLibrary", filter="")
+          ],
+          list_sources=[],
+          sitepage_sources=[]
+        )
+        save_domain_to_file(storage_path, unreachable_domain, logger)
+        for sse in writer.drain_sse_queue(): yield sse
+        
+        # Run crawl - should handle unreachable source gracefully
+        _selftest_clear_domain_folder(storage_path, unreachable_domain_id)
+        result = await _selftest_run_crawl(base_url, unreachable_domain_id, "crawl", mode="full", scope="files")
+        
+        # Check: crawl should complete (ok may be False due to errors, but should not crash)
+        # The valid source should have been processed, unreachable source should log error and skip
+        total_downloaded = result.get("data", {}).get("total_downloaded", 0)
+        total_errors = result.get("data", {}).get("total_errors", 0)
+        
+        if total_downloaded > 0 and total_errors > 0:
+          # Valid source was processed, unreachable source had errors - PASS
+          yield check_ok(f"{total_downloaded} file(s), {total_errors} error(s) from unreachable source".replace("(s)", "s" if total_downloaded != 1 else "", 1).replace("(s)", "s" if total_errors != 1 else "", 1))
+        elif total_downloaded > 0 and total_errors == 0:
+          # Valid source processed, but unreachable didn't report error (unexpected but acceptable)
+          yield check_ok(f"{total_downloaded} file(s) downloaded, unreachable source skipped".replace("(s)", "s" if total_downloaded != 1 else ""))
+        elif total_downloaded == 0 and total_errors > 0:
+          # Only errors, valid source also failed (network issue?)
+          yield check_fail(f"No files downloaded, {total_errors} error(s) - valid source may have failed too".replace("(s)", "s" if total_errors != 1 else ""))
+        else:
+          yield check_fail(f"Unexpected result -> downloaded={total_downloaded}, errors={total_errors}")
+        
+        # Cleanup: delete the test domain
+        delete_domain_folder(storage_path, unreachable_domain_id, logger)
+        for sse in writer.drain_sse_queue(): yield sse
+        crawler_path = os.path.join(storage_path, "crawler", unreachable_domain_id)
+        if os.path.exists(crawler_path): shutil.rmtree(crawler_path)
+      except Exception as e:
+        yield check_fail(f"Test setup/execution failed -> {str(e)}")
+        # Cleanup on failure
+        try:
+          delete_domain_folder(storage_path, unreachable_domain_id, logger)
+          crawler_path = os.path.join(storage_path, "crawler", unreachable_domain_id)
+          if os.path.exists(crawler_path): shutil.rmtree(crawler_path)
+        except: pass
       yield phase_end(5, "Error Cases")
     
     # ===================== Phase 6: Full Crawl Tests (A1-A4) =====================
