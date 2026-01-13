@@ -415,10 +415,10 @@ def get_list_items_as_sharepoint_files(ctx: ClientContext, list_name: str, filte
 
 # ----------------------------------------- START: Site Pages Operations ----------------------------------------------
 
-def get_site_pages(ctx: ClientContext, pages_url_part: str, filter_query: str, logger: MiddlewareLogger, dry_run: bool = False) -> list:
+def get_site_pages(ctx: ClientContext, site_url: str, pages_url_part: str, filter_query: str, logger: MiddlewareLogger, dry_run: bool = False) -> list:
   """Get site pages metadata. Similar to get_document_library_files but for SitePages library. dry_run=True only verifies library exists."""
   logger.log_function_header("get_site_pages()")
-  library, error = try_get_document_library(ctx, ctx.web.url, pages_url_part)
+  library, error = try_get_document_library(ctx, site_url, pages_url_part)
   if error:
     logger.log_function_output(f"ERROR: Site pages '{pages_url_part}' - {error}")
     logger.log_function_footer()

@@ -362,7 +362,7 @@ def test_export_list_to_csv(ctx, list_name: str, temp_dir: str, logger: Middlewa
   test("dry_run succeeds", dry_success, dry_error)
   test("dry_run does not create file", not os.path.exists(dry_target))
 
-def test_get_site_pages(ctx, pages_url_part: str, logger: MiddlewareLogger):
+def test_get_site_pages(ctx, site_url: str, pages_url_part: str, logger: MiddlewareLogger):
   """
   Test site pages retrieval.
   - Verifies returns list of SharePointFile instances
@@ -379,7 +379,7 @@ def test_get_site_pages(ctx, pages_url_part: str, logger: MiddlewareLogger):
     # Default to SitePages
     pages_url_part = "/SitePages"
   
-  pages = cspf.get_site_pages(ctx, pages_url_part, "", logger)
+  pages = cspf.get_site_pages(ctx, site_url, pages_url_part, "", logger)
   test("Returns list", isinstance(pages, list))
   print(f"    {len(pages)} site page{'' if len(pages) == 1 else 's'} retrieved.")
   
@@ -388,7 +388,7 @@ def test_get_site_pages(ctx, pages_url_part: str, logger: MiddlewareLogger):
     print(f"    First page: '{pages[0].filename}'")
   
   # Test dry_run - should verify library exists but return empty list
-  dry_pages = cspf.get_site_pages(ctx, pages_url_part, "", logger, dry_run=True)
+  dry_pages = cspf.get_site_pages(ctx, site_url, pages_url_part, "", logger, dry_run=True)
   test("dry_run returns empty list", dry_pages == [])
   
   return pages
@@ -536,8 +536,9 @@ def main():
     test_export_list_to_csv(ctx, list_name, test_output_dir, logger)
     
     # Test 8: Site pages (if sitepage_sources configured)
+    pages_site_url = domain.sitepage_sources[0].site_url if len(domain.sitepage_sources) > 0 else site_url
     pages_url_part = domain.sitepage_sources[0].sharepoint_url_part if len(domain.sitepage_sources) > 0 else "/SitePages"
-    pages = test_get_site_pages(ctx, pages_url_part, logger)
+    pages = test_get_site_pages(ctx, pages_site_url, pages_url_part, logger)
     test_download_site_page_html(ctx, pages, test_output_dir, logger)
     
   finally:
