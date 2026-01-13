@@ -134,7 +134,12 @@ async def step_download_source(storage_path: str, domain: DomainConfig, source, 
     os.makedirs(target_folder, exist_ok=True)
     files_writer = MapFileWriter(files_map_path, FilesMapRow)
     files_writer.write_header()
-    to_download = changes.added + changes.changed
+    # FIX-05: Filter to embeddable files only (non-embeddable tracked in sharepoint_map.csv only)
+    to_download_all = changes.added + changes.changed
+    to_download = [f for f in to_download_all if is_file_embeddable(f.filename)]
+    non_embeddable_count = len(to_download_all) - len(to_download)
+    if non_embeddable_count > 0:
+      logger.log_function_output(f"  Skipping {non_embeddable_count} non-embeddable file{'' if non_embeddable_count == 1 else 's'}.")
     total = len(to_download)
     for i, sp_item in enumerate(to_download):
       async for control in writer.check_control():
@@ -888,16 +893,17 @@ SELFTEST_MUTATION_MAX_WAIT = 60
 
 # Snapshot definitions - expected row counts after various operations
 # Site pages excluded - app-only auth blocked for Site Pages library writes
+# FIX-05: Non-embeddable files (.zip, .csv, .xlsx) not in files_map.csv (tracked in sharepoint_map.csv only)
 SNAP_FULL_ALL = {
-  "01_files/files_all": {"files_map_rows": 9},
-  "01_files/files_crawl1": {"files_map_rows": 6},
-  "02_lists/lists_all": {"files_map_rows": 6},
-  "02_lists/lists_active": {"files_map_rows": 3}
+  "01_files/files_all": {"files_map_rows": 8},  # 9 files - 1 .zip
+  "01_files/files_crawl1": {"files_map_rows": 5},  # 6 files - 1 .zip
+  "02_lists/lists_all": {"files_map_rows": 0},  # Lists export as .csv (non-embeddable)
+  "02_lists/lists_active": {"files_map_rows": 0}  # Lists export as .csv (non-embeddable)
 }
 
 SNAP_FULL_FILES = {
-  "01_files/files_all": {"files_map_rows": 9},
-  "01_files/files_crawl1": {"files_map_rows": 6},
+  "01_files/files_all": {"files_map_rows": 8},  # 9 files - 1 .zip
+  "01_files/files_crawl1": {"files_map_rows": 5},  # 6 files - 1 .zip
   "02_lists/lists_all": {"files_map_rows": 0},
   "02_lists/lists_active": {"files_map_rows": 0}
 }
@@ -905,8 +911,8 @@ SNAP_FULL_FILES = {
 SNAP_FULL_LISTS = {
   "01_files/files_all": {"files_map_rows": 0},
   "01_files/files_crawl1": {"files_map_rows": 0},
-  "02_lists/lists_all": {"files_map_rows": 6},
-  "02_lists/lists_active": {"files_map_rows": 3}
+  "02_lists/lists_all": {"files_map_rows": 0},  # Lists export as .csv (non-embeddable)
+  "02_lists/lists_active": {"files_map_rows": 0}  # Lists export as .csv (non-embeddable)
 }
 
 SNAP_EMPTY = {
@@ -1303,15 +1309,17 @@ async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: Middlewar
         # Check and delete document library
         yield log("  Checking SharePoint document library...")
         try:
-          lib_info = ctx.web.get_list(f"/sites/{site_path}{SELFTEST_LIBRARY_URL}").get().execute_query()
-          if lib_info:
+          lib_info, lib_error = try_get_document_library(ctx, selftest_site, SELFTEST_LIBRARY_URL)
+          if lib_info and not lib_error:
             yield log(f"    Found library '{SELFTEST_LIBRARY_URL}', deleting...")
             success, error = delete_document_library(ctx, SELFTEST_LIBRARY_URL, logger)
             for sse in writer.drain_sse_queue(): yield sse
             if not success:
               cleanup_errors.append(f"Library deletion failed: {error}")
-        except:
-          yield log(f"    Library '{SELFTEST_LIBRARY_URL}' not found (OK)")
+          else:
+            yield log(f"    Library '{SELFTEST_LIBRARY_URL}' not found (OK)")
+        except Exception as e:
+          yield log(f"    Library check failed: {e}")
       
       if cleanup_errors:
         yield check_fail(f"{len(cleanup_errors)} error(s): {'; '.join(cleanup_errors)}")
