@@ -462,7 +462,7 @@ def filter_embeddable_files(files: list) -> tuple:
   embeddable = []
   skipped = []
   for f in files:
-    fname = getattr(f, 'filename', None) or f.get('filename', '') if isinstance(f, dict) else None
+    fname = f.get('filename', '') if isinstance(f, dict) else getattr(f, 'filename', None)
     if fname and is_file_embeddable(fname):
       embeddable.append(f)
     else:
