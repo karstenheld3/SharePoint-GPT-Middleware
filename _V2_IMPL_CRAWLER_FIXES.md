@@ -108,10 +108,11 @@ Option 2 is simpler but requires `crawl_domain()` to become an async generator.
   - [x] Add site_url parameter to get_site_pages()
   - [x] Update crawler.py to pass source.site_url
   - [x] Update test file to pass site_url
-- [ ] **FIX-04**: SSE logs not streaming during crawl
-  - [ ] Convert `crawl_domain()` to async generator
-  - [ ] Add drain points after each step
-  - [ ] Update `_crawl_stream()` to iterate generator
+- [x] **FIX-04**: SSE logs not streaming during crawl
+  - [x] Add set_crawl_results/get_crawl_results to StreamingJobWriter
+  - [x] Convert `crawl_domain()` to async generator
+  - [x] Add drain points after each step
+  - [x] Update `_crawl_stream()` to iterate generator
 - [x] **FIX-05**: Skip downloading non-embeddable files
   - [x] Filter to_download list by is_file_embeddable()
   - [x] Non-embeddable files tracked in sharepoint_map.csv only (not in files_map.csv)
@@ -119,6 +120,9 @@ Option 2 is simpler but requires `crawl_domain()` to become an async generator.
   - [x] Update spec
 
 ## Spec Changes
+
+**[2026-01-13 14:13]**
+- Fixed: FIX-04 - converted crawl_domain to async generator for real-time SSE streaming
 
 **[2026-01-13 13:05]**
 - Added: FIX-05 for skipping download of non-embeddable files
