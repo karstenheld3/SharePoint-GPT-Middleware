@@ -10,7 +10,7 @@ If unclear, ask for clarification.
 
 Then re-read the previous conversation, provided and relevant files. Make an internal MUST-NOT-FORGET list and review / edit it after each step.
 
-Then map out all neessary steps.
+Then map out all necessary steps.
 Keep the steps small to ensure high quality.
 Use progress tracking and note taking tools.
 

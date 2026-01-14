@@ -1,7 +1,3 @@
----
-trigger: always_on
----
-
 # Python Coding Rules
 
 ## Table of Contents
@@ -18,55 +14,55 @@ trigger: always_on
 ## Rule Index
 
 **Formatting (FT)**
-- **GLOB-FT-01**: Indentation with TAB (2 spaces)
-- **GLOB-FT-02**: Single line for statements ≤ MAX_LINE_CHARS
-- **GLOB-FT-03**: Function signature on single line
-- **GLOB-FT-04**: One empty line between functions/classes
-- **GLOB-FT-05**: Function grouping with topic markers
+- **PYTHON-FT-01**: Indentation with TAB (2 spaces)
+- **PYTHON-FT-02**: Single line for statements ≤ MAX_LINE_CHARS
+- **PYTHON-FT-03**: Function signature on single line
+- **PYTHON-FT-04**: One empty line between functions/classes
+- **PYTHON-FT-05**: Function grouping with topic markers
 
 **Imports (IM)**
-- **GLOB-IM-01**: All imports at top of file
-- **GLOB-IM-02**: Core imports on single line
-- **GLOB-IM-03**: No local imports inside functions
-- **GLOB-IM-04**: Group imports by origin
-- **GLOB-IM-05**: Prefer single-line multi-name imports
+- **PYTHON-IM-01**: All imports at top of file
+- **PYTHON-IM-02**: Core imports on single line
+- **PYTHON-IM-03**: No local imports inside functions
+- **PYTHON-IM-04**: Group imports by origin
+- **PYTHON-IM-05**: Prefer single-line multi-name imports
 
 **Code Generation (CG)**
-- **GLOB-CG-01**: Do not rename existing symbols
-- **GLOB-CG-02**: Re-use existing patterns
-- **GLOB-CG-03**: Check for existing helpers before creating new
-- **GLOB-CG-04**: Principle of Least Surprise
-- **GLOB-CG-05**: Prefer explicit for loops over functional helpers
-- **GLOB-CG-06**: Prefer standard library
-- **GLOB-CG-07**: No emojis in code/logging
-- **GLOB-CG-08**: Use timezone-aware datetime
-- **GLOB-CG-09**: Handle singular/plural correctly
+- **PYTHON-CG-01**: Do not rename existing symbols
+- **PYTHON-CG-02**: Re-use existing patterns
+- **PYTHON-CG-03**: Check for existing helpers before creating new
+- **PYTHON-CG-04**: Principle of Least Surprise
+- **PYTHON-CG-05**: Prefer explicit for loops over functional helpers
+- **PYTHON-CG-06**: Prefer standard library
+- **PYTHON-CG-07**: No emojis in code/logging
+- **PYTHON-CG-08**: Use timezone-aware datetime
+- **PYTHON-CG-09**: Handle singular/plural correctly
 
 **Naming (NM)**
-- **GLOB-NM-01**: Use clear, fully written names
-- **GLOB-NM-02**: Follow existing naming patterns
-- **GLOB-NM-03**: Avoid ambiguous abbreviations
+- **PYTHON-NM-01**: Use clear, fully written names
+- **PYTHON-NM-02**: Follow existing naming patterns
+- **PYTHON-NM-03**: Avoid ambiguous abbreviations
 
 **Comments (CM)**
-- **GLOB-CM-01**: Comment intent, not obvious code
-- **GLOB-CM-02**: No docstrings for small functions
-- **GLOB-CM-03**: Docstrings for complex functions with examples
-- **GLOB-CM-04**: Use ASCII quotes in documentation
-- **GLOB-CM-05**: Use tree characters for hierarchies
+- **PYTHON-CM-01**: Comment intent, not obvious code
+- **PYTHON-CM-02**: No docstrings for small functions
+- **PYTHON-CM-03**: Docstrings for complex functions with examples
+- **PYTHON-CM-04**: Use ASCII quotes in documentation
+- **PYTHON-CM-05**: Use tree characters for hierarchies
 
 **Logging (LG)**
-- **GLOB-LG-01**: Indent sub-actions with 2 spaces
-- **GLOB-LG-02**: Log action before executing
-- **GLOB-LG-03**: Status keywords on separate indented line
-- **GLOB-LG-04**: Surround paths/names/IDs with single quotes
-- **GLOB-LG-05**: Iteration format `[ x / n ]`
-- **GLOB-LG-06**: Retry format `( x / n )` inline
-- **GLOB-LG-07**: Numbers first in results (exception: activity verbs)
-- **GLOB-LG-08**: Property format `property_name='value'`
-- **GLOB-LG-09**: Use UNKNOWN constant for missing values
-- **GLOB-LG-10**: Nested function indentation (+2 spaces per level)
-- **GLOB-LG-11**: Error concatenation with ` -> `
-- **GLOB-LG-12**: Additional identifiers in parentheses `(ID=xxx)`
+- **PYTHON-LG-01**: Indent sub-actions with 2 spaces
+- **PYTHON-LG-02**: Log action before executing
+- **PYTHON-LG-03**: Status keywords on separate indented line
+- **PYTHON-LG-04**: Surround paths/names/IDs with single quotes
+- **PYTHON-LG-05**: Iteration format `[ x / n ]`
+- **PYTHON-LG-06**: Retry format `( x / n )` inline
+- **PYTHON-LG-07**: Numbers first in results (exception: activity verbs)
+- **PYTHON-LG-08**: Property format `property_name='value'`
+- **PYTHON-LG-09**: Use UNKNOWN constant for missing values
+- **PYTHON-LG-10**: Nested function indentation (+2 spaces per level)
+- **PYTHON-LG-11**: Error concatenation with ` -> `
+- **PYTHON-LG-12**: Additional identifiers in parentheses `(ID=xxx)`
 
 ## Definitions
 
@@ -78,10 +74,10 @@ UNKNOWN = '[UNKNOWN]'
 
 ## Formatting Rules (FT)
 
-### GLOB-FT-01: Indentation
+### PYTHON-FT-01: Indentation
 Indent code with TAB (2 spaces).
 
-### GLOB-FT-02: Single Line Statements
+### PYTHON-FT-02: Single Line Statements
 If a statement is ≤ MAX_LINE_CHARS characters (including spaces), keep it on a single line.
 Ignore MAX_LINE_CHARS restrictions in Markdown; especially for tables and UI prototypes.
 
@@ -107,13 +103,13 @@ if not vector_store_id:
 if not vector_store_id: raise ValueError(f"Expected a non-empty value for 'vector_store_id' but received {vector_store_id!r}")
 ```
 
-### GLOB-FT-03: Function Signatures
+### PYTHON-FT-03: Function Signatures
 Put the full signature on a single line; function body starts on the next line.
 
-### GLOB-FT-04: Empty Lines
+### PYTHON-FT-04: Empty Lines
 One empty line as delimiter between imports, functions and class definitions.
 
-### GLOB-FT-05: Function Grouping
+### PYTHON-FT-05: Function Grouping
 Group functions under common topic with start/end markers (127 chars long). Single line space after each function.
 
 *BAD*:
@@ -169,10 +165,10 @@ def function04():
 
 ## Import Rules (IM)
 
-### GLOB-IM-01: Import Location
+### PYTHON-IM-01: Import Location
 All imports at the top of the file.
 
-### GLOB-IM-02: Core Imports
+### PYTHON-IM-02: Core Imports
 All core imports on a single line (even if longer than MAX_LINE_CHARS).
 
 *BAD*:
@@ -187,7 +183,7 @@ import random
 import asyncio, datetime, json, random
 ```
 
-### GLOB-IM-03: No Local Imports
+### PYTHON-IM-03: No Local Imports
 No local imports inside functions.
 
 *BAD*:
@@ -204,41 +200,41 @@ def function_abc():
   # ...
 ```
 
-### GLOB-IM-04: Import Grouping
+### PYTHON-IM-04: Import Grouping
 Group imports: standard library first, then third-party libraries, then internal modules.
 
-### GLOB-IM-05: Multi-Name Imports
+### PYTHON-IM-05: Multi-Name Imports
 Prefer importing all needed names from a module in a single line.
 
 ## Code Generation Rules (CG)
 
-### GLOB-CG-01: No Symbol Renaming
+### PYTHON-CG-01: No Symbol Renaming
 Do not rename existing symbols unless explicitly asked.
 
-### GLOB-CG-02: Re-use Patterns
+### PYTHON-CG-02: Re-use Patterns
 Analyze the existing codebase before creating new code. Re-use existing implementation patterns, naming patterns, code formatting, design philosophy, logging style and functions.
 
-### GLOB-CG-03: Check Existing Helpers
+### PYTHON-CG-03: Check Existing Helpers
 Before implementing new helper functions, make sure no alternatives exist in the codebase.
 
-### GLOB-CG-04: Principle of Least Surprise
+### PYTHON-CG-04: Principle of Least Surprise
 Prefer simple, idiomatic Python over clever or magical code. Optimize for readability and maintainability, not micro-optimizations. Concise is good, but not at the expense of clarity.
 
-### GLOB-CG-05: Explicit Loops
+### PYTHON-CG-05: Explicit Loops
 Avoid `lambda`, `map`, `filter`, `reduce` and similar helpers for control flow; use explicit `for` loops.
 **Exception**: string / list joins.
 
-### GLOB-CG-06: Standard Library First
+### PYTHON-CG-06: Standard Library First
 Prefer standard library over third-party packages; add dependencies only if a helper function would be unreasonably complex.
 
-### GLOB-CG-07: No Emojis
+### PYTHON-CG-07: No Emojis
 No emojis in the code or logging.
 **Exception**: UI may occasionally use ✅=OK, ❌=FAIL, ⚠️=WARNING
 
-### GLOB-CG-08: Timezone-Aware Datetime
+### PYTHON-CG-08: Timezone-Aware Datetime
 Use `datetime.datetime.now(datetime.timezone.utc)` instead of deprecated `datetime.datetime.utcnow()`.
 
-### GLOB-CG-09: Singular/Plural
+### PYTHON-CG-09: Singular/Plural
 Handle singular and plural correctly: `0 files found.`, `1 file`, `2 files`. Avoid `1 file(s)`.
 
 *BAD*:
@@ -252,13 +248,13 @@ print(f"{count} file(s)".replace("(s)", "s" if count != 1 else "") + " found.")
 
 ## Naming Rules (NM)
 
-### GLOB-NM-01: Clear Names
+### PYTHON-NM-01: Clear Names
 Use clear, fully written names.
 
-### GLOB-NM-02: Follow Patterns
+### PYTHON-NM-02: Follow Patterns
 Follow existing naming patterns in the codebase.
 
-### GLOB-NM-03: No Abbreviations
+### PYTHON-NM-03: No Abbreviations
 Avoid ambiguous abbreviations.
 
 *BAD* -> *GOOD*:
@@ -270,10 +266,10 @@ dynamic_count -> use_dynamic_count_for_updating
 
 ## Comment Rules (CM)
 
-### GLOB-CM-01: Comment Intent
+### PYTHON-CM-01: Comment Intent
 Avoid comments that restate obvious code; comment intent, edge cases, and non-obvious behavior.
 
-### GLOB-CM-02: No Docstrings for Small Functions
+### PYTHON-CM-02: No Docstrings for Small Functions
 No docstrings for small, single-purpose functions with self-explanatory names and arguments. Use a single comment above such functions if intent or types need clarification.
 
 *BAD*:
@@ -312,7 +308,7 @@ def set_config(app_config):
   config = app_config
 ```
 
-### GLOB-CM-03: Docstrings for Complex Functions
+### PYTHON-CM-03: Docstrings for Complex Functions
 Use docstrings for FastAPI endpoints and complex functions (more than 5 arguments, multiple responsibilities, or complex/structured return types), and include example outputs.
 
 *GOOD*:
@@ -337,37 +333,37 @@ def generate_simple_page(title: str, html_content: str, body_attributes: str = "
 </html>"""
 ```
 
-### GLOB-CM-04: ASCII Quotes
+### PYTHON-CM-04: ASCII Quotes
 For documentation or UI output, avoid "typographic quotes" and use typewriter / ASCII "double quotes" or 'single quotes'.
 
-### GLOB-CM-05: Hierarchy Characters
-When creating hierarchies and maps, use "└─" for indenting.
+### PYTHON-CM-05: Hierarchy Characters
+When creating hierarchies and maps, use "└──" for indenting.
 
 ## Logging Rules (LG)
 
-### GLOB-LG-01: Sub-Action Indentation
+### PYTHON-LG-01: Sub-Action Indentation
 Indent sub-actions with 2 spaces.
 
-### GLOB-LG-02: Log Before Action
+### PYTHON-LG-02: Log Before Action
 Log the action description before executing it.
 
-### GLOB-LG-03: Status Keywords
+### PYTHON-LG-03: Status Keywords
 Put status keywords on a separate, indented line: `OK`, `ERROR`, `FAIL`, `WARNING`.
 - `OK` = action succeeded
 - `ERROR` = intermediate or final error occurred
 - `FAIL` = action failed even after error mitigation
 - `WARNING` = intermediate error that will be mitigated
 
-### GLOB-LG-04: Quote Paths and IDs
+### PYTHON-LG-04: Quote Paths and IDs
 Surround file paths, names and IDs with single quotes `'...'`.
 
-### GLOB-LG-05: Iteration Format
+### PYTHON-LG-05: Iteration Format
 For iterations, prefix lines with `[ x / n ]` at the beginning of a line where x = current item number, n = total items.
 
-### GLOB-LG-06: Retry Format
+### PYTHON-LG-06: Retry Format
 For retries, use `( x / n )` inline where x = current retry, n = max retries.
 
-### GLOB-LG-07: Numbers First
+### PYTHON-LG-07: Numbers First
 When logging results, always state numbers first. Honor the singular / plural rule.
 **Exception**: When starting activities, the activity verb should go first.
 
@@ -385,7 +381,7 @@ Retrieving 1 item from 'https://xxx'...
 2 of 10 files successfully converted to SharePointFile objects.
 ```
 
-### GLOB-LG-08: Property Format
+### PYTHON-LG-08: Property Format
 When logging IDs, paths, names, or properties that may contain spaces, use `property_name='value'` format. This disambiguates values and makes logs parseable. Do not use colons after prepositions like "from".
 
 *BAD*:
@@ -403,7 +399,7 @@ Site: site_url='https://example.com/sites/Test'
 Library: sharepoint_url_part='/Shared Documents'
 ```
 
-### GLOB-LG-09: UNKNOWN Constant
+### PYTHON-LG-09: UNKNOWN Constant
 Missing values returned by APIs **should NOT be converted to arbitrary default values**. Define a global `UNKNOWN` constant in `common_logging_functions_v2.py`. Use `or UNKNOWN` pattern for values that go to logs. **NEVER risk breaking logging**.
 
 *BAD*:
@@ -438,7 +434,7 @@ Output examples:
 - With value: `Library: 'Documents' (ID=045229b3-57de-49ce-b36a-00c3ec0f4fd4)`
 - Without value: `Library: '[UNKNOWN]' (ID=[UNKNOWN])`
 
-### GLOB-LG-10: Nested Function Indentation
+### PYTHON-LG-10: Nested Function Indentation
 When functions call other functions that also log, each nesting level adds 2 spaces:
 - Depth 1 (top-level function): 2 spaces from section header
 - Depth 2 (nested function): 4 spaces
@@ -465,7 +461,7 @@ END: export_list_to_csv()
   END: export_list_to_csv()
 ```
 
-### GLOB-LG-11: Error Concatenation
+### PYTHON-LG-11: Error Concatenation
 When logging errors, concatenate the description with the exception using ` -> ` without dot before. Always include paths and identifiers of the current activity to track down individual items in logs.
 
 *BAD*:
@@ -511,7 +507,7 @@ except BlockingIOError as e:
   wait_and_retry()
 ```
 
-### GLOB-LG-12: Additional Info in Parentheses
+### PYTHON-LG-12: Additional Info in Parentheses
 Use parentheses for **additional/secondary information** that supplements the main log message. Primary identifiers can be inline.
 
 **Primary identifier inline** (no parentheses needed):

@@ -1,8 +1,14 @@
 ---
 description: Archive a completed session folder
+auto_execution_mode: 1
 ---
 
 # Archive Session Workflow
+
+## Required Skills
+
+Invoke these skills before proceeding:
+- @session-management for archive conventions
 
 Use this workflow to move a completed session folder to the archive.
 

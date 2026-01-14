@@ -1,6 +1,13 @@
 ---
 auto_execution_mode: 1
 ---
+
+## Required Skills
+
+Invoke these skills before proceeding:
+- @coding-conventions for coding style rules
+- @write-documents for tracking fixes in FIXES.md
+
 Implement what the user wants. Do it completely autonomously.
 
 **Attitude:**

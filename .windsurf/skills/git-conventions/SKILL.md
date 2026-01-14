@@ -1,8 +1,16 @@
 ---
-trigger: always_on
+name: git-conventions
+description: Apply when committing code, writing commit messages, or configuring .gitignore
 ---
 
-# Git Rules
+# Git Conventions
+
+## MUST-NOT-FORGET
+
+- Use Conventional Commits: `<type>(<scope>): <description>`
+- Types: feat, fix, docs, refactor, test, chore, style, perf
+- Imperative mood, <72 chars, no period
+- NEVER commit secrets: .env, *.cer, *.pfx, *.pem, *.key
 
 ## Commit Message Format
 
