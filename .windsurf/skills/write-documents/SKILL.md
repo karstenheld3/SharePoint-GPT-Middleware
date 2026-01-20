@@ -7,6 +7,19 @@ description: Apply when creating or editing INFO, SPEC, IMPL, TEST, or FIX docum
 
 This skill contains document templates and formatting rules.
 
+## Verb Mapping
+
+This skill implements:
+- [WRITE-INFO] - Create INFO documents (use INFO_TEMPLATE.md)
+- [WRITE-SPEC] - Create SPEC documents (use SPEC_TEMPLATE.md)
+- [WRITE-IMPL-PLAN] - Create IMPL documents (use IMPL_TEMPLATE.md)
+- [WRITE-TEST-PLAN] - Create TEST documents (use TEST_TEMPLATE.md)
+- [WRITE-FIX] - Create FIX documents (use FIXES_TEMPLATE.md)
+- [WRITE-FAIL] - Create/update FAILS.md (use FAILS_TEMPLATE.md)
+- [WRITE-REVIEW] - Create _REVIEW.md documents (use REVIEW_TEMPLATE.md)
+
+**Phases**: EXPLORE (INFO), DESIGN (SPEC, IMPL, TEST)
+
 ## MUST-NOT-FORGET
 
 - Use lists, not Markdown tables
@@ -17,6 +30,7 @@ This skill contains document templates and formatting rules.
 - Be exhaustive: list ALL domain objects, actions, functions
 - Document History section at end, reverse chronological
 - Use box-drawing characters (├── └── │) for trees
+- SPEC, IMPL, TEST documents MUST have MUST-NOT-FORGET section (after header block, before TOC)
 
 ## Document Writing Rules
 
@@ -25,21 +39,23 @@ This skill contains document templates and formatting rules.
   - BAD: "Files starting with '!' signify high relevance that must be treated with extra attention."
   - GOOD: "Files starting with '!' indicate high relevance. This information must be treated with extra attention."
 
-## Available Templates
+## Templates (Required)
 
-Read the appropriate template for the document type you are creating:
+You MUST read the appropriate template before creating documents:
 - `INFO_TEMPLATE.md` - Research and analysis documents
 - `SPEC_TEMPLATE.md` - Technical specifications
-- `SPEC_RULES.md` - SPEC writing rules with GOOD/BAD examples
 - `IMPL_TEMPLATE.md` - Implementation plans
 - `TEST_TEMPLATE.md` - Test plans
 - `FIXES_TEMPLATE.md` - Fix tracking documents
+- `FAILS_TEMPLATE.md` - Failure log (lessons learned)
+- `REVIEW_TEMPLATE.md` - Review documents (_REVIEW.md)
 
 ## Usage
 
 1. Read this SKILL.md for core rules
-2. Read the appropriate template for your document type
-3. Follow the template structure
+2. Read the template for your document type (required)
+3. For SPEC documents: also read `SPEC_RULES.md` (required)
+4. Follow the template structure exactly, except when user requests exceptions or different structure
 
 ## File Naming
 

@@ -1,9 +1,11 @@
 ---
 description: Create test plan from spec
-auto_execution_mode: 1
+phase: DESIGN
 ---
 
 # Write Test Plan Workflow
+
+Implements [WRITE-TEST-PLAN] verb from EDIRD model.
 
 ## Required Skills
 

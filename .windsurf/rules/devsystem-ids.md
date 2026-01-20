@@ -8,7 +8,7 @@ All documents and items must have unique IDs for traceability.
 
 ## Topic Registry
 
-**Topic:** 2-5 uppercase letters describing component (e.g., `CRWL` for Crawler, `AUTH` for Authentication)
+**Topic:** 2-6 uppercase letters describing component (e.g., `CRWL` for Crawler, `AUTH` for Authentication, `EDIRD` for EDIRD Phase Model)
 
 **REQUIREMENT:** Workspace/project-level NOTES.md MUST maintain a complete list of registered TOPIC IDs.
 
@@ -54,6 +54,17 @@ Every document MUST have an ID in its header block.
 - `CRWL-SP01` - Crawler Spec 1
 - `V2CR-IP01` - V2 Crawler Implementation Plan 1
 - `V2CR-TP01` - V2 Crawler Test Plan 1
+
+## Review Document IDs
+
+Reviews reference their source document with `-RV` suffix.
+
+**Format:** `[SOURCE-DOC-ID]-RV[NN]`
+
+**Examples:**
+- `AUTH-SP01-RV01` - First review of AUTH-SP01
+- `CRWL-IP01-RV02` - Second review of CRWL-IP01
+- `V2CR-IN01-RV01` - First review of V2CR-IN01
 
 ## Spec-Level Item IDs (FR, IG, DD)
 
@@ -119,9 +130,9 @@ Session tracking documents use date-based IDs instead of TOPIC-based IDs.
 - `2026-01-15_FixAuthenticationBug-PROBLEMS`
 - `2026-01-15_FixAuthenticationBug-PROGRESS`
 
-## Tracking IDs (BG, FT, PR, FX, TK)
+## Tracking IDs (BG, FT, PR, FX, TK, RV, FL)
 
-For session and project tracking in PROBLEMS.md, FIXES, and backlog documents.
+For session and project tracking in PROBLEMS.md, FAILS.md, _REVIEW.md, and backlog documents.
 
 **Format:** `[TOPIC]-[TYPE]-[NNN]` (3-digit number)
 
@@ -131,6 +142,8 @@ For session and project tracking in PROBLEMS.md, FIXES, and backlog documents.
 - `PR` - Problem (issue discovered during session)
 - `FX` - Fix (documented fix for a problem)
 - `TK` - Task (general work item)
+- `RV` - Review finding (potential issue in _REVIEW.md)
+- `FL` - Failure log entry (actual failure in FAILS.md)
 
 **Examples:**
 - `SAP-BG-001` - SAP-related bug 1
@@ -138,3 +151,7 @@ For session and project tracking in PROBLEMS.md, FIXES, and backlog documents.
 - `GLOB-PR-003` - Project-wide problem 3
 - `CRWL-FX-002` - Crawler fix 2
 - `UI-TK-015` - UI task 15
+- `AUTH-RV-001` - Authentication review finding 1
+- `CRWL-FL-001` - Crawler failure log entry 1
+
+**Note:** The `[TOPIC]` links together related SPEC, IMPL, TEST, INFO, FAILS, and REVIEW documents.

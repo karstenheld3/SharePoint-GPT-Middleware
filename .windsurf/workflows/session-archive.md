@@ -17,7 +17,7 @@ Use this workflow to move a completed session folder to the archive.
 1. **Move session folder to Archive**
 // turbo
    ```powershell
-   Move-Item -Path "_[SESSION_FOLDER]" -Destination "_Archive\"
+   Move-Item -Path "[SESSION_FOLDER]" -Destination "[SESSION_ARCHIVE_FOLDER]"
    ```
    Replace `[SESSION_FOLDER]` with actual folder name (e.g., `_2026-01-10_DontOverwriteWithEmptyValues`)
 

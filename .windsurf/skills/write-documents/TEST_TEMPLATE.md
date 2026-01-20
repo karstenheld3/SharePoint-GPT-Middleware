@@ -2,11 +2,17 @@
 
 **Doc ID**: [TOPIC]-TP[NN]
 **Goal**: [Single sentence describing test purpose]
+**Timeline**: Created YYYY-MM-DD, Updated N times (YYYY-MM-DD - YYYY-MM-DD)
 **Target file**: `[path/to/test_file.py]`
 
 **Depends on:**
 - `_SPEC_[X].md` [[DOC_ID]] for requirements
 - `_IMPL_[X].md` [[DOC_ID]] for implementation details
+
+## MUST-NOT-FORGET
+
+- [Critical rule 1]
+- [Critical rule 2]
 
 ## Table of Contents
 
@@ -20,6 +26,7 @@
 8. [Helper Functions](#8-helper-functions)
 9. [Cleanup](#9-cleanup)
 10. [Verification Checklist](#10-verification-checklist)
+11. [Document History](#11-document-history)
 
 ## 1. Overview
 
@@ -119,3 +126,8 @@ def create_test_fixture(): ...
 - [ ] Coverage meets requirements
 - [ ] Edge cases covered
 - [ ] Cleanup executed
+
+## 11. Document History
+
+**[YYYY-MM-DD HH:MM]**
+- Initial test plan created

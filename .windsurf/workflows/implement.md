@@ -1,25 +1,81 @@
 ---
-auto_execution_mode: 1
+description: Execute implementation from IMPL plan
+phase: IMPLEMENT
 ---
+
+# Implement Workflow
 
 ## Required Skills
 
-Invoke these skills before proceeding:
-- @coding-conventions for coding style rules
-- @write-documents for tracking fixes in FIXES.md
+- @coding-conventions for coding style
+- @write-documents for tracking
 
-Implement what the user wants. Do it completely autonomously.
+## Context Branching
 
-**Attitude:**
+Check what documents exist and proceed accordingly:
+
+### No SPEC, IMPL, TEST documents
+
+[IMPLEMENT] whatever was proposed or specified in conversation.
+
+### Existing INFO only
+
+Run `/write-spec` → [WRITE-SPEC](INFO, Problem or Feature)
+
+### Existing SPEC only
+
+Run `/write-impl-plan` → [WRITE-IMPL-PLAN](SPEC)
+
+### Existing IMPL only
+
+Run `/write-test-plan` → [WRITE-TEST-PLAN](IMPL)
+
+### Existing TEST (no test code)
+
+[IMPLEMENT] function skeletons from IMPL, then full failing tests from TEST.
+
+### Existing TEST + test code
+
+[IMPLEMENT] full implementations from IMPL in small verifiable steps.
+
+## Phase: IMPLEMENT
+
+**Entry gate:** DESIGN→IMPLEMENT passed (IMPL plan exists)
+
+### Verb Sequence
+
+1. For each step in IMPL plan:
+   - [IMPLEMENT] code changes
+   - [TEST] verify step works
+   - [FIX] if tests fail (per retry limits)
+   - [COMMIT] when green
+2. [VERIFY] against IMPL plan
+
+### Gate Check: IMPLEMENT→REFINE
+
+- [ ] All steps from IMPL plan implemented
+- [ ] Tests pass
+- [ ] No TODO/FIXME left unaddressed
+- [ ] Progress committed
+
+**Pass**: Run `/refine` | **Fail**: Continue [IMPLEMENT]
+
+## Stuck Detection
+
+If 3 consecutive [FIX] attempts fail:
+1. [CONSULT] with [ACTOR]
+2. Document in PROBLEMS.md
+3. Either get guidance or [DEFER] and continue
+
+## Attitude
+
 - Senior engineer, anticipating complexity, reducing risks
-- Completer / Finisher, never leaves clutter and work undocumented
-- Does POC (Proof of Concept) before implementing unverified patterns 
+- Completer / Finisher, never leaves clutter undocumented
+- Small cycles: [IMPLEMENT]→[TEST]→[FIX]→green→next
 
-**Rules:**
-- Be conservative about your assumptions: Research, verify, test before taking things for granted.
-- Don't leave clutter: Resists creating temporary files. If it can be done in the console, use the console
-- Memorize working Powershell patterns to execute stuff in the console
-- Use the current or a new `???_IMPL_???_FIXES.md` file to keep track of your actions: What was the feature or issue, status, problem, fix, tried options, researched stuff. If there is no `*_FIXES.md` file, find the `*_IMPL*.md` or  `*_SPEC_*.md` file and create a new file with the suffix `_FIXES.md`. 
-- If needed, write extra scripts starting with `.tmp_` to prove that your ideas work
-- Test before and after to be able to track progress. If needed, write extra test scripts that use the app configuration. These should also start with `.tmp_`.
-- Remove all `.tmp_*` files after your are finished with an implementation
+## Rules
+
+- Use small, verifiable steps - never implement large untestable chunks
+- Track progress in PROGRESS.md after each [COMMIT]
+- Document problems in PROBLEMS.md immediately when found
+- Remove temporary `.tmp_*` files after implementation complete

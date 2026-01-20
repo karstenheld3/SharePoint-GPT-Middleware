@@ -5,6 +5,14 @@ description: Apply when committing code, writing commit messages, or configuring
 
 # Git Conventions
 
+## Verb Mapping
+
+This skill implements:
+- [COMMIT] - Create conventional commits
+- [MERGE] - Merge branches following conventions
+
+**Phases**: IMPLEMENT, DELIVER
+
 ## MUST-NOT-FORGET
 
 - Use Conventional Commits: `<type>(<scope>): <description>`

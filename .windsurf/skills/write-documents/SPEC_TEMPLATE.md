@@ -2,6 +2,7 @@
 
 **Doc ID**: [TOPIC]-SP[NN]
 **Goal**: [Single sentence describing what to specify]
+**Timeline**: Created YYYY-MM-DD, Updated N times (YYYY-MM-DD - YYYY-MM-DD)
 **Target file**: `[path/to/file.py]`
 
 **Depends on:**

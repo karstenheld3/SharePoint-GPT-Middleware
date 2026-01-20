@@ -21,7 +21,34 @@ If no [SESSION_FOLDER] provided, create one in the default sessions folder with 
 
 ## Step 3: Create Session Documents
 
-In the [SESSION_FOLDER], create `PROBLEMS.md`, `PROGRESS.md` and `NOTES.md` files.
+In the [SESSION_FOLDER], create tracking files from @session-management templates:
+
+- `NOTES.md` - Include "Current Phase" section for EDIRD tracking
+- `PROGRESS.md` - Include "Phase Plan" section with 5 phases
+- `PROBLEMS.md` - Track issues discovered during session
+
+## Step 4: Initialize Phase Tracking
+
+Add to NOTES.md:
+```markdown
+## Current Phase
+
+**Phase**: EXPLORE
+**Workflow**: (pending assessment)
+**Assessment**: (pending)
+```
+
+Add to PROGRESS.md:
+```markdown
+## Phase Plan
+
+- [ ] **EXPLORE** - in_progress
+- [ ] **DESIGN** - pending
+```
+
+## Step 5: Document Agent Instructions
+
+Read rules and write key instructions into NOTES.md under "IMPORTANT: Cascade Agent Instructions".
 
 **[SESSION_DOCUMENTS]**:
 - Information Document: `INFO_[SPEC_TOPIC].md`

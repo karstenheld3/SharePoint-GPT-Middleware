@@ -5,12 +5,20 @@ description: Apply when initializing, saving, resuming, or closing a work sessio
 
 # Session Management Guide
 
+## Phase Tracking
+
+Sessions track EDIRD phases:
+- NOTES.md: "Current Phase" section with phase, last verb, gate status
+- PROGRESS.md: "Phase Plan" section with 5 phases and status
+
 ## MUST-NOT-FORGET
 
-- Session folder naming: `_YYYY-MM-DD_[SessionTopicCamelCase]/`
+- Session folder location: `[DEFAULT_SESSIONS_FOLDER]/_YYYY-MM-DD_[SessionTopicCamelCase]/`
+- Default: `[DEFAULT_SESSIONS_FOLDER]` = `[WORKSPACE_FOLDER]` (override in `!NOTES.md`)
 - Required files: NOTES.md, PROBLEMS.md, PROGRESS.md
 - Lifecycle: Init → Work → Save → Resume → Close → Archive
 - Sync session PROBLEMS.md to project on /session-close
+- Phase tracking: NOTES.md has current phase, PROGRESS.md has full phase plan
 
 ## Session Lifecycle
 
@@ -20,11 +28,13 @@ description: Apply when initializing, saving, resuming, or closing a work sessio
 4. **Resume** (`/session-resume`): Re-read session documents, continue work
 5. **Close** (`/session-close`): Sync findings to project files, archive
 
-## Session Folder Naming
+## Session Folder Location
 
-Format: `_YYYY-MM-DD_[SessionTopicCamelCase]/`
+**Base:** `[DEFAULT_SESSIONS_FOLDER]` (default: `[WORKSPACE_FOLDER]`, can be overridden in `!NOTES.md`)
 
-Example: `_2026-01-12_FixAuthenticationBug/`
+**Format:** `[DEFAULT_SESSIONS_FOLDER]/_YYYY-MM-DD_[SessionTopicCamelCase]/`
+
+**Example:** `_PrivateSessions/_2026-01-12_FixAuthenticationBug/`
 
 ## Required Session Files
 

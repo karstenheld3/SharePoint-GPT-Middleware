@@ -2,6 +2,7 @@
 
 **Doc ID**: [TOPIC]-IP[NN]
 **Goal**: [Single sentence describing what to implement]
+**Timeline**: Created YYYY-MM-DD, Updated N times (YYYY-MM-DD - YYYY-MM-DD)
 
 **Target files**:
 - `[path/to/file1.py]` (NEW)
@@ -11,6 +12,11 @@
 **Depends on:**
 - `_SPEC_[X].md` [[DOC_ID]] for [what it provides]
 
+## MUST-NOT-FORGET
+
+- [Critical rule 1]
+- [Critical rule 2]
+
 ## Table of Contents
 
 1. [File Structure](#1-file-structure)
@@ -18,6 +24,7 @@
 3. [Implementation Steps](#3-implementation-steps)
 4. [Test Cases](#4-test-cases)
 5. [Verification Checklist](#5-verification-checklist)
+6. [Document History](#6-document-history)
 
 ## 1. File Structure
 
@@ -112,3 +119,8 @@ def renderJobRow(job): ...
 ### Validation
 - [ ] **[PREFIX]-IP01-VC-10**: All test cases pass
 - [ ] **[PREFIX]-IP01-VC-11**: Manual verification in UI
+
+## 6. Document History
+
+**[YYYY-MM-DD HH:MM]**
+- Initial implementation plan created

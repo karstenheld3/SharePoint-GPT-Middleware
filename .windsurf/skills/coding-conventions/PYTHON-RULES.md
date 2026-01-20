@@ -229,7 +229,7 @@ Prefer standard library over third-party packages; add dependencies only if a he
 
 ### PYTHON-CG-07: No Emojis
 No emojis in the code or logging.
-**Exception**: UI may occasionally use ✅=OK, ❌=FAIL, ⚠️=WARNING
+**Exception**: UI may occasionally use ✅=yes/pass, ❌=no/fail, ⚠️=warning/partial, ★=filled star, ☆=outlined star, ⯪=half star
 
 ### PYTHON-CG-08: Timezone-Aware Datetime
 Use `datetime.datetime.now(datetime.timezone.utc)` instead of deprecated `datetime.datetime.utcnow()`.

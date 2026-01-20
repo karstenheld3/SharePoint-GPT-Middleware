@@ -2,10 +2,10 @@
 
 **Doc ID**: [TOPIC]-IN[NN]
 **Goal**: [Single sentence describing purpose]
+**Timeline**: Created YYYY-MM-DD, Updated N times (YYYY-MM-DD - YYYY-MM-DD)
 
 ## Summary
 
-Copy/paste-ready key findings:
 - [Key finding 1] 
 - [Key finding 2] [ASSUMED]
 - [Key finding 3] [VERIFIED]
@@ -18,6 +18,7 @@ Copy/paste-ready key findings:
 2. [Section 2](#2-section-2)
 3. [Sources](#3-sources)
 4. [Next Steps](#4-next-steps)
+5. [Document History](#5-document-history)
 
 ## 1. [Section 1]
 
@@ -41,3 +42,8 @@ Copy/paste-ready key findings:
 
 1. [Action item 1]
 2. [Action item 2]
+
+## 5. Document History
+
+**[YYYY-MM-DD HH:MM]**
+- Initial research document created

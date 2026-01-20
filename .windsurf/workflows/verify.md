@@ -1,8 +1,11 @@
 ---
-auto_execution_mode: 1
+description: Verify work against specs and rules
+phase: REFINE
 ---
 
-# GLOBAL
+# Verify Workflow
+
+Implements [VERIFY] verb from EDIRD model.
 
 ## Required Skills
 
@@ -32,6 +35,10 @@ Apply to ALL document types and contexts:
 - If product names are used, make sure there are spelled correctly. Do web research when needed.
   - BAD: Sharepoint -> GOOD: SharePoint
   - BAD: AI Foundry Remote SharePoint -> GOOD: "SharePoint tool" for Azure AI Foundry Agent Service
+- Check for Document Rule Exceptions (tables, emojis):
+  - If document uses Markdown tables or emojis: verify `<DevSystem ... />` tag exists on first line
+  - Tag format: `<DevSystem MarkdownTablesAllowed=true EmojisAllowed=true />`
+  - Only allowed emojis: ✅ (yes/pass), ❌ (no/fail), ⚠️ (warning)
 
 ## Verification Labels
 
@@ -63,24 +70,34 @@ Apply these labels to findings, requirements, and decisions in all document type
 ## Information Gathering (INFO)
 
 - Think first: How would another person approach this? Is scope aligned with problem?
+- Verify Summary section exists with copy/paste-ready key findings (mandatory)
 - Verify sources. Read them again and verify or complete findings.
 - Drop all sources that can't be found.
 - Ask questions that a reader might ask and clarify them.
+- Verify Timeline field is present and accurate (Created date, update count, date range)
+- Verify Document History section exists and is up to date
 - Read `[AGENT_FOLDER]/workflows/go-research.md` again and verify against instructions.
 
 ## Specifications (SPEC)
 
+- Verify Timeline field is present and accurate (Created date, update count, date range)
+- Verify MUST-NOT-FORGET section exists and rules are followed
 - Verify against spec requirements and existing code.
 - Look for bugs, inconsistencies, contradictions, ambiguities, underspeced behavior.
 - Think of corner cases we haven't covered yet.
 - Ensure detailed changes/additions plan exists.
 - Ensure exhaustive implementation verification checklist at end.
+- Verify Document History section exists and is up to date
 - Read @write-documents skill again and verify against rules.
+- Verify against @write-documents `SPEC_RULES.md` (required for all SPEC documents)
 
 ## Implementation Plans (IMPL)
 
+- Verify Timeline field is present and accurate (Created date, update count, date range)
+- Verify MUST-NOT-FORGET section exists and rules are followed
 - Read spec again and verify against spec.
 - Anything forgotten or not implemented as in SPEC?
+- Verify Document History section exists and is up to date
 - Read @coding-conventions skill again and verify against rules.
 
 ## Implementations (Code)
@@ -92,6 +109,8 @@ Apply these labels to findings, requirements, and decisions in all document type
 
 ## Testing (TEST)
 
+- Verify Timeline field is present and accurate (Created date, update count, date range)
+- Verify MUST-NOT-FORGET section exists and rules are followed
 - Verify test strategy matches spec requirements
 - Check test priority matrix:
   - MUST TEST: Critical business logic covered?
@@ -110,6 +129,7 @@ Apply these labels to findings, requirements, and decisions in all document type
 - Cross-check against spec:
   - Every FR-XX has at least one TC-XX
   - Every EC-XX has corresponding test
+- Verify Document History section exists and is up to date
 
 ## Session Tracking (NOTES, PROBLEMS, PROGRESS)
 

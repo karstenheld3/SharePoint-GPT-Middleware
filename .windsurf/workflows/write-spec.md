@@ -1,9 +1,11 @@
 ---
 description: Create specification from requirements
-auto_execution_mode: 1
+phase: DESIGN
 ---
 
 # Write Specification Workflow
+
+Implements [WRITE-SPEC] verb from EDIRD model.
 
 ## Required Skills
 

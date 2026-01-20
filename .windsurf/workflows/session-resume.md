@@ -22,6 +22,8 @@ Execute the /prime workflow but keep the answer for later.
 
 Read all session documents (NOTES.md, PROGRESS.md, PROBLEMS.md, and any INFO/SPEC/IMPL files).
 
+Restore phase state from NOTES.md "Current Phase" section.
+
 Make sure all state progress is documented in `NOTES.md` and `PROGRESS.md` and `PROBLEMS.md`
 
 ## Step 4: Summarize and Propose

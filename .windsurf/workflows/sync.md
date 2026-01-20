@@ -63,7 +63,7 @@ Major Project Changes
 ## Final Steps
 
 1. Re-read all modified documents
-2. Verify cross-references are valid (IDs exist in source)
+2. [VERIFY] cross-references are valid (IDs exist in source)
 3. Update Document History section in each modified file
 4. Check for orphaned references (target deleted but reference remains)
 
