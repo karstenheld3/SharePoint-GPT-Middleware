@@ -4,15 +4,16 @@ This document describes the folder structure and file organization used by the S
 
 ## Overview
 
-The application uses a persistent storage path (configured via `PERSISTENT_STORAGE_PATH` environment variable) to store domains, crawler data, and logs.
+The application uses a persistent storage path (configured via `PERSISTENT_STORAGE_PATH` environment variable) to store domains, crawler data, jobs, and reports.
 
 ## Root Structure
 
 ```
 PERSISTENT_STORAGE_PATH/
-├── domains/          # Domain configuration files
-├── crawler/          # Crawler data organized by domain
-└── logs/            # Application log files
+├── domains/          # Domain configurations (domain.json, files_metadata.json)
+├── crawler/          # Crawler data organized by domain and source
+├── jobs/             # Streaming job files for long-running operations
+└── reports/          # Report archives (ZIP files with operation snapshots)
 ```
 
 ## 1. Domains Subfolder
@@ -394,6 +395,79 @@ Job files are plain text (UTF-8) with JSON header/footer and timestamped log ent
 {"job_id": "jb_42", "state": "completed", "result": {"ok": true, "error": "", "data": {...}}, ...}
 ```
 
+## 4. Reports Subfolder
+
+**Path**: `PERSISTENT_STORAGE_PATH/reports/`
+
+Contains report archives (ZIP files) from various operations for auditing and debugging. Reports are created by internal endpoint functions.
+
+### Structure
+
+```
+reports/
+├── crawls/
+│   ├── 2024-01-15_14-25-00_TEST01_all_full.zip
+│   └── 2024-01-15_14-26-30_TEST01_files_incremental.zip
+└── site_scans/
+    └── 2025-03-12_10-12-53_legal-contracts_security.zip
+```
+
+### Report Types and Folders
+
+| Type | Folder | Description |
+|------|--------|-------------|
+| `crawl` | `crawls/` | Crawl operation results with map file snapshots |
+| `site_scan` | `site_scans/` | SharePoint site scanning results |
+
+### Report Archive Contents
+
+Each report is a ZIP archive containing:
+
+- `report.json` - Mandatory metadata file
+- Operation-specific files (map files, logs, etc.)
+
+### report.json Schema
+
+**Mandatory fields:**
+- `report_id` - Format: `[folder]/[filename]` (e.g., `crawls/2024-01-15_14-25-00_TEST01_all_full`)
+- `title` - Human-readable title
+- `type` - Report type (singular): `crawl`, `site_scan`
+- `created_utc` - ISO timestamp when archive was created
+- `ok` - Boolean: `true` = success, `false` = failure
+- `error` - Error message if `ok=false`, empty otherwise
+- `files` - Array of files in archive with `filename`, `file_path`, `file_size`, `last_modified_utc`
+
+**Crawl report additional fields:**
+- `domain_id` - Domain that was crawled
+- `scope` - Crawl scope: `all`, `files`, `lists`, `sitepages`
+- `mode` - Crawl mode: `full`, `incremental`
+- `job_id` - Associated job ID
+- `started_utc`, `finished_utc` - Timing information
+- `sources` - Per-source statistics (items total/added/changed/removed/failed)
+
+### Example report.json (Crawl)
+
+```json
+{
+  "report_id": "crawls/2024-01-15_14-25-00_TEST01_all_full",
+  "title": "TEST01 full crawl",
+  "type": "crawl",
+  "created_utc": "2024-01-15T14:30:00.000000Z",
+  "ok": true,
+  "error": "",
+  "files": [
+    {"filename": "report.json", "file_path": "report.json", "file_size": 2048, "last_modified_utc": "2024-01-15T14:30:00.000000Z"},
+    {"filename": "sharepoint_map.csv", "file_path": "01_files/source01/sharepoint_map.csv", "file_size": 15360, "last_modified_utc": "2024-01-15T14:28:00.000000Z"}
+  ],
+  "domain_id": "TEST01",
+  "scope": "all",
+  "mode": "full",
+  "job_id": "jb_42",
+  "started_utc": "2024-01-15T14:25:00.000000Z",
+  "finished_utc": "2024-01-15T14:30:00.000000Z"
+}
+```
+
 ## Hardcoded Configuration
 
 All folder names and structure are defined in `src/hardcoded_config.py`:
@@ -405,6 +479,7 @@ class CrawlerHardcodedConfig:
   PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER: str = "domains"
   PERSISTENT_STORAGE_PATH_CRAWLER_SUBFOLDER: str = "crawler"
   PERSISTENT_STORAGE_PATH_JOBS_SUBFOLDER: str = "jobs"
+  PERSISTENT_STORAGE_PATH_REPORTS_SUBFOLDER: str = "reports"
   
   # Crawler structure - main folders
   PERSISTENT_STORAGE_PATH_DOCUMENTS_FOLDER: str = "01_files"
@@ -424,6 +499,7 @@ class CrawlerHardcodedConfig:
 | `PERSISTENT_STORAGE_PATH_DOMAINS_SUBFOLDER` | `"domains"` | Root folder for domain configurations |
 | `PERSISTENT_STORAGE_PATH_CRAWLER_SUBFOLDER` | `"crawler"` | Root folder for crawler data |
 | `PERSISTENT_STORAGE_PATH_JOBS_SUBFOLDER` | `"jobs"` | Root folder for streaming job files |
+| `PERSISTENT_STORAGE_PATH_REPORTS_SUBFOLDER` | `"reports"` | Root folder for report archives |
 | `PERSISTENT_STORAGE_PATH_DOCUMENTS_FOLDER` | `"01_files"` | Folder for SharePoint document libraries |
 | `PERSISTENT_STORAGE_PATH_LISTS_FOLDER` | `"02_lists"` | Folder for SharePoint lists |
 | `PERSISTENT_STORAGE_PATH_SITEPAGES_FOLDER` | `"03_sitepages"` | Folder for SharePoint site pages |
@@ -494,16 +570,6 @@ embedded_pages = os.path.join(
 # Result: PERSISTENT_STORAGE_PATH/crawler/DOMAIN01/03_sitepages/source01/02_embedded/
 ```
 
-### Log File
-```python
-log_file = os.path.join(
-    PERSISTENT_STORAGE_PATH,
-    CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_LOGS_SUBFOLDER,
-    f"crawler_{domain_id}.log"
-)
-# Result: PERSISTENT_STORAGE_PATH/logs/crawler_DOMAIN01.log
-```
-
 ## Notes
 
 1. **Numeric Prefixes**: Folders use numeric prefixes (`01_`, `02_`, `03_`) to enforce ordering in file explorers
@@ -515,13 +581,15 @@ log_file = os.path.join(
    - **Files**: Direct download → `source_id/02_embedded/` or `source_id/03_failed/` (no originals folder)
 5. **File Types**: Only files matching `DEFAULT_FILETYPES_ACCEPTED_BY_VECTOR_STORES` are processed for embedding
 6. **JSON Encoding**: All JSON files use UTF-8 encoding
-7. **Log Files**: Created on-demand by various endpoints, plain text UTF-8 format
-8. **Metadata Tracking**: `files_metadata.json` tracks all files uploaded to OpenAI vector stores with their IDs and metadata
+7. **Metadata Tracking**: `files_metadata.json` tracks all files uploaded to OpenAI vector stores with their IDs and metadata
 
 ## Related Files
 
 - **Configuration**: `src/hardcoded_config.py`
-- **Domain Management**: `src/routers_v1/domains.py`
-- **Crawler Endpoints**: `src/routers_v1/crawler.py`
-- **Utility Functions**: `src/utils.py` (logfile functions)
+- **V2 Domain Management**: `src/routers_v2/domains.py`
+- **V2 Crawler Endpoints**: `src/routers_v2/crawler.py`
+- **V2 Jobs Endpoints**: `src/routers_v2/jobs.py`
+- **V2 Reports Endpoints**: `src/routers_v2/reports.py`
+- **V1 Domain Management**: `src/routers_v1/domains.py` (legacy)
+- **V1 Crawler Endpoints**: `src/routers_v1/crawler.py` (legacy)
 - **Common Functions**: `src/common_crawler_functions.py`
