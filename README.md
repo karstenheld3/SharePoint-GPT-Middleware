@@ -1,22 +1,48 @@
 # SharePoint-GPT-Middleware
 
-A FastAPI-based middleware application that bridges SharePoint content with OpenAI's AI capabilities. It crawls SharePoint sites (document libraries, lists, and site pages), processes the content, and manages OpenAI vector stores for intelligent search and retrieval.
+A Python FastAPI-based middleware application that bridges SharePoint content with OpenAI's AI capabilities for Retrieval-Augmented Generation (RAG) use cases. The middleware crawls SharePoint sites (document libraries, lists, and site pages), processes content into LLM-friendly formats, and manages OpenAI vector stores for intelligent semantic search.
+
+**Key Use Cases:**
+- Enterprise knowledge bases with AI-powered search
+- Document Q&A systems over SharePoint content
+- Automated content synchronization between SharePoint and OpenAI
+- Secure proxy for OpenAI APIs in controlled environments (where frontend must not store API keys)
 
 ## Features
 
-- **SharePoint Crawler**: Automated crawling of SharePoint document libraries, lists, and site pages
-- **OpenAI Proxy**: Full proxy for OpenAI APIs (Files, Vector Stores, Responses)
-- **Semantic Search**: AI-powered search across SharePoint content using OpenAI's file search
-- **Knowledge Domains**: Combine documents, lists, site pages from any SharePoint site or location into unified "domains" based on SharePoint filters
-- **Inventory Management**: Track and manage vector stores, files, and assistants
-- **Flexible Authentication**: Support for Azure OpenAI (key, managed identity, service principal) and OpenAI API
-- **Persistent Storage**: Organized file structure for crawled content and metadata (see [PERSISTENT_STORAGE_STRUCTURE.md](PERSISTENT_STORAGE_STRUCTURE.md))
+### Core Capabilities
+
+- **SharePoint Crawler**: Multi-step crawling process that downloads files from SharePoint, processes them for embedding, uploads to OpenAI, and creates vector store embeddings. Supports document libraries, lists (exported as Markdown), and site pages (cleaned HTML).
+- **Knowledge Domains**: Logical groupings that combine documents, lists, and site pages from multiple SharePoint sites into unified searchable collections. Each domain maps to exactly one OpenAI vector store.
+- **Semantic Search**: AI-powered search across embedded SharePoint content using OpenAI's file search capabilities with configurable result limits and temperature.
+- **Change Detection**: Incremental crawling using immutable SharePoint file IDs (`sharepoint_unique_file_id`) to detect added, removed, and changed files.
+
+### Administration
+
+- **Interactive Web UI**: Browser-based administration for domains, jobs, and reports without requiring programming skills (V2 routers with `format=ui`).
+- **Job Management**: Long-running operations (crawling, vector store updates) run as streaming jobs with pause/resume/cancel controls and real-time SSE monitoring.
+- **Crawl Reports**: Timestamped ZIP archives capturing map file state at crawl completion for auditing and debugging.
+- **Inventory Management**: Track and manage OpenAI resources (vector stores, files, assistants) with cleanup capabilities.
+
+### Integration
+
+- **OpenAI Proxy**: Full proxy for OpenAI APIs (Files, Vector Stores, Responses) enabling secure, controlled access to OpenAI services.
+- **Flexible Authentication**: Support for Azure OpenAI (API key, managed identity, service principal) and direct OpenAI API.
+- **Persistent Storage**: Organized file structure for domains, crawled content, map files, and logs (see [PERSISTENT_STORAGE_STRUCTURE.md](PERSISTENT_STORAGE_STRUCTURE.md)).
 
 ## Documentation
 
+### User Documentation
+
 - **[PERSISTENT_STORAGE_STRUCTURE.md](PERSISTENT_STORAGE_STRUCTURE.md)** - Detailed folder structure and file formats
 - **[DATA_SOURCES.md](DATA_SOURCES.md)** - Data flow between SharePoint, local files, and vector stores
+- **[CONFIGURE_CRAWLER.md](CONFIGURE_CRAWLER.md)** - Step-by-step guide to configure SharePoint crawler permissions
 - **[SECURE_AZURE_APP_SERVICE.md](SECURE_AZURE_APP_SERVICE.md)** - Azure App Service security configuration
+
+### Technical Specifications (docs/)
+
+- **[docs/routers_v2/](docs/routers_v2/)** - V2 router specifications (crawler, domains, jobs, reports)
+- **[docs/routers_v1/](docs/routers_v1/)** - V1 router specifications (legacy)
 
 ## Architecture
 
@@ -26,19 +52,28 @@ A FastAPI-based middleware application that bridges SharePoint content with Open
 src/
 ├── app.py                          # FastAPI application entry point
 ├── hardcoded_config.py             # Configuration constants
-├── routers_v1/common_openai_functions_v1.py  # OpenAI client utilities (in routers_v1/)
 ├── common_crawler_functions.py     # SharePoint crawler utilities
-├── routers_v1/common_sharepoint_functions_v1.py  # SharePoint access utilities (in routers_v1/)
-├── common_utility_functions.py                 # Helper functions
+├── common_utility_functions.py     # Helper functions
 ├── routers_static/                 # Static routers (no version prefix)
 │   ├── openai_proxy.py             # OpenAI API proxy endpoints
-│   └── sharepoint_search.py        # AI-powered search endpoints
-└── routers_v1/                     # V1 routers (mounted at /v1)
-    ├── crawler.py                  # SharePoint crawler endpoints
-    ├── domains.py                  # Domain management endpoints
-    ├── inventory.py                # Vector store inventory endpoints
-    ├── common_ui_functions_v1.py   # Shared UI generation functions
-    └── common_job_functions_v1.py  # Shared job management functions
+│   └── sharepoint_search.py        # AI-powered search endpoints (/query, /describe)
+├── routers_v1/                     # V1 routers (mounted at /v1) - legacy
+│   ├── crawler.py                  # SharePoint crawler endpoints
+│   ├── domains.py                  # Domain management endpoints
+│   ├── inventory.py                # Vector store inventory endpoints
+│   ├── common_openai_functions_v1.py   # OpenAI client utilities
+│   ├── common_sharepoint_functions_v1.py  # SharePoint access utilities
+│   ├── common_ui_functions_v1.py   # Shared UI generation functions
+│   └── common_job_functions_v1.py  # Shared job management functions
+└── routers_v2/                     # V2 routers (mounted at /v2) - current
+    ├── crawler.py                  # Crawling with streaming jobs
+    ├── domains.py                  # Domain CRUD with interactive UI
+    ├── inventory.py                # Vector store management
+    ├── jobs.py                     # Job monitoring and control
+    ├── reports.py                  # Crawl report archives
+    ├── common_ui_functions_v2.py   # Unified UI generation (HTMX/SSE)
+    ├── common_job_functions_v2.py  # Streaming job infrastructure
+    └── common_report_functions_v2.py  # Report archive utilities
 ```
 
 ### Storage Structure
@@ -47,9 +82,11 @@ The application uses a persistent storage system to organize domains, crawled co
 
 ```
 PERSISTENT_STORAGE_PATH/
-├── domains/          # Domain configurations and metadata
-├── crawler/          # Crawled SharePoint content
-└── logs/            # Application logs
+├── domains/          # Domain configurations (domain.json, files_metadata.json)
+├── crawler/          # Crawled SharePoint content organized by domain/source
+├── jobs/             # Streaming job files for long-running operations
+├── reports/          # Crawl report archives (ZIP files with map snapshots)
+└── logs/             # Application logs
 ```
 
 ## API Endpoints
@@ -142,6 +179,65 @@ Manage and inspect OpenAI resources:
 | `/alive` | GET | Health check endpoint |
 | `/openaiproxyselftest` | GET | Run OpenAI proxy self-test |
 
+### V2 Domains (`/v2/domains`)
+
+Domain management with interactive UI and consistent action-suffixed endpoints:
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/v2/domains` | GET | Self-documentation (bare) or list domains (`format=json/html/ui`) |
+| `/v2/domains/get` | GET | Get single domain configuration |
+| `/v2/domains/create` | POST | Create new domain |
+| `/v2/domains/update` | PUT | Update domain (supports ID rename) |
+| `/v2/domains/delete` | GET/DELETE | Delete domain |
+
+### V2 Crawler (`/v2/crawler`)
+
+Crawling with streaming job support and map file management:
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/v2/crawler` | GET | Crawler UI (`format=ui`) or documentation |
+| `/v2/crawler/crawl` | GET | Start crawl job (`format=stream` for SSE monitoring) |
+| `/v2/crawler/download_data` | GET | Download step only (SharePoint to local) |
+| `/v2/crawler/process_data` | GET | Process step only (convert formats) |
+| `/v2/crawler/embed_data` | GET | Embed step only (upload to vector store) |
+
+**Crawl parameters:** `domain_id`, `mode` (full/incremental), `scope` (all/files/lists/sitepages), `dry_run`
+
+### V2 Jobs (`/v2/jobs`)
+
+Monitor and control long-running streaming jobs:
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/v2/jobs` | GET | List all jobs (`format=json/html/ui`) |
+| `/v2/jobs/get` | GET | Get job metadata |
+| `/v2/jobs/monitor` | GET | Stream job output via SSE (`format=stream`) |
+| `/v2/jobs/control` | GET | Pause/resume/cancel job (`action=pause/resume/cancel`) |
+| `/v2/jobs/delete` | GET/DELETE | Delete job file |
+
+### V2 Reports (`/v2/reports`)
+
+Access crawl report archives for auditing:
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/v2/reports` | GET | List all reports (`format=json/html/ui`) |
+| `/v2/reports/get` | GET | Get report metadata (report.json) |
+| `/v2/reports/file` | GET | Get file from report archive |
+| `/v2/reports/download` | GET | Download report as ZIP |
+| `/v2/reports/delete` | GET/DELETE | Delete report archive |
+
+### V2 Inventory (`/v2/inventory`)
+
+Manage OpenAI backend resources:
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/v2/inventory` | GET | Inventory UI (`format=ui`) |
+| `/v2/inventory/vector_stores` | GET | List vector stores |
+| `/v2/inventory/vector_stores/files` | GET | List files in vector store |
 
 ## Configuration
 
