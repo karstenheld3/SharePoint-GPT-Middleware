@@ -320,15 +320,42 @@ if ($choiceNum -eq 1) {
   Write-Host "`nGranting $role permission to site..."
   Write-Host "  Note: This grants permission for both Microsoft Graph and SharePoint REST API access" -ForegroundColor Gray
   
+  $permissionGranted = $false
+  
   try {
-    # Grant permission - this automatically works for both Graph and SharePoint APIs
-    # The PnP cmdlet creates the permission that works with both APIs
+    # Method 1: Grant permission via admin site with -Site parameter
     Grant-PnPAzureADAppSitePermission -AppId $config.CRAWLER_CLIENT_ID -DisplayName $config.CRAWLER_CLIENT_NAME -Site $siteUrl -Permissions $role -ErrorAction Stop
     Write-Host "  OK: Permission granted successfully" -ForegroundColor Green
-    Write-Host "      This permission works with both Microsoft Graph and SharePoint REST APIs" -ForegroundColor Gray
+    $permissionGranted = $true
   }
   catch {
-    Write-Host "  FAIL: Failed to grant permission - $($_.Exception.Message)" -ForegroundColor White -BackgroundColor Red
+    $errorMsg = $_.Exception.Message
+    
+    # Check if this is an access denied error (common for group-connected sites)
+    if ($errorMsg -match "accessDenied|Access denied") {
+      Write-Host "  Access denied via admin site. Trying direct site connection (for group-connected sites)..." -ForegroundColor Yellow
+      
+      try {
+        # Method 2: Connect directly to target site and retry
+        Connect-PnPOnline -Url $siteUrl -Interactive -ClientId $config.PNP_CLIENT_ID -ErrorAction Stop
+        Grant-PnPAzureADAppSitePermission -AppId $config.CRAWLER_CLIENT_ID -DisplayName $config.CRAWLER_CLIENT_NAME -Permissions $role -ErrorAction Stop
+        Write-Host "  OK: Permission granted successfully (via direct site connection)" -ForegroundColor Green
+        $permissionGranted = $true
+        
+        # Reconnect to admin site for subsequent operations
+        Connect-PnPOnline -Url $adminUrl -Interactive -ClientId $config.PNP_CLIENT_ID -ErrorAction SilentlyContinue
+      }
+      catch {
+        Write-Host "  FAIL: Failed to grant permission - $($_.Exception.Message)" -ForegroundColor White -BackgroundColor Red
+      }
+    }
+    else {
+      Write-Host "  FAIL: Failed to grant permission - $errorMsg" -ForegroundColor White -BackgroundColor Red
+    }
+  }
+  
+  if ($permissionGranted) {
+    Write-Host "      This permission works with both Microsoft Graph and SharePoint REST APIs" -ForegroundColor Gray
   }
 }
 else {
