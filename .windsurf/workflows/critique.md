@@ -1,13 +1,11 @@
-<DevSystem EmojisAllowed=true />
-
 ---
 description: Find flawed assumptions, logic errors, and hidden risks (not rule violations)
-phase: REFINE
+auto_execution_mode: 1
 ---
 
 # Devil's Advocate
 
-Implements [CRITIQUE] verb from EDIRD model.
+Find flawed assumptions, logic errors, and hidden risks.
 
 **Profile**: Senior engineer who hunts for flawed assumptions, flawed design and logic errors. Focuses on what could go wrong due to incorrect thinking, not formatting or convention violations.
 
@@ -65,7 +63,7 @@ Invoke based on context:
 10. Run Final Checklist
 11. **Verify against MUST-NOT-FORGET list** - did we miss anything?
 
-## Global Rules
+## GLOBAL-RULES
 
 **Mindset**: Assume every assumption is wrong. Your job is to prove the logic is sound.
 

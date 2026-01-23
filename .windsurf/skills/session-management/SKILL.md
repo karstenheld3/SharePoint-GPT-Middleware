@@ -22,7 +22,7 @@ Sessions track EDIRD phases:
 
 ## Session Lifecycle
 
-1. **Init** (`/session-init`): Create session folder with tracking files
+1. **Init** (`/session-new`): Create session folder with tracking files
 2. **Work**: Create specs, plans, implement, track progress
 3. **Save** (`/session-save`): Document findings, commit changes
 4. **Resume** (`/session-resume`): Re-read session documents, continue work
@@ -47,7 +47,7 @@ Use templates from this skill folder:
 ## Assumed Workflow
 
 ```
-1. INIT: User initializes session (`/session-init`)
+1. INIT: User initializes session (`/session-new`)
    └── Session folder, NOTES.md, PROBLEMS.md, PROGRESS.md created
 
 2. PREPARE (one of):

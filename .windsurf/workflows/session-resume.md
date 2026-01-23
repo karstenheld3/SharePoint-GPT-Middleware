@@ -20,7 +20,7 @@ Execute the /prime workflow but keep the answer for later.
 
 ## Step 3: Read Session Documents
 
-Read all session documents (NOTES.md, PROGRESS.md, PROBLEMS.md, and any INFO/SPEC/IMPL files).
+Read all session documents (NOTES.md, PROGRESS.md, PROBLEMS.md, and any INFO/SPEC/IMPL/TASK files).
 
 Restore phase state from NOTES.md "Current Phase" section.
 

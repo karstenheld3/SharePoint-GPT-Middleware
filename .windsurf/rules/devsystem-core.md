@@ -36,6 +36,9 @@ Core definitions and structure for the development system.
   - Example: `CRWL-IP01`, `AUTH-IP02`
 - **[TEST]** (TP): Test plans suffixed to corresponding SPEC or IMPL
   - Example: `CRWL-TP01`, `AUTH-TP01`
+- **[TASKS]** (TK): Partitioned task lists from IMPL/TEST plans
+  - Example: `CRWL-TK01`, `AUTH-TK01`
+  - Created via `/write-tasks-plan` or `/partition`
 
 ### Tracking Documents
 
@@ -50,6 +53,20 @@ Tracking documents exist at workspace, project, or session level. Only one of ea
 
 - **[ACTOR]**: Decision-making entity (default: user, in /go-autonomous: agent)
 
+### MNF (MUST-NOT-FORGET) Technique
+
+Prevents critical oversights during task execution.
+
+**Planning phase:**
+1. Create `MUST-NOT-FORGET` list (5-15 items max). Name must not be changed to be greppable.
+2. Collect items from: FAILS.md, learnings, rules, specs, user instructions
+3. Include in plan or at top of working document
+
+**Completion phase:**
+1. Review each MNF item before marking task done
+2. Verify compliance or document why item doesn't apply
+3. Update FAILS.md if any MNF item was violated
+
 ### Complexity Levels
 
 Maps to semantic versioning:
@@ -57,6 +74,22 @@ Maps to semantic versioning:
 - **COMPLEXITY-LOW**: Single file, clear scope, no dependencies → patch version
 - **COMPLEXITY-MEDIUM**: Multiple files, some dependencies, backward compatible → minor version
 - **COMPLEXITY-HIGH**: Breaking changes, new patterns, external APIs, architecture → major version
+
+### Operation Modes
+
+Determines where implementation outputs are placed:
+
+- **IMPL-CODEBASE** (default): Implement in existing codebase
+  - For: SPEC, IMPL, TEST, [IMPLEMENT], HOTFIX, BUGFIX
+  - Output: Project source folders (`src/`, etc.)
+  - Affects existing code, configuration, runtime
+
+- **IMPL-ISOLATED**: Implement separately from existing codebase
+  - For: [PROVE], POCs, prototypes, self-contained test scripts
+  - Output: `[SESSION_FOLDER]/` or `[SESSION_FOLDER]/poc/`
+  - Existing code/config/runtime MUST NOT be affected
+  - NEVER create folders in workspace root
+  - **REQUIRES SESSION**: If no session exists, run `/session-new` first
 
 ## Workspace Scenarios
 
@@ -143,6 +176,10 @@ Files starting with `_` are skipped by automatic priming workflows. Use for sess
 
 Files starting with `.` follow Unix convention - hidden from directory listings.
 
+### Temporary Files (.tmp prefix)
+
+Files starting with `.tmp` are temporary helper scripts created during operations. They should be deleted after use. Example: `.tmp_fix_quotes.ps1`
+
 ## Placeholders
 
 - **[WORKSPACE_FOLDER]**: Absolute path of root folder where Windsurf operates
@@ -154,62 +191,77 @@ Files starting with `.` follow Unix convention - hidden from directory listings.
 
 ## Workflow Reference
 
-### Context Workflows
-
-- `/prime` - Load workspace context (priority docs, then standard docs)
-
-### Autonomous Action Workflows
-
-- `/go-autonomous` - Generic autonomous implementation loop
-- `/go-research` - Structured research with verification
-
-### Session Workflows
-
-- `/session-init` - Create new session folder with tracking files
-- `/session-save` - Document findings and commit
-- `/session-resume` - Re-read session docs and continue
-- `/session-close` - Sync to project files and archive
-- `/session-archive` - Move session folder to archive
-
-### Phase Workflows
-
-- **EXPLORE**: `/explore` - [RESEARCH], [ANALYZE], [ASSESS], [SCOPE]
-- **DESIGN**: `/design` - [PLAN], [WRITE-SPEC], [WRITE-IMPL-PLAN], [WRITE-TEST-PLAN], [PROVE]
-- **IMPLEMENT**: `/implement` - [IMPLEMENT], [TEST], [FIX], [COMMIT]
-- **REFINE**: `/refine` - [REVIEW], [VERIFY], [CRITIQUE], [RECONCILE]
-- **DELIVER**: `/deliver` - [VALIDATE], [MERGE], [DEPLOY], [CLOSE], [ARCHIVE]
-
-### Process Workflows
-
-- `/write-spec` - Create specification from requirements
-- `/write-impl-plan` - Create implementation plan from spec
-- `/write-test-plan` - Create test plan from spec
-- `/verify` - Verify work against specs and rules
+- `/build` - BUILD workflow entry point (code output)
 - `/commit` - Create conventional commits
+- `/continue` - Execute next items on plan
+- `/critique` - Devil's Advocate review
+- `/fail` - Record failures to FAILS.md
+- `/go` - Autonomous loop (recap + continue until done)
+- `/implement` - Execute implementation from plan
+- `/learn` - Extract learnings from resolved problems
+- `/partition` - Split plans into discrete tasks
+- `/prime` - Load workspace context
+- `/recap` - Analyze context, identify current status
+- `/reconcile` - Pragmatic review of critique findings
+- `/rename` - Global/local refactoring with verification
+- `/research` - Structured research with verification
+- `/session-archive` - Move session folder to archive
+- `/session-close` - Close session, sync findings, archive
+- `/session-new` - Initialize new session
+- `/session-resume` - Resume existing session
+- `/session-save` - Save session progress
+- `/solve` - SOLVE workflow entry point (knowledge output)
+- `/sync` - Document synchronization
+- `/test` - Run tests based on scope
+- `/transcribe` - PDF/web to markdown transcription
+- `/verify` - Verify work against specs and rules
+- `/write-impl-plan` - Create implementation plan from spec
+- `/write-spec` - Create specification from requirements
+- `/write-strut` - Create STRUT plans with proper format
+- `/write-tasks-plan` - Create tasks plan from IMPL/TEST
+- `/write-test-plan` - Create test plan from spec
 
-## Phase Tracking
+## STRUT Execution
 
-Sessions track current phase in NOTES.md:
+STRUT plans use structured notation for progress tracking.
 
-```markdown
-## Current Phase
+**Creating STRUTs**: Use `/write-strut` workflow or invoke `@write-documents` skill with `STRUT_TEMPLATE.md`.
 
-**Phase**: DESIGN
-**Last verb**: [WRITE-SPEC]-OK
-**Gate status**: 3/5 items checked
-```
+Execution follows these rules:
 
-Sessions track full phase plan in PROGRESS.md:
+### Execution Algorithm
 
-```markdown
-## Phase Plan
+1. **Locate current position**: Find first unchecked step `[ ] Px-Sy`
+2. **Execute step**: Perform the verb action with given parameters
+3. **Update checkbox**: Mark `[x]` on success, increment `[N]` on retry
+4. **Check deliverables**: After step completion, verify if any `Px-Dy` can be checked
+5. **At phase boundary**: Run `/verify` to evaluate transition conditions
+6. **Follow transition**: Go to next phase, `[CONSULT]`, or `[END]`
 
-- [ ] **EXPLORE** - pending
-- [x] **DESIGN** - done
-- [ ] **IMPLEMENT** - in_progress
-- [ ] **REFINE** - pending
-- [ ] **DELIVER** - pending
-```
+### Verification Gates
+
+- **Planning time**: Run `/verify` after creating STRUT plans to validate structure
+- **Phase transitions**: Run `/verify` before transitioning between phases
+- **Mandate**: Only `/verify` workflow has authority to approve autonomous phase transitions
+
+### Resuming Interrupted Plans
+
+1. Read PROGRESS.md or document containing STRUT plan
+2. Find first unchecked deliverable `[ ] Px-Dy`
+3. Identify which steps feed that deliverable
+4. Continue from first unchecked step
+
+### Checkbox States
+
+- `[ ]` - Pending (not started)
+- `[x]` - Done (completed once)
+- `[N]` - Done N times (e.g., `[2]` = retried twice)
+
+### Transition Targets
+
+- `[PHASE-NAME]` - Next phase (e.g., `[DESIGN]`, `[IMPLEMENT]`)
+- `[CONSULT]` - Escalate to [ACTOR]
+- `[END]` - Plan complete
 
 ## Agent Instructions
 

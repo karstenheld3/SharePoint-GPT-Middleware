@@ -1,0 +1,13 @@
+{
+  "models": [
+    {"provider": "openai", "model_id": "gpt-4o", "name": "GPT-4o", "enabled": true, "status": "available"},
+    {"provider": "openai", "model_id": "gpt-4o-mini", "name": "GPT-4o Mini", "enabled": true, "status": "available"},
+    {"provider": "openai", "model_id": "gpt-5-mini", "name": "GPT-5 Mini", "enabled": true, "status": "available"},
+    {"provider": "openai", "model_id": "o1-preview", "name": "O1 Preview", "enabled": true, "status": "available"},
+    {"provider": "openai", "model_id": "o1-mini", "name": "O1 Mini", "enabled": true, "status": "available"},
+    {"provider": "anthropic", "model_id": "claude-opus-4-20250514", "name": "Claude Opus 4", "enabled": true, "status": "available"},
+    {"provider": "anthropic", "model_id": "claude-sonnet-4-20250514", "name": "Claude Sonnet 4", "enabled": true, "status": "available"},
+    {"provider": "anthropic", "model_id": "claude-3-5-sonnet-20241022", "name": "Claude 3.5 Sonnet", "enabled": true, "status": "available"},
+    {"provider": "anthropic", "model_id": "claude-3-5-haiku-20241022", "name": "Claude 3.5 Haiku", "enabled": true, "status": "available"}
+  ]
+}

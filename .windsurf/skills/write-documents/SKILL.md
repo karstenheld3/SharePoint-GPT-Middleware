@@ -1,6 +1,6 @@
 ---
 name: write-documents
-description: Apply when creating or editing INFO, SPEC, IMPL, TEST, or FIX documents
+description: Apply when creating or editing INFO, SPEC, IMPL, TEST, FIX documents, or STRUT plans
 ---
 
 # Document Writing Guide
@@ -17,8 +17,8 @@ This skill implements:
 - [WRITE-FIX] - Create FIX documents (use FIXES_TEMPLATE.md)
 - [WRITE-FAIL] - Create/update FAILS.md (use FAILS_TEMPLATE.md)
 - [WRITE-REVIEW] - Create _REVIEW.md documents (use REVIEW_TEMPLATE.md)
-
-**Phases**: EXPLORE (INFO), DESIGN (SPEC, IMPL, TEST)
+- [WRITE-TASKS-PLAN] - Create TASKS documents (use TASKS_TEMPLATE.md)
+- [WRITE-STRUT] - Create/insert STRUT plans (use STRUT_TEMPLATE.md)
 
 ## MUST-NOT-FORGET
 
@@ -46,9 +46,12 @@ You MUST read the appropriate template before creating documents:
 - `SPEC_TEMPLATE.md` - Technical specifications
 - `IMPL_TEMPLATE.md` - Implementation plans
 - `TEST_TEMPLATE.md` - Test plans
+- `TASKS_TEMPLATE.md` - Task plans (partitioned work items)
 - `FIXES_TEMPLATE.md` - Fix tracking documents
 - `FAILS_TEMPLATE.md` - Failure log (lessons learned)
 - `REVIEW_TEMPLATE.md` - Review documents (_REVIEW.md)
+- `WORKFLOW_TEMPLATE.md` - AGEN verb workflow structure
+- `STRUT_TEMPLATE.md` - STRUT plans (embeddable in any document)
 
 ## Usage
 
@@ -66,6 +69,7 @@ You MUST read the appropriate template before creating documents:
 - `_IMPL_[COMPONENT]_FIXES.md` - Fix tracking during implementation
 - `SPEC_[COMPONENT]_TEST.md` - Test plan for specification
 - `IMPL_[COMPONENT]_TEST.md` - Test plan for implementation
+- `TASKS_[TOPIC].md` - Task plans (partitioned work items)
 - `!` prefix for priority docs that must be read first
 
 ## Agent Behavior
@@ -90,7 +94,12 @@ See `[AGENT_FOLDER]/rules/devsystem-ids.md` rule (always-on) for complete ID sys
   - Example: `CRWL-FR-01`, `AUTH-DD-03`
 - Plan-Level: `[TOPIC]-[DOC][NN]-[TYPE]-[NN]` (EC = Edge Case, IS = Implementation Step, VC = Verification Checklist, TC = Test Case)
   - Example: `CRWL-IP01-EC-01`, `AUTH-TP01-TC-05`
-- Source: `[TOPIC]-[DOC]-SC-[SOURCE_ID]-[SOURCE_REF]`
-  - Example: `AGSK-IN01-SC-ASIO-HOME`
-- Tracking: `[TOPIC]-[TYPE]-[NNN]` (BG = Bug, FT = Feature, PR = Problem, FX = Fix, TK = Task)
-  - Example: `SAP-BG-001`, `UI-FT-003`
+
+## Writing AGEN Verb Workflows
+
+AGEN verbs map directly to Windsurf workflows. See `WORKFLOW_TEMPLATE.md` for:
+- Workflow structure template
+- General vs Specific parts pattern
+- Context discovery pattern
+- Strategy pattern
+- Output rules

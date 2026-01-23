@@ -1,5 +1,7 @@
 # Session Problems
 
+Populated by `/session-new` workflow. Tracks problems discovered during session (not failures - use FAILS.md for those).
+
 **Doc ID**: YYYY-MM-DD_[SessionTopicCamelCase]-PROBLEMS
 
 Track problems discovered during this session using ID format: `[TOPIC]-PR-[NNN]`

@@ -5,7 +5,15 @@ description: Prime context with workspace files
 
 # Prime Context Workflow
 
-## Step 1: Find and Read Priority Documentation (! prefix)
+## Step 1: Read Agent Rules
+
+Read all .md files in the agent rules folder:
+```
+find_by_name Pattern="*.md" SearchDirectory="[AGENT_FOLDER]/rules" Type="file"
+```
+These define core conventions and system behavior.
+
+## Step 2: Find and Read Priority Documentation (! prefix)
 
 Search for .md files starting with "!" - these contain critical specifications:
 ```
@@ -13,7 +21,7 @@ find_by_name Pattern="!*.md" SearchDirectory="[WORKSPACE_FOLDER]" Type="file"
 ```
 Read each file found and **summarize key points internally** to better remember content.
 
-## Step 2: Find and Read Standard Documentation
+## Step 3: Find and Read Standard Documentation
 
 Search for .md files NOT starting with "_" or "!":
 ```
@@ -25,7 +33,7 @@ find_by_name Pattern="*.md" SearchDirectory="[WORKSPACE_FOLDER]" Type="file" Exc
 - Skip .md files starting with "_"
 - Skip ALL folders starting with "_" (task folders, archive, temp, tools, etc.)
 
-## Step 3: Detect Workspace Scenario
+## Step 4: Detect Workspace Scenario
 
 Identify active scenario from three dimensions:
 1. **Project Structure**: SINGLE-PROJECT or MONOREPO?

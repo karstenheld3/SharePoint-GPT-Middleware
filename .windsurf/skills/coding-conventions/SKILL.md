@@ -18,6 +18,7 @@ This skill implements:
 ## Available Convention Files
 
 - `PYTHON-RULES.md` - Python coding conventions (formatting, imports, logging, etc.)
+- `WORKFLOW-RULES.md` - Workflow document conventions (structure, formatting)
 
 ## Usage
 

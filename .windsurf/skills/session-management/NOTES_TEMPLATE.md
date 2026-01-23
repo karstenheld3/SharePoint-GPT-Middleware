@@ -1,11 +1,15 @@
 # Session Notes
 
+Populated by `/session-new` workflow. Captures session context, decisions, and agent instructions.
+
 **Doc ID**: YYYY-MM-DD_[SessionTopicCamelCase]-NOTES
 
 ## Session Info
 
 - **Started**: 2026-01-15
 - **Goal**: Fix authentication token expiration handling in API client
+- **Operation Mode**: IMPL-CODEBASE | IMPL-ISOLATED
+- **Output Location**: src/features/auth/ | [SESSION_FOLDER]/poc/
 
 ## Agent Instructions
 

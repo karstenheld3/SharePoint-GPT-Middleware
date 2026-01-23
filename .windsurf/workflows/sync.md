@@ -1,8 +1,9 @@
 ---
+description: Document synchronization
 auto_execution_mode: 1
 ---
 
-# GLOBAL
+# Sync Workflow
 
 ## Required Skills
 
@@ -13,13 +14,13 @@ Invoke these skills based on context:
 ## Workflow
 
 1. First find out what the sync context is (Conversation→Docs, Code→Docs, Session→Project, etc.)
-2. Read Global Rules
+2. Read GLOBAL-RULES
 3. Read the relevant Context-Specific section
 4. Create a sync task list
 5. Work through sync task list
 6. Run Final Steps
 
-## Global Rules
+## GLOBAL-RULES
 
 Apply to ALL sync operations:
 

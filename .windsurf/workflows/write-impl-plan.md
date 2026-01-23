@@ -1,11 +1,11 @@
 ---
 description: Create implementation plan from spec
-phase: DESIGN
+auto_execution_mode: 1
 ---
 
 # Write Implementation Plan Workflow
 
-Implements [WRITE-IMPL-PLAN] verb from EDIRD model.
+Create implementation plans from specifications.
 
 ## Required Skills
 

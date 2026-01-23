@@ -1,6 +1,7 @@
 # IMPL: [Feature Name]
 
-**Doc ID**: [TOPIC]-IP[NN]
+**Doc ID (TDID)**: [TOPIC]-IP[NN]
+**Feature**: [FEATURE_SLUG]
 **Goal**: [Single sentence describing what to implement]
 **Timeline**: Created YYYY-MM-DD, Updated N times (YYYY-MM-DD - YYYY-MM-DD)
 

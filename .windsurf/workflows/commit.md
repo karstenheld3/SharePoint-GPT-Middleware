@@ -1,17 +1,17 @@
 ---
 description: Create conventional commits
-phase: IMPLEMENT
+auto_execution_mode: 1
 ---
 
 # Commit Workflow
 
-Implements [COMMIT] verb from EDIRD model.
+Create conventional commits for staged changes.
 
 ## Required Skills
 
 - @git-conventions for commit message format
 
-## Verb: [COMMIT]
+## Steps
 
 1. Analyze what was done since last commit
 2. If multiple activities with different files, plan multiple commits

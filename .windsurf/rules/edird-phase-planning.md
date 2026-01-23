@@ -1,6 +1,8 @@
 # EDIRD Phase Model (Core)
 
-For full model with gates, flows, and next-action logic: invoke @edird-phase-model
+For full model with gates, flows, and planning: invoke @edird-phase-planning skill
+
+**Execution logic**: Execution rules are defined in `devsystem-core.md`.
 
 ## Phases
 
@@ -18,10 +20,19 @@ For full model with gates, flows, and next-action logic: invoke @edird-phase-mod
 - **Verb outcomes**: -OK (proceed), -FAIL (handle per verb), -SKIP (intentional).
 - **Workflow type**: BUILD (code) or SOLVE (knowledge). Determined in EXPLORE, persists unless switched with [ACTOR] confirmation.
 - **Complexity**: LOW=patch, MEDIUM=minor, HIGH=major (maps to semantic versioning).
+- **Visual verification**: UI/game/graphics work MUST include visual [PROVE] before full implementation.
 
 ## Entry Rule
 
 All workflows start in EXPLORE with [ASSESS] to determine workflow type and complexity/problem-type.
+
+**Gate output is mandatory.** Before each phase transition, agent MUST output explicit gate evaluation (see @edird-phase-planning skill). No self-approval without evidence.
+
+**Artifact verification.** Agent MUST list created artifacts (files) as gate evidence. Claiming "plan complete" without artifact files is gate bypass.
+
+**Research before implementation.** If task requires accuracy to an external system, [RESEARCH] with cited sources is mandatory. Training data assumptions are not research.
+
+**Visual reference for replicas.** Replica/clone work MUST include visual reference (screenshot/video) during EXPLORE, not just text research.
 
 ## Gate Summaries
 
@@ -36,21 +47,37 @@ All workflows start in EXPLORE with [ASSESS] to determine workflow type and comp
 - Agent updates NOTES.md with current phase on transition. User adds notes manually.
 - Agent maintains full phase plan in PROGRESS.md (phases with status: pending/in_progress/done).
 
+## Planning Notation
+
+Use appropriate notation based on scope:
+
+- **STRUT** - Orchestrate complex multi-phase processes with goals, transitions, and verification
+  - When: Multi-phase work, autonomous runs (/go), session-spanning tasks
+  - Contains: Phases, Objectives (← linked to Deliverables), Strategy, Steps, Deliverables, Transitions
+  - Invoke: @write-documents skill for STRUT_TEMPLATE.md
+  - Verify: /verify workflow (STRUT Planning + STRUT Transition contexts)
+
+- **TASKS** - Flat sequential to-do lists with testable buckets
+  - When: Single-phase execution, partitioned IMPL steps
+  - Contains: Task items with files, done-when criteria, verification commands
+  - Created via: [PARTITION] verb from IMPL plan
+
 ## Workflow Types
 
-### BUILD
+### BUILD (`/build`)
 
 Primary output is working code. Triggers: "Add a feature...", "Build...", "Implement..."
 
 Assessment: COMPLEXITY-LOW / COMPLEXITY-MEDIUM / COMPLEXITY-HIGH
 
-Required documents (all complexities, depth varies):
-- `_INFO_*.md` - Research findings (EXPLORE)
-- `_SPEC_*.md` - Technical specification (DESIGN)
-- `_IMPL_*.md` - Implementation plan (DESIGN)
-- `_TEST_*.md` - Test plan (DESIGN)
+Required documents by complexity:
+- **LOW**: Inline plan sufficient, documents optional
+- **MEDIUM**: `_SPEC_*.md` + `_IMPL_*.md` required (NO EXCEPTIONS - create files before proceeding)
+- **HIGH**: All documents required (`_INFO_*.md`, `_SPEC_*.md`, `_IMPL_*.md`, `_TEST_*.md`)
 
-### SOLVE
+**Gate enforcement**: DESIGN→IMPLEMENT gate MUST list actual file paths created. If files don't exist, gate fails.
+
+### SOLVE (`/solve`)
 
 Primary output is knowledge, decisions, or documents. Triggers: "Research...", "Evaluate...", "Write...", "Decide..."
 

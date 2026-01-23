@@ -10,12 +10,13 @@ All documents and items must have unique IDs for traceability.
 
 **Topic:** 2-6 uppercase letters describing component (e.g., `CRWL` for Crawler, `AUTH` for Authentication, `EDIRD` for EDIRD Phase Model)
 
-**REQUIREMENT:** Workspace/project-level NOTES.md MUST maintain a complete list of registered TOPIC IDs.
+**REQUIREMENT:** Workspace must have an `ID-REGISTRY.md` file as the authoritative source for all TOPICs, acronyms, and states to avoid conflicting topic ids. Topic ids must be unique.
 
-Before using a new TOPIC ID:
-1. Check workspace/project NOTES.md for existing TOPIC IDs
-2. If new, add to NOTES.md Topic Registry section
+**Before creating a new TOPIC or acronym:**
+1. Read `ID-REGISTRY.md` to check for existing TOPICs
+2. If new, add to `ID-REGISTRY.md` with description
 3. Use consistent TOPIC across all related documents
+4. Never create duplicate or conflicting TOPICs
 
 **Example: SINGLE-PROJECT**
 ```
@@ -48,12 +49,26 @@ Every document MUST have an ID in its header block.
 - `SP` - SPEC document
 - `IP` - Implementation Plan
 - `TP` - Test Plan
+- `TK` - TASKS document
+- `RV` - REVIEW document
+- `LN` - LEARNINGS document
 
 **Examples:**
 - `AUTH-IN01` - Authentication Info doc 1
 - `CRWL-SP01` - Crawler Spec 1
 - `V2CR-IP01` - V2 Crawler Implementation Plan 1
 - `V2CR-TP01` - V2 Crawler Test Plan 1
+
+### Why IMPL and TEST, not PLAN
+
+We use **IMPL** (Implementation Plan) and **TEST** (Test Plan) instead of generic "PLAN" to avoid term collision. "Plan" is overloaded in software development:
+- Project plan (schedule, milestones)
+- Task list / backlog
+- Sprint plan
+- Release plan
+- Migration plan
+
+IMPL and TEST provide specificity: IMPL = "how to build it", TEST = "how to verify it". This enables unambiguous references like `[WRITE-IMPL-PLAN]` vs `[WRITE-TEST-PLAN]` and distinct Doc IDs (`IP` vs `TP`).
 
 ## Review Document IDs
 
@@ -76,6 +91,7 @@ Defined in SPECs, referenced across IMPL and TEST plans.
 - `FR` - Functional Requirement
 - `IG` - Implementation Guarantee
 - `DD` - Design Decision
+- `AC` - Acceptance Criteria
 
 **Examples:**
 - `CRWL-FR-01` - Crawler Functional Requirement 1

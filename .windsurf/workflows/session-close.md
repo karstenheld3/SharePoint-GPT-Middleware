@@ -7,34 +7,53 @@ auto_execution_mode: 1
 
 ## Required Skills
 
-Invoke these skills before proceeding:
 - @session-management for session lifecycle
 - @git-conventions for final commit
 
-Use this workflow when a session is complete and verified working.
+Use this workflow when a session is complete. Prepares for archiving but does NOT archive.
 
 ## Steps
 
-1. **Sync ALL problems to project !PROBLEMS.md**
-   - Read session PROBLEMS.md completely
-   - For EACH problem listed:
-     - If RESOLVED: Mark corresponding item in `!PROBLEMS.md` as FIXED with date
-     - If OPEN/DEFERRED: Add to `!PROBLEMS.md`
-     - If new issue discovered: Add as new numbered item
+1. **Sync problems to project !PROBLEMS.md**
+   - Read session PROBLEMS.md
+   - For each problem:
+     - RESOLVED: Mark in `!PROBLEMS.md` as FIXED with date
+     - OPEN/DEFERRED: Add to `!PROBLEMS.md`
 
-2. **Update session PROBLEMS.md**
-   - Change status from `Open` to `RESOLVED` for fixed problems
-   - Add final resolution notes if needed
+2. **Sync FAILS to project FAILS.md (MEDIUM and HIGH only)**
+   - Read session FAILS.md
+   - For each [MEDIUM] or [HIGH] entry:
+     - Add to workspace FAILS.md if not already present
+     - Skip [LOW] severity entries (session-specific)
 
-3. **Update session PROGRESS.md**
-   - Keep To Do list intact - do NOT delete it
-   - Mark completed To Do items as done: `- [x]`
-   - Ensure all completed tasks are in "Done" section
+3. **Sync LEARNINGS to project (MEDIUM and HIGH only)**
+   - Read session LEARNINGS.md
+   - For learnings linked to [MEDIUM] or [HIGH] fails:
+     - Add prevention rules to `!NOTES.md`
+     - Or create workspace-level LEARNINGS.md if patterns are reusable
 
-4. **Sync long-term findings to project !NOTES.md**
+4. **Update session PROGRESS.md**
+   - Keep To Do list intact - do NOT delete
+   - Mark completed items as done: `- [x]`
+   - Ensure completed tasks in "Done" section
+
+5. **Sync findings to project !NOTES.md**
    - Review session NOTES.md for reusable patterns
-   - Review session's `_INFO_*.md` files
-   - Add important findings: problem, solution, usage example, key facts
+   - Add important findings: problem, solution, key facts
 
-5. **Archive session**
-   - Run `/session-archive` workflow to move folder and commit
+6. **Check for deployable artifacts**
+   - List session artifacts that may need deployment:
+     - `_SPEC_*.md` - Specifications (deploy to workspace root?)
+     - `_IMPL_*.md` - Implementation plans
+     - `_INFO_*.md` - Research documents
+     - Code files created in session folder
+     - Skills, workflows, rules created/modified
+   - For each artifact found, ask [ACTOR]:
+     - "Deploy to workspace/project?" or
+     - "Keep in session archive only?"
+   - Execute deployment decisions before archiving
+
+7. **Ready for archive**
+   - Verify all syncs complete
+   - Verify deployment decisions executed
+   - Report: "Session ready for archive. Run `/session-archive` when ready."

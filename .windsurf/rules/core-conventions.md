@@ -6,7 +6,7 @@ trigger: always_on
 
 Universal formatting and writing conventions for all documents.
 
-## Text Style
+## Text Style (Exception: transcribed or external documents)
 
 - Use ASCII "double quotes" or 'single quotes'. Never use Non-ASCII quotes unless explicitly asked.
 - No emojis in documentation (see Document Rule Exceptions below)
@@ -16,6 +16,7 @@ Universal formatting and writing conventions for all documents.
   - Boxes and diagrams (non-UI): `┌─` `├─` `└─` `│` `─` `┐` `┤` `┘`
   - UI diagrams and designs: Keep ASCII `+` `-` `|` for compatibility and easy manual editing
 - Try to fit single statements/decisions/objects on a single line
+- Format workflow references as inline code: `/verify`, `/go`, `/recap`
 
 ## Document Structure
 
@@ -98,3 +99,23 @@ Documents may opt-in to use Markdown tables or emojis by adding a DevSystem tag 
 - Comparison documents where tables improve readability
 - Feature matrices and compatibility charts
 - Status dashboards
+
+## Temporary Files (.tmp prefix)
+
+Files starting with `.tmp` are temporary helper scripts created during operations. They should be deleted after use. Example: `.tmp_fix_quotes.ps1`
+
+## Transcription Output
+
+Transcribed content MUST contain only the original document's content. No processing metadata, agent annotations, or workflow artifacts.
+
+**IMPORTANT: Text Style rules do NOT apply to transcribed content.**
+Transcriptions preserve the original exactly - including curly quotes, typos, unusual punctuation, and formatting choices. Only markdown structural elements (headers, lists, emphasis) are agent-created.
+
+**Prohibited in transcription output:**
+- Source filename, path, or URL
+- Page counts, figure counts, or statistics
+- Transcription date or processing timestamps
+- Verification status or progress markers
+- Agent notes or processing comments
+
+**Store metadata separately:** If tracking is needed, create a companion `[FILENAME]_meta.json` or add to session NOTES.md.

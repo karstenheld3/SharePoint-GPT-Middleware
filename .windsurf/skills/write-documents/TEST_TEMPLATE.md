@@ -1,6 +1,7 @@
 # TEST: [Component Name]
 
-**Doc ID**: [TOPIC]-TP[NN]
+**Doc ID (TDID)**: [TOPIC]-TP[NN]
+**Feature**: [FEATURE_SLUG]
 **Goal**: [Single sentence describing test purpose]
 **Timeline**: Created YYYY-MM-DD, Updated N times (YYYY-MM-DD - YYYY-MM-DD)
 **Target file**: `[path/to/test_file.py]`
