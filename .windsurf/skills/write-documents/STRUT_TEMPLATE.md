@@ -2,7 +2,7 @@
 
 Template for creating STRUT plans (Structured Thinking notation) that can be embedded in any document.
 
-**Source**: `SPEC_STRUT_STRUCTURED_THINKING.md [STRUT-SP01]`
+**Source**: `docs/specs/SPEC_STRUT_STRUCTURED_THINKING.md [STRUT-SP01]`
 
 ## When to Use
 

@@ -19,11 +19,11 @@ TEXT_EXTENSIONS = {'.txt', '.md', '.json', '.py', '.html', '.xml', '.csv'}
 
 DEFAULT_SCHEMA = {
     "categories": [
-        {"name": "easy", "count": 2, "description": "Simple facts - single numbers, names, titles"},
-        {"name": "medium_facts", "count": 2, "description": "Combined facts requiring synthesis"},
-        {"name": "medium_graphics", "count": 2, "description": "Graphical element semantics"},
-        {"name": "hard_semantics", "count": 2, "description": "Deep understanding, sequences, dependencies"},
-        {"name": "hard_graphics", "count": 2, "description": "Specific graphical details, colors, counts"}
+        {"name": "easy", "count": 2, "description": "Simple facts - single numbers, names, titles, dates"},
+        {"name": "medium_facts", "count": 2, "description": "Combined facts requiring synthesis of 2-3 pieces"},
+        {"name": "medium_inference", "count": 2, "description": "Questions requiring simple logical inference"},
+        {"name": "hard_reasoning", "count": 2, "description": "Questions requiring multi-step reasoning or analysis"},
+        {"name": "hard_details", "count": 2, "description": "Questions about specific details requiring careful reading"}
     ]
 }
 

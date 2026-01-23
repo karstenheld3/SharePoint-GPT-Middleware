@@ -20,6 +20,25 @@ This skill implements:
 - `PYTHON-RULES.md` - Python coding conventions (formatting, imports, logging, etc.)
 - `WORKFLOW-RULES.md` - Workflow document conventions (structure, formatting)
 
+## Tools
+
+- `reindent.py` - Convert Python file indentation to target spaces
+
 ## Usage
 
 Read the appropriate convention file for the language you are working with.
+
+### reindent.py
+
+Convert Python indentation to target spaces. Auto-detects source indentation and skips files already at target. Excludes itself from processing.
+
+```powershell
+# Convert folder to 2-space indentation
+python reindent.py folder/ --to 2 --recursive
+
+# Dry-run (preview only)
+python reindent.py folder/ --to 2 --recursive --dry-run
+
+# Single file
+python reindent.py script.py --to 2
+```
