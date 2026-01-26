@@ -14,15 +14,24 @@ UNKNOWN = '[UNKNOWN]'
 
 DEFAULT_PRICING = {
     "openai": {
+        "gpt-5.2": {"input_per_1m": 1.75, "output_per_1m": 14.00, "currency": "USD"},
+        "gpt-5.1": {"input_per_1m": 1.25, "output_per_1m": 10.00, "currency": "USD"},
         "gpt-5": {"input_per_1m": 1.25, "output_per_1m": 10.00, "currency": "USD"},
         "gpt-5-mini": {"input_per_1m": 0.25, "output_per_1m": 2.00, "currency": "USD"},
         "gpt-5-nano": {"input_per_1m": 0.05, "output_per_1m": 0.40, "currency": "USD"},
-        "gpt-4.1": {"input_per_1m": 3.00, "output_per_1m": 12.00, "currency": "USD"},
+        "gpt-5.2-pro": {"input_per_1m": 21.00, "output_per_1m": 168.00, "currency": "USD"},
+        "gpt-5-pro": {"input_per_1m": 15.00, "output_per_1m": 120.00, "currency": "USD"},
+        "gpt-4.1": {"input_per_1m": 2.00, "output_per_1m": 8.00, "currency": "USD"},
+        "gpt-4.1-mini": {"input_per_1m": 0.40, "output_per_1m": 1.60, "currency": "USD"},
+        "gpt-4.1-nano": {"input_per_1m": 0.10, "output_per_1m": 0.40, "currency": "USD"},
         "gpt-4o": {"input_per_1m": 2.50, "output_per_1m": 10.00, "currency": "USD"},
         "gpt-4o-mini": {"input_per_1m": 0.15, "output_per_1m": 0.60, "currency": "USD"},
-        "o3-mini": {"input_per_1m": 1.25, "output_per_1m": 10.00, "currency": "USD"},
-        "o1-preview": {"input_per_1m": 15.00, "output_per_1m": 60.00, "currency": "USD"},
-        "o1-mini": {"input_per_1m": 3.00, "output_per_1m": 12.00, "currency": "USD"}
+        "o4-mini": {"input_per_1m": 1.10, "output_per_1m": 4.40, "currency": "USD"},
+        "o3-mini": {"input_per_1m": 1.10, "output_per_1m": 4.40, "currency": "USD"},
+        "o3-deep-research": {"input_per_1m": 10.00, "output_per_1m": 40.00, "currency": "USD"},
+        "o1": {"input_per_1m": 15.00, "output_per_1m": 60.00, "currency": "USD"},
+        "o1-mini": {"input_per_1m": 1.10, "output_per_1m": 4.40, "currency": "USD"},
+        "o1-pro": {"input_per_1m": 150.00, "output_per_1m": 600.00, "currency": "USD"}
     },
     "anthropic": {
         "claude-opus-4-1-20250805": {"input_per_1m": 15.00, "output_per_1m": 75.00, "currency": "USD"},
@@ -47,7 +56,7 @@ def load_pricing(pricing_file: Path) -> dict:
 def detect_provider(model_id: str) -> str:
     """Detect provider from model ID."""
     model_lower = model_id.lower()
-    if model_lower.startswith(('gpt-', 'o1-', 'o3-')):
+    if model_lower.startswith(('gpt-', 'o1-', 'o3-', 'o4-')):
         return 'openai'
     if model_lower.startswith('claude'):
         return 'anthropic'

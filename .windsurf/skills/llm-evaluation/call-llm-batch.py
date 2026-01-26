@@ -13,6 +13,103 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 
 UNKNOWN = '[UNKNOWN]'
+EFFORT_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
+
+
+def get_script_dir() -> Path:
+    """Get directory containing this script."""
+    return Path(__file__).parent
+
+
+def load_configs(script_dir: Path) -> tuple[dict, dict]:
+    """Load model-parameter-mapping.json and model-registry.json."""
+    mapping_file = script_dir / 'model-parameter-mapping.json'
+    registry_file = script_dir / 'model-registry.json'
+    
+    if not mapping_file.exists():
+        print(f"[ERROR] Config not found: {mapping_file}", file=sys.stderr)
+        sys.exit(1)
+    if not registry_file.exists():
+        print(f"[ERROR] Config not found: {registry_file}", file=sys.stderr)
+        sys.exit(1)
+    
+    with open(mapping_file, 'r', encoding='utf-8') as f:
+        mapping = json.load(f)
+    with open(registry_file, 'r', encoding='utf-8') as f:
+        registry = json.load(f)
+    
+    return mapping, registry
+
+
+def get_model_config(model: str, registry: dict) -> dict:
+    """Return model config from registry using prefix matching."""
+    for entry in registry['model_id_startswith']:
+        if model.startswith(entry['prefix']):
+            return entry
+    known = [e['prefix'] for e in registry['model_id_startswith']]
+    print(f"[ERROR] Unknown model: {model}. Known prefixes: {known}", file=sys.stderr)
+    sys.exit(1)
+
+
+def build_api_params(model: str, mapping: dict, registry: dict,
+                     temperature: str, reasoning_effort: str,
+                     output_length: str, seed: int = None) -> dict:
+    """Build API parameters using effort levels."""
+    model_config = get_model_config(model, registry)
+    effort_map = mapping['effort_mapping']
+    params = {}
+    
+    method = model_config.get('method', 'temperature')
+    provider = model_config.get('provider', 'openai')
+    
+    if method == 'temperature':
+        factor = effort_map[temperature]['temperature_factor']
+        params['temperature'] = factor * model_config.get('temp_max', 2.0)
+    elif method == 'reasoning_effort':
+        params['reasoning_effort'] = effort_map[reasoning_effort]['openai_reasoning_effort']
+    elif method == 'effort':
+        params['effort'] = effort_map[reasoning_effort]['openai_reasoning_effort']
+    elif method == 'thinking':
+        factor = effort_map[reasoning_effort]['anthropic_thinking_factor']
+        budget = int(factor * model_config.get('thinking_max', 100000))
+        if budget > 0:
+            params['thinking'] = {'type': 'enabled', 'budget_tokens': budget}
+    
+    output_factor = effort_map[output_length]['output_length_factor']
+    max_output = model_config.get('max_output', 16384)
+    params['max_tokens'] = int(output_factor * max_output)
+    
+    # Anthropic constraint: max_tokens must be > thinking.budget_tokens
+    if 'thinking' in params and params['thinking'].get('budget_tokens', 0) > 0:
+        thinking_budget = params['thinking']['budget_tokens']
+        if params['max_tokens'] <= thinking_budget:
+            params['max_tokens'] = thinking_budget + 1024
+            print(f"[WARN] max_tokens adjusted to {params['max_tokens']} (must be > thinking budget {thinking_budget})", file=sys.stderr)
+    
+    if seed is not None:
+        if model_config.get('seed', False):
+            params['seed'] = seed
+        else:
+            print(f"[WARN] --seed ignored for {model} (not supported)", file=sys.stderr)
+    
+    return params, method, provider
+
+
+def save_used_settings(output_folder: Path, model: str, cli_params: dict, api_params: dict, prompt_file: Path):
+    """Save used_settings_{model}.json at batch start."""
+    safe_model = model.replace('/', '_').replace(':', '_')
+    settings_file = output_folder / f"used_settings_{safe_model}.json"
+    
+    data = {
+        "model": model,
+        "cli_parameters": cli_params,
+        "api_parameters": api_params,
+        "prompt_file": str(prompt_file),
+        "batch_started": datetime.now(timezone.utc).isoformat()
+    }
+    
+    settings_file.write_text(json.dumps(data, indent=2), encoding='utf-8')
+    print(f"Settings saved to: {settings_file}", file=sys.stderr)
 
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
 TEXT_EXTENSIONS = {'.txt', '.md', '.json', '.py', '.html', '.xml', '.csv'}
@@ -124,8 +221,9 @@ def create_anthropic_client(keys: dict):
     return Anthropic(api_key=api_key)
 
 
-def call_openai(client, model: str, prompt: str, image_data: str = None, image_media_type: str = None):
-    """Call OpenAI API."""
+def call_openai(client, model: str, prompt: str, api_params: dict,
+                image_data: str = None, image_media_type: str = None):
+    """Call OpenAI API with configurable parameters."""
     if image_data:
         content = [
             {"type": "text", "text": prompt},
@@ -134,15 +232,22 @@ def call_openai(client, model: str, prompt: str, image_data: str = None, image_m
     else:
         content = prompt
     
-    # Use max_completion_tokens for newer models (gpt-5, o1, o3), max_tokens for older
-    token_param = "max_completion_tokens" if any(x in model for x in ['gpt-5', 'o1-', 'o3-']) else "max_tokens"
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": content}],
-        **{token_param: 4096}
-    )
+    messages = [{"role": "user", "content": content}]
+    call_params = {'model': model, 'messages': messages}
     
-    return {
+    if 'temperature' in api_params:
+        call_params['temperature'] = api_params['temperature']
+    if 'reasoning_effort' in api_params:
+        call_params['reasoning_effort'] = api_params['reasoning_effort']
+    if 'seed' in api_params:
+        call_params['seed'] = api_params['seed']
+    
+    token_param = 'max_completion_tokens' if any(x in model for x in ['gpt-5', 'o1-', 'o3-', 'o4-']) else 'max_tokens'
+    call_params[token_param] = api_params.get('max_tokens', 4096)
+    
+    response = client.chat.completions.create(**call_params)
+    
+    result = {
         "text": response.choices[0].message.content,
         "usage": {
             "input_tokens": response.usage.prompt_tokens,
@@ -150,10 +255,16 @@ def call_openai(client, model: str, prompt: str, image_data: str = None, image_m
         },
         "model": response.model
     }
+    
+    if hasattr(response, 'system_fingerprint') and response.system_fingerprint:
+        result['system_fingerprint'] = response.system_fingerprint
+    
+    return result
 
 
-def call_anthropic(client, model: str, prompt: str, image_data: str = None, image_media_type: str = None):
-    """Call Anthropic API."""
+def call_anthropic(client, model: str, prompt: str, api_params: dict, method: str,
+                   image_data: str = None, image_media_type: str = None):
+    """Call Anthropic API with configurable parameters."""
     content = []
     
     if image_data:
@@ -168,14 +279,29 @@ def call_anthropic(client, model: str, prompt: str, image_data: str = None, imag
     
     content.append({"type": "text", "text": prompt})
     
-    response = client.messages.create(
-        model=model,
-        max_tokens=4096,
-        messages=[{"role": "user", "content": content}]
-    )
+    call_params = {
+        'model': model,
+        'max_tokens': api_params.get('max_tokens', 4096),
+        'messages': [{"role": "user", "content": content}]
+    }
+    
+    if 'temperature' in api_params:
+        call_params['temperature'] = api_params['temperature']
+    
+    if 'thinking' in api_params and api_params['thinking'].get('budget_tokens', 0) > 0:
+        call_params['thinking'] = api_params['thinking']
+    
+    response = client.messages.create(**call_params)
+    
+    # Handle thinking responses: find text block (skip ThinkingBlock)
+    text_content = ""
+    for block in response.content:
+        if hasattr(block, 'text'):
+            text_content = block.text
+            break
     
     return {
-        "text": response.content[0].text,
+        "text": text_content,
         "usage": {
             "input_tokens": response.usage.input_tokens,
             "output_tokens": response.usage.output_tokens
@@ -242,7 +368,8 @@ def update_token_usage(output_folder: Path, model: str, usage: dict, lock: Lock)
 
 
 def process_file(worker_id: int, file_idx: int, total_files: int, input_file: Path, 
-                 args, client, provider: str, prompt: str, results_lock: Lock, usage_lock: Lock):
+                 args, client, provider: str, method: str, api_params: dict,
+                 prompt: str, results_lock: Lock, usage_lock: Lock):
     """Process a single file."""
     file_type = detect_file_type(input_file)
     if not file_type:
@@ -272,11 +399,11 @@ def process_file(worker_id: int, file_idx: int, total_files: int, input_file: Pa
             
             if provider == 'openai':
                 result = retry_with_backoff(
-                    lambda: call_openai(client, args.model, file_prompt, image_data, image_media_type)
+                    lambda: call_openai(client, args.model, file_prompt, api_params, image_data, image_media_type)
                 )
             else:
                 result = retry_with_backoff(
-                    lambda: call_anthropic(client, args.model, file_prompt, image_data, image_media_type)
+                    lambda: call_anthropic(client, args.model, file_prompt, api_params, method, image_data, image_media_type)
                 )
             
             # Write content to .md file
@@ -316,6 +443,11 @@ def parse_args():
     parser.add_argument('--keys-file', type=Path, default=Path('.env'), help='API keys file (default: .env)')
     parser.add_argument('--force', action='store_true', help='Force reprocess existing files')
     parser.add_argument('--clear-folder', action='store_true', help='Clear output folder before processing')
+    parser.add_argument('--temperature', choices=EFFORT_LEVELS, default='medium', help='Temperature control (default: medium)')
+    parser.add_argument('--reasoning-effort', choices=EFFORT_LEVELS, default='medium', help='Reasoning effort (default: medium)')
+    parser.add_argument('--output-length', choices=EFFORT_LEVELS, default='medium', help='Output length (default: medium)')
+    parser.add_argument('--seed', type=int, default=None, help='Random seed (OpenAI only)')
+    parser.add_argument('--response-format', choices=['text', 'json'], default='text', help='Response format (default: text)')
     return parser.parse_args()
 
 
@@ -327,7 +459,16 @@ def main():
         args.workers = 1
     
     keys = load_api_keys(args.keys_file)
-    provider = detect_provider(args.model)
+    script_dir = get_script_dir()
+    mapping, registry = load_configs(script_dir)
+    
+    api_params, method, provider = build_api_params(
+        args.model, mapping, registry,
+        args.temperature, getattr(args, 'reasoning_effort', 'medium'),
+        getattr(args, 'output_length', 'medium'), args.seed
+    )
+    
+    print(f"API params: {api_params}", file=sys.stderr)
     
     if not args.input_folder.exists():
         print(f"[ERROR] Input folder not found: {args.input_folder}", file=sys.stderr)
@@ -360,6 +501,14 @@ def main():
     print(f"Processing {total_files} files with {args.workers} workers, {args.runs} run(s) each", file=sys.stderr)
     print(f"Model: {args.model} ({provider})", file=sys.stderr)
     
+    cli_params = {
+        'temperature': args.temperature,
+        'reasoning_effort': getattr(args, 'reasoning_effort', 'medium'),
+        'output_length': getattr(args, 'output_length', 'medium'),
+        'seed': args.seed
+    }
+    save_used_settings(args.output_folder, args.model, cli_params, api_params, args.prompt_file)
+    
     if provider == 'openai':
         client = create_openai_client(keys)
     else:
@@ -374,7 +523,7 @@ def main():
             worker_id = (idx - 1) % args.workers
             future = executor.submit(
                 process_file, worker_id, idx, total_files, input_file,
-                args, client, provider, prompt, results_lock, usage_lock
+                args, client, provider, method, api_params, prompt, results_lock, usage_lock
             )
             futures[future] = input_file
         

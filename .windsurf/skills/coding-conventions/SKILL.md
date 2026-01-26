@@ -18,7 +18,9 @@ This skill implements:
 ## Available Convention Files
 
 - `PYTHON-RULES.md` - Python coding conventions (formatting, imports, logging, etc.)
+- `JSON-RULES.md` - JSON coding conventions (field naming, 2-space indent, 2D table formatting)
 - `WORKFLOW-RULES.md` - Workflow document conventions (structure, formatting)
+- `AGENT-SKILL-RULES.md` - Agent skill folder structure and SKILL.md conventions
 
 ## Tools
 

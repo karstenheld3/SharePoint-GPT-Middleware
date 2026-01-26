@@ -196,18 +196,13 @@ LLMs understand explicit labels better than visual patterns. Inline semantics be
 **PURE ASCII ONLY** - No Unicode box-drawing, arrows, or shading blocks. Unicode adds no LLM value and risks alignment issues.
 
 ````
+<transcription_image>
 **Figure [N]: [Caption from original]**
 
 ```ascii
 [ASCII art representation here]
 ```
-````
 
-### Step F2: Compare and Describe (Required)
-
-After creating ASCII, compare with original image and add description using standard markdown inside XML tags:
-
-```
 <transcription_notes>
 - Mode: Structural | Shading
 - Dimensions: [width]x[height] characters
@@ -221,7 +216,12 @@ After creating ASCII, compare with original image and add description using stan
 - Data: Specific values, measurements, labels, or quantities visible
 - Reconstruction hint: Key detail needed to imagine original
 </transcription_notes>
-```
+</transcription_image>
+````
+
+### Step F2: Compare and Describe (Required)
+
+After creating ASCII, compare with original image and add `<transcription_notes>` inside the same `<transcription_image>` wrapper:
 
 ### Step F2b: Self-Verify (Required)
 
@@ -244,6 +244,7 @@ Original: A flowchart with colored boxes showing data flow
 - Priority: Flow direction and logging hierarchy
 
 ```markdown
+<transcription_image>
 **Figure 3: Data Processing Pipeline**
 
 ```ascii
@@ -278,15 +279,19 @@ Legend: === main flow  --- log output  [gear] = processing icon
 - Data: None
 - Reconstruction hint: Main boxes are larger with double borders; log boxes are smaller with single borders
 </transcription_notes>
+</transcription_image>
 ```
 
 ### Figure Protocol Rules
 
-1. **NO EXCEPTIONS**: Every figure gets ASCII + XML, even photographs
-2. **Photographs**: ASCII shows composition/layout; XML describes subject matter
-3. **Graphs/Charts**: ASCII shows axes and trend; XML provides data points
-4. **Network Diagrams**: ASCII shows topology; XML describes node colors and link types
-5. **3D Visualizations**: ASCII shows 2D projection; XML describes depth and perspective
+1. **WRAPPER TAG**: Every figure MUST be wrapped in `<transcription_image>...</transcription_image>`
+2. **NO EXCEPTIONS**: Every figure gets ASCII + notes, even photographs
+3. **Photographs**: ASCII shows composition/layout; notes describe subject matter
+4. **Graphs/Charts**: ASCII shows axes and trend; notes provide data points
+5. **Network Diagrams**: ASCII shows topology; notes describe node colors and link types
+6. **3D Visualizations**: ASCII shows 2D projection; notes describe depth and perspective
+
+**Why wrapper tag?** Enables hybrid comparison: Levenshtein for text, LLM-as-a-judge for graphics.
 
 ### 5c. Append to output file IMMEDIATELY
 Do not wait until end. Write after each chunk.
