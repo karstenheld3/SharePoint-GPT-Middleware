@@ -9,6 +9,15 @@
 - 5 sources configured (SharedDocuments, DocumentLibrary01, DocumentLibrary02, SecurityTrainingCatalog, SitePages)
 - Use for automated testing with Playwright MCP
 
+## Patterns
+
+**Async Generator for Realtime SSE Streaming**
+- Step functions use `AsyncGenerator[str, None]` return type
+- Yield SSE events via `for sse in writer.drain_sse_queue(): yield sse`
+- Store result via `writer.set_step_result(result)`
+- Caller retrieves via `writer.get_step_result()` after iteration
+- See `_V2_IMPL_CRAWLER.md` "Step function result handling" section
+
 ## Topic Registry
 
 - `SSE` - Server-Sent Events streaming
