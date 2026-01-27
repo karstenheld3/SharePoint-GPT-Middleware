@@ -98,7 +98,8 @@ def _export_list_item_to_csv(sp_item: SharePointMapRow, target_path: str, dry_ru
   except Exception as e:
     return False, str(e)
 
-async def step_download_source(storage_path: str, domain: DomainConfig, source, source_type: str, mode: str, dry_run: bool, retry_batches: int, writer: StreamingJobWriter, logger: MiddlewareLogger, crawler_config: dict, job_id: str = None) -> DownloadResult:
+async def step_download_source(storage_path: str, domain: DomainConfig, source, source_type: str, mode: str, dry_run: bool, retry_batches: int, writer: StreamingJobWriter, logger: MiddlewareLogger, crawler_config: dict, job_id: str = None) -> AsyncGenerator[str, None]:
+  """Async generator that yields SSE events during execution. Result stored in writer.get_step_result()."""
   source_id = source.source_id
   logger.log_function_output(f"Download source '{source_id}' (type={source_type}, mode={mode}, dry_run={dry_run})")
   result = DownloadResult(source_id=source_id, source_type=source_type, total_files=0, downloaded=0, skipped=0, errors=0, removed=0)
@@ -119,12 +120,16 @@ async def step_download_source(storage_path: str, domain: DomainConfig, source, 
       if error:
         logger.log_function_output(f"  ERROR: {error}")
         result.errors = 1
-        return result
+        for sse in writer.drain_sse_queue(): yield sse
+        writer.set_step_result(result)
+        return
       sp_files = get_document_library_files(ctx, library, source.filter, logger, dry_run)
     elif source_type == "sitepage_sources":
       sp_files = get_site_pages(ctx, source.site_url, source.sharepoint_url_part, source.filter, logger, dry_run)
     elif source_type == "list_sources":
       sp_files = get_list_items_as_sharepoint_files(ctx, source.list_name, source.filter, logger, dry_run)
+    # Drain SSE queue after SharePoint operations (realtime streaming)
+    for sse in writer.drain_sse_queue(): yield sse
     sp_items = [_sharepoint_file_to_map_row(f) for f in sp_files]
     result.total_files = len(sp_items)
     sp_writer = MapFileWriter(sp_map_path, SharePointMapRow)
@@ -133,6 +138,7 @@ async def step_download_source(storage_path: str, domain: DomainConfig, source, 
     sp_writer.finalize()
     changes = detect_changes(sp_items, local_items)
     logger.log_function_output(f"  {len(changes.added)} added, {len(changes.changed)} changed, {len(changes.removed)} removed, {len(changes.unchanged)} unchanged.")
+    for sse in writer.drain_sse_queue(): yield sse
     target_folder = get_embedded_folder_path(storage_path, domain.domain_id, source_type, source_id) if source_type == "file_sources" else get_originals_folder_path(storage_path, domain.domain_id, source_type, source_id)
     os.makedirs(target_folder, exist_ok=True)
     files_writer = MapFileWriter(files_map_path, FilesMapRow)
@@ -148,7 +154,8 @@ async def step_download_source(storage_path: str, domain: DomainConfig, source, 
       async for control in writer.check_control():
         if control == ControlAction.CANCEL:
           files_writer.finalize()
-          return result
+          writer.set_step_result(result)
+          return
       # For list_sources, use filename directly (no sharepoint_url_part)
       if source_type == "list_sources":
         local_path = sp_item.filename
@@ -174,6 +181,8 @@ async def step_download_source(storage_path: str, domain: DomainConfig, source, 
         files_row = sharepoint_map_row_to_files_map_row(sp_item, "", utc_now, ts_now, sharepoint_error=error)
         files_writer.append_row(files_row)
         result.errors += 1
+      # Drain SSE queue after each file download (realtime streaming)
+      for sse in writer.drain_sse_queue(): yield sse
     for local_item in changes.unchanged:
       files_writer.append_row(local_item)
       result.skipped += 1
@@ -187,9 +196,11 @@ async def step_download_source(storage_path: str, domain: DomainConfig, source, 
   except Exception as e:
     logger.log_function_output(f"  ERROR: {str(e)}")
     result.errors += 1
-  return result
+  for sse in writer.drain_sse_queue(): yield sse
+  writer.set_step_result(result)
 
-async def step_integrity_check(storage_path: str, domain_id: str, source, source_type: str, dry_run: bool, writer: StreamingJobWriter, logger: MiddlewareLogger, crawler_config: dict, job_id: str = None) -> IntegrityResult:
+async def step_integrity_check(storage_path: str, domain_id: str, source, source_type: str, dry_run: bool, writer: StreamingJobWriter, logger: MiddlewareLogger, crawler_config: dict, job_id: str = None) -> AsyncGenerator[str, None]:
+  """Async generator that yields SSE events during execution. Result stored in writer.get_step_result()."""
   source_id = source.source_id
   logger.log_function_output(f"Integrity check for source '{source_id}'")
   result = IntegrityResult(source_id=source_id, files_verified=0, missing_redownloaded=0, orphans_deleted=0, wrong_path_moved=0)
@@ -199,7 +210,9 @@ async def step_integrity_check(storage_path: str, domain_id: str, source, source
   files_map_path = os.path.join(source_folder, files_map_name)
   if not os.path.exists(files_map_path):
     logger.log_function_output(f"  No files_map.csv found")
-    return result
+    for sse in writer.drain_sse_queue(): yield sse
+    writer.set_step_result(result)
+    return
   local_items = read_files_map(files_map_path)
   target_folder = get_embedded_folder_path(storage_path, domain_id, source_type, source_id) if source_type == "file_sources" else get_originals_folder_path(storage_path, domain_id, source_type, source_id)
   for item in local_items:
@@ -209,19 +222,26 @@ async def step_integrity_check(storage_path: str, domain_id: str, source, source
     else: result.missing_redownloaded += 1
   if result.missing_redownloaded == 0: logger.log_function_output(f"  Integrity check passed: {result.files_verified} files verified")
   else: logger.log_function_output(f"  Integrity issues: {result.missing_redownloaded} missing files")
-  return result
+  for sse in writer.drain_sse_queue(): yield sse
+  writer.set_step_result(result)
 
-async def step_process_source(storage_path: str, domain_id: str, source, source_type: str, dry_run: bool, writer: StreamingJobWriter, logger: MiddlewareLogger, job_id: str = None) -> ProcessResult:
+async def step_process_source(storage_path: str, domain_id: str, source, source_type: str, dry_run: bool, writer: StreamingJobWriter, logger: MiddlewareLogger, job_id: str = None) -> AsyncGenerator[str, None]:
+  """Async generator that yields SSE events during execution. Result stored in writer.get_step_result()."""
   source_id = source.source_id
   logger.log_function_output(f"Process source '{source_id}'")
   result = ProcessResult(source_id=source_id, source_type=source_type, total_files=0, processed=0, skipped=0, errors=0)
   if source_type == "file_sources":
     logger.log_function_output(f"  Skipping: file_sources do not require processing")
-    return result
+    for sse in writer.drain_sse_queue(): yield sse
+    writer.set_step_result(result)
+    return
   originals_folder = get_originals_folder_path(storage_path, domain_id, source_type, source_id)
   embedded_folder = get_embedded_folder_path(storage_path, domain_id, source_type, source_id)
   os.makedirs(embedded_folder, exist_ok=True)
-  if not os.path.exists(originals_folder): return result
+  if not os.path.exists(originals_folder):
+    for sse in writer.drain_sse_queue(): yield sse
+    writer.set_step_result(result)
+    return
   for filename in os.listdir(originals_folder):
     result.total_files += 1
     source_path = os.path.join(originals_folder, filename)
@@ -245,9 +265,11 @@ async def step_process_source(storage_path: str, domain_id: str, source, source_
           shutil.copy2(source_path, target_path)
           result.processed += 1
         except: result.errors += 1
-  return result
+  for sse in writer.drain_sse_queue(): yield sse
+  writer.set_step_result(result)
 
-async def step_embed_source(storage_path: str, domain: DomainConfig, source, source_type: str, mode: str, dry_run: bool, retry_batches: int, writer: StreamingJobWriter, logger: MiddlewareLogger, openai_client, job_id: str = None) -> EmbedResult:
+async def step_embed_source(storage_path: str, domain: DomainConfig, source, source_type: str, mode: str, dry_run: bool, retry_batches: int, writer: StreamingJobWriter, logger: MiddlewareLogger, openai_client, job_id: str = None) -> AsyncGenerator[str, None]:
+  """Async generator that yields SSE events during execution. Result stored in writer.get_step_result()."""
   source_id = source.source_id
   vector_store_id = domain.vector_store_id
   logger.log_function_output(f"Embed source '{source_id}' to vector store '{vector_store_id}'")
@@ -260,7 +282,10 @@ async def step_embed_source(storage_path: str, domain: DomainConfig, source, sou
   files_map_name = get_map_filename(CRAWLER_HARDCODED_CONFIG.FILE_MAP_CSV, temp_job_id)
   files_map_path = os.path.join(source_folder, files_map_name)
   if not os.path.exists(files_map_path): files_map_path = os.path.join(source_folder, CRAWLER_HARDCODED_CONFIG.FILE_MAP_CSV)
-  if not os.path.exists(files_map_path): return result
+  if not os.path.exists(files_map_path):
+    for sse in writer.drain_sse_queue(): yield sse
+    writer.set_step_result(result)
+    return
   files_items = read_files_map(files_map_path)
   embeddable, skipped = filter_embeddable_files(files_items)
   result.total_files = len(embeddable)
@@ -277,7 +302,8 @@ async def step_embed_source(storage_path: str, domain: DomainConfig, source, sou
     async for control in writer.check_control():
       if control == ControlAction.CANCEL:
         vs_writer.finalize()
-        return result
+        writer.set_step_result(result)
+        return
     logger.log_function_output(f"[ {i+1} / {total} ] Embedding '{files_item.filename}'...")
     existing_vs = vs_by_uid.get(files_item.sharepoint_unique_file_id)
     if existing_vs and not is_file_changed_for_embed(files_item, existing_vs):
@@ -316,12 +342,15 @@ async def step_embed_source(storage_path: str, domain: DomainConfig, source, sou
         result.uploaded += 1
         result.embedded += 1
         metadata_entries.append({"sharepoint_listitem_id": files_item.sharepoint_listitem_id, "sharepoint_unique_file_id": files_item.sharepoint_unique_file_id, "openai_file_id": file_id, "file_relative_path": files_item.file_relative_path, "filename": files_item.filename, "file_type": files_item.file_type, "file_size": files_item.file_size, "last_modified_utc": files_item.last_modified_utc, "embedded_utc": embed_utc, "source_id": source_id, "source_type": source_type})
+    # Drain SSE queue after each embed operation (realtime streaming)
+    for sse in writer.drain_sse_queue(): yield sse
   vs_writer.finalize()
   if metadata_entries and not dry_run:
     domain_path = get_domain_path(storage_path, domain.domain_id)
     update_files_metadata(domain_path, metadata_entries)
   logger.log_function_output(f"  {result.embedded} embedded, {result.failed} failed.")
-  return result
+  for sse in writer.drain_sse_queue(): yield sse
+  writer.set_step_result(result)
 
 # FIX-04: Convert to async generator for real-time SSE streaming
 async def crawl_domain(storage_path: str, domain: DomainConfig, mode: str, scope: str, source_id: Optional[str], dry_run: bool, retry_batches: int, writer: StreamingJobWriter, logger: MiddlewareLogger, crawler_config: dict, openai_client) -> AsyncGenerator[str, None]:
@@ -352,18 +381,18 @@ async def crawl_domain(storage_path: str, domain: DomainConfig, mode: str, scope
   job_id = writer.job_id if dry_run else None
   download_results, embed_results = [], []
   for source_type, source in sources:
-    result = await step_download_source(storage_path, domain, source, source_type, mode, dry_run, retry_batches, writer, logger, crawler_config, job_id)
-    download_results.append(result)
-    for sse in writer.drain_sse_queue(): yield sse  # FIX-04: Drain after download
-    await step_integrity_check(storage_path, domain.domain_id, source, source_type, dry_run, writer, logger, crawler_config, job_id)
-    for sse in writer.drain_sse_queue(): yield sse  # FIX-04: Drain after integrity
+    async for sse in step_download_source(storage_path, domain, source, source_type, mode, dry_run, retry_batches, writer, logger, crawler_config, job_id):
+      yield sse
+    download_results.append(writer.get_step_result())
+    async for sse in step_integrity_check(storage_path, domain.domain_id, source, source_type, dry_run, writer, logger, crawler_config, job_id):
+      yield sse
     if source_type in ("list_sources", "sitepage_sources"):
-      await step_process_source(storage_path, domain.domain_id, source, source_type, dry_run, writer, logger, job_id)
-      for sse in writer.drain_sse_queue(): yield sse  # FIX-04: Drain after process
+      async for sse in step_process_source(storage_path, domain.domain_id, source, source_type, dry_run, writer, logger, job_id):
+        yield sse
     if not skip_embedding:
-      result = await step_embed_source(storage_path, domain, source, source_type, mode, dry_run, retry_batches, writer, logger, openai_client, job_id)
-      embed_results.append(result)
-      for sse in writer.drain_sse_queue(): yield sse  # FIX-04: Drain after embed
+      async for sse in step_embed_source(storage_path, domain, source, source_type, mode, dry_run, retry_batches, writer, logger, openai_client, job_id):
+        yield sse
+      embed_results.append(writer.get_step_result())
   total_downloaded = sum(r.downloaded for r in download_results)
   total_embedded = sum(r.embedded for r in embed_results)
   total_errors = sum(r.errors for r in download_results) + sum(r.failed for r in embed_results)
@@ -692,9 +721,9 @@ async def _download_stream(storage_path: str, domain: DomainConfig, mode: str, s
     job_id = writer.job_id if dry_run else None
     results = []
     for source_type, source in get_sources_for_scope(domain, scope, source_id):
-      result = await step_download_source(storage_path, domain, source, source_type, mode, dry_run, retry_batches, writer, logger, crawler_cfg, job_id)
-      for sse in writer.drain_sse_queue(): yield sse
-      results.append(asdict(result))
+      async for sse in step_download_source(storage_path, domain, source, source_type, mode, dry_run, retry_batches, writer, logger, crawler_cfg, job_id):
+        yield sse
+      results.append(asdict(writer.get_step_result()))
     yield writer.emit_end(ok=True, data={"results": results})
   except Exception as e:
     yield writer.emit_end(ok=False, error=str(e), data={})
@@ -788,9 +817,9 @@ async def _process_stream(storage_path: str, domain: DomainConfig, scope: str, s
     results = []
     for source_type, source in get_sources_for_scope(domain, scope, source_id):
       if source_type in ("list_sources", "sitepage_sources"):
-        result = await step_process_source(storage_path, domain.domain_id, source, source_type, dry_run, writer, logger, job_id)
-        for sse in writer.drain_sse_queue(): yield sse
-        results.append(asdict(result))
+        async for sse in step_process_source(storage_path, domain.domain_id, source, source_type, dry_run, writer, logger, job_id):
+          yield sse
+        results.append(asdict(writer.get_step_result()))
     yield writer.emit_end(ok=True, data={"results": results})
   except Exception as e:
     yield writer.emit_end(ok=False, error=str(e), data={})
@@ -880,9 +909,9 @@ async def _embed_stream(storage_path: str, domain: DomainConfig, mode: str, scop
     job_id = writer.job_id if dry_run else None
     results = []
     for source_type, source in get_sources_for_scope(domain, scope, source_id):
-      result = await step_embed_source(storage_path, domain, source, source_type, mode, dry_run, retry_batches, writer, logger, openai_client, job_id)
-      for sse in writer.drain_sse_queue(): yield sse
-      results.append(asdict(result))
+      async for sse in step_embed_source(storage_path, domain, source, source_type, mode, dry_run, retry_batches, writer, logger, openai_client, job_id):
+        yield sse
+      results.append(asdict(writer.get_step_result()))
     yield writer.emit_end(ok=True, data={"results": results})
   except Exception as e:
     yield writer.emit_end(ok=False, error=str(e), data={})

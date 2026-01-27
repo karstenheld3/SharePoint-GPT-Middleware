@@ -4,7 +4,7 @@
 import asyncio, datetime, glob, json, os, re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 
@@ -75,6 +75,7 @@ class StreamingJobWriter:
     self._buffer: list[str] = []
     self._sse_queue: list[str] = []  # Queue for SSE events to be yielded by outer generator
     self._crawl_results: Optional[dict] = None  # FIX-04: Store results from async generator
+    self._step_result: Any = None  # Store result from async generator step functions
     self._job_id: str = ""
     self._job_file_path: str = ""
     self._file_handle = None
@@ -180,6 +181,16 @@ class StreamingJobWriter:
   def get_crawl_results(self) -> dict:
     """FIX-04: Retrieve stored results from async generator."""
     return self._crawl_results or {}
+  
+  def set_step_result(self, result: Any) -> None:
+    """Store result from async generator step function for retrieval by caller."""
+    self._step_result = result
+  
+  def get_step_result(self) -> Any:
+    """Retrieve and clear stored step result."""
+    result = self._step_result
+    self._step_result = None
+    return result
   
   def emit_state(self, state: str) -> str:
     """
