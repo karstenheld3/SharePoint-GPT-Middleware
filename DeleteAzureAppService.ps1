@@ -24,8 +24,7 @@ if (-not (Get-Module -Name Az -ListAvailable)) {
   Install-Module -Name Az -Scope CurrentUser -Force -AllowClobber
 }
 
-try { $null = az --version }
-catch {
+if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
   Write-Host "Installing Azure CLI..."
   $installerUrl = "https://aka.ms/installazurecliwindows"
   $installerPath = "$env:TEMP\AzureCLI.msi"  
@@ -33,11 +32,11 @@ catch {
   Start-Process msiexec.exe -Wait -ArgumentList "/I $installerPath /quiet"
   Remove-Item $installerPath
   $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
-  try { $null = az --version; Write-Host "Azure CLI installation successful"}
-  catch {
-    Write-Error "Azure CLI installation failed. Please install manually from: $installerUrl" -ForegroundColor White -BackgroundColor Red
+  if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
+    Write-Error "Azure CLI installation failed. Please install manually from: $installerUrl"
     exit 1
   }
+  Write-Host "Azure CLI installation successful"
 }
 
 # === Login to Azure ===
