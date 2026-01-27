@@ -23,6 +23,8 @@
 - [x] Updated all callers in `crawl_domain`, `_download_stream`, `_process_stream`, `_embed_stream`
 - [x] Tested with AiSearchTest01 domain via Playwright MCP - realtime streaming verified
 - [x] Fixed duplicate "Starting crawl" log (was both yielded and queued)
+- [x] Updated _V2_IMPL_CRAWLER.md with step result handling pattern
+- [x] Updated _V2_SPEC_ROUTERS.md with new StreamingJobWriter methods
 
 ## In Progress
 
