@@ -626,6 +626,28 @@ async def step_embed_source(
   """
 ```
 
+### Step function result handling
+
+Step functions are async generators that yield SSE strings. Since generators cannot return values, results are passed via StreamingJobWriter:
+
+```python
+# Step function stores result at end:
+async def step_download_source(...) -> AsyncGenerator[str, None]:
+    result = DownloadResult(...)
+    # ... yields SSE events during execution ...
+    for sse in writer.drain_sse_queue(): yield sse
+    writer.set_step_result(result)  # Store result for caller
+
+# Caller retrieves result after iteration:
+async for sse in step_download_source(...):
+    yield sse
+result = writer.get_step_result()  # Returns DownloadResult, clears storage
+```
+
+Methods on StreamingJobWriter:
+- `set_step_result(result: Any)` - Store result from async generator step
+- `get_step_result() -> Any` - Retrieve and clear stored result
+
 ### Job metadata specification
 
 StreamingJobWriter stores job metadata in the job file header. Crawler jobs include:

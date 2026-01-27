@@ -8,7 +8,7 @@
 - [x] **DESIGN** - completed
 - [x] **IMPLEMENT** - completed
 - [x] **REVIEW** - completed (tested with Playwright MCP)
-- [ ] **DEPLOY** - pending commit
+- [x] **DEPLOY** - completed (commits 2103a07, c3b018a pushed)
 
 ## Done
 
@@ -22,9 +22,10 @@
 - [x] Converted `step_embed_source` to async generator
 - [x] Updated all callers in `crawl_domain`, `_download_stream`, `_process_stream`, `_embed_stream`
 - [x] Tested with AiSearchTest01 domain via Playwright MCP - realtime streaming verified
+- [x] Fixed duplicate "Starting crawl" log (was both yielded and queued)
 
 ## In Progress
 
-- Commit and push changes
+(none)
 
 ## Tried But Not Used

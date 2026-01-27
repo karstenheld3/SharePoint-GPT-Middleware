@@ -1690,6 +1690,15 @@ class StreamingJobWriter:
     - Flushes any remaining buffer
     Called automatically in finally block.
     """
+  
+  def set_step_result(self, result: Any) -> None:
+    """Store result from async generator step function for retrieval by caller."""
+  
+  def get_step_result(self) -> Any:
+    """Retrieve and clear stored step result. Returns None if no result stored."""
+  
+  def drain_sse_queue(self) -> list[str]:
+    """Return and clear queued SSE events. Called by outer generator after sync calls."""
 
 # Standalone functions for /v2/jobs endpoints
 

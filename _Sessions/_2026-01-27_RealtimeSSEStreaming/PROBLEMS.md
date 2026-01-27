@@ -4,9 +4,13 @@
 
 ## Open
 
+(none)
+
+## Resolved
+
 ### SSE-PR-001: Crawler logs not streaming in realtime
 
-**Status**: Open
+**Status**: Resolved
 **Severity**: Medium
 **Description**: Logs from `get_document_library_files()` (pagination progress, file counts) only appear in browser after entire step completes, not during execution.
 
@@ -36,7 +40,5 @@
 - `download_source_job()` line 695
 - `process_source_job()` line 791
 - `embed_source_job()` line 883
-
-## Resolved
 
 ## Deferred
