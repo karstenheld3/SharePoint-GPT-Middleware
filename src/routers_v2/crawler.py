@@ -610,7 +610,7 @@ async def _crawl_stream(storage_path: str, domain: DomainConfig, mode: str, scop
   started_utc, _ = _get_utc_now()
   try:
     yield writer.emit_start()
-    yield logger.log_function_output(f"Starting crawl for domain '{domain.domain_id}'")
+    logger.log_function_output(f"Starting crawl for domain '{domain.domain_id}'")
     # FIX-04: Iterate over async generator for real-time SSE streaming
     async for sse in crawl_domain(storage_path, domain, mode, scope, source_id, dry_run, retry_batches, writer, logger, crawler_cfg, openai_client):
       yield sse
