@@ -35,7 +35,10 @@ def set_config(app_config, prefix):
   config = app_config
   router_prefix = prefix
 
-def get_persistent_storage_path() -> str:
+def get_persistent_storage_path(request: Request) -> str:
+  """Get persistent storage path from system_info (works in Azure where path is computed)."""
+  if hasattr(request.app.state, 'system_info') and request.app.state.system_info:
+    return getattr(request.app.state.system_info, 'PERSISTENT_STORAGE_PATH', None) or ''
   return getattr(config, 'LOCAL_PERSISTENT_STORAGE_PATH', None) or ''
 
 def _job_to_dict(job: JobMetadata) -> dict:
@@ -394,7 +397,7 @@ async def jobs_root(request: Request):
   router_filter = request_params.get("router", None)
   state_filter = request_params.get("state", None)
   
-  jobs = list_jobs(get_persistent_storage_path(), router_filter, state_filter)
+  jobs = list_jobs(get_persistent_storage_path(request), router_filter, state_filter)
   jobs_data = [_job_to_dict(job) for job in jobs]
   
   if format_param == "json":
@@ -518,7 +521,7 @@ async def jobs_get(request: Request):
     if format_param == "html": return html_result("Error", {"error": "Missing 'job_id' parameter."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
     return json_result(False, "Missing 'job_id' parameter.", {})
   
-  job = find_job_by_id(get_persistent_storage_path(), job_id)
+  job = find_job_by_id(get_persistent_storage_path(request), job_id)
   if job is None:
     logger.log_function_footer()
     if format_param == "html": return html_result("Not Found", {"error": f"Job '{job_id}' not found."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
@@ -575,13 +578,13 @@ async def jobs_monitor(request: Request):
     logger.log_function_footer()
     return json_result(False, "Missing 'job_id' parameter.", {})
   
-  job = find_job_by_id(get_persistent_storage_path(), job_id)
+  job = find_job_by_id(get_persistent_storage_path(request), job_id)
   if job is None:
     logger.log_function_footer()
     if format_param == "html": return html_result("Not Found", {"error": f"Job '{job_id}' does not exist."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
     return JSONResponse({"ok": False, "error": f"Job '{job_id}' does not exist.", "data": {}}, status_code=404)
   
-  log_content = read_job_log(get_persistent_storage_path(), job_id)
+  log_content = read_job_log(get_persistent_storage_path(request), job_id)
   
   if format_param == "stream":
     logger.log_function_footer()
@@ -594,16 +597,16 @@ async def jobs_monitor(request: Request):
       
       # For running/paused jobs, poll for new content
       while True:
-        current_job = find_job_by_id(get_persistent_storage_path(), job_id)
+        current_job = find_job_by_id(get_persistent_storage_path(request), job_id)
         if current_job is None or current_job.state in ["completed", "cancelled"]:
           # Job finished - yield any remaining content and exit
-          final_content = read_job_log(get_persistent_storage_path(), job_id) or ""
+          final_content = read_job_log(get_persistent_storage_path(request), job_id) or ""
           if len(final_content) > last_len:
             yield final_content[last_len:]
           break
         
         # Check for new content
-        current_content = read_job_log(get_persistent_storage_path(), job_id) or ""
+        current_content = read_job_log(get_persistent_storage_path(request), job_id) or ""
         if len(current_content) > last_len:
           yield current_content[last_len:]
           last_len = len(current_content)
@@ -678,7 +681,7 @@ async def jobs_control(request: Request):
     logger.log_function_footer()
     return json_result(False, f"Invalid value '{action}' for 'action' param.", {"job_id": job_id, "action": action})
   
-  job = find_job_by_id(get_persistent_storage_path(), job_id)
+  job = find_job_by_id(get_persistent_storage_path(request), job_id)
   if job is None:
     logger.log_function_footer()
     return JSONResponse({"ok": False, "error": f"Job '{job_id}' does not exist.", "data": {"job_id": job_id, "action": action}}, status_code=404)
@@ -705,7 +708,7 @@ async def jobs_control(request: Request):
   
   # Force cancel: directly rename .running/.paused -> .cancelled (for stalled jobs)
   if action == "cancel" and force and job.state in ["running", "paused"]:
-    success = force_cancel_job(get_persistent_storage_path(), job_id)
+    success = force_cancel_job(get_persistent_storage_path(request), job_id)
     if not success:
       logger.log_function_footer()
       return json_result(False, f"Failed to force cancel job '{job_id}'.", {"job_id": job_id, "action": action, "force": True})
@@ -713,7 +716,7 @@ async def jobs_control(request: Request):
     return json_result(True, "", {"job_id": job_id, "action": action, "force": True, "message": f"Job '{job_id}' force cancelled."})
   
   # Normal control: create control file for running job process to pick up
-  success = create_control_file(get_persistent_storage_path(), job_id, action)
+  success = create_control_file(get_persistent_storage_path(request), job_id, action)
   if not success:
     logger.log_function_footer()
     return json_result(False, f"Failed to create control file for job '{job_id}'.", {"job_id": job_id, "action": action})
@@ -765,7 +768,7 @@ async def jobs_results(request: Request):
     if format_param == "html": return html_result("Error", {"error": "Missing 'job_id' parameter."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
     return json_result(False, "Missing 'job_id' parameter.", {})
   
-  job = find_job_by_id(get_persistent_storage_path(), job_id)
+  job = find_job_by_id(get_persistent_storage_path(request), job_id)
   if job is None:
     logger.log_function_footer()
     if format_param == "html": return html_result("Not Found", {"error": f"Job '{job_id}' not found."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
@@ -831,7 +834,7 @@ async def jobs_delete_impl(request: Request):
     if format_param == "html": return html_result("Error", {"error": "Missing 'job_id' parameter."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
     return json_result(False, "Missing 'job_id' parameter.", {})
   
-  job = find_job_by_id(get_persistent_storage_path(), job_id)
+  job = find_job_by_id(get_persistent_storage_path(request), job_id)
   if job is None:
     logger.log_function_footer()
     if format_param == "html": return html_result("Not Found", {"error": f"Job '{job_id}' not found."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
@@ -842,7 +845,7 @@ async def jobs_delete_impl(request: Request):
     if format_param == "html": return html_result("Cannot Delete", {"error": f"Cannot delete active job '{job_id}' (state: {job.state}). Cancel it first."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
     return json_result(False, f"Cannot delete active job '{job_id}' (state: {job.state}). Cancel it first.", {"job_id": job_id, "state": job.state})
   
-  success = delete_job(get_persistent_storage_path(), job_id)
+  success = delete_job(get_persistent_storage_path(request), job_id)
   if not success:
     logger.log_function_footer()
     if format_param == "html": return html_result("Delete Failed", {"error": f"Failed to delete job '{job_id}'."}, f'<a href="{router_prefix}/{router_name}">Back</a> | {main_page_nav_html.replace("{router_prefix}", router_prefix)}')
@@ -857,10 +860,10 @@ async def jobs_delete_impl(request: Request):
 
 # ----------------------------------------- START: Selftest helpers --------------------------------------------------------
 
-async def _run_test_job_to_completion(delay_seconds: float = 0.1, item_count: int = 3) -> str:
+async def _run_test_job_to_completion(storage_path: str, delay_seconds: float = 0.1, item_count: int = 3) -> str:
   """Run a quick test job to completion. Returns job_id."""
   writer = StreamingJobWriter(
-    persistent_storage_path=get_persistent_storage_path(),
+    persistent_storage_path=storage_path,
     router_name=router_name,
     action="selftest",
     object_id=None,
@@ -878,10 +881,10 @@ async def _run_test_job_to_completion(delay_seconds: float = 0.1, item_count: in
     writer.finalize()
   return job_id
 
-async def _run_slow_test_job_in_background(delay_seconds: float = 1.0, item_count: int = 30) -> tuple[str, asyncio.Task]:
+async def _run_slow_test_job_in_background(storage_path: str, delay_seconds: float = 1.0, item_count: int = 30) -> tuple[str, asyncio.Task]:
   """Start a slow test job in background. Returns (job_id, task)."""
   writer = StreamingJobWriter(
-    persistent_storage_path=get_persistent_storage_path(),
+    persistent_storage_path=storage_path,
     router_name=router_name,
     action="selftest",
     object_id=None,
@@ -959,7 +962,7 @@ async def jobs_selftest(request: Request):
   base_url = str(request.base_url).rstrip("/")
   
   writer = StreamingJobWriter(
-    persistent_storage_path=get_persistent_storage_path(),
+    persistent_storage_path=get_persistent_storage_path(request),
     router_name=router_name,
     action="selftest",
     object_id="main",
@@ -1004,7 +1007,7 @@ async def jobs_selftest(request: Request):
         return log(f"  FAIL: {fail_msg}")
     
     def verify_job_file_extension(job_id: str, expected_ext: str) -> bool:
-      filepath = find_job_file(get_persistent_storage_path(), job_id)
+      filepath = find_job_file(get_persistent_storage_path(request), job_id)
       if not filepath: return False
       return filepath.endswith(f".{expected_ext}")
     
@@ -1117,7 +1120,7 @@ async def jobs_selftest(request: Request):
         # ===== CATEGORY 2: JOB CREATION AND BASIC GET (5 tests) =====
         sse = next_test("Create test job (Job 1)")
         if sse: yield sse
-        completed_job_id = await _run_test_job_to_completion(delay_seconds=0.05, item_count=3)
+        completed_job_id = await _run_test_job_to_completion(get_persistent_storage_path(request), delay_seconds=0.05, item_count=3)
         test_job_ids.append(completed_job_id)
         sse = check(completed_job_id is not None, f"Job created with ID '{completed_job_id}'", "Failed to create job")
         if sse: yield sse
@@ -1172,7 +1175,7 @@ async def jobs_selftest(request: Request):
         
         sse = next_test("Verify SSE events in job file")
         if sse: yield sse
-        log_content = read_job_log(get_persistent_storage_path(), completed_job_id)
+        log_content = read_job_log(get_persistent_storage_path(request), completed_job_id)
         events = parse_sse_events(log_content)
         event_types = [e["event"] for e in events]
         has_start = "start_json" in event_types
@@ -1184,7 +1187,7 @@ async def jobs_selftest(request: Request):
         # ===== CATEGORY 4: PAUSE/RESUME + ERROR CASES (10 tests) =====
         sse = next_test("Create slow job (Job 2) for pause/resume")
         if sse: yield sse
-        pause_resume_job_id, task2 = await _run_slow_test_job_in_background(delay_seconds=1.0, item_count=60)
+        pause_resume_job_id, task2 = await _run_slow_test_job_in_background(get_persistent_storage_path(request), delay_seconds=1.0, item_count=60)
         test_job_ids.append(pause_resume_job_id)
         background_tasks.append(task2)
         sse = check(pause_resume_job_id is not None, f"Slow job created with ID '{pause_resume_job_id}'", "Failed to create slow job")
@@ -1217,7 +1220,7 @@ async def jobs_selftest(request: Request):
         
         sse = next_test("SSE contains state_json paused")
         if sse: yield sse
-        log_content = read_job_log(get_persistent_storage_path(), pause_resume_job_id)
+        log_content = read_job_log(get_persistent_storage_path(request), pause_resume_job_id)
         events = parse_sse_events(log_content)
         sse = check(has_state_event(events, "paused"), "SSE has state_json paused event", "No paused state event")
         if sse: yield sse
@@ -1242,7 +1245,7 @@ async def jobs_selftest(request: Request):
         
         sse = next_test("SSE contains state_json running")
         if sse: yield sse
-        log_content = read_job_log(get_persistent_storage_path(), pause_resume_job_id)
+        log_content = read_job_log(get_persistent_storage_path(request), pause_resume_job_id)
         events = parse_sse_events(log_content)
         sse = check(has_state_event(events, "running"), "SSE has state_json running event", "No running state event")
         if sse: yield sse
@@ -1250,7 +1253,7 @@ async def jobs_selftest(request: Request):
         # ===== CATEGORY 5: CANCEL (5 tests) =====
         sse = next_test("Create slow job (Job 3) for cancel")
         if sse: yield sse
-        cancel_job_id, task3 = await _run_slow_test_job_in_background(delay_seconds=1.0, item_count=60)
+        cancel_job_id, task3 = await _run_slow_test_job_in_background(get_persistent_storage_path(request), delay_seconds=1.0, item_count=60)
         test_job_ids.append(cancel_job_id)
         background_tasks.append(task3)
         sse = check(cancel_job_id is not None, f"Slow job created with ID '{cancel_job_id}'", "Failed to create slow job")
@@ -1276,7 +1279,7 @@ async def jobs_selftest(request: Request):
         
         sse = next_test("SSE contains state_json cancelled")
         if sse: yield sse
-        log_content = read_job_log(get_persistent_storage_path(), cancel_job_id)
+        log_content = read_job_log(get_persistent_storage_path(request), cancel_job_id)
         events = parse_sse_events(log_content)
         sse = check(has_state_event(events, "cancelled"), "SSE has state_json cancelled event", "No cancelled state event")
         if sse: yield sse
@@ -1304,7 +1307,7 @@ async def jobs_selftest(request: Request):
         
         sse = next_test("Force cancel job (Job 2)")
         if sse: yield sse
-        force_ok = force_cancel_job(get_persistent_storage_path(), pause_resume_job_id)
+        force_ok = force_cancel_job(get_persistent_storage_path(request), pause_resume_job_id)
         sse = check(force_ok, "Force cancel job succeeds", "Force cancel failed")
         if sse: yield sse
         
@@ -1318,7 +1321,7 @@ async def jobs_selftest(request: Request):
         # ===== CATEGORY 7: DELETE TESTS (8 tests) =====
         sse = next_test("Create slow job (Job 4) for delete test")
         if sse: yield sse
-        running_for_delete_id, task4 = await _run_slow_test_job_in_background(delay_seconds=1.0, item_count=60)
+        running_for_delete_id, task4 = await _run_slow_test_job_in_background(get_persistent_storage_path(request), delay_seconds=1.0, item_count=60)
         test_job_ids.append(running_for_delete_id)
         background_tasks.append(task4)
         sse = check(running_for_delete_id is not None, f"Slow job created with ID '{running_for_delete_id}'", "Failed to create slow job")
@@ -1398,10 +1401,10 @@ async def jobs_selftest(request: Request):
       # Cleanup: Force cancel and delete remaining test jobs
       for job_id in test_job_ids:
         try:
-          job = find_job_by_id(get_persistent_storage_path(), job_id)
+          job = find_job_by_id(get_persistent_storage_path(request), job_id)
           if job and job.state in ["running", "paused"]:
-            force_cancel_job(get_persistent_storage_path(), job_id)
-          delete_job(get_persistent_storage_path(), job_id)
+            force_cancel_job(get_persistent_storage_path(request), job_id)
+          delete_job(get_persistent_storage_path(request), job_id)
         except: pass
       
       writer.finalize()

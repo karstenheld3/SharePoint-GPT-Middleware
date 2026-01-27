@@ -30,12 +30,15 @@ def set_config(app_config, prefix):
   config = app_config
   router_prefix = prefix
 
-def get_persistent_storage_path() -> str:
+def get_persistent_storage_path(request: Request) -> str:
+  """Get persistent storage path from system_info (works in Azure where path is computed)."""
+  if hasattr(request.app.state, 'system_info') and request.app.state.system_info:
+    return getattr(request.app.state.system_info, 'PERSISTENT_STORAGE_PATH', None) or ''
   return getattr(config, 'LOCAL_PERSISTENT_STORAGE_PATH', None) or ''
 
-def get_crawler_config() -> dict:
+def get_crawler_config(request: Request) -> dict:
   cert_filename = getattr(config, 'CRAWLER_CLIENT_CERTIFICATE_PFX_FILE', '') or ''
-  cert_path = os.path.join(get_persistent_storage_path(), cert_filename) if cert_filename else ''
+  cert_path = os.path.join(get_persistent_storage_path(request), cert_filename) if cert_filename else ''
   return {"client_id": getattr(config, 'CRAWLER_CLIENT_ID', '') or '', "tenant_id": getattr(config, 'CRAWLER_TENANT_ID', '') or '', "cert_path": cert_path, "cert_password": getattr(config, 'CRAWLER_CLIENT_CERTIFICATE_PASSWORD', '') or ''}
 
 @dataclass
@@ -465,7 +468,7 @@ async def crawler_root(request: Request):
       navigation_html=main_page_nav_html.replace("{router_prefix}", router_prefix)
     ))
   format_param = request.query_params.get("format", "json")
-  all_jobs = list_jobs(get_persistent_storage_path())
+  all_jobs = list_jobs(get_persistent_storage_path(request))
   crawler_jobs = [j for j in all_jobs if f"/{router_name}/" in (j.source_url or "")]
   if format_param == "ui":
     logger.log_function_footer()
@@ -549,7 +552,7 @@ Return (SSE stream):
     logger.log_function_footer()
     return json_result(False, "Missing 'domain_id' parameter.", {})
   try:
-    domain = load_domain(get_persistent_storage_path(), domain_id, logger)
+    domain = load_domain(get_persistent_storage_path(request), domain_id, logger)
   except FileNotFoundError:
     logger.log_function_footer()
     return json_result(False, f"Domain '{domain_id}' not found.", {})
@@ -567,25 +570,25 @@ Return (SSE stream):
   retry_batches = int(params.get("retry_batches", "2"))
   if format_param == "stream":
     openai_client = getattr(request.app.state, 'openai_client', None)
-    return StreamingResponse(_crawl_stream(domain, mode, scope, source_id, dry_run, retry_batches, logger, openai_client), media_type="text/event-stream")
+    return StreamingResponse(_crawl_stream(get_persistent_storage_path(request), domain, mode, scope, source_id, dry_run, retry_batches, logger, openai_client, get_crawler_config(request)), media_type="text/event-stream")
   logger.log_function_footer()
   return json_result(False, "Use format=stream for crawl operations.", {})
 
 # FIX-04: Updated to iterate over crawl_domain generator for real-time streaming
-async def _crawl_stream(domain: DomainConfig, mode: str, scope: str, source_id: Optional[str], dry_run: bool, retry_batches: int, logger: MiddlewareLogger, openai_client):
-  writer = StreamingJobWriter(persistent_storage_path=get_persistent_storage_path(), router_name=router_name, action="crawl", object_id=domain.domain_id, source_url=f"{router_prefix}/{router_name}/crawl?domain_id={domain.domain_id}&mode={mode}&scope={scope}&dry_run={dry_run}", router_prefix=router_prefix)
+async def _crawl_stream(storage_path: str, domain: DomainConfig, mode: str, scope: str, source_id: Optional[str], dry_run: bool, retry_batches: int, logger: MiddlewareLogger, openai_client, crawler_cfg: dict):
+  writer = StreamingJobWriter(persistent_storage_path=storage_path, router_name=router_name, action="crawl", object_id=domain.domain_id, source_url=f"{router_prefix}/{router_name}/crawl?domain_id={domain.domain_id}&mode={mode}&scope={scope}&dry_run={dry_run}", router_prefix=router_prefix)
   logger.stream_job_writer = writer
   started_utc, _ = _get_utc_now()
   try:
     yield writer.emit_start()
     yield logger.log_function_output(f"Starting crawl for domain '{domain.domain_id}'")
     # FIX-04: Iterate over async generator for real-time SSE streaming
-    async for sse in crawl_domain(get_persistent_storage_path(), domain, mode, scope, source_id, dry_run, retry_batches, writer, logger, get_crawler_config(), openai_client):
+    async for sse in crawl_domain(storage_path, domain, mode, scope, source_id, dry_run, retry_batches, writer, logger, crawler_cfg, openai_client):
       yield sse
     results = writer.get_crawl_results()  # FIX-04: Retrieve results from writer
     finished_utc, _ = _get_utc_now()
     if not dry_run and results.get("ok", False):
-      report_id = create_crawl_report(get_persistent_storage_path(), domain.domain_id, mode, scope, results, started_utc, finished_utc)
+      report_id = create_crawl_report(storage_path, domain.domain_id, mode, scope, results, started_utc, finished_utc)
       results["data"]["report_id"] = report_id
     total_embedded = results.get('data', {}).get('total_embedded', 0)
     yield logger.log_function_output(f"{total_embedded} file{'' if total_embedded == 1 else 's'} embedded.")
@@ -596,7 +599,7 @@ async def _crawl_stream(domain: DomainConfig, mode: str, scope: str, source_id: 
   finally:
     if dry_run:
       for source_type, source in get_sources_for_scope(domain, scope, source_id):
-        cleanup_temp_map_files(get_source_folder_path(get_persistent_storage_path(), domain.domain_id, source_type, source.source_id), writer.job_id)
+        cleanup_temp_map_files(get_source_folder_path(storage_path, domain.domain_id, source_type, source.source_id), writer.job_id)
     writer.finalize()
 
 @router.get(f"/{router_name}/download_data")
@@ -663,7 +666,7 @@ Return (SSE stream):
     logger.log_function_footer()
     return json_result(False, "Missing 'domain_id' parameter.", {})
   try:
-    domain = load_domain(get_persistent_storage_path(), domain_id, logger)
+    domain = load_domain(get_persistent_storage_path(request), domain_id, logger)
   except FileNotFoundError:
     logger.log_function_footer()
     return json_result(False, f"Domain '{domain_id}' not found.", {})
@@ -677,19 +680,19 @@ Return (SSE stream):
   format_param, dry_run = params.get("format", "json"), params.get("dry_run", "false").lower() == "true"
   retry_batches = int(params.get("retry_batches", "2"))
   if format_param == "stream":
-    return StreamingResponse(_download_stream(domain, mode, scope, source_id, dry_run, retry_batches, logger), media_type="text/event-stream")
+    return StreamingResponse(_download_stream(get_persistent_storage_path(request), domain, mode, scope, source_id, dry_run, retry_batches, logger, get_crawler_config(request)), media_type="text/event-stream")
   logger.log_function_footer()
   return json_result(False, "Use format=stream.", {})
 
-async def _download_stream(domain: DomainConfig, mode: str, scope: str, source_id: Optional[str], dry_run: bool, retry_batches: int, logger: MiddlewareLogger):
-  writer = StreamingJobWriter(persistent_storage_path=get_persistent_storage_path(), router_name=router_name, action="download_data", object_id=domain.domain_id, source_url=f"{router_prefix}/{router_name}/download_data?domain_id={domain.domain_id}", router_prefix=router_prefix)
+async def _download_stream(storage_path: str, domain: DomainConfig, mode: str, scope: str, source_id: Optional[str], dry_run: bool, retry_batches: int, logger: MiddlewareLogger, crawler_cfg: dict):
+  writer = StreamingJobWriter(persistent_storage_path=storage_path, router_name=router_name, action="download_data", object_id=domain.domain_id, source_url=f"{router_prefix}/{router_name}/download_data?domain_id={domain.domain_id}", router_prefix=router_prefix)
   logger.stream_job_writer = writer
   try:
     yield writer.emit_start()
     job_id = writer.job_id if dry_run else None
     results = []
     for source_type, source in get_sources_for_scope(domain, scope, source_id):
-      result = await step_download_source(get_persistent_storage_path(), domain, source, source_type, mode, dry_run, retry_batches, writer, logger, get_crawler_config(), job_id)
+      result = await step_download_source(storage_path, domain, source, source_type, mode, dry_run, retry_batches, writer, logger, crawler_cfg, job_id)
       for sse in writer.drain_sse_queue(): yield sse
       results.append(asdict(result))
     yield writer.emit_end(ok=True, data={"results": results})
@@ -698,7 +701,7 @@ async def _download_stream(domain: DomainConfig, mode: str, scope: str, source_i
   finally:
     if dry_run:
       for source_type, source in get_sources_for_scope(domain, scope, source_id):
-        cleanup_temp_map_files(get_source_folder_path(get_persistent_storage_path(), domain.domain_id, source_type, source.source_id), writer.job_id)
+        cleanup_temp_map_files(get_source_folder_path(storage_path, domain.domain_id, source_type, source.source_id), writer.job_id)
     writer.finalize()
 
 @router.get(f"/{router_name}/process_data")
@@ -765,19 +768,19 @@ Return (SSE stream):
     logger.log_function_footer()
     return json_result(False, "Missing 'domain_id' parameter.", {})
   try:
-    domain = load_domain(get_persistent_storage_path(), domain_id, logger)
+    domain = load_domain(get_persistent_storage_path(request), domain_id, logger)
   except FileNotFoundError:
     logger.log_function_footer()
     return json_result(False, f"Domain '{domain_id}' not found.", {})
   scope, source_id = params.get("scope", "all"), params.get("source_id")
   format_param, dry_run = params.get("format", "json"), params.get("dry_run", "false").lower() == "true"
   if format_param == "stream":
-    return StreamingResponse(_process_stream(domain, scope, source_id, dry_run, logger), media_type="text/event-stream")
+    return StreamingResponse(_process_stream(get_persistent_storage_path(request), domain, scope, source_id, dry_run, logger), media_type="text/event-stream")
   logger.log_function_footer()
   return json_result(False, "Use format=stream.", {})
 
-async def _process_stream(domain: DomainConfig, scope: str, source_id: Optional[str], dry_run: bool, logger: MiddlewareLogger):
-  writer = StreamingJobWriter(persistent_storage_path=get_persistent_storage_path(), router_name=router_name, action="process_data", object_id=domain.domain_id, source_url=f"{router_prefix}/{router_name}/process_data?domain_id={domain.domain_id}", router_prefix=router_prefix)
+async def _process_stream(storage_path: str, domain: DomainConfig, scope: str, source_id: Optional[str], dry_run: bool, logger: MiddlewareLogger):
+  writer = StreamingJobWriter(persistent_storage_path=storage_path, router_name=router_name, action="process_data", object_id=domain.domain_id, source_url=f"{router_prefix}/{router_name}/process_data?domain_id={domain.domain_id}", router_prefix=router_prefix)
   logger.stream_job_writer = writer
   try:
     yield writer.emit_start()
@@ -785,7 +788,7 @@ async def _process_stream(domain: DomainConfig, scope: str, source_id: Optional[
     results = []
     for source_type, source in get_sources_for_scope(domain, scope, source_id):
       if source_type in ("list_sources", "sitepage_sources"):
-        result = await step_process_source(get_persistent_storage_path(), domain.domain_id, source, source_type, dry_run, writer, logger, job_id)
+        result = await step_process_source(storage_path, domain.domain_id, source, source_type, dry_run, writer, logger, job_id)
         for sse in writer.drain_sse_queue(): yield sse
         results.append(asdict(result))
     yield writer.emit_end(ok=True, data={"results": results})
@@ -856,7 +859,7 @@ Return (SSE stream):
     logger.log_function_footer()
     return json_result(False, "Missing 'domain_id' parameter.", {})
   try:
-    domain = load_domain(get_persistent_storage_path(), domain_id, logger)
+    domain = load_domain(get_persistent_storage_path(request), domain_id, logger)
   except FileNotFoundError:
     logger.log_function_footer()
     return json_result(False, f"Domain '{domain_id}' not found.", {})
@@ -865,19 +868,19 @@ Return (SSE stream):
   retry_batches = int(params.get("retry_batches", "2"))
   if format_param == "stream":
     openai_client = getattr(request.app.state, 'openai_client', None)
-    return StreamingResponse(_embed_stream(domain, mode, scope, source_id, dry_run, retry_batches, logger, openai_client), media_type="text/event-stream")
+    return StreamingResponse(_embed_stream(get_persistent_storage_path(request), domain, mode, scope, source_id, dry_run, retry_batches, logger, openai_client), media_type="text/event-stream")
   logger.log_function_footer()
   return json_result(False, "Use format=stream.", {})
 
-async def _embed_stream(domain: DomainConfig, mode: str, scope: str, source_id: Optional[str], dry_run: bool, retry_batches: int, logger: MiddlewareLogger, openai_client):
-  writer = StreamingJobWriter(persistent_storage_path=get_persistent_storage_path(), router_name=router_name, action="embed_data", object_id=domain.domain_id, source_url=f"{router_prefix}/{router_name}/embed_data?domain_id={domain.domain_id}", router_prefix=router_prefix)
+async def _embed_stream(storage_path: str, domain: DomainConfig, mode: str, scope: str, source_id: Optional[str], dry_run: bool, retry_batches: int, logger: MiddlewareLogger, openai_client):
+  writer = StreamingJobWriter(persistent_storage_path=storage_path, router_name=router_name, action="embed_data", object_id=domain.domain_id, source_url=f"{router_prefix}/{router_name}/embed_data?domain_id={domain.domain_id}", router_prefix=router_prefix)
   logger.stream_job_writer = writer
   try:
     yield writer.emit_start()
     job_id = writer.job_id if dry_run else None
     results = []
     for source_type, source in get_sources_for_scope(domain, scope, source_id):
-      result = await step_embed_source(get_persistent_storage_path(), domain, source, source_type, mode, dry_run, retry_batches, writer, logger, openai_client, job_id)
+      result = await step_embed_source(storage_path, domain, source, source_type, mode, dry_run, retry_batches, writer, logger, openai_client, job_id)
       for sse in writer.drain_sse_queue(): yield sse
       results.append(asdict(result))
     yield writer.emit_end(ok=True, data={"results": results})
@@ -886,7 +889,7 @@ async def _embed_stream(domain: DomainConfig, mode: str, scope: str, source_id: 
   finally:
     if dry_run:
       for source_type, source in get_sources_for_scope(domain, scope, source_id):
-        cleanup_temp_map_files(get_source_folder_path(get_persistent_storage_path(), domain.domain_id, source_type, source.source_id), writer.job_id)
+        cleanup_temp_map_files(get_source_folder_path(storage_path, domain.domain_id, source_type, source.source_id), writer.job_id)
     writer.finalize()
 
 # ----------------------------------------- END: Router Endpoints -----------------------------------------------------
@@ -1094,22 +1097,20 @@ async def crawler_selftest(request: Request):
     logger.log_function_footer()
     return json_result(False, "Use format=stream for selftest.", {})
   # CRST-DD-08: Concurrent execution prevention - check for running selftest jobs
-  running_jobs = list_jobs(get_persistent_storage_path(), router_name, state_filter="running")
+  running_jobs = list_jobs(get_persistent_storage_path(request), router_name, state_filter="running")
   selftest_running = any("/selftest" in j.source_url for j in running_jobs)
   if selftest_running:
     logger.log_function_footer()
     return JSONResponse({"ok": False, "error": "Selftest already running.", "data": {}}, status_code=409)
   base_url = str(request.base_url).rstrip("/")
   openai_client = getattr(request.app.state, 'openai_client', None)
-  return StreamingResponse(_selftest_stream(skip_cleanup, max_phase, logger, openai_client, base_url), media_type="text/event-stream")
+  return StreamingResponse(_selftest_stream(get_persistent_storage_path(request), skip_cleanup, max_phase, logger, openai_client, base_url, get_crawler_config(request)), media_type="text/event-stream")
 
-async def _selftest_stream(skip_cleanup: bool, max_phase: int, logger: MiddlewareLogger, openai_client, base_url: str):
+async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int, logger: MiddlewareLogger, openai_client, base_url: str, crawler_cfg: dict):
   """Execute selftest as SSE stream."""
-  writer = StreamingJobWriter(persistent_storage_path=get_persistent_storage_path(), router_name=router_name, action="selftest", object_id=SELFTEST_DOMAIN_ID, source_url=f"{router_prefix}/{router_name}/selftest", router_prefix=router_prefix)
+  writer = StreamingJobWriter(persistent_storage_path=storage_path, router_name=router_name, action="selftest", object_id=SELFTEST_DOMAIN_ID, source_url=f"{router_prefix}/{router_name}/selftest", router_prefix=router_prefix)
   logger.stream_job_writer = writer
-  storage_path = get_persistent_storage_path()
   selftest_site = getattr(config, 'CRAWLER_SELFTEST_SHAREPOINT_SITE', None)
-  crawler_cfg = get_crawler_config()
   
   # Tests per phase: P1=4(M1-M4), P2=1, P3=1, P4=1, P5=5(I1-I4,I9), P6=4(A), P7=5(B), P8=4(D), P9=3(E), P10=0, P11=4(F), P12=2(G), P13=2(H), P14=5(J), P15=4(K), P16=3(L), P17=3(O), P18=4(N), P19=0
   PHASE_TESTS = {1: 4, 2: 1, 3: 1, 4: 1, 5: 5, 6: 4, 7: 5, 8: 4, 9: 3, 10: 0, 11: 4, 12: 2, 13: 2, 14: 5, 15: 4, 16: 3, 17: 3, 18: 4, 19: 0}

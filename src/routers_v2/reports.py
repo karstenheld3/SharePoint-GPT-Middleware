@@ -35,7 +35,10 @@ def set_config(app_config, prefix):
   router_prefix = prefix
   set_report_functions_config(app_config)
 
-def get_persistent_storage_path() -> str:
+def get_persistent_storage_path(request: Request) -> str:
+  """Get persistent storage path from system_info (works in Azure where path is computed)."""
+  if hasattr(request.app.state, 'system_info') and request.app.state.system_info:
+    return getattr(request.app.state.system_info, 'PERSISTENT_STORAGE_PATH', None) or ''
   return getattr(config, 'LOCAL_PERSISTENT_STORAGE_PATH', None) or ''
 
 
@@ -605,7 +608,7 @@ async def create_demo_reports_endpoint(request: Request):
     return json_result(False, "'delay_ms' must be between 0 and 5000.", {})
   
   writer = StreamingJobWriter(
-    persistent_storage_path=get_persistent_storage_path(),
+    persistent_storage_path=get_persistent_storage_path(request),
     router_name=router_name,
     action="create_demo_reports",
     object_id=None,

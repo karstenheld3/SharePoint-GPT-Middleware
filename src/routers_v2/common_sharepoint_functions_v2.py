@@ -162,10 +162,6 @@ def get_document_library_files(ctx: ClientContext, document_library: DocumentLib
     lib_title = document_library.properties.get('Title') or UNKNOWN
     lib_id = document_library.properties.get('Id') or UNKNOWN
     logger.log_function_output(f"Library: '{lib_title}' (ID={lib_id})")
-    if dry_run:
-      document_library.get().execute_query()
-      logger.log_function_footer()
-      return []
     
     # Callback to track pagination progress
     def print_progress(items):
@@ -367,9 +363,6 @@ def get_list_items_as_sharepoint_files(ctx: ClientContext, list_name: str, filte
   logger.log_function_header("get_list_items_as_sharepoint_files()")
   try:
     items = get_list_items(ctx, list_name, filter_query, logger)
-    if dry_run:
-      logger.log_function_footer()
-      return []
     
     result = []
     for item in items:

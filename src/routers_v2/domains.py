@@ -39,7 +39,10 @@ def set_config(app_config, prefix):
   config = app_config
   router_prefix = prefix
 
-def get_persistent_storage_path() -> str:
+def get_persistent_storage_path(request: Request) -> str:
+  """Get persistent storage path from system_info (works in Azure where path is computed)."""
+  if hasattr(request.app.state, 'system_info') and request.app.state.system_info:
+    return getattr(request.app.state.system_info, 'PERSISTENT_STORAGE_PATH', None) or ''
   return getattr(config, 'LOCAL_PERSISTENT_STORAGE_PATH', None) or ''
 
 
@@ -508,7 +511,7 @@ async def domains_root(request: Request):
     ))
   
   format_param = request_params.get("format", "json")
-  storage_path = get_persistent_storage_path()
+  storage_path = get_persistent_storage_path(request)
   
   if not storage_path:
     logger.log_function_footer()
@@ -609,7 +612,7 @@ async def domains_get(request: Request):
   request_params = dict(request.query_params)
   domain_id = request_params.get("domain_id", None)
   format_param = request_params.get("format", "json")
-  storage_path = get_persistent_storage_path()
+  storage_path = get_persistent_storage_path(request)
   
   if not domain_id:
     logger.log_function_footer()
@@ -674,7 +677,7 @@ async def domains_create(request: Request):
   query_params = dict(request.query_params)
   format_param = query_params.get("format", "json")
   
-  storage_path = get_persistent_storage_path()
+  storage_path = get_persistent_storage_path(request)
   if not storage_path:
     logger.log_function_footer()
     return json_result(False, "PERSISTENT_STORAGE_PATH not configured", {})
@@ -797,7 +800,7 @@ async def domains_update(request: Request):
     logger.log_function_footer()
     return json_result(False, "Missing 'domain_id' parameter.", {})
   
-  storage_path = get_persistent_storage_path()
+  storage_path = get_persistent_storage_path(request)
   if not storage_path:
     logger.log_function_footer()
     return json_result(False, "PERSISTENT_STORAGE_PATH not configured", {})
@@ -915,7 +918,7 @@ async def domains_delete(request: Request):
     logger.log_function_footer()
     return json_result(False, "Missing 'domain_id' parameter.", {})
   
-  storage_path = get_persistent_storage_path()
+  storage_path = get_persistent_storage_path(request)
   if not storage_path:
     logger.log_function_footer()
     return json_result(False, "PERSISTENT_STORAGE_PATH not configured", {})
@@ -995,7 +998,7 @@ async def domains_selftest(request: Request):
   base_url = str(request.base_url).rstrip("/")
   
   writer = StreamingJobWriter(
-    persistent_storage_path=get_persistent_storage_path(),
+    persistent_storage_path=get_persistent_storage_path(request),
     router_name=router_name,
     action="selftest",
     object_id=None,
