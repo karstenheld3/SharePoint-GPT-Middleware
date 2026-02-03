@@ -10,7 +10,54 @@
 
 ## Active Issues
 
-(none)
+### 2026-02-04 - Browser SSE Buffering
+
+#### [ACTIVE] `SCAN-FL-005` Browser SSE buffering - workaround applied without root cause
+
+- **Severity**: [MEDIUM]
+- **When**: 2026-02-04 00:23
+- **Where**: `sites.py` - `run_scan()` async generator
+- **What**: Browser UI doesn't receive SSE events in realtime for security scan, but works fine for selftest. Curl shows events streaming correctly. Applied `asyncio.sleep(0)` workaround without understanding why it's needed.
+
+**Evidence:**
+- Selftest: Works in browser UI realtime (no asyncio.sleep(0) needed)
+- Security scan: Browser UI buffers all events until scan completes
+- Curl: Both work correctly in realtime
+- Workaround: `await asyncio.sleep(0)` after each yield fixes browser issue
+
+**What we know:**
+- Both use identical `connectStream()` JavaScript function
+- Both use identical `StreamingResponse(generator, media_type="text/event-stream")`
+- Curl receives events properly for both
+- Browser only buffers security scan, not selftest
+
+**Key difference between selftest and security scan:**
+- Selftest: Uses `await client.post()` (httpx async) - proper async I/O with natural await points
+- Security scan: Uses nested async generators with sync SharePoint API calls (`execute_query()`) - blocking I/O
+
+**Hypotheses (unverified):**
+1. **Event loop starvation**: Without await points, uvicorn may not get chances to flush HTTP response to browser
+2. **Browser fetch buffering**: Browser's `response.body.getReader()` may have different chunking behavior than curl
+3. **Nested async generator issue**: Python's async generator iteration may buffer differently than direct yields
+4. **Starlette response flushing**: StreamingResponse may require explicit event loop yields to flush with blocking code
+
+**Why the workaround works:**
+`asyncio.sleep(0)` forces an await point that yields control to the event loop, allowing uvicorn to flush the HTTP response chunk to the browser.
+
+**What we should investigate:**
+1. Why does curl work but browser doesn't?
+2. What exactly triggers Starlette/uvicorn to flush response chunks?
+3. Is there a proper configuration for StreamingResponse flushing?
+4. Why does httpx async work but sync SharePoint API doesn't?
+
+**Current workaround (not a fix):**
+```python
+async for event in run_security_scan(...):
+    yield event
+    await asyncio.sleep(0)  # Force flush - WHY IS THIS NEEDED?
+```
+
+**TODO**: Run `/learn` after investigating the actual root cause
 
 ## Resolved Issues
 
