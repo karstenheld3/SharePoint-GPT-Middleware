@@ -360,7 +360,7 @@ def scan_site_contents(ctx: ClientContext, output_folder: str, writer, logger: M
 
 async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder: str, graph_client: Optional[GraphServiceClient], writer, logger: MiddlewareLogger, current_step: int, total_steps: int, settings: dict = None) -> dict:
   """Scan site groups and write 02_SiteGroups.csv and 03_SiteUsers.csv."""
-  stats = {"groups_found": 0, "users_found": 0}
+  stats = {"groups_found": 0, "users_found": 0, "external_users_found": 0}
   if settings is None: settings = {}
   
   # Extract settings
@@ -491,6 +491,9 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
     for member in members:
       member["PermissionLevel"] = perm_level
       stats["users_found"] += 1
+      # Track external users (contain #ext# in login)
+      if "#ext#" in member.get("LoginName", "").lower():
+        stats["external_users_found"] += 1
       user_rows.append(member)
   
   append_csv_rows(groups_file, group_rows, CSV_COLUMNS_SITE_GROUPS)
@@ -502,7 +505,8 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
 
 def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, output_folder: str, graph_client: Optional[GraphServiceClient], writer, logger: MiddlewareLogger, loop: asyncio.AbstractEventLoop, current_step: int, total_steps: int, settings: dict = None) -> dict:
   """Scan items with broken inheritance and write 04/05 CSVs."""
-  stats = {"items_scanned": 0, "broken_inheritance": 0}
+  stats = {"items_scanned": 0, "items_with_individual_permissions": 0, "items_shared_with_everyone": 0}
+  items_shared_with_everyone_items = set()  # Track unique items shared with everyone
   if settings is None: settings = {}
   
   # Extract settings
@@ -561,7 +565,7 @@ def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, output_
         item_id = item.properties.get("ID", 0)
         
         if item.properties.get("HasUniqueRoleAssignments"):
-          stats["broken_inheritance"] += 1
+          stats["items_with_individual_permissions"] += 1
           
           file_ref = item.properties.get("FileRef", "")
           file_name = item.properties.get("FileLeafRef", "")
@@ -591,12 +595,17 @@ def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, output_
                 # Debug logging removed - too verbose for SSE
                 if perm_name == "Limited Access": continue
                 
+                # Track items shared with "Everyone except external users"
+                member_title = member.title or ""
+                if "Everyone except external users" in member_title:
+                  items_shared_with_everyone_items.add(item_id)
+                
                 access_rows.append({
                   "Id": str(item_id),
                   "Type": item_type,
                   "Url": file_ref,
                   "LoginName": member.login_name or "",
-                  "DisplayName": member.title or "",
+                  "DisplayName": member_title,
                   "Email": member.email or "" if hasattr(member, 'email') else "",
                   "PermissionLevel": perm_name,
                   "SharedDateTime": "",
@@ -620,8 +629,11 @@ def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, output_
   append_csv_rows(items_file, item_rows, CSV_COLUMNS_INDIVIDUAL_ITEMS)
   append_csv_rows(access_file, access_rows, CSV_COLUMNS_INDIVIDUAL_ACCESS)
   
+  # Update items_shared_with_everyone count
+  stats["items_shared_with_everyone"] = len(items_shared_with_everyone_items)
+  
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-  writer.emit_log(f"[{ts}]   {stats['items_scanned']} item(s) scanned, {stats['broken_inheritance']} with broken inheritance.".replace("(s)", "s" if stats['items_scanned'] != 1 else ""))
+  writer.emit_log(f"[{ts}]   {stats['items_scanned']} item(s) scanned, {stats['items_with_individual_permissions']} with broken inheritance.".replace("(s)", "s" if stats['items_scanned'] != 1 else ""))
   return stats
 
 # ----------------------------------------- END: Scanning Functions -----------------------------------------------------------
@@ -645,7 +657,7 @@ async def scan_subsites(
   max_depth: int = 5
 ) -> dict:
   """Recursively scan subsites when include_subsites=true (SCAN-FR-06)."""
-  stats = {"subsites_scanned": 0, "groups_found": 0, "users_found": 0, "items_scanned": 0, "broken_inheritance": 0}
+  stats = {"subsites_scanned": 0, "groups_found": 0, "users_found": 0, "external_users_found": 0, "items_scanned": 0, "items_with_individual_permissions": 0, "items_shared_with_everyone": 0}
   
   if depth >= max_depth:
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -696,7 +708,7 @@ async def scan_subsites(
         "Title": subsite_title,
         "Url": subsite_url
       }], CSV_COLUMNS_INDIVIDUAL_ITEMS)
-      stats["broken_inheritance"] += 1
+      stats["items_with_individual_permissions"] += 1
       ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
       writer.emit_log(f"[{ts}]     Subsite has broken inheritance")
     
@@ -718,6 +730,7 @@ async def scan_subsites(
       for sse in writer.drain_sse_queue(): pass  # Drain queue but don't yield here
       stats["groups_found"] += group_stats["groups_found"]
       stats["users_found"] += group_stats["users_found"]
+      stats["external_users_found"] += group_stats.get("external_users_found", 0)
       
       # Scan subsite broken inheritance items
       ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -726,17 +739,20 @@ async def scan_subsites(
       item_stats = scan_broken_inheritance_items(sub_ctx, storage_path, output_folder, graph_client, writer, logger, loop, 0, 0, settings)
       for sse in writer.drain_sse_queue(): pass
       ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-      writer.emit_log(f"[{ts}]     {item_stats['items_scanned']} items scanned, {item_stats['broken_inheritance']} with broken inheritance.")
+      writer.emit_log(f"[{ts}]     {item_stats['items_scanned']} items scanned, {item_stats['items_with_individual_permissions']} with broken inheritance.")
       stats["items_scanned"] += item_stats["items_scanned"]
-      stats["broken_inheritance"] += item_stats["broken_inheritance"]
+      stats["items_with_individual_permissions"] += item_stats["items_with_individual_permissions"]
+      stats["items_shared_with_everyone"] += item_stats.get("items_shared_with_everyone", 0)
       
       # Recurse into sub-subsites
       sub_stats = await scan_subsites(sub_ctx, storage_path, output_folder, graph_client, writer, logger, settings, client_id, tenant_id, cert_path, cert_password, depth + 1, max_depth)
       stats["subsites_scanned"] += sub_stats["subsites_scanned"]
       stats["groups_found"] += sub_stats["groups_found"]
       stats["users_found"] += sub_stats["users_found"]
+      stats["external_users_found"] += sub_stats.get("external_users_found", 0)
       stats["items_scanned"] += sub_stats["items_scanned"]
-      stats["broken_inheritance"] += sub_stats["broken_inheritance"]
+      stats["items_with_individual_permissions"] += sub_stats["items_with_individual_permissions"]
+      stats["items_shared_with_everyone"] += sub_stats.get("items_shared_with_everyone", 0)
       
     except Exception as e:
       ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -812,14 +828,17 @@ async def run_security_scan(
   os.makedirs(temp_base, exist_ok=True)
   output_folder = tempfile.mkdtemp(prefix=f"security_scan_{site_id}_", dir=temp_base)
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-  yield writer.emit_log(f"[{ts}]   Created temp folder path='{output_folder}'")
+  yield writer.emit_log(f"[{ts}] Created temp folder path='{output_folder}'")
   
   stats = {
     "lists_scanned": 0,
     "groups_found": 0,
     "users_found": 0,
+    "external_users_found": 0,
     "items_scanned": 0,
-    "broken_inheritance": 0
+    "items_with_individual_permissions": 0,
+    "items_shared_with_everyone": 0,
+    "subsites_scanned": 0
   }
   
   try:
@@ -867,13 +886,15 @@ async def run_security_scan(
       for sse in writer.drain_sse_queue(): yield sse
       stats["groups_found"] = group_stats["groups_found"]
       stats["users_found"] = group_stats["users_found"]
+      stats["external_users_found"] = group_stats.get("external_users_found", 0)
     
     if scope in ["all", "items"]:
       current_step += 1
       item_stats = scan_broken_inheritance_items(ctx, storage_path, output_folder, graph_client, writer, logger, loop, current_step, total_steps, settings)
       for sse in writer.drain_sse_queue(): yield sse
       stats["items_scanned"] = item_stats["items_scanned"]
-      stats["broken_inheritance"] = item_stats["broken_inheritance"]
+      stats["items_with_individual_permissions"] = item_stats["items_with_individual_permissions"]
+      stats["items_shared_with_everyone"] = item_stats.get("items_shared_with_everyone", 0)
     
     # Scan subsites if requested (SCAN-FR-06)
     if include_subsites:
@@ -885,10 +906,13 @@ async def run_security_scan(
       ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
       yield writer.emit_log(f"[{ts}]   {subsite_stats['subsites_scanned']} subsite(s) scanned.".replace("(s)", "s" if subsite_stats['subsites_scanned'] != 1 else ""))
       # Add subsite stats to totals
+      stats["subsites_scanned"] += subsite_stats["subsites_scanned"] + 1  # +1 for this subsite level
       stats["groups_found"] += subsite_stats["groups_found"]
       stats["users_found"] += subsite_stats["users_found"]
+      stats["external_users_found"] += subsite_stats.get("external_users_found", 0)
       stats["items_scanned"] += subsite_stats["items_scanned"]
-      stats["broken_inheritance"] += subsite_stats["broken_inheritance"]
+      stats["items_with_individual_permissions"] += subsite_stats["items_with_individual_permissions"]
+      stats["items_shared_with_everyone"] += subsite_stats.get("items_shared_with_everyone", 0)
     
     # Final step: Create report archive
     current_step += 1
@@ -933,7 +957,7 @@ async def run_security_scan(
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     yield writer.emit_log(f"[{ts}]   OK. Report created report_path='{report_path}'")
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    yield writer.emit_log(f"[{ts}] Scan complete. {stats['groups_found']} groups, {stats['users_found']} users, {stats['broken_inheritance']} items with broken inheritance.")
+    yield writer.emit_log(f"[{ts}] Scan complete. {stats['groups_found']} groups, {stats['users_found']} users, {stats['items_with_individual_permissions']} items with broken inheritance.")
     
     # Return stats for end event
     writer._step_result = {

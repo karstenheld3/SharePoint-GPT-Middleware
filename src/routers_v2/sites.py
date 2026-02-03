@@ -2,7 +2,7 @@
 # Spec: L(jhu)C(jh)G(jh)U(jh)D(jh): /v2/sites
 # Uses common_ui_functions_v2.py
 
-import json, os, re, shutil, textwrap, uuid
+import datetime, json, os, re, shutil, textwrap, uuid
 import httpx
 from dataclasses import dataclass, field
 from fastapi import APIRouter, Request
@@ -48,6 +48,8 @@ class SiteConfig:
   site_url: str
   file_scan_result: str = ""
   security_scan_result: str = ""
+  last_security_scan_report_id: str = ""
+  last_security_scan_date: str = ""
 
 def get_sites_folder_path(storage_path: str) -> str:
   return os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_SITES_SUBFOLDER)
@@ -98,7 +100,9 @@ def site_config_to_dict(site: SiteConfig) -> dict:
     "name": site.name,
     "site_url": site.site_url,
     "file_scan_result": site.file_scan_result,
-    "security_scan_result": site.security_scan_result
+    "security_scan_result": site.security_scan_result,
+    "last_security_scan_report_id": site.last_security_scan_report_id,
+    "last_security_scan_date": site.last_security_scan_date
   }
 
 def load_site(storage_path: str, site_id: str, logger=None) -> SiteConfig:
@@ -115,7 +119,9 @@ def load_site(storage_path: str, site_id: str, logger=None) -> SiteConfig:
     name=data.get("name", ""),
     site_url=data.get("site_url", ""),
     file_scan_result=data.get("file_scan_result", ""),
-    security_scan_result=data.get("security_scan_result", "")
+    security_scan_result=data.get("security_scan_result", ""),
+    last_security_scan_report_id=data.get("last_security_scan_report_id", ""),
+    last_security_scan_date=data.get("last_security_scan_date", "")
   )
 
 def load_all_sites(storage_path: str, logger=None) -> list[SiteConfig]:
@@ -150,7 +156,9 @@ def save_site_to_file(storage_path: str, site: SiteConfig, logger=None) -> None:
     "name": site.name,
     "site_url": site.site_url,
     "file_scan_result": site.file_scan_result,
-    "security_scan_result": site.security_scan_result
+    "security_scan_result": site.security_scan_result,
+    "last_security_scan_report_id": site.last_security_scan_report_id,
+    "last_security_scan_date": site.last_security_scan_date
   }
   
   with open(site_json_path, 'w', encoding='utf-8') as f:
@@ -204,6 +212,51 @@ def get_router_specific_js() -> str:
 // ============================================
 
 const SITE_MODAL_WIDTH = '600px';
+
+function formatLocalDateTime(isoString) {{
+  if (!isoString) return '';
+  const date = new Date(isoString);
+  const pad = (n) => String(n).padStart(2, '0');
+  return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes());
+}}
+
+function renderSecurityCell(item) {{
+  const summary = item.security_scan_result || '-';
+  const reportId = item.last_security_scan_report_id || '';
+  if (!reportId) return '<span style="font-size: 0.85em;">' + summary + '</span>';
+  const scanDate = formatLocalDateTime(item.last_security_scan_date);
+  const downloadUrl = '/v2/reports/download?report_id=' + encodeURIComponent(reportId);
+  const datePrefix = scanDate ? scanDate + ' - ' : '';
+  return '<span style="font-size: 0.85em;">' + summary + '<br>' + datePrefix + '<a href="#" onclick="showSecurityScanResult(\\'' + reportId.replace(/'/g, "\\\\'") + '\\'); return false;" style="color: #0066cc;">View Results</a> | <a href="' + downloadUrl + '" style="color: #0066cc;">Download Zip</a></span>';
+}}
+
+async function showSecurityScanResult(reportId) {{
+  try {{
+    const endpointUrl = '/v2/reports/get?report_id=' + encodeURIComponent(reportId) + '&format=json';
+    const response = await fetch(endpointUrl);
+    const result = await response.json();
+    if (result.ok) {{
+      const data = result.data;
+      const status = data.ok === null || data.ok === undefined ? '-' : (data.ok ? 'OK' : 'FAIL');
+      const body = document.querySelector('#modal .modal-body');
+      body.innerHTML = `
+        <div class="modal-header">
+          <h3>Result (${{status}}) - '${{escapeHtml(data.title || reportId)}}'</h3>
+          <div style="font-size: 0.8em; color: #666; margin-top: 4px;"><a href="${{endpointUrl}}" target="_blank" style="color: #0066cc;">${{endpointUrl}}</a></div>
+        </div>
+        <div class="modal-scroll">
+          <pre class="result-output">${{escapeHtml(JSON.stringify(data, null, 2))}}</pre>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn-primary" onclick="closeModal()">OK</button></div>
+      `;
+      openModal('800px');
+    }} else {{
+      showToast('Error', result.error, 'error');
+    }}
+  }} catch (e) {{
+    showToast('Error', e.message, 'error');
+  }}
+}}
 
 function showNotImplemented(feature) {{
   showToast('Not Implemented', `${{feature}} is not yet implemented.`, 'info');
@@ -550,8 +603,8 @@ async def sites_root(request: Request):
       {"field": "site_id", "header": "Site ID"},
       {"field": "name", "header": "Name", "default": "-"},
       {"field": "site_url", "header": "Site URL", "default": "-"},
+      {"field": "security_scan_result", "header": "Security", "default": "-", "render": "renderSecurityCell"},
       {"field": "file_scan_result", "header": "Files", "default": "-"},
-      {"field": "security_scan_result", "header": "Security", "default": "-"},
       {
         "field": "actions",
         "header": "Actions",
@@ -565,8 +618,8 @@ async def sites_root(request: Request):
             "confirm_message": "Delete site '{itemId}'?",
             "class": "btn-small btn-delete"
           },
-          {"text": "File Scan", "onclick": "showNotImplemented(\"File Scan\")", "class": "btn-small btn-disabled"},
-          {"text": "Security Scan", "onclick": "showSecurityScanDialog('{itemId}')", "class": "btn-small"}
+          {"text": "Security Scan", "onclick": "showSecurityScanDialog('{itemId}')", "class": "btn-small"},
+          {"text": "File Scan", "onclick": "showNotImplemented(\"File Scan\")", "class": "btn-small btn-disabled"}
         ]
       }
     ]
@@ -597,7 +650,8 @@ async def sites_root(request: Request):
       console_initially_hidden=True,
       list_endpoint=f"{router_prefix}/{router_name}?format=json",
       delete_endpoint=f"{router_prefix}/{router_name}/delete?site_id={{itemId}}",
-      additional_js=get_router_specific_js()
+      additional_js=get_router_specific_js(),
+      additional_css=".console-panel { height: 450px !important; }"
     )
     return HTMLResponse(html)
   
@@ -1231,11 +1285,16 @@ async def sites_security_scan(request: Request):
     try:
       yield writer.emit_start()
       
-      stream_logger.log_function_output(f"Starting security scan for site '{site_id}'...")
-      stream_logger.log_function_output(f"  Site URL: {site.site_url}")
-      stream_logger.log_function_output(f"  Scope: {scope}")
-      stream_logger.log_function_output(f"  Include subsites: {include_subsites}")
-      stream_logger.log_function_output(f"  Delete caches: {delete_caches}")
+      sse = stream_logger.log_function_output(f"Starting security scan for site '{site_id}'...")
+      if sse: yield sse
+      sse = stream_logger.log_function_output(f"  Site URL: {site.site_url}")
+      if sse: yield sse
+      sse = stream_logger.log_function_output(f"  Scope: {scope}")
+      if sse: yield sse
+      sse = stream_logger.log_function_output(f"  Include subsites: {include_subsites}")
+      if sse: yield sse
+      sse = stream_logger.log_function_output(f"  Delete caches: {delete_caches}")
+      if sse: yield sse
       
       async for event in run_security_scan(
         site_url=site.site_url,
@@ -1259,7 +1318,18 @@ async def sites_security_scan(request: Request):
       report_path = result.get("report_path", "")
       
       # Update site with scan result
-      site.security_scan_result = f"{stats.get('groups_found', 0)} groups, {stats.get('users_found', 0)} users"
+      parts = [f"{stats.get('groups_found', 0)} groups", f"{stats.get('users_found', 0)} users"]
+      if stats.get('external_users_found', 0) > 0:
+        parts.append(f"{stats.get('external_users_found', 0)} external")
+      if stats.get('subsites_scanned', 0) > 0:
+        parts.append(f"{stats.get('subsites_scanned', 0)} subsites")
+      if stats.get('items_with_individual_permissions', 0) > 0:
+        parts.append(f"{stats.get('items_with_individual_permissions', 0)} individual permissions")
+      if stats.get('items_shared_with_everyone', 0) > 0:
+        parts.append(f"{stats.get('items_shared_with_everyone', 0)} shared with everyone")
+      site.security_scan_result = ", ".join(parts)
+      site.last_security_scan_report_id = report_path
+      site.last_security_scan_date = datetime.datetime.now(datetime.timezone.utc).isoformat()
       save_site_to_file(storage_path, site, stream_logger)
       
       stream_logger.log_function_footer()
