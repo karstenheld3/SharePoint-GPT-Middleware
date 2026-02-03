@@ -197,30 +197,30 @@ async def resolve_sharepoint_group_members(ctx: ClientContext, group, storage_pa
     users = group.users.get().execute_query()
   except Exception as e:
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    writer.emit_log(f"[{ts}]     ERROR: Failed to get users for group_title='{group.title}' -> {e}")
+    writer.emit_log(f"[{ts}]       ERROR: Failed to get users for group_title='{group.title}' -> {e}")
     return []
   
   user_count = len(users)
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-  writer.emit_log(f"[{ts}]     {user_count} member(s) in group_title='{group.title}'".replace("(s)", "s" if user_count != 1 else ""))
+  writer.emit_log(f"[{ts}]       {user_count} member(s) in group_title='{group.title}'".replace("(s)", "s" if user_count != 1 else ""))
   
   for user in users:
     login_name = user.login_name or ""
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    writer.emit_log(f"[{ts}]       Member: display_name='{user.title}' login='{login_name[:50]}...'")
+    writer.emit_log(f"[{ts}]         Member: display_name='{user.title}' login='{login_name[:50]}...'")
     
     if is_entra_id_group(login_name):
       group_id = extract_group_id_from_login(login_name)
-      writer.emit_log(f"[{ts}]         -> Entra ID group (group_id={group_id})")
+      writer.emit_log(f"[{ts}]           -> Entra ID group (group_id={group_id})")
       if group_id and graph_client:
-        writer.emit_log(f"[{ts}]         Resolving via Graph API...")
+        writer.emit_log(f"[{ts}]           Resolving via Graph API...")
         # Resolve Entra ID group members
         nested = await resolve_entra_group_members(
           storage_path, graph_client, group_id, user.title or login_name,
           nesting_level + 1, group.title, writer, logger
         )
         ts2 = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        writer.emit_log(f"[{ts2}]         OK. {len(nested)} nested member(s) resolved.".replace("(s)", "s" if len(nested) != 1 else ""))
+        writer.emit_log(f"[{ts2}]           OK. {len(nested)} nested member(s) resolved.".replace("(s)", "s" if len(nested) != 1 else ""))
         # Update ViaGroup to point to SP group
         for m in nested:
           m["ViaGroup"] = group.title
@@ -228,9 +228,9 @@ async def resolve_sharepoint_group_members(ctx: ClientContext, group, storage_pa
           m["ViaGroupType"] = "SharePointGroup"
         members.extend(nested)
       elif not graph_client:
-        writer.emit_log(f"[{ts}]         WARNING: No Graph client, cannot resolve Entra group")
+        writer.emit_log(f"[{ts}]           WARNING: No Graph client, cannot resolve Entra group")
     else:
-      writer.emit_log(f"[{ts}]         -> User (not Entra group)")
+      writer.emit_log(f"[{ts}]           -> User (not Entra group)")
       members.append({
         "Id": str(user.id) if user.id else "",
         "LoginName": login_name,
@@ -311,24 +311,72 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
   writer.emit_log(f"[{ts}]   {ra_count} role assignment(s) found.".replace("(s)", "s" if ra_count != 1 else ""))
   
-  # Build group -> permission level mapping
+  # Build group -> permission level mapping and collect direct assignments
   group_permissions = {}
-  for ra in ra_list:
+  direct_user_rows = []  # Direct user/security group assignments at site level
+  
+  for ra_idx, ra in enumerate(ra_list, 1):
     member = ra.member
+    # Determine assignment type based on principal_type
+    if member.principal_type == 1: assign_type = "User"
+    elif member.principal_type == 4: assign_type = "SecurityGroup"
+    elif member.principal_type == 8: assign_type = "SharePointGroup"
+    else: assign_type = f"Unknown({member.principal_type})"
+    
+    # Get permission levels (skip Limited Access)
+    perm_levels = [b.properties.get('Name', '') for b in ra.role_definition_bindings if b.properties.get('Name', '') != "Limited Access"]
+    perm_str = ', '.join(perm_levels) if perm_levels else "Limited Access only"
+    
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    writer.emit_log(f"[{ts}]     ( {ra_idx} / {ra_count} ) {assign_type}: '{member.title}' -> {perm_str}")
+    
     for binding in ra.role_definition_bindings:
       perm_name = binding.properties.get('Name', '')
       # FILTER: Skip "Limited Access" per MUST-NOT-FORGET
       if perm_name == "Limited Access": continue
+      
       if member.principal_type == 8:  # SharePoint Group
         group_permissions[member.id] = perm_name
+      elif member.principal_type == 1:  # Direct User assignment
+        direct_user_rows.append({
+          "Id": str(member.id) if member.id else "",
+          "LoginName": member.login_name or "",
+          "DisplayName": member.title or "",
+          "Email": member.email or "" if hasattr(member, 'email') else "",
+          "PermissionLevel": perm_name,
+          "ViaGroup": "",
+          "ViaGroupId": "",
+          "ViaGroupType": "",
+          "AssignmentType": "Direct",
+          "NestingLevel": 0,
+          "ParentGroup": ""
+        })
+      elif member.principal_type == 4:  # Direct Security Group assignment
+        direct_user_rows.append({
+          "Id": "",
+          "LoginName": member.login_name or "",
+          "DisplayName": member.title or "",
+          "Email": "",
+          "PermissionLevel": perm_name,
+          "ViaGroup": "",
+          "ViaGroupId": "",
+          "ViaGroupType": "",
+          "AssignmentType": "SecurityGroup",
+          "NestingLevel": 0,
+          "ParentGroup": ""
+        })
   
   # Load all site groups and filter to those with permissions
   all_groups = ctx.web.site_groups.get().execute_query()
   groups_to_process = [g for g in all_groups if group_permissions.get(g.id, "")]
   total_groups = len(groups_to_process)
   
+  ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  writer.emit_log(f"[{ts}]   {total_groups} SharePoint group(s) to resolve, {len(direct_user_rows)} direct assignment(s).".replace("(s)", "s" if total_groups != 1 else "", 1).replace("(s)", "s" if len(direct_user_rows) != 1 else "", 1))
+  
   group_rows = []
-  user_rows = []
+  user_rows = direct_user_rows.copy()  # Start with direct assignments
+  stats["users_found"] = len(direct_user_rows)  # Count direct assignments
   
   for idx, group in enumerate(groups_to_process, 1):
     perm_level = group_permissions.get(group.id, "")
@@ -351,7 +399,7 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
     })
     
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    writer.emit_log(f"[{ts}]   ( {idx} / {total_groups} ) Resolving group group_title='{group.title}'...")
+    writer.emit_log(f"[{ts}]     ( {idx} / {total_groups} ) SharePointGroup: group_title='{group.title}'...")
     
     # Resolve members
     members = await resolve_sharepoint_group_members(ctx, group, storage_path, graph_client, writer, 1, "", logger)
@@ -385,12 +433,20 @@ def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, output_
   lists_to_scan = [lst for lst in all_lists if lst.base_template in INCLUDED_TEMPLATES and not lst.properties.get("Hidden", False)]
   total_lists = len(lists_to_scan)
   
+  ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  writer.emit_log(f"[{ts}]   {total_lists} list(s)/libraries to scan.".replace("(s)", "s" if total_lists != 1 else ""))
+  
   item_rows = []
   access_rows = []
   
   for list_idx, lst in enumerate(lists_to_scan, 1):
+    # Determine list type for logging
+    if lst.base_template == 100: list_type = "List"
+    elif lst.base_template == 119: list_type = "SitePages"
+    else: list_type = "Library"
+    
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    writer.emit_log(f"[{ts}]   ( {list_idx} / {total_lists} ) Scanning list_title='{lst.title}'...")
+    writer.emit_log(f"[{ts}]     ( {list_idx} / {total_lists} ) {list_type}: list_title='{lst.title}'...")
     
     # Paginate through items
     last_id = 0
@@ -535,7 +591,7 @@ async def run_security_scan(
   os.makedirs(temp_base, exist_ok=True)
   output_folder = tempfile.mkdtemp(prefix=f"security_scan_{site_id}_", dir=temp_base)
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-  yield writer.emit_log(f"[{ts}] Created temp folder path='{output_folder}'")
+  yield writer.emit_log(f"[{ts}]   Created temp folder path='{output_folder}'")
   
   stats = {
     "lists_scanned": 0,
