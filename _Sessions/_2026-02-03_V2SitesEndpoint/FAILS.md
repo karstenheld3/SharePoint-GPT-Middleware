@@ -57,7 +57,9 @@ async for event in run_security_scan(...):
     await asyncio.sleep(0)  # Force flush - WHY IS THIS NEEDED?
 ```
 
-**TODO**: Run `/learn` after investigating the actual root cause
+**Learning extracted**: See `SCAN-LN-002` in LEARNINGS.md
+
+**Root cause identified**: Async generators with blocking synchronous I/O between yields don't give the event loop opportunities to flush HTTP response chunks to the browser. The selftest works because httpx uses proper async I/O with natural await points.
 
 ## Resolved Issues
 
