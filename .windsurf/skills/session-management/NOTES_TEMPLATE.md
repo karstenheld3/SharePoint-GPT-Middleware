@@ -6,11 +6,13 @@ Populated by `/session-new` workflow. Captures session context, decisions, and a
 
 ## Initial Request
 
-If user provided a large initial prompt (>120 tokens), record it verbatim here for reference. Derived problems should be extracted and tracked in PROBLEMS.md with unique IDs.
+**MANDATORY**: Record the user's session-starting prompt verbatim. This preserves intent and prevents drift.
 
-```
-[User's original request if >120 tokens]
-```
+````text
+[Paste user's exact prompt here - do not summarize]
+````
+
+**Agent rule**: Copy-paste the user's first substantive message that defines the session goal. If prompt is trivial (<20 tokens), write "See Goal above" instead.
 
 ## Session Info
 
@@ -42,14 +44,18 @@ Maintain list of TOPIC IDs used in this session/project:
 - `AUTH` - Authentication and authorization system
 - `API` - API client and request handling
 
-# User Prompts
+## Significant Prompts Log
 
-[2026-01-20 12:24] <context descrtiption 1>
-````
-<prompt 1>
+**Agent rule**: Record prompts that change direction, add requirements, or clarify intent. Use 4-backtick fence with `text` language tag.
+
+**Format**: `[YYYY-MM-DD HH:MM]` + one-line context, then fenced prompt.
+
+[2026-01-20 12:24] User clarified retry requirements
+````text
+Actually, use exponential backoff starting at 500ms, not 1s. And cap at 3 retries.
 ````
 
-[2026-01-21 09:52] <context descrtiption 2>
-````
-<prompt 2>
+[2026-01-21 09:52] User added thread-safety constraint
+````text
+I forgot to mention - this runs in a multi-threaded environment. All token ops must be thread-safe.
 ````

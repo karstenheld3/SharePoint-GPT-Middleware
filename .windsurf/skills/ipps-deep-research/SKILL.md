@@ -23,6 +23,10 @@ Systematic research patterns for in-depth investigation of software development 
 - [Technology/API Research (MCPI)](RESEARCH_STRATEGY_TECH_MCPI.md) - 6-phase exhaustive documentation
 - [Quick Research (MEPI)](#research-strategies) - Abbreviated approach for low-stakes
 
+**Templates**
+- [TOC Template](RESEARCH_TOC_TEMPLATE.md) - Table of Contents structure
+- [Create TOC Workflow](RESEARCH_CREATE_TOC.md) - How to create TOC files
+
 **Planning & Tracking**
 - [Planning Structure](#planning-structure) - STRUT vs TASKS
 - [Time Tracking](#time-tracking) - Net research time calculation

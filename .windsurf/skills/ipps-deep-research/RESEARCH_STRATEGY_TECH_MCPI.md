@@ -53,17 +53,9 @@ Estimated credits: [pending]
 - **Done when**: (a) Official docs main TOC fully enumerated, (b) 10-20 community sources collected, (c) All sources have IDs assigned
 
 **Phase 2: TOC Creation (workflow: /verify > /critique > /reconcile /implement > /verify)**
+- Follow [RESEARCH_CREATE_TOC.md](RESEARCH_CREATE_TOC.md) workflow
+- Use [RESEARCH_TOC_TEMPLATE.md](RESEARCH_TOC_TEMPLATE.md) as base
 - Create `__[TOPIC]_TOC.md` with detailed structure
-- TOC Summary section: 5-15 sentences covering all key facts, copy/paste ready
-- Topic Files list with clickable links: `[_INFO_[TOPIC]_[SUBTOPIC].md](#topic-details-subtopic)`
-- Topic Details sections with:
-  - Scope description
-  - Contents as bullet list (no checkboxes)
-  - Each item links to target file section: `[Item name](_INFO_[TOPIC]_[SUBTOPIC].md#section-name)`
-  - Source IDs for that topic
-- Related APIs/Technologies section: List each with URL and why related/different
-- Progress Tracking section
-- Run `/verify` then `/critique` then `/reconcile /implement` findings then `/verify` again
 - **Done when**: TOC covers all major topics from sources, summary is 5-15 sentences, all links resolve
 
 **Phase 3: Template Creation (verify > critique > reconcile > verify)**
@@ -111,12 +103,17 @@ Estimated credits: [pending]
 - **Done when**: All tasks in TASKS plan completed and checked off
 
 **Phase 6: Final Verification and Sync**
+- **Verify against this document** (`RESEARCH_STRATEGY_TECH_MCPI.md`) - check all phase requirements met
 - Cross-verify all topic files against TOC checklist
 - Sync summaries from topic files back into TOC Summary section
 - Verify all links work
 - Ensure community-sourced limitations are included in relevant sections
-- Run final `/verify`
-- **Done when**: All links work, all summaries synced, final `/verify` passes
+- **Add Research stats to TOC header block** (copy from STRUT):
+  ```
+  **Research stats**: 35m net | ~35 credits | 62 docs | 79 sources | Opus 4.5 Thinking
+  ```
+- Run final `/verify` with context: RESEARCH_STRATEGY_TECH_MCPI
+- **Done when**: All strategy requirements met, links work, summaries synced, metadata added
 
 **Rollback**: If any phase reveals fundamental error in earlier phase, document in PROBLEMS.md and consult user before rollback.
 
