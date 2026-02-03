@@ -1,0 +1,14 @@
+Id,LoginName,DisplayName,Email,PermissionLevel,ViaGroup,ViaGroupId,ViaGroupType,AssignmentType,NestingLevel,ParentGroup
+6,karsten.held@whizzyapps.com,Karsten Held,karsten.held@whizzyapps.com,Full Control,spst Owners,3,SharePointGroup,Group,1,""
+10,samuel.gross@whizzyapps.com,Samuel Gross,samuel.gross@whizzyapps.com,Full Control,spst Owners,3,SharePointGroup,Group,1,""
+,test.member@whizzyapps.com,Test Member,,Full Control,TestSecurityGroupWithNestedGroups01,3b7af3f4-c9d6-4118-bfe5-52a4b08e7c6b,SecurityGroup,Group,2,spst Owners
+,samuel.gross@whizzyapps.com,Samuel Gross,samuel.gross@whizzyapps.com,Full Control,TestSecurityGroup01,22208125-d314-4e34-93f7-8979ecf6fc1f,SecurityGroup,Group,3,TestSecurityGroupWithNestedGroups01
+,Matthias.Grosser@whizzyapps.com,Matthias Grosser,Matthias.Grosser@whizzyapps.com,Full Control,TestSecurityGroup02,4a02e857-8a58-4550-9f16-7e403a26c695,SecurityGroup,Group,3,TestSecurityGroupWithNestedGroups01
+11,whizzydev1@whizzyapps.com,Karsten Held,whizzydev1@whizzyapps.com,Read,spst Visitors,4,SharePointGroup,Group,1,""
+10,samuel.gross@whizzyapps.com,Samuel Gross,samuel.gross@whizzyapps.com,Read,spst Visitors,4,SharePointGroup,Group,1,""
+6,karsten.held@whizzyapps.com,Karsten Held,karsten.held@whizzyapps.com,Full Control,Custom Group,31,SharePointGroup,Group,1,""
+32,test.member@whizzyapps.com,Test Member,,Full Control,Custom Group,31,SharePointGroup,Group,1,""
+,whizzydev1@whizzyapps.com,Karsten Held,whizzydev1@whizzyapps.com,Full Control,TestM365Group01,d70680c7-4a6c-47a1-a751-da63b5df6093,SecurityGroup,Group,2,Custom Group
+11,whizzydev1@whizzyapps.com,Karsten Held,whizzydev1@whizzyapps.com,"","",,,User,0,""
+10,samuel.gross@whizzyapps.com,Samuel Gross,samuel.gross@whizzyapps.com,"","",,,User,0,""
+16,whizzydev2@whizzyapps.com,Samuel Gross,whizzydev2@whizzyapps.com,"","",,,User,0,""

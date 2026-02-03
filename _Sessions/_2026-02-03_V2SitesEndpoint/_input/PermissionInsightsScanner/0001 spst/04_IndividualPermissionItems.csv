@@ -1,0 +1,12 @@
+Id,Type,Title,Url
+22e298f9-bf09-4e81-96f2-75f44d998726,LIST,spst,https://whizzyapps.sharepoint.com/sites/spst/Lists/Areas
+1,ITEM,ABO,https://whizzyapps.sharepoint.com/sites/spst/Lists/Areas/AllItems.aspx?FilterField1=ID&FilterValue1=1
+0df3c997-a8c1-4090-bb4b-322a213c1232,LIBRARY,spst,https://whizzyapps.sharepoint.com/sites/spst/Shared Documents
+5,FOLDER,SharedByRequest,https://whizzyapps.sharepoint.com/sites/spst/Shared Documents/SharedByRequest
+3,FOLDER,SharedDirectlyWithPerson,https://whizzyapps.sharepoint.com/sites/spst/Shared Documents/SharedDirectlyWithPerson
+4,FOLDER,SharedWithCustomSharePointGroup,https://whizzyapps.sharepoint.com/sites/spst/Shared Documents/SharedWithCustomSharePointGroup
+2,FOLDER,SharedWithM365Group,https://whizzyapps.sharepoint.com/sites/spst/Shared Documents/SharedWithM365Group
+1,FOLDER,SharedWithNestedSecurityGroups,https://whizzyapps.sharepoint.com/sites/spst/Shared Documents/SharedWithNestedSecurityGroups
+60701c38-09e8-4773-8fca-1cf37dd3eeba,LIST,spst,https://whizzyapps.sharepoint.com/sites/spst/Lists/SiteRequests
+f4babe71-0864-497a-9a48-bdfe1bc81fe5,SUBSITE,BrokenPermissionInheritanceSubsite01,https://whizzyapps.sharepoint.com/sites/spst/BrokenPermissionInheritanceSubsite01
+68c3968d-1033-4da1-ba3a-0f1c1c1788dc,SUBSITE,BrokenPermissionInheritanceSubsite01A,https://whizzyapps.sharepoint.com/sites/spst/BrokenPermissionInheritanceSubsite01/BrokenPermissionInheritanceSubsite01A

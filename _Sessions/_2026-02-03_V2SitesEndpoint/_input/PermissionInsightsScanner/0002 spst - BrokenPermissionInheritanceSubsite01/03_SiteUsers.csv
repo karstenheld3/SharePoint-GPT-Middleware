@@ -1,0 +1,8 @@
+Id,LoginName,DisplayName,Email,PermissionLevel,ViaGroup,ViaGroupId,ViaGroupType,AssignmentType,NestingLevel,ParentGroup
+6,karsten.held@whizzyapps.com,Karsten Held,karsten.held@whizzyapps.com,"Full Control, Edit without delete",BrokenPermissionInheritanceSubsite01 Owners,23,SharePointGroup,Group,1,""
+,test.member@whizzyapps.com,Test Member,,"Full Control, Edit without delete",TestSecurityGroupWithNestedGroups01,3b7af3f4-c9d6-4118-bfe5-52a4b08e7c6b,SecurityGroup,Group,2,spst Owners
+,samuel.gross@whizzyapps.com,Samuel Gross,samuel.gross@whizzyapps.com,"Full Control, Edit without delete",TestSecurityGroup01,22208125-d314-4e34-93f7-8979ecf6fc1f,SecurityGroup,Group,3,TestSecurityGroupWithNestedGroups01
+,Matthias.Grosser@whizzyapps.com,Matthias Grosser,Matthias.Grosser@whizzyapps.com,"Full Control, Edit without delete",TestSecurityGroup02,4a02e857-8a58-4550-9f16-7e403a26c695,SecurityGroup,Group,3,TestSecurityGroupWithNestedGroups01
+6,karsten.held@whizzyapps.com,Karsten Held,karsten.held@whizzyapps.com,Edit,BrokenPermissionInheritanceSubsite01 Members,24,SharePointGroup,Group,1,""
+6,karsten.held@whizzyapps.com,Karsten Held,karsten.held@whizzyapps.com,Read,Custom Group 02,34,SharePointGroup,Group,1,""
+32,test.member@whizzyapps.com,Test Member,,Design,"",,,User,0,""

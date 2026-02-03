@@ -1,0 +1,5 @@
+Id,Role,Title,PermissionLevel,Owner
+23,SiteOwners,BrokenPermissionInheritanceSubsite01 Owners,"Full Control, Edit without delete",
+24,SiteMembers,BrokenPermissionInheritanceSubsite01 Members,Edit,
+25,SiteVisitors,BrokenPermissionInheritanceSubsite01 Visitors,Read,
+34,Custom,Custom Group 02,Read,

@@ -1,0 +1,22 @@
+Id,Type,Title,Url
+22e298f9-bf09-4e81-96f2-75f44d998726,LIST,Areas,https://whizzyapps.sharepoint.com/sites/spst/Lists/Areas
+0033e8f1-ff36-4bea-a8d4-1ff5f1ef94ea,LIST,CarBrands,https://whizzyapps.sharepoint.com/sites/spst/Lists/CarBrands
+23174f28-0235-4275-8175-54f5df23db1a,LIST,Cities,https://whizzyapps.sharepoint.com/sites/spst/Lists/Cities
+0df3c997-a8c1-4090-bb4b-322a213c1232,LIBRARY,Documents,https://whizzyapps.sharepoint.com/sites/spst/Shared Documents
+2757eb19-0efc-48e0-b686-289c36ab6323,LIST,Reports,https://whizzyapps.sharepoint.com/sites/spst/Lists/Reports
+5c1aafce-d6cf-423d-be0b-060771d2c5e8,SITEPAGES,Site Pages,https://whizzyapps.sharepoint.com/sites/spst/SitePages
+487cbfb4-a1fb-4bf0-85ed-2e77e3cd56c8,LIST,SiteActions,https://whizzyapps.sharepoint.com/sites/spst/Lists/SiteActions
+60701c38-09e8-4773-8fca-1cf37dd3eeba,LIST,SiteRequests,https://whizzyapps.sharepoint.com/sites/spst/Lists/SiteRequests
+07f40b0f-2d65-4119-965c-d0719db15107,LIBRARY,SiteTemplates,https://whizzyapps.sharepoint.com/sites/spst/SiteTemplates
+f4babe71-0864-497a-9a48-bdfe1bc81fe5,SUBSITE,BrokenPermissionInheritanceSubsite01,https://whizzyapps.sharepoint.com/sites/spst/BrokenPermissionInheritanceSubsite01
+8b06e4f4-0380-42a6-8e96-bcadd0c69501,LIBRARY,Documents,https://whizzyapps.sharepoint.com/sites/spst/BrokenPermissionInheritanceSubsite01/Shared Documents
+c173e790-3173-4cc3-8345-60aa7bd5f44f,SITEPAGES,Site Pages,https://whizzyapps.sharepoint.com/sites/spst/BrokenPermissionInheritanceSubsite01/SitePages
+68c3968d-1033-4da1-ba3a-0f1c1c1788dc,SUBSITE,BrokenPermissionInheritanceSubsite01A,https://whizzyapps.sharepoint.com/sites/spst/BrokenPermissionInheritanceSubsite01/BrokenPermissionInheritanceSubsite01A
+b35aa673-0124-4f49-84d3-cbf1e8a4268f,LIBRARY,Documents,https://whizzyapps.sharepoint.com/sites/spst/BrokenPermissionInheritanceSubsite01/BrokenPermissionInheritanceSubsite01A/Shared Documents
+dc4dd293-800e-405d-a566-e6257ab6e3ba,SITEPAGES,Site Pages,https://whizzyapps.sharepoint.com/sites/spst/BrokenPermissionInheritanceSubsite01/BrokenPermissionInheritanceSubsite01A/SitePages
+9f123984-3935-4b38-b4fe-9588696d3a79,SUBSITE,PermissionInheritanceSubsite01B,https://whizzyapps.sharepoint.com/sites/spst/BrokenPermissionInheritanceSubsite01/PermissionInheritanceSubsite01B
+c40a972e-3d02-4938-b7bb-8223c5912dd6,LIBRARY,Documents,https://whizzyapps.sharepoint.com/sites/spst/BrokenPermissionInheritanceSubsite01/PermissionInheritanceSubsite01B/Shared Documents
+b49c7eec-ad74-4809-9b1e-5389fda89c40,SITEPAGES,Site Pages,https://whizzyapps.sharepoint.com/sites/spst/BrokenPermissionInheritanceSubsite01/PermissionInheritanceSubsite01B/SitePages
+5e730b50-a807-475a-a35d-5fa4d7f17f6c,SUBSITE,PermissionInheritanceSubsite02,https://whizzyapps.sharepoint.com/sites/spst/PermissionInheritanceSubsite02
+1c0d5178-42b7-436a-91dc-5b166e685754,LIBRARY,Documents,https://whizzyapps.sharepoint.com/sites/spst/PermissionInheritanceSubsite02/Shared Documents
+3a491de9-5e29-45c7-81d6-ae7f5799dedf,SITEPAGES,Site Pages,https://whizzyapps.sharepoint.com/sites/spst/PermissionInheritanceSubsite02/SitePages

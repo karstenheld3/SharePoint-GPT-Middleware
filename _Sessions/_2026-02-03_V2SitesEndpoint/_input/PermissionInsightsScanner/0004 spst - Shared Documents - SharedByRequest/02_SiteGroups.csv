@@ -1,0 +1,5 @@
+Id,Role,Title,PermissionLevel,Owner
+3,SiteOwners,spst Owners,Full Control,
+5,SiteMembers,spst Members,Edit,
+4,SiteVisitors,spst Visitors,Read,
+31,Custom,Custom Group,Full Control,

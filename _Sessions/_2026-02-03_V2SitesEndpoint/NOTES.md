@@ -56,6 +56,41 @@ Actions - [Edit] [Delete] [File Scan] [Security Scan]
 [File Scan] and [Security Scan] are grey buttons without links for now
 ````
 
+### Permission Scanner Assessment (2026-02-03 09:51)
+
+````
+Read:
+- MasteringSharePointPermissions.md
+- _SPEC_SHAREPOINT_PERMISSION_INSIGHTS_SCANNER.md
+- PermissionInsightsScanner/_includes.ps1
+- PermissionInsightsScanner/PermissionInsightsScanner.ps1
+
+We want to assess how we can implement a similar exhaustive permission scanning 
+functionality in our middleware using Python.
+
+The goal is to produce similar output files as the result of the permission scanning:
+- 0002 spst - BrokenPermissionInheritanceSubsite01
+- 0003 spst - Shared Documents
+- 0004 spst - Shared Documents - SharedByRequest
+
+It should contain all cases of SharePoint permissions (via inheritance or via broken 
+permission inheritance) that we must cover. We must include all cases so that as a 
+result we see 100% of people who have access to a site or site element (libraries, 
+lists, folders, files).
+
+Then as a next step we have to create an inventory of all used API calls in the 
+PowerShell script and how to map them to Python libraries and API calls. This 
+assessment must be very detailed.
+
+/write-strut first write a strut for this assessment to keep track of all activities.
+Analyze the existing PowerShell script and output files in detail.
+Then go /research all API mapping options.
+/write-info _INFO_SITE_PERMISSION_SCANNER_ASSESSMENT.md
+Record this prompt as outlined in NOTES_TEMPLATE.md in session management skill.
+````
+
+**Output**: `_INFO_SITE_PERMISSION_SCANNER_ASSESSMENT.md [PERM-IN01]`
+
 ## Key Decisions
 
 - Follow domains router pattern exactly for consistency
