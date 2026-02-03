@@ -316,8 +316,8 @@ async def resolve_sharepoint_group_members(ctx: ClientContext, group, storage_pa
 
 # ----------------------------------------- START: Scanning Functions ---------------------------------------------------------
 
-def scan_site_contents(ctx: ClientContext, output_folder: str, writer, logger: MiddlewareLogger, current_step: int, total_steps: int) -> dict:
-  """Scan lists/libraries and write 01_SiteContents.csv."""
+async def scan_site_contents(ctx: ClientContext, output_folder: str, writer, logger: MiddlewareLogger, current_step: int, total_steps: int) -> AsyncGenerator[str, None]:
+  """Scan lists/libraries and write 01_SiteContents.csv. Yields SSE events. Sets writer._step_result with stats."""
   stats = {"lists_scanned": 0}
   contents_file = os.path.join(output_folder, "01_SiteContents.csv")
   
@@ -327,7 +327,7 @@ def scan_site_contents(ctx: ClientContext, output_folder: str, writer, logger: M
   
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
   if current_step > 0:
-    writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Scanning site contents...")
+    yield writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Scanning site contents...")
   lists = ctx.web.lists.get().select(["Id", "Title", "BaseTemplate", "Hidden", "RootFolder"]).expand(["RootFolder"]).execute_query()
   
   rows = []
@@ -355,11 +355,11 @@ def scan_site_contents(ctx: ClientContext, output_folder: str, writer, logger: M
   
   append_csv_rows(contents_file, rows, CSV_COLUMNS_SITE_CONTENTS)
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-  writer.emit_log(f"[{ts}]   {stats['lists_scanned']} list(s)/libraries found.".replace("(s)", "s" if stats['lists_scanned'] != 1 else ""))
-  return stats
+  yield writer.emit_log(f"[{ts}]   {stats['lists_scanned']} list(s)/libraries found.".replace("(s)", "s" if stats['lists_scanned'] != 1 else ""))
+  writer._step_result = stats
 
-async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder: str, graph_client: Optional[GraphServiceClient], writer, logger: MiddlewareLogger, current_step: int, total_steps: int, settings: dict = None) -> dict:
-  """Scan site groups and write 02_SiteGroups.csv and 03_SiteUsers.csv."""
+async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder: str, graph_client: Optional[GraphServiceClient], writer, logger: MiddlewareLogger, current_step: int, total_steps: int, settings: dict = None) -> AsyncGenerator[str, None]:
+  """Scan site groups and write 02_SiteGroups.csv and 03_SiteUsers.csv. Yields SSE events. Sets writer._step_result with stats."""
   stats = {"groups_found": 0, "users_found": 0, "external_users_found": 0}
   if settings is None: settings = {}
   
@@ -380,7 +380,7 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
   
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
   if current_step > 0:
-    writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Scanning site groups (graph_client_available={graph_client is not None})...")
+    yield writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Scanning site groups (graph_client_available={graph_client is not None})...")
   
   # Load site groups with role assignments to get permission levels
   role_assignments = ctx.web.role_assignments.get()
@@ -388,7 +388,7 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
   ra_list = list(role_assignments)
   ra_count = len(ra_list)
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-  writer.emit_log(f"[{ts}]   {ra_count} role assignment(s) found.".replace("(s)", "s" if ra_count != 1 else ""))
+  yield writer.emit_log(f"[{ts}]   {ra_count} role assignment(s) found.".replace("(s)", "s" if ra_count != 1 else ""))
   
   # Build group -> permission level mapping and collect direct assignments
   group_permissions = {}
@@ -407,7 +407,7 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
     perm_str = ', '.join(perm_levels) if perm_levels else "Ignored permission levels only"
     
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    writer.emit_log(f"[{ts}]     ( {ra_idx} / {ra_count} ) {assign_type}: '{member.title}' -> {perm_str}")
+    yield writer.emit_log(f"[{ts}]     ( {ra_idx} / {ra_count} ) {assign_type}: '{member.title}' -> {perm_str}")
     
     for binding in ra.role_definition_bindings:
       perm_name = binding.properties.get('Name', '')
@@ -457,7 +457,7 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
   total_groups = len(groups_to_process)
   
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-  writer.emit_log(f"[{ts}]   {total_groups} SharePoint group(s) to resolve, {len(direct_user_rows)} direct assignment(s).".replace("(s)", "s" if total_groups != 1 else "", 1).replace("(s)", "s" if len(direct_user_rows) != 1 else "", 1))
+  yield writer.emit_log(f"[{ts}]   {total_groups} SharePoint group(s) to resolve, {len(direct_user_rows)} direct assignment(s).".replace("(s)", "s" if total_groups != 1 else "", 1).replace("(s)", "s" if len(direct_user_rows) != 1 else "", 1))
   
   group_rows = []
   user_rows = direct_user_rows.copy()  # Start with direct assignments
@@ -484,7 +484,7 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
     })
     
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    writer.emit_log(f"[{ts}]     ( {idx} / {total_groups} ) SharePointGroup: group_title='{group.title}'...")
+    yield writer.emit_log(f"[{ts}]     ( {idx} / {total_groups} ) SharePointGroup: group_title='{group.title}'...")
     
     # Resolve members
     members = await resolve_sharepoint_group_members(ctx, group, storage_path, graph_client, writer, 1, "", logger, settings)
@@ -500,11 +500,11 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
   append_csv_rows(users_file, user_rows, CSV_COLUMNS_SITE_USERS)
   
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-  writer.emit_log(f"[{ts}]   {stats['groups_found']} group(s), {stats['users_found']} user(s) found.".replace("(s)", "s" if stats['groups_found'] != 1 else "", 1).replace("(s)", "s" if stats['users_found'] != 1 else "", 1))
-  return stats
+  yield writer.emit_log(f"[{ts}]   {stats['groups_found']} group(s), {stats['users_found']} user(s) found.".replace("(s)", "s" if stats['groups_found'] != 1 else "", 1).replace("(s)", "s" if stats['users_found'] != 1 else "", 1))
+  writer._step_result = stats
 
-def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, output_folder: str, graph_client: Optional[GraphServiceClient], writer, logger: MiddlewareLogger, loop: asyncio.AbstractEventLoop, current_step: int, total_steps: int, settings: dict = None) -> dict:
-  """Scan items with broken inheritance and write 04/05 CSVs."""
+async def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, output_folder: str, graph_client: Optional[GraphServiceClient], writer, logger: MiddlewareLogger, current_step: int, total_steps: int, settings: dict = None) -> AsyncGenerator[str, None]:
+  """Scan items with broken inheritance and write 04/05 CSVs. Yields SSE events. Sets writer._step_result with stats."""
   stats = {"items_scanned": 0, "items_with_individual_permissions": 0, "items_shared_with_everyone": 0}
   items_shared_with_everyone_items = set()  # Track unique items shared with everyone
   if settings is None: settings = {}
@@ -524,7 +524,7 @@ def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, output_
   
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
   if current_step > 0:
-    writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Scanning items with broken inheritance...")
+    yield writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Scanning items with broken inheritance...")
   
   all_lists = ctx.web.lists.get().execute_query()
   # Filter to relevant lists: skip hidden and lists in ignore_lists
@@ -532,7 +532,7 @@ def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, output_
   total_lists = len(lists_to_scan)
   
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-  writer.emit_log(f"[{ts}]   {total_lists} list(s)/libraries to scan.".replace("(s)", "s" if total_lists != 1 else ""))
+  yield writer.emit_log(f"[{ts}]   {total_lists} list(s)/libraries to scan.".replace("(s)", "s" if total_lists != 1 else ""))
   
   item_rows = []
   access_rows = []
@@ -544,7 +544,7 @@ def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, output_
     else: list_type = "Library"
     
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    writer.emit_log(f"[{ts}]     ( {list_idx} / {total_lists} ) {list_type}: list_title='{lst.title}'...")
+    yield writer.emit_log(f"[{ts}]     ( {list_idx} / {total_lists} ) {list_type}: list_title='{lst.title}'...")
     
     # Paginate through items
     last_id = 0
@@ -555,7 +555,7 @@ def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, output_
         ).top(BATCH_SIZE).get().execute_query()
       except Exception as e:
         ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        writer.emit_log(f"[{ts}]   ERROR: Failed to get items from list_title='{lst.title}' -> {e}")
+        yield writer.emit_log(f"[{ts}]   ERROR: Failed to get items from list_title='{lst.title}' -> {e}")
         break
       
       if len(items) == 0: break
@@ -620,7 +620,7 @@ def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, output_
                 })
           except Exception as e:
             ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            writer.emit_log(f"[{ts}]     ERROR: Failed to get permissions for item_id={item_id} -> {e}")
+            yield writer.emit_log(f"[{ts}]     ERROR: Failed to get permissions for item_id={item_id} -> {e}")
         
         last_id = item_id
       
@@ -633,8 +633,8 @@ def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, output_
   stats["items_shared_with_everyone"] = len(items_shared_with_everyone_items)
   
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-  writer.emit_log(f"[{ts}]   {stats['items_scanned']} item(s) scanned, {stats['items_with_individual_permissions']} with broken inheritance.".replace("(s)", "s" if stats['items_scanned'] != 1 else ""))
-  return stats
+  yield writer.emit_log(f"[{ts}]   {stats['items_scanned']} item(s) scanned, {stats['items_with_individual_permissions']} with broken inheritance.".replace("(s)", "s" if stats['items_scanned'] != 1 else ""))
+  writer._step_result = stats
 
 # ----------------------------------------- END: Scanning Functions -----------------------------------------------------------
 
@@ -870,30 +870,30 @@ async def run_security_scan(
       yield writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Initializing Microsoft Graph client...")
       yield writer.emit_log(f"[{ts}]   WARNING: No certificate credentials - Graph client not available")
     
-    # Get event loop for running async code in sync context
-    loop = asyncio.get_event_loop()
-    
-    # Scan based on scope
+    # Scan based on scope - all scan functions are now async generators that yield SSE events
     if scope in ["all", "site", "lists"]:
       current_step += 1
-      content_stats = scan_site_contents(ctx, output_folder, writer, logger, current_step, total_steps)
-      for sse in writer.drain_sse_queue(): yield sse
-      stats["lists_scanned"] = content_stats["lists_scanned"]
+      async for sse in scan_site_contents(ctx, output_folder, writer, logger, current_step, total_steps):
+        yield sse
+      content_stats = writer._step_result or {}
+      stats["lists_scanned"] = content_stats.get("lists_scanned", 0)
     
     if scope in ["all", "site"]:
       current_step += 1
-      group_stats = await scan_site_groups(ctx, storage_path, output_folder, graph_client, writer, logger, current_step, total_steps, settings)
-      for sse in writer.drain_sse_queue(): yield sse
-      stats["groups_found"] = group_stats["groups_found"]
-      stats["users_found"] = group_stats["users_found"]
+      async for sse in scan_site_groups(ctx, storage_path, output_folder, graph_client, writer, logger, current_step, total_steps, settings):
+        yield sse
+      group_stats = writer._step_result or {}
+      stats["groups_found"] = group_stats.get("groups_found", 0)
+      stats["users_found"] = group_stats.get("users_found", 0)
       stats["external_users_found"] = group_stats.get("external_users_found", 0)
     
     if scope in ["all", "items"]:
       current_step += 1
-      item_stats = scan_broken_inheritance_items(ctx, storage_path, output_folder, graph_client, writer, logger, loop, current_step, total_steps, settings)
-      for sse in writer.drain_sse_queue(): yield sse
-      stats["items_scanned"] = item_stats["items_scanned"]
-      stats["items_with_individual_permissions"] = item_stats["items_with_individual_permissions"]
+      async for sse in scan_broken_inheritance_items(ctx, storage_path, output_folder, graph_client, writer, logger, current_step, total_steps, settings):
+        yield sse
+      item_stats = writer._step_result or {}
+      stats["items_scanned"] = item_stats.get("items_scanned", 0)
+      stats["items_with_individual_permissions"] = item_stats.get("items_with_individual_permissions", 0)
       stats["items_shared_with_everyone"] = item_stats.get("items_shared_with_everyone", 0)
     
     # Scan subsites if requested (SCAN-FR-06)
