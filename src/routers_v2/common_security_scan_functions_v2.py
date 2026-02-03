@@ -96,6 +96,40 @@ def delete_all_entra_caches(storage_path: str) -> int:
 # ----------------------------------------- END: Cache Functions --------------------------------------------------------------
 
 
+# ----------------------------------------- START: Scanner Settings -----------------------------------------------------------
+
+def get_scanner_settings_path(storage_path: str) -> str:
+  """Get path to scanner settings file."""
+  return os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_SITES_SUBFOLDER, CRAWLER_HARDCODED_CONFIG.SECURITY_SCAN_SETTINGS_FILENAME)
+
+def load_scanner_settings(storage_path: str) -> dict:
+  """Load scanner settings from file; create with defaults if missing."""
+  settings_path = get_scanner_settings_path(storage_path)
+  if not os.path.exists(settings_path):
+    defaults = dict(CRAWLER_HARDCODED_CONFIG.DEFAULT_SECURITY_SCAN_SETTINGS)
+    save_scanner_settings(storage_path, defaults)
+    print(f"[Scanner Settings] Created default settings file: {settings_path}")
+    return defaults
+  try:
+    with open(settings_path, 'r', encoding='utf-8') as f:
+      settings = json.load(f)
+      print(f"[Scanner Settings] Loaded settings from: {settings_path}")
+      return settings
+  except Exception as e:
+    print(f"[Scanner Settings] ERROR: Failed to load settings from '{settings_path}': {e} - using defaults")
+    return dict(CRAWLER_HARDCODED_CONFIG.DEFAULT_SECURITY_SCAN_SETTINGS)
+
+def save_scanner_settings(storage_path: str, settings: dict) -> None:
+  """Save scanner settings to file."""
+  settings_path = get_scanner_settings_path(storage_path)
+  os.makedirs(os.path.dirname(settings_path), exist_ok=True)
+  with open(settings_path, 'w', encoding='utf-8') as f:
+    json.dump(settings, f, indent=2)
+  print(f"[Scanner Settings] Saved settings to: {settings_path}")
+
+# ----------------------------------------- END: Scanner Settings -------------------------------------------------------------
+
+
 # ----------------------------------------- START: Graph Client ---------------------------------------------------------------
 
 _graph_client = None
@@ -188,9 +222,14 @@ async def resolve_entra_group_members(storage_path: str, graph_client: GraphServ
   
   return members
 
-async def resolve_sharepoint_group_members(ctx: ClientContext, group, storage_path: str, graph_client: Optional[GraphServiceClient], writer, nesting_level: int, parent_group: str, logger: MiddlewareLogger) -> list:
+async def resolve_sharepoint_group_members(ctx: ClientContext, group, storage_path: str, graph_client: Optional[GraphServiceClient], writer, nesting_level: int, parent_group: str, logger: MiddlewareLogger, settings: dict = None) -> list:
   """Resolve all members of a SharePoint group, including nested Entra ID groups."""
-  if nesting_level > MAX_NESTING_LEVEL: return []
+  if settings is None: settings = {}
+  max_nesting = settings.get("max_group_nesting_level", MAX_NESTING_LEVEL)
+  ignore_accounts = set(settings.get("ignore_accounts", []))
+  do_not_resolve = set(settings.get("do_not_resolve_these_groups", []))
+  
+  if nesting_level > max_nesting: return []
   
   members = []
   try:
@@ -206,12 +245,22 @@ async def resolve_sharepoint_group_members(ctx: ClientContext, group, storage_pa
   
   for user in users:
     login_name = user.login_name or ""
+    # Skip ignored accounts from settings
+    if any(ignored in login_name for ignored in ignore_accounts): continue
+    
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     writer.emit_log(f"[{ts}]         Member: display_name='{user.title}' login='{login_name[:50]}...'")
     
     if is_entra_id_group(login_name):
       group_id = extract_group_id_from_login(login_name)
+      group_display_name = user.title or login_name
       writer.emit_log(f"[{ts}]           -> Entra ID group (group_id={group_id})")
+      
+      # Check if group should not be resolved (from settings)
+      if group_display_name in do_not_resolve:
+        writer.emit_log(f"[{ts}]           SKIPPED: Group in do_not_resolve_these_groups setting")
+        continue
+      
       if group_id and graph_client:
         writer.emit_log(f"[{ts}]           Resolving via Graph API...")
         # Resolve Entra ID group members
@@ -290,9 +339,17 @@ def scan_site_contents(ctx: ClientContext, output_folder: str, writer, logger: M
   writer.emit_log(f"[{ts}]   {stats['lists_scanned']} list(s)/libraries found.".replace("(s)", "s" if stats['lists_scanned'] != 1 else ""))
   return stats
 
-async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder: str, graph_client: Optional[GraphServiceClient], writer, logger: MiddlewareLogger, current_step: int, total_steps: int) -> dict:
+async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder: str, graph_client: Optional[GraphServiceClient], writer, logger: MiddlewareLogger, current_step: int, total_steps: int, settings: dict = None) -> dict:
   """Scan site groups and write 02_SiteGroups.csv and 03_SiteUsers.csv."""
   stats = {"groups_found": 0, "users_found": 0}
+  if settings is None: settings = {}
+  
+  # Extract settings
+  ignore_permission_levels = set(settings.get("ignore_permission_levels", ["Limited Access"]))
+  ignore_accounts = set(settings.get("ignore_accounts", []))
+  ignore_sharepoint_groups = set(settings.get("ignore_sharepoint_groups", []))
+  do_not_resolve_these_groups = set(settings.get("do_not_resolve_these_groups", []))
+  max_nesting = settings.get("max_group_nesting_level", 5)
   
   groups_file = os.path.join(output_folder, "02_SiteGroups.csv")
   users_file = os.path.join(output_folder, "03_SiteUsers.csv")
@@ -323,24 +380,27 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
     elif member.principal_type == 8: assign_type = "SharePointGroup"
     else: assign_type = f"Unknown({member.principal_type})"
     
-    # Get permission levels (skip Limited Access)
-    perm_levels = [b.properties.get('Name', '') for b in ra.role_definition_bindings if b.properties.get('Name', '') != "Limited Access"]
-    perm_str = ', '.join(perm_levels) if perm_levels else "Limited Access only"
+    # Get permission levels (skip ignored permission levels from settings)
+    perm_levels = [b.properties.get('Name', '') for b in ra.role_definition_bindings if b.properties.get('Name', '') not in ignore_permission_levels]
+    perm_str = ', '.join(perm_levels) if perm_levels else "Ignored permission levels only"
     
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     writer.emit_log(f"[{ts}]     ( {ra_idx} / {ra_count} ) {assign_type}: '{member.title}' -> {perm_str}")
     
     for binding in ra.role_definition_bindings:
       perm_name = binding.properties.get('Name', '')
-      # FILTER: Skip "Limited Access" per MUST-NOT-FORGET
-      if perm_name == "Limited Access": continue
+      # FILTER: Skip ignored permission levels from settings
+      if perm_name in ignore_permission_levels: continue
       
       if member.principal_type == 8:  # SharePoint Group
         group_permissions[member.id] = perm_name
       elif member.principal_type == 1:  # Direct User assignment
+        login_name = member.login_name or ""
+        # Skip ignored accounts from settings
+        if any(ignored in login_name for ignored in ignore_accounts): continue
         direct_user_rows.append({
           "Id": str(member.id) if member.id else "",
-          "LoginName": member.login_name or "",
+          "LoginName": login_name,
           "DisplayName": member.title or "",
           "Email": member.email or "" if hasattr(member, 'email') else "",
           "PermissionLevel": perm_name,
@@ -352,9 +412,12 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
           "ParentGroup": ""
         })
       elif member.principal_type == 4:  # Direct Security Group assignment
+        login_name = member.login_name or ""
+        # Skip ignored accounts from settings
+        if any(ignored in login_name for ignored in ignore_accounts): continue
         direct_user_rows.append({
           "Id": "",
-          "LoginName": member.login_name or "",
+          "LoginName": login_name,
           "DisplayName": member.title or "",
           "Email": "",
           "PermissionLevel": perm_name,
@@ -366,9 +429,9 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
           "ParentGroup": ""
         })
   
-  # Load all site groups and filter to those with permissions
+  # Load all site groups and filter to those with permissions (skip ignored SP groups)
   all_groups = ctx.web.site_groups.get().execute_query()
-  groups_to_process = [g for g in all_groups if group_permissions.get(g.id, "")]
+  groups_to_process = [g for g in all_groups if group_permissions.get(g.id, "") and g.title not in ignore_sharepoint_groups]
   total_groups = len(groups_to_process)
   
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -402,7 +465,7 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
     writer.emit_log(f"[{ts}]     ( {idx} / {total_groups} ) SharePointGroup: group_title='{group.title}'...")
     
     # Resolve members
-    members = await resolve_sharepoint_group_members(ctx, group, storage_path, graph_client, writer, 1, "", logger)
+    members = await resolve_sharepoint_group_members(ctx, group, storage_path, graph_client, writer, 1, "", logger, settings)
     for member in members:
       member["PermissionLevel"] = perm_level
       stats["users_found"] += 1
@@ -415,9 +478,15 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
   writer.emit_log(f"[{ts}]   {stats['groups_found']} group(s), {stats['users_found']} user(s) found.".replace("(s)", "s" if stats['groups_found'] != 1 else "", 1).replace("(s)", "s" if stats['users_found'] != 1 else "", 1))
   return stats
 
-def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, output_folder: str, graph_client: Optional[GraphServiceClient], writer, logger: MiddlewareLogger, loop: asyncio.AbstractEventLoop, current_step: int, total_steps: int) -> dict:
+def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, output_folder: str, graph_client: Optional[GraphServiceClient], writer, logger: MiddlewareLogger, loop: asyncio.AbstractEventLoop, current_step: int, total_steps: int, settings: dict = None) -> dict:
   """Scan items with broken inheritance and write 04/05 CSVs."""
   stats = {"items_scanned": 0, "broken_inheritance": 0}
+  if settings is None: settings = {}
+  
+  # Extract settings
+  built_in_lists = set(settings.get("built_in_lists", []))
+  ignore_permission_levels = set(settings.get("ignore_permission_levels", ["Limited Access"]))
+  ignore_accounts = set(settings.get("ignore_accounts", []))
   
   items_file = os.path.join(output_folder, "04_IndividualPermissionItems.csv")
   access_file = os.path.join(output_folder, "05_IndividualPermissionItemAccess.csv")
@@ -429,8 +498,8 @@ def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, output_
   writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Scanning items with broken inheritance...")
   
   all_lists = ctx.web.lists.get().execute_query()
-  # Filter to relevant lists
-  lists_to_scan = [lst for lst in all_lists if lst.base_template in INCLUDED_TEMPLATES and not lst.properties.get("Hidden", False)]
+  # Filter to relevant lists (skip hidden and built-in lists from settings)
+  lists_to_scan = [lst for lst in all_lists if lst.base_template in INCLUDED_TEMPLATES and not lst.properties.get("Hidden", False) and lst.title not in built_in_lists]
   total_lists = len(lists_to_scan)
   
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -570,6 +639,11 @@ async def run_security_scan(
     SSE event strings
   """
   
+  # Load scanner settings
+  settings = load_scanner_settings(storage_path)
+  ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  yield writer.emit_log(f"[{ts}] Loaded scanner settings (max_group_nesting_level={settings.get('max_group_nesting_level', 5)})")
+  
   # Calculate total steps based on scope
   # Steps: 1=Connect, 2=Graph client, 3=Site contents (if scope), 4=Site groups (if scope), 5=Broken items (if scope), 6=Create report
   total_steps = 3  # Connect + Graph + Report always
@@ -642,14 +716,14 @@ async def run_security_scan(
     
     if scope in ["all", "site"]:
       current_step += 1
-      group_stats = await scan_site_groups(ctx, storage_path, output_folder, graph_client, writer, logger, current_step, total_steps)
+      group_stats = await scan_site_groups(ctx, storage_path, output_folder, graph_client, writer, logger, current_step, total_steps, settings)
       for sse in writer.drain_sse_queue(): yield sse
       stats["groups_found"] = group_stats["groups_found"]
       stats["users_found"] = group_stats["users_found"]
     
     if scope in ["all", "items"]:
       current_step += 1
-      item_stats = scan_broken_inheritance_items(ctx, storage_path, output_folder, graph_client, writer, logger, loop, current_step, total_steps)
+      item_stats = scan_broken_inheritance_items(ctx, storage_path, output_folder, graph_client, writer, logger, loop, current_step, total_steps, settings)
       for sse in writer.drain_sse_queue(): yield sse
       stats["items_scanned"] = item_stats["items_scanned"]
       stats["broken_inheritance"] = item_stats["broken_inheritance"]
