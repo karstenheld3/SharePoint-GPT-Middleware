@@ -4,7 +4,16 @@
 
 ## Open
 
-(None - all resolved)
+### SCAN-PR-005: Browser SSE buffering with async generators - root cause not fully understood
+
+- **Status**: Open (workaround applied)
+- **Severity**: Medium
+- **Workaround**: `await asyncio.sleep(0)` after each yield forces event loop flush
+- **Issue**: Browser UI doesn't receive SSE events in realtime for security scan, but works for selftest. Curl works for both.
+- **Hypothesis**: Blocking sync I/O (SharePoint `execute_query()`) prevents event loop from flushing HTTP response chunks
+- **Unknown**: Why exactly does curl work but browser doesn't? What triggers Starlette/uvicorn to flush?
+- **Related**: `SCAN-FL-005`, `SCAN-LN-002`
+- **TODO**: Deep investigation into uvicorn/Starlette StreamingResponse flushing behavior
 
 ## Resolved
 
