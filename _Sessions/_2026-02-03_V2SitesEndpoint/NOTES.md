@@ -9,9 +9,10 @@
 
 ## Current Phase
 
-**Phase**: EXPLORE
+**Phase**: REFINE
 **Workflow**: BUILD
 **Assessment**: COMPLEXITY-MEDIUM (multiple files, new router, follows existing patterns)
+**Last Activity**: 2026-02-04 00:29 - Fixed realtime SSE streaming in browser UI
 
 ## IMPORTANT: Cascade Agent Instructions
 
@@ -103,6 +104,19 @@ Record this prompt as outlined in NOTES_TEMPLATE.md in session management skill.
 - Domains router uses `common_ui_functions_v2.py` generate_ui_page() for table rendering
 - Storage pattern: `PERSISTENT_STORAGE_PATH/sites/{site_id}/site.json`
 - LCGUD format explained in `_V2_SPEC_ROUTERS.md`
+
+### SSE Streaming Pattern [TESTED]
+
+**For async generators with blocking sync I/O (like SharePoint `execute_query()`):**
+```python
+async for event in nested_generator_with_blocking_io():
+    yield event
+    await asyncio.sleep(0)  # Force event loop to flush HTTP response
+```
+
+**Why needed**: Blocking sync I/O prevents event loop from flushing HTTP response chunks to browser. Curl works without this because it processes data at TCP level. Browser fetch API requires explicit event loop yields.
+
+**See**: `SCAN-LN-002` in LEARNINGS.md, `SCAN-PR-005` in PROBLEMS.md
 
 ## Topic Registry Addition
 

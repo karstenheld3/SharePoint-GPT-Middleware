@@ -5,9 +5,9 @@
 ## Phase Plan
 
 - [x] **EXPLORE** - completed
-- [ ] **DESIGN** - in_progress
-- [ ] **IMPLEMENT** - pending
-- [ ] **REFINE** - pending
+- [x] **DESIGN** - completed
+- [x] **IMPLEMENT** - completed
+- [x] **REFINE** - in_progress (SSE streaming fixed, UI tested)
 - [ ] **DELIVER** - pending
 
 ## To Do
@@ -27,7 +27,7 @@
 
 ## In Progress
 
-Task 2: Permission Scanner Assessment
+Task 3: Security Scanner Refinement - SSE streaming fix applied, pending full E2E test
 
 ## Done
 
@@ -41,8 +41,25 @@ Task 2: Permission Scanner Assessment
 - [x] Extracted learning (SITE-LN-001)
 - [x] Committed and pushed
 
-### Task 2: Permission Scanner Assessment (In Progress)
+### Task 2: Permission Scanner Assessment (Completed)
 See STRUT plan below.
+
+### Task 3: SSE Streaming Fix (2026-02-04)
+- [x] Refactored sync scan functions to async generators (SCAN-FL-004) [TESTED]
+- [x] Fixed browser SSE buffering with asyncio.sleep(0) workaround [TESTED]
+- [x] Added batch progress indicators for items with unique permissions [TESTED]
+- [x] Recorded failure SCAN-FL-005 (workaround without full root cause)
+- [x] Extracted learning SCAN-LN-002 (async generators + blocking I/O pattern)
+- [x] Added open problem SCAN-PR-005 (browser SSE buffering investigation)
+- [x] All commits pushed
+
+**Commits (2026-02-04):**
+1. `27f0174` - refactor(security-scan): convert sync scan functions to async generators
+2. `8a387c3` - docs(fails): add and resolve SCAN-FL-004
+3. `03047f7` - fix(security-scan): enable realtime SSE streaming in browser UI
+4. `b743b6a` - docs(fails): add SCAN-FL-005 browser SSE buffering workaround
+5. `236ccea` - docs(learn): add SCAN-LN-002 async generators with blocking I/O
+6. `6d262ff` - docs(problems): add SCAN-PR-005 browser SSE buffering root cause unknown
 
 ## STRUT Plan: Permission Scanner Python Assessment
 
