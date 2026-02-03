@@ -53,11 +53,43 @@
   2. On accessDenied: reconnect directly to target site, retry without `-Site` parameter
 - **Verified**: POC script `.tmp-poc-add-site-to-sitesselected.ps1` confirmed fix works
 
+### 2026-02-03 - SharePoint REST API Pagination
+
+#### [ACTIVE] `SPGPT-FL-002` `$skip` Not Supported for SharePoint List Items
+
+- **When**: 2026-02-03 13:52
+- **Where**: `src/pocs/permission_scanner/02B_test_poc_performance.py` (PERF-01, PERF-04)
+- **What**: Using `skip()` method for pagination returned duplicate items instead of next page
+
+**Wrong Assumptions:**
+
+1. `[VERIFIED-WRONG]` **"`skip()` works like standard OData pagination"**
+   - Assumed: Library's `skip(5000)` would skip 5000 items and return the next batch
+   - Reality: SharePoint REST API **ignores** `$skip` for list items; only supports it for "collections" (like list of lists)
+   - Why wrong: Did not verify SharePoint REST API documentation; assumed standard OData behavior
+
+2. `[VERIFIED-WRONG]` **"Duplicate items means API bug"**
+   - Assumed: Getting same items twice indicated API instability
+   - Reality: SharePoint silently ignored `$skip` and returned first page again
+   - Why wrong: Should have researched SharePoint-specific pagination limitations
+
+**Correct approach**:
+- Use `$skiptoken=Paged=TRUE&p_ID=<last_item_id>` format
+- Follow `odata.nextLink` in response for automatic pagination
+- Or use library's built-in paging methods if available
+
+- **Evidence**: PERF-04 returned 5000 unique IDs when fetching 10000 items (5000+5000)
+- **Root cause**: SharePoint REST API does not implement `$skip` for list items per Microsoft documentation
+- **Suggested fix**: Implement `$skiptoken`-based pagination or use `odata.nextLink` from responses
+
 ## Resolved Issues
 
 (None yet - see Active Issues for resolved entries)
 
 ## Document History
+
+**[2026-02-03 14:00]**
+- Added SPGPT-FL-002: SharePoint REST API $skip not supported for list items
 
 **[2026-01-22 12:36]**
 - Initial failure log created

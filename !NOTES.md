@@ -18,9 +18,16 @@
 - Caller retrieves via `writer.get_step_result()` after iteration
 - See `_V2_IMPL_CRAWLER.md` "Step function result handling" section
 
+## Folder Conventions
+
+**POC Scripts**: All Proof of Concept scripts go in `./src/pocs/[poc_name]/`
+- NOT under routers_v2 or other folders
+- Each POC gets its own subfolder
+
 ## Topic Registry
 
 - `SSE` - Server-Sent Events streaming
 - `CRWL` - Crawler operations
 - `GLOB` - Global/workspace-wide
 - `SITE` - SharePoint Sites management
+- `PSCP` - Permission Scanner POC
