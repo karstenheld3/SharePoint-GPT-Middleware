@@ -190,6 +190,14 @@ def generate_table_row(item: Dict, columns: List[Dict], row_id_field: str, row_i
     if "buttons" in col:
       btn_html = [_generate_button(btn, router_prefix, str(item_id)) for btn in col["buttons"]]
       cells.append(f'<td class="actions">{" ".join(btn_html)}</td>')
+    elif col.get("render"):
+      # Column has custom JS render function - use placeholder for server-side render
+      # JavaScript will re-render this cell on page load
+      # Store item data as JSON for render function to access
+      import json
+      item_json = json.dumps(item).replace('"', '&quot;')
+      value = item.get(field, col.get("default", "-"))
+      cells.append(f'<td data-render="{col.get("render")}" data-item-json="{item_json}">{_escape_html(str(value))}</td>')
     else:
       value = item.get(field, col.get("default", "-"))
       format_func = col.get("format")
@@ -695,6 +703,25 @@ function renderItemsTable(items) {{
   if (typeof updateSelectedCount === 'function') updateSelectedCount();
 }}
 
+function applyCustomRenderers() {{
+  // Re-render cells that have custom render functions on initial page load
+  const cells = document.querySelectorAll('td[data-render]');
+  cells.forEach(cell => {{
+    const renderFunc = cell.getAttribute('data-render');
+    const itemJson = cell.getAttribute('data-item-json');
+    if (typeof window[renderFunc] === 'function' && itemJson) {{
+      try {{
+        const item = JSON.parse(itemJson.replace(/&quot;/g, '"'));
+        cell.innerHTML = window[renderFunc](item);
+        cell.removeAttribute('data-render');
+        cell.removeAttribute('data-item-json');
+      }} catch (e) {{
+        console.error('Failed to render cell:', e);
+      }}
+    }}
+  }});
+}}
+
 {render_func}
 
 function updateItemCount() {{
@@ -738,7 +765,11 @@ def _generate_default_render_row_js(columns: List[Dict], row_id_field: str, row_
     else:
       default = col.get("default", "-")
       js_format = col.get("js_format")
-      if js_format:
+      render_func = col.get("render")
+      if render_func:
+        # Custom render function - returns HTML directly (no escaping)
+        cell_statements.append(f"  cells.push('<td>' + (typeof {render_func} === 'function' ? {render_func}(item) : escapeHtml(String(item.{field} || '{default}'))) + '</td>');")
+      elif js_format:
         cell_statements.append(f"  cells.push('<td>' + escapeHtml(String({js_format})) + '</td>');")
       else:
         cell_statements.append(f"  cells.push('<td>' + escapeHtml(String(item.{field} || '{default}')) + '</td>');")
@@ -1099,6 +1130,7 @@ def generate_ui_page(
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {
   initConsoleResize();
+  if (typeof applyCustomRenderers === 'function') applyCustomRenderers();
 });
 """)
   
