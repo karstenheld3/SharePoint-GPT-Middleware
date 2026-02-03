@@ -23,3 +23,4 @@
 - `SSE` - Server-Sent Events streaming
 - `CRWL` - Crawler operations
 - `GLOB` - Global/workspace-wide
+- `SITE` - SharePoint Sites management
