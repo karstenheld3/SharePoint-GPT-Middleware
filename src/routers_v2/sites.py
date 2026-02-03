@@ -353,6 +353,144 @@ function submitEditSiteForm(event) {{
   clearModalError();
   callEndpoint(btn, sourceSiteId, data);
 }}
+
+// ============================================
+// SECURITY SCAN DIALOG
+// ============================================
+
+async function showSecurityScanDialog(siteId) {{
+  const body = document.querySelector('#modal .modal-body');
+  body.innerHTML = '<h3>Loading...</h3>';
+  openModal(SITE_MODAL_WIDTH);
+  
+  try {{
+    const response = await fetch(`{router_prefix}/{router_name}/get?site_id=${{siteId}}&format=json`);
+    const result = await response.json();
+    if (!result.ok) {{
+      body.innerHTML = '<div class="modal-header"><h3>Error</h3></div><div class="modal-scroll"><p>' + escapeHtml(result.error) + '</p></div><div class="modal-footer"><button class="btn-secondary" onclick="closeModal()">Close</button></div>';
+      return;
+    }}
+    const site = result.data;
+    
+    body.innerHTML = `
+      <div class="modal-header"><h3>Security Scan: ${{escapeHtml(site.name || siteId)}}</h3></div>
+      <div class="modal-scroll">
+        <form id="security-scan-form">
+          <input type="hidden" name="site_id" value="${{escapeHtml(siteId)}}">
+          <div class="form-group">
+            <label>Scope</label>
+            <select name="scope" id="scan-scope" onchange="updateScanEndpointPreview()">
+              <option value="all">all - Site groups + broken inheritance items</option>
+              <option value="site">site - Site groups only</option>
+              <option value="lists">lists - List/library structure only</option>
+              <option value="items">items - Broken inheritance items only</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label><input type="checkbox" name="include_subsites" id="scan-subsites" onchange="updateScanEndpointPreview()"> Include subsites</label>
+          </div>
+          <div class="form-group">
+            <label><input type="checkbox" name="delete_caches" id="scan-delete-caches" onchange="updateScanEndpointPreview()"> Delete cached Entra ID group members</label>
+          </div>
+          <div class="form-group">
+            <label>Endpoint Preview</label>
+            <input type="text" id="scan-endpoint-preview" readonly style="background: #f5f5f5; font-family: monospace; font-size: 12px;">
+          </div>
+        </form>
+        <div id="scan-progress" style="display: none;">
+          <div class="progress-bar-container" style="background: #e0e0e0; border-radius: 4px; height: 20px; margin: 10px 0;">
+            <div id="scan-progress-bar" style="background: #4CAF50; height: 100%; border-radius: 4px; width: 0%; transition: width 0.3s;"></div>
+          </div>
+          <p id="scan-progress-text" style="margin: 5px 0; font-size: 12px; color: #666;"></p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <p class="modal-error"></p>
+        <button type="button" id="scan-start-btn" class="btn-primary" onclick="startSecurityScan('${{escapeHtml(siteId)}}')">OK</button>
+        <button type="button" id="scan-cancel-btn" class="btn-secondary" onclick="closeModal()">Cancel</button>
+      </div>
+    `;
+    
+    // Initialize endpoint preview
+    window.currentScanSiteId = siteId;
+    updateScanEndpointPreview();
+  }} catch (e) {{
+    body.innerHTML = '<div class="modal-header"><h3>Error</h3></div><div class="modal-scroll"><p>' + escapeHtml(e.message) + '</p></div><div class="modal-footer"><button class="btn-secondary" onclick="closeModal()">Close</button></div>';
+  }}
+}}
+
+function updateScanEndpointPreview() {{
+  const siteId = window.currentScanSiteId || '';
+  const scope = document.getElementById('scan-scope')?.value || 'all';
+  const includeSubsites = document.getElementById('scan-subsites')?.checked || false;
+  const deleteCaches = document.getElementById('scan-delete-caches')?.checked || false;
+  
+  let url = `{router_prefix}/{router_name}/security_scan?site_id=${{siteId}}&scope=${{scope}}&format=stream`;
+  if (includeSubsites) url += '&include_subsites=true';
+  if (deleteCaches) url += '&delete_caches=true';
+  
+  const preview = document.getElementById('scan-endpoint-preview');
+  if (preview) preview.value = url;
+}}
+
+let securityScanAbortController = null;
+
+function startSecurityScan(siteId) {{
+  const scope = document.getElementById('scan-scope')?.value || 'all';
+  const includeSubsites = document.getElementById('scan-subsites')?.checked || false;
+  const deleteCaches = document.getElementById('scan-delete-caches')?.checked || false;
+  
+  let url = `{router_prefix}/{router_name}/security_scan?site_id=${{siteId}}&scope=${{scope}}&format=stream`;
+  if (includeSubsites) url += '&include_subsites=true';
+  if (deleteCaches) url += '&delete_caches=true';
+  
+  // Disable form
+  document.getElementById('scan-scope').disabled = true;
+  document.getElementById('scan-subsites').disabled = true;
+  document.getElementById('scan-delete-caches').disabled = true;
+  document.getElementById('scan-start-btn').style.display = 'none';
+  document.getElementById('scan-cancel-btn').textContent = 'Close';
+  document.getElementById('scan-cancel-btn').onclick = function() {{ closeModal(); reloadList(); }};
+  
+  // Use common connectStream for SSE handling and console output
+  closeModal();
+  connectStream(url);
+}}
+
+function handleScanEvent(data) {{
+  if (data.event === 'log') {{
+    // Output to console panel
+    if (typeof appendToConsole === 'function') {{
+      appendToConsole(data.message || data.data || '');
+    }}
+    // Also update progress text with latest message
+    document.getElementById('scan-progress-text').textContent = data.message || data.data || '';
+  }} else if (data.event === 'progress') {{
+    const progress = data.progress || 0;
+    document.getElementById('scan-progress-bar').style.width = progress + '%';
+    document.getElementById('scan-progress-text').textContent = data.message || '';
+  }} else if (data.event === 'end_json') {{
+    const result = data.data || {{}};
+    const stats = result.stats || {{}};
+    document.getElementById('scan-progress-bar').style.width = '100%';
+    if (data.ok) {{
+      document.getElementById('scan-progress-text').innerHTML = 
+        '<strong style="color: green;">Scan complete.</strong><br>' +
+        'Groups: ' + (stats.groups_found || 0) + ', Users: ' + (stats.users_found || 0) + 
+        ', Items: ' + (stats.items_scanned || 0) + ', Broken: ' + (stats.broken_inheritance || 0);
+    }} else {{
+      document.getElementById('scan-progress-text').innerHTML = 
+        '<strong style="color: red;">Scan failed:</strong> ' + escapeHtml(data.error || 'Unknown error');
+    }}
+  }}
+}}
+
+function cancelSecurityScan() {{
+  if (securityScanAbortController) {{
+    securityScanAbortController.abort();
+    securityScanAbortController = null;
+  }}
+}}
 """
 
 # ----------------------------------------- END: Router-specific Form JS ---------------------------------------------------
@@ -376,7 +514,8 @@ async def sites_root(request: Request):
       {"path": "/create", "desc": "Create site (POST)", "formats": ["json", "html"]},
       {"path": "/update", "desc": "Update site (PUT)", "formats": ["json", "html"]},
       {"path": "/delete", "desc": "Delete site (DELETE/GET)", "formats": ["json", "html"]},
-      {"path": "/selftest", "desc": "Self-test", "formats": ["stream"]}
+      {"path": "/selftest", "desc": "Self-test", "formats": ["stream"]},
+      {"path": "/security_scan", "desc": "Security scan", "formats": ["stream"]}
     ]
     return HTMLResponse(generate_router_docs_page(
       title="Sites",
@@ -427,7 +566,7 @@ async def sites_root(request: Request):
             "class": "btn-small btn-delete"
           },
           {"text": "File Scan", "onclick": "showNotImplemented(\"File Scan\")", "class": "btn-small btn-disabled"},
-          {"text": "Security Scan", "onclick": "showNotImplemented(\"Security Scan\")", "class": "btn-small btn-disabled"}
+          {"text": "Security Scan", "onclick": "showSecurityScanDialog('{itemId}')", "class": "btn-small"}
         ]
       }
     ]
@@ -1001,3 +1140,138 @@ async def sites_selftest(request: Request):
   return StreamingResponse(run_selftest(), media_type="text/event-stream")
 
 # ----------------------------------------- END: Selftest ------------------------------------------------------------------
+
+
+# ----------------------------------------- START: Security Scan -------------------------------------------------------------
+
+@router.get(f"/{router_name}/security_scan")
+async def sites_security_scan(request: Request):
+  """
+  Run security scan on a SharePoint site.
+  
+  Parameters:
+  - site_id: ID of the site to scan (required)
+  - scope: Scan scope - all (default), site, lists, items
+  - include_subsites: Include subsites in scan (default: false)
+  - delete_caches: Delete Entra ID group caches before scan (default: false)
+  - format: Response format - stream (required for scan)
+  
+  Output:
+  - SSE stream with progress, log, and end_json events
+  - Creates report archive in reports/site_scans/
+  """
+  logger = MiddlewareLogger.create()
+  logger.log_function_header("sites_security_scan")
+  
+  request_params = dict(request.query_params)
+  
+  if len(request_params) == 0:
+    logger.log_function_footer()
+    doc = textwrap.dedent(sites_security_scan.__doc__).strip()
+    return PlainTextResponse(generate_endpoint_docs(doc, router_prefix), media_type="text/plain; charset=utf-8")
+  
+  site_id = request_params.get("site_id", None)
+  scope = request_params.get("scope", "all")
+  include_subsites = request_params.get("include_subsites", "false").lower() == "true"
+  delete_caches = request_params.get("delete_caches", "false").lower() == "true"
+  format_param = request_params.get("format", "")
+  
+  if format_param != "stream":
+    logger.log_function_footer()
+    return json_result(False, "Security scan only supports format=stream", {})
+  
+  if not site_id:
+    logger.log_function_footer()
+    return json_result(False, "Missing 'site_id' parameter", {})
+  
+  if scope not in ["all", "site", "lists", "items"]:
+    logger.log_function_footer()
+    return json_result(False, f"Invalid scope '{scope}'. Use: all, site, lists, items", {})
+  
+  storage_path = get_persistent_storage_path(request)
+  if not storage_path:
+    logger.log_function_footer()
+    return json_result(False, "PERSISTENT_STORAGE_PATH not configured", {})
+  
+  # Load site to get URL
+  try:
+    site = load_site(storage_path, site_id, logger)
+  except FileNotFoundError:
+    logger.log_function_footer()
+    return JSONResponse({"ok": False, "error": f"Site '{site_id}' not found", "data": {}}, status_code=404)
+  except Exception as e:
+    logger.log_function_footer()
+    return json_result(False, str(e), {})
+  
+  # Get credentials from config (matches .env variable names and crawler.py pattern)
+  client_id = getattr(config, 'CRAWLER_CLIENT_ID', None) or os.environ.get('CRAWLER_CLIENT_ID', '')
+  tenant_id = getattr(config, 'CRAWLER_TENANT_ID', None) or os.environ.get('CRAWLER_TENANT_ID', '')
+  cert_filename = getattr(config, 'CRAWLER_CLIENT_CERTIFICATE_PFX_FILE', None) or os.environ.get('CRAWLER_CLIENT_CERTIFICATE_PFX_FILE', '')
+  cert_path = os.path.join(storage_path, cert_filename) if cert_filename else ''
+  cert_password = getattr(config, 'CRAWLER_CLIENT_CERTIFICATE_PASSWORD', None) or os.environ.get('CRAWLER_CLIENT_CERTIFICATE_PASSWORD', '')
+  
+  if not all([client_id, tenant_id, cert_filename]):
+    logger.log_function_footer()
+    return json_result(False, "Missing SharePoint credentials (CRAWLER_CLIENT_ID, CRAWLER_TENANT_ID, CRAWLER_CLIENT_CERTIFICATE_PFX_FILE)", {})
+  
+  writer = StreamingJobWriter(
+    persistent_storage_path=storage_path,
+    router_name=router_name,
+    action="security_scan",
+    object_id=site_id,
+    source_url=str(request.url),
+    router_prefix=router_prefix
+  )
+  stream_logger = MiddlewareLogger.create(stream_job_writer=writer)
+  stream_logger.log_function_header("sites_security_scan")
+  
+  from routers_v2.common_security_scan_functions_v2 import run_security_scan
+  
+  async def run_scan():
+    try:
+      yield writer.emit_start()
+      
+      stream_logger.log_function_output(f"Starting security scan for site '{site_id}'...")
+      stream_logger.log_function_output(f"  Site URL: {site.site_url}")
+      stream_logger.log_function_output(f"  Scope: {scope}")
+      stream_logger.log_function_output(f"  Include subsites: {include_subsites}")
+      stream_logger.log_function_output(f"  Delete caches: {delete_caches}")
+      
+      async for event in run_security_scan(
+        site_url=site.site_url,
+        site_id=site_id,
+        scope=scope,
+        include_subsites=include_subsites,
+        delete_caches=delete_caches,
+        storage_path=storage_path,
+        client_id=client_id,
+        tenant_id=tenant_id,
+        cert_path=cert_path,
+        cert_password=cert_password,
+        writer=writer,
+        logger=stream_logger
+      ):
+        yield event
+      
+      # Get results
+      result = writer._step_result or {}
+      stats = result.get("stats", {})
+      report_path = result.get("report_path", "")
+      
+      # Update site with scan result
+      site.security_scan_result = f"{stats.get('groups_found', 0)} groups, {stats.get('users_found', 0)} users"
+      save_site_to_file(storage_path, site, stream_logger)
+      
+      stream_logger.log_function_footer()
+      yield writer.emit_end(ok=True, data=result)
+      
+    except Exception as e:
+      stream_logger.log_function_output(f"ERROR: Security scan failed -> {e}")
+      stream_logger.log_function_footer()
+      yield writer.emit_end(ok=False, error=str(e), data={})
+    finally:
+      writer.finalize()
+  
+  return StreamingResponse(run_scan(), media_type="text/event-stream")
+
+# ----------------------------------------- END: Security Scan ---------------------------------------------------------------

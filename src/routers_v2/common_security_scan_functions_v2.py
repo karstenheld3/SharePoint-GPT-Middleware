@@ -1,0 +1,662 @@
+# Common functions for SharePoint security scanning
+# Implements permission scanning per _V2_SPEC_SITES_SECURITY_SCAN.md [SITE-SP03]
+# V2 version using MiddlewareLogger and Office365-REST-Python-Client
+
+import asyncio, datetime, json, os, re, tempfile
+from typing import Any, AsyncGenerator, Optional
+from azure.identity import CertificateCredential
+from msgraph import GraphServiceClient
+from office365.sharepoint.client_context import ClientContext
+from hardcoded_config import CRAWLER_HARDCODED_CONFIG
+from routers_v2.common_logging_functions_v2 import MiddlewareLogger, UNKNOWN
+from routers_v2.common_sharepoint_functions_v2 import connect_to_site_using_client_id_and_certificate
+
+# ----------------------------------------- START: Constants ------------------------------------------------------------------
+
+MAX_NESTING_LEVEL = 5
+BATCH_SIZE = 5000
+PROGRESS_INTERVAL_SECONDS = 5
+
+# Built-in list templates to include (Generic List, Document Library, Site Pages)
+INCLUDED_TEMPLATES = [100, 101, 119]
+
+# CSV Column Definitions (EXACT order from SPEC Section 14 - must match PowerShell scanner)
+CSV_COLUMNS_SITE_CONTENTS = ["Id", "Type", "Title", "Url"]
+CSV_COLUMNS_SITE_GROUPS = ["Id", "Role", "Title", "PermissionLevel", "Owner"]
+CSV_COLUMNS_SITE_USERS = ["Id", "LoginName", "DisplayName", "Email", "PermissionLevel", "ViaGroup", "ViaGroupId", "ViaGroupType", "AssignmentType", "NestingLevel", "ParentGroup"]
+CSV_COLUMNS_INDIVIDUAL_ITEMS = ["Id", "Type", "Title", "Url"]
+CSV_COLUMNS_INDIVIDUAL_ACCESS = ["Id", "Type", "Url", "LoginName", "DisplayName", "Email", "PermissionLevel", "SharedDateTime", "SharedByDisplayName", "SharedByLoginName", "ViaGroup", "ViaGroupId", "ViaGroupType", "AssignmentType", "NestingLevel", "ParentGroup"]
+
+# ----------------------------------------- END: Constants --------------------------------------------------------------------
+
+
+# ----------------------------------------- START: CSV Functions --------------------------------------------------------------
+
+def csv_escape(value) -> str:
+  """Escape value for CSV output, matching PowerShell scanner format (SPEC Section 9)."""
+  if value is None: return ''
+  value = str(value)
+  if not value: return '""'
+  # Match SPEC regex exactly: formula chars, date/number patterns, or special chars
+  if re.match(r'^([+\-=\/]*[\.\d\s\/\:]*|.*[\,\"\n].*|[\n]*)$', value):
+    return '"' + value.replace('"', '""') + '"'
+  return value
+
+def csv_row(row: dict, columns: list) -> str:
+  """Convert dict to CSV row string with proper escaping."""
+  return ','.join(csv_escape(row.get(col, '')) for col in columns)
+
+def write_csv_header(file_path: str, columns: list) -> None:
+  """Write CSV header row to file (UTF-8 without BOM)."""
+  with open(file_path, 'w', encoding='utf-8', newline='') as f:
+    f.write(','.join(columns) + '\n')
+
+def append_csv_rows(file_path: str, rows: list[dict], columns: list) -> None:
+  """Append rows to CSV file."""
+  if not rows: return
+  with open(file_path, 'a', encoding='utf-8', newline='') as f:
+    for row in rows:
+      f.write(csv_row(row, columns) + '\n')
+
+# ----------------------------------------- END: CSV Functions ----------------------------------------------------------------
+
+
+# ----------------------------------------- START: Cache Functions ------------------------------------------------------------
+
+def get_entra_cache_folder(storage_path: str) -> str:
+  """Get Entra ID group cache folder path."""
+  return os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_SITES_SUBFOLDER, "_entra_group_cache")
+
+def load_entra_group_cache(storage_path: str, group_id: str) -> dict | None:
+  """Load cached Entra ID group members if available."""
+  cache_path = os.path.join(get_entra_cache_folder(storage_path), f"{group_id}.json")
+  if not os.path.exists(cache_path): return None
+  try:
+    with open(cache_path, 'r', encoding='utf-8') as f: return json.load(f)
+  except: return None
+
+def save_entra_group_cache(storage_path: str, group_id: str, data: dict) -> None:
+  """Save Entra ID group members to cache."""
+  cache_folder = get_entra_cache_folder(storage_path)
+  os.makedirs(cache_folder, exist_ok=True)
+  cache_path = os.path.join(cache_folder, f"{group_id}.json")
+  with open(cache_path, 'w', encoding='utf-8') as f: json.dump(data, f, indent=2)
+
+def delete_all_entra_caches(storage_path: str) -> int:
+  """Delete all Entra ID group caches. Returns count of deleted files."""
+  cache_folder = get_entra_cache_folder(storage_path)
+  if not os.path.exists(cache_folder): return 0
+  count = 0
+  for f in os.listdir(cache_folder):
+    if f.endswith('.json'):
+      os.remove(os.path.join(cache_folder, f))
+      count += 1
+  return count
+
+# ----------------------------------------- END: Cache Functions --------------------------------------------------------------
+
+
+# ----------------------------------------- START: Graph Client ---------------------------------------------------------------
+
+_graph_client = None
+_graph_credentials = None
+
+def get_graph_client(tenant_id: str, client_id: str, cert_path: str, cert_password: str) -> GraphServiceClient:
+  """Get or create Graph client for Entra ID group resolution using certificate auth."""
+  global _graph_client, _graph_credentials
+  cred_key = (tenant_id, client_id, cert_path)
+  if _graph_client is None or _graph_credentials != cred_key:
+    credential = CertificateCredential(tenant_id, client_id, certificate_path=cert_path, password=cert_password)
+    _graph_client = GraphServiceClient(credential)
+    _graph_credentials = cred_key
+  return _graph_client
+
+def reset_graph_client() -> None:
+  """Reset Graph client (for testing or credential changes)."""
+  global _graph_client, _graph_credentials
+  _graph_client = None
+  _graph_credentials = None
+
+# ----------------------------------------- END: Graph Client -----------------------------------------------------------------
+
+
+# ----------------------------------------- START: Group Resolution -----------------------------------------------------------
+
+def is_entra_id_group(login_name: str) -> bool:
+  """Check if login name represents an Entra ID (Azure AD) group."""
+  if not login_name: return False
+  # Entra ID groups have c:0t.c|tenant|{guid} or c:0-.f|rolemanager|{guid} or c:0o.c|federateddirectoryclaimprovider|{guid} format
+  return "|" in login_name and any(prefix in login_name for prefix in ["c:0t.c", "c:0-.f", "c:0o.c"])
+
+def extract_group_id_from_login(login_name: str) -> str | None:
+  """Extract Entra ID group GUID from login name."""
+  # Format: c:0t.c|tenant|{guid} or similar
+  parts = login_name.split("|")
+  if len(parts) >= 3: return parts[-1]
+  return None
+
+async def resolve_entra_group_members(storage_path: str, graph_client: GraphServiceClient, group_id: str, group_name: str, nesting_level: int, parent_group: str, writer, logger: MiddlewareLogger) -> list:
+  """Resolve Entra ID group members using Graph API with caching."""
+  if nesting_level > MAX_NESTING_LEVEL:
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    writer.emit_log(f"[{ts}]           WARNING: Max nesting level ({MAX_NESTING_LEVEL}) reached for group_name='{group_name}'")
+    return []
+  
+  # Check cache first
+  cached = load_entra_group_cache(storage_path, group_id)
+  if cached:
+    member_count = len(cached.get('members', []))
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    writer.emit_log(f"[{ts}]           Using cached {member_count} member(s) for group_name='{group_name}'".replace("(s)", "s" if member_count != 1 else ""))
+    return cached.get("members", [])
+  
+  # Fetch from Graph API using transitive members
+  ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  writer.emit_log(f"[{ts}]           Fetching from Graph API for group_name='{group_name}'...")
+  members = []
+  try:
+    members_response = await graph_client.groups.by_group_id(group_id).transitive_members.get()
+    
+    for member in members_response.value:
+      if hasattr(member, 'odata_type') and member.odata_type == "#microsoft.graph.user":
+        members.append({
+          "Id": "",  # Empty for nested Entra ID members per SPEC
+          "LoginName": member.user_principal_name or "",
+          "DisplayName": member.display_name or "",
+          "Email": member.mail or "",
+          "NestingLevel": nesting_level,
+          "ParentGroup": parent_group,
+          "ViaGroup": group_name,
+          "ViaGroupId": group_id,
+          "ViaGroupType": "SecurityGroup",
+          "AssignmentType": "Group"
+        })
+    
+    # Cache result
+    save_entra_group_cache(storage_path, group_id, {
+      "group_id": group_id,
+      "group_name": group_name,
+      "cached_utc": datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z",
+      "member_count": len(members),
+      "members": members
+    })
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    writer.emit_log(f"[{ts}]           OK. {len(members)} member(s) resolved and cached.".replace("(s)", "s" if len(members) != 1 else ""))
+  except Exception as e:
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    writer.emit_log(f"[{ts}]           ERROR: Failed to resolve Entra group_name='{group_name}' -> {e}")
+  
+  return members
+
+async def resolve_sharepoint_group_members(ctx: ClientContext, group, storage_path: str, graph_client: Optional[GraphServiceClient], writer, nesting_level: int, parent_group: str, logger: MiddlewareLogger) -> list:
+  """Resolve all members of a SharePoint group, including nested Entra ID groups."""
+  if nesting_level > MAX_NESTING_LEVEL: return []
+  
+  members = []
+  try:
+    users = group.users.get().execute_query()
+  except Exception as e:
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    writer.emit_log(f"[{ts}]     ERROR: Failed to get users for group_title='{group.title}' -> {e}")
+    return []
+  
+  user_count = len(users)
+  ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  writer.emit_log(f"[{ts}]     {user_count} member(s) in group_title='{group.title}'".replace("(s)", "s" if user_count != 1 else ""))
+  
+  for user in users:
+    login_name = user.login_name or ""
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    writer.emit_log(f"[{ts}]       Member: display_name='{user.title}' login='{login_name[:50]}...'")
+    
+    if is_entra_id_group(login_name):
+      group_id = extract_group_id_from_login(login_name)
+      writer.emit_log(f"[{ts}]         -> Entra ID group (group_id={group_id})")
+      if group_id and graph_client:
+        writer.emit_log(f"[{ts}]         Resolving via Graph API...")
+        # Resolve Entra ID group members
+        nested = await resolve_entra_group_members(
+          storage_path, graph_client, group_id, user.title or login_name,
+          nesting_level + 1, group.title, writer, logger
+        )
+        ts2 = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        writer.emit_log(f"[{ts2}]         OK. {len(nested)} nested member(s) resolved.".replace("(s)", "s" if len(nested) != 1 else ""))
+        # Update ViaGroup to point to SP group
+        for m in nested:
+          m["ViaGroup"] = group.title
+          m["ViaGroupId"] = str(group.id)
+          m["ViaGroupType"] = "SharePointGroup"
+        members.extend(nested)
+      elif not graph_client:
+        writer.emit_log(f"[{ts}]         WARNING: No Graph client, cannot resolve Entra group")
+    else:
+      writer.emit_log(f"[{ts}]         -> User (not Entra group)")
+      members.append({
+        "Id": str(user.id) if user.id else "",
+        "LoginName": login_name,
+        "DisplayName": user.title or "",
+        "Email": user.email or "",
+        "NestingLevel": nesting_level,
+        "ParentGroup": parent_group,
+        "ViaGroup": group.title,
+        "ViaGroupId": str(group.id),
+        "ViaGroupType": "SharePointGroup",
+        "AssignmentType": "Group"
+      })
+  
+  return members
+
+# ----------------------------------------- END: Group Resolution -------------------------------------------------------------
+
+
+# ----------------------------------------- START: Scanning Functions ---------------------------------------------------------
+
+def scan_site_contents(ctx: ClientContext, output_folder: str, writer, logger: MiddlewareLogger, current_step: int, total_steps: int) -> dict:
+  """Scan lists/libraries and write 01_SiteContents.csv."""
+  stats = {"lists_scanned": 0}
+  contents_file = os.path.join(output_folder, "01_SiteContents.csv")
+  write_csv_header(contents_file, CSV_COLUMNS_SITE_CONTENTS)
+  
+  ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Scanning site contents...")
+  lists = ctx.web.lists.get().execute_query()
+  
+  rows = []
+  for lst in lists:
+    if lst.base_template not in INCLUDED_TEMPLATES: continue
+    if lst.properties.get("Hidden", False): continue
+    
+    stats["lists_scanned"] += 1
+    
+    list_type = "LIST" if lst.base_template == 100 else "LIBRARY"
+    if lst.base_template == 119: list_type = "SITEPAGES"
+    
+    # Get root folder URL
+    try:
+      lst.root_folder.get().execute_query()
+      url = lst.root_folder.server_relative_url
+    except:
+      url = ""
+    
+    rows.append({
+      "Id": str(lst.id),
+      "Type": list_type,
+      "Title": lst.title,
+      "Url": url
+    })
+  
+  append_csv_rows(contents_file, rows, CSV_COLUMNS_SITE_CONTENTS)
+  ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  writer.emit_log(f"[{ts}]   {stats['lists_scanned']} list(s)/libraries found.".replace("(s)", "s" if stats['lists_scanned'] != 1 else ""))
+  return stats
+
+async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder: str, graph_client: Optional[GraphServiceClient], writer, logger: MiddlewareLogger, current_step: int, total_steps: int) -> dict:
+  """Scan site groups and write 02_SiteGroups.csv and 03_SiteUsers.csv."""
+  stats = {"groups_found": 0, "users_found": 0}
+  
+  groups_file = os.path.join(output_folder, "02_SiteGroups.csv")
+  users_file = os.path.join(output_folder, "03_SiteUsers.csv")
+  
+  write_csv_header(groups_file, CSV_COLUMNS_SITE_GROUPS)
+  write_csv_header(users_file, CSV_COLUMNS_SITE_USERS)
+  
+  ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Scanning site groups (graph_client_available={graph_client is not None})...")
+  
+  # Load site groups with role assignments to get permission levels
+  role_assignments = ctx.web.role_assignments.get()
+  role_assignments.expand(["Member", "RoleDefinitionBindings"]).execute_query()
+  ra_list = list(role_assignments)
+  ra_count = len(ra_list)
+  ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  writer.emit_log(f"[{ts}]   {ra_count} role assignment(s) found.".replace("(s)", "s" if ra_count != 1 else ""))
+  
+  # Build group -> permission level mapping
+  group_permissions = {}
+  for ra in ra_list:
+    member = ra.member
+    for binding in ra.role_definition_bindings:
+      perm_name = binding.properties.get('Name', '')
+      # FILTER: Skip "Limited Access" per MUST-NOT-FORGET
+      if perm_name == "Limited Access": continue
+      if member.principal_type == 8:  # SharePoint Group
+        group_permissions[member.id] = perm_name
+  
+  # Load all site groups and filter to those with permissions
+  all_groups = ctx.web.site_groups.get().execute_query()
+  groups_to_process = [g for g in all_groups if group_permissions.get(g.id, "")]
+  total_groups = len(groups_to_process)
+  
+  group_rows = []
+  user_rows = []
+  
+  for idx, group in enumerate(groups_to_process, 1):
+    perm_level = group_permissions.get(group.id, "")
+    
+    stats["groups_found"] += 1
+    
+    # Determine role
+    role = "Custom"
+    title_lower = group.title.lower() if group.title else ""
+    if "owner" in title_lower: role = "SiteOwners"
+    elif "member" in title_lower: role = "SiteMembers"
+    elif "visitor" in title_lower: role = "SiteVisitors"
+    
+    group_rows.append({
+      "Id": str(group.id),
+      "Role": role,
+      "Title": group.title,
+      "PermissionLevel": perm_level,
+      "Owner": group.owner_title or ""
+    })
+    
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    writer.emit_log(f"[{ts}]   ( {idx} / {total_groups} ) Resolving group group_title='{group.title}'...")
+    
+    # Resolve members
+    members = await resolve_sharepoint_group_members(ctx, group, storage_path, graph_client, writer, 1, "", logger)
+    for member in members:
+      member["PermissionLevel"] = perm_level
+      stats["users_found"] += 1
+      user_rows.append(member)
+  
+  append_csv_rows(groups_file, group_rows, CSV_COLUMNS_SITE_GROUPS)
+  append_csv_rows(users_file, user_rows, CSV_COLUMNS_SITE_USERS)
+  
+  ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  writer.emit_log(f"[{ts}]   {stats['groups_found']} group(s), {stats['users_found']} user(s) found.".replace("(s)", "s" if stats['groups_found'] != 1 else "", 1).replace("(s)", "s" if stats['users_found'] != 1 else "", 1))
+  return stats
+
+def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, output_folder: str, graph_client: Optional[GraphServiceClient], writer, logger: MiddlewareLogger, loop: asyncio.AbstractEventLoop, current_step: int, total_steps: int) -> dict:
+  """Scan items with broken inheritance and write 04/05 CSVs."""
+  stats = {"items_scanned": 0, "broken_inheritance": 0}
+  
+  items_file = os.path.join(output_folder, "04_IndividualPermissionItems.csv")
+  access_file = os.path.join(output_folder, "05_IndividualPermissionItemAccess.csv")
+  
+  write_csv_header(items_file, CSV_COLUMNS_INDIVIDUAL_ITEMS)
+  write_csv_header(access_file, CSV_COLUMNS_INDIVIDUAL_ACCESS)
+  
+  ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Scanning items with broken inheritance...")
+  
+  all_lists = ctx.web.lists.get().execute_query()
+  # Filter to relevant lists
+  lists_to_scan = [lst for lst in all_lists if lst.base_template in INCLUDED_TEMPLATES and not lst.properties.get("Hidden", False)]
+  total_lists = len(lists_to_scan)
+  
+  item_rows = []
+  access_rows = []
+  
+  for list_idx, lst in enumerate(lists_to_scan, 1):
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    writer.emit_log(f"[{ts}]   ( {list_idx} / {total_lists} ) Scanning list_title='{lst.title}'...")
+    
+    # Paginate through items
+    last_id = 0
+    while True:
+      try:
+        items = lst.items.filter(f"ID gt {last_id}").select(
+          ["ID", "FileRef", "FileLeafRef", "FSObjType", "HasUniqueRoleAssignments"]
+        ).top(BATCH_SIZE).get().execute_query()
+      except Exception as e:
+        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        writer.emit_log(f"[{ts}]   ERROR: Failed to get items from list_title='{lst.title}' -> {e}")
+        break
+      
+      if len(items) == 0: break
+      
+      for item in items:
+        stats["items_scanned"] += 1
+        item_id = item.properties.get("ID", 0)
+        
+        if item.properties.get("HasUniqueRoleAssignments"):
+          stats["broken_inheritance"] += 1
+          
+          file_ref = item.properties.get("FileRef", "")
+          file_name = item.properties.get("FileLeafRef", "")
+          fs_obj_type = item.properties.get("FSObjType", 0)
+          item_type = "FOLDER" if fs_obj_type == 1 else "ITEM"
+          
+          item_rows.append({
+            "Id": str(item_id),
+            "Type": item_type,
+            "Title": file_name,
+            "Url": file_ref
+          })
+          
+          # Get role assignments for this item
+          try:
+            role_assignments = item.role_assignments.get()
+            role_assignments.expand(["Member", "RoleDefinitionBindings"]).execute_query()
+            ra_list = list(role_assignments)  # Convert to list once to avoid consuming iterator
+            # Debug logging removed - too verbose for SSE
+            
+            for ra in ra_list:
+              member = ra.member
+              bindings_list = list(ra.role_definition_bindings) if ra.role_definition_bindings else []
+              # Debug logging removed - too verbose for SSE
+              for binding in bindings_list:
+                perm_name = binding.properties.get('Name', '')
+                # Debug logging removed - too verbose for SSE
+                if perm_name == "Limited Access": continue
+                
+                access_rows.append({
+                  "Id": str(item_id),
+                  "Type": item_type,
+                  "Url": file_ref,
+                  "LoginName": member.login_name or "",
+                  "DisplayName": member.title or "",
+                  "Email": member.email or "" if hasattr(member, 'email') else "",
+                  "PermissionLevel": perm_name,
+                  "SharedDateTime": "",
+                  "SharedByDisplayName": "",
+                  "SharedByLoginName": "",
+                  "ViaGroup": "",
+                  "ViaGroupId": "",
+                  "ViaGroupType": "",
+                  "AssignmentType": "User" if member.principal_type == 1 else "Group",
+                  "NestingLevel": 0,
+                  "ParentGroup": ""
+                })
+          except Exception as e:
+            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            writer.emit_log(f"[{ts}]     ERROR: Failed to get permissions for item_id={item_id} -> {e}")
+        
+        last_id = item_id
+      
+      if len(items) < BATCH_SIZE: break
+  
+  append_csv_rows(items_file, item_rows, CSV_COLUMNS_INDIVIDUAL_ITEMS)
+  append_csv_rows(access_file, access_rows, CSV_COLUMNS_INDIVIDUAL_ACCESS)
+  
+  ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  writer.emit_log(f"[{ts}]   {stats['items_scanned']} item(s) scanned, {stats['broken_inheritance']} with broken inheritance.".replace("(s)", "s" if stats['items_scanned'] != 1 else ""))
+  return stats
+
+# ----------------------------------------- END: Scanning Functions -----------------------------------------------------------
+
+
+# ----------------------------------------- START: Main Scanner ---------------------------------------------------------------
+
+async def run_security_scan(
+  site_url: str,
+  site_id: str,
+  scope: str,
+  include_subsites: bool,
+  delete_caches: bool,
+  storage_path: str,
+  client_id: str,
+  tenant_id: str,
+  cert_path: str,
+  cert_password: str,
+  writer,  # StreamingJobWriter
+  logger: MiddlewareLogger
+) -> AsyncGenerator[str, None]:
+  """
+  Run security scan and yield SSE events.
+  
+  Args:
+    site_url: SharePoint site URL
+    site_id: Internal site identifier
+    scope: Scan scope (all, site, lists, items)
+    include_subsites: Whether to scan subsites
+    delete_caches: Whether to delete Entra ID caches before scan
+    storage_path: Persistent storage path
+    client_id: Azure AD app client ID
+    tenant_id: Azure AD tenant ID
+    cert_path: Path to certificate for SharePoint and Graph API auth
+    cert_password: Certificate password
+    writer: StreamingJobWriter for SSE events
+    logger: MiddlewareLogger instance
+  
+  Yields:
+    SSE event strings
+  """
+  
+  # Calculate total steps based on scope
+  # Steps: 1=Connect, 2=Graph client, 3=Site contents (if scope), 4=Site groups (if scope), 5=Broken items (if scope), 6=Create report
+  total_steps = 3  # Connect + Graph + Report always
+  if scope in ["all", "site", "lists"]: total_steps += 1
+  if scope in ["all", "site"]: total_steps += 1
+  if scope in ["all", "items"]: total_steps += 1
+  current_step = 0
+  
+  # Delete caches if requested (step 0 - not counted)
+  if delete_caches:
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    yield writer.emit_log(f"[{ts}] Deleting cached Entra ID group files...")
+    deleted = delete_all_entra_caches(storage_path)
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    yield writer.emit_log(f"[{ts}]   {deleted} cache file(s) deleted.".replace("(s)", "s" if deleted != 1 else ""))
+  
+  # Create temp output folder in storage_path\{TEMP_SUBFOLDER}
+  temp_base = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_TEMP_SUBFOLDER)
+  os.makedirs(temp_base, exist_ok=True)
+  output_folder = tempfile.mkdtemp(prefix=f"security_scan_{site_id}_", dir=temp_base)
+  ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  yield writer.emit_log(f"[{ts}] Created temp folder path='{output_folder}'")
+  
+  stats = {
+    "lists_scanned": 0,
+    "groups_found": 0,
+    "users_found": 0,
+    "items_scanned": 0,
+    "broken_inheritance": 0
+  }
+  
+  try:
+    # Step 1: Connect to SharePoint
+    current_step += 1
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    yield writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Connecting to SharePoint site_url='{site_url}'...")
+    ctx = connect_to_site_using_client_id_and_certificate(site_url, client_id, tenant_id, cert_path, cert_password)
+    ctx.web.get().execute_query()
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    yield writer.emit_log(f"[{ts}]   OK. Connected to site_title='{ctx.web.title}'")
+    
+    # Step 2: Initialize Graph client for Entra ID resolution (using certificate auth)
+    current_step += 1
+    graph_client = None
+    if cert_path and cert_password:
+      ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+      yield writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Initializing Microsoft Graph client...")
+      try:
+        graph_client = get_graph_client(tenant_id, client_id, cert_path, cert_password)
+        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        yield writer.emit_log(f"[{ts}]   OK. Graph client ready.")
+      except Exception as e:
+        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        yield writer.emit_log(f"[{ts}]   ERROR: Failed to create Graph client -> {e}")
+        graph_client = None
+    else:
+      ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+      yield writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Initializing Microsoft Graph client...")
+      yield writer.emit_log(f"[{ts}]   WARNING: No certificate credentials - Graph client not available")
+    
+    # Get event loop for running async code in sync context
+    loop = asyncio.get_event_loop()
+    
+    # Scan based on scope
+    if scope in ["all", "site", "lists"]:
+      current_step += 1
+      content_stats = scan_site_contents(ctx, output_folder, writer, logger, current_step, total_steps)
+      for sse in writer.drain_sse_queue(): yield sse
+      stats["lists_scanned"] = content_stats["lists_scanned"]
+    
+    if scope in ["all", "site"]:
+      current_step += 1
+      group_stats = await scan_site_groups(ctx, storage_path, output_folder, graph_client, writer, logger, current_step, total_steps)
+      for sse in writer.drain_sse_queue(): yield sse
+      stats["groups_found"] = group_stats["groups_found"]
+      stats["users_found"] = group_stats["users_found"]
+    
+    if scope in ["all", "items"]:
+      current_step += 1
+      item_stats = scan_broken_inheritance_items(ctx, storage_path, output_folder, graph_client, writer, logger, loop, current_step, total_steps)
+      for sse in writer.drain_sse_queue(): yield sse
+      stats["items_scanned"] = item_stats["items_scanned"]
+      stats["broken_inheritance"] = item_stats["broken_inheritance"]
+    
+    # Final step: Create report archive
+    current_step += 1
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    yield writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Creating report archive...")
+    
+    # Import here to avoid circular dependency
+    from routers_v2.common_report_functions_v2 import create_report
+    
+    # Read CSV files from output folder
+    files = []
+    for csv_file in os.listdir(output_folder):
+      if csv_file.endswith(".csv"):
+        file_path = os.path.join(output_folder, csv_file)
+        with open(file_path, "rb") as f:
+          files.append((csv_file, f.read()))
+    
+    # Generate filename with timestamp
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"{timestamp}_[security_scan]_[{site_id}]"
+    
+    report_id = create_report(
+      report_type="site_scan",
+      filename=filename,
+      files=files,
+      metadata={
+        "title": f"Security Scan: {site_id}",
+        "type": "site_scan",
+        "ok": True,
+        "error": "",
+        "site_id": site_id,
+        "site_url": site_url,
+        "scope": scope,
+        "include_subsites": include_subsites,
+        "stats": stats,
+        "scanned_utc": datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
+      },
+      logger=logger
+    )
+    report_path = report_id
+    
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    yield writer.emit_log(f"[{ts}]   OK. Report created report_path='{report_path}'")
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    yield writer.emit_log(f"[{ts}] Scan complete. {stats['groups_found']} groups, {stats['users_found']} users, {stats['broken_inheritance']} items with broken inheritance.")
+    
+    # Return stats for end event
+    writer._step_result = {
+      "report_path": report_path,
+      "stats": stats
+    }
+    
+  except Exception as e:
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    yield writer.emit_log(f"[{ts}] ERROR: Security scan failed -> {e}")
+    raise
+  finally:
+    # Cleanup temp folder
+    import shutil
+    if os.path.exists(output_folder):
+      shutil.rmtree(output_folder, ignore_errors=True)
+
+# ----------------------------------------- END: Main Scanner -----------------------------------------------------------------
