@@ -106,6 +106,12 @@ A FastAPI-based middleware application that bridges SharePoint content with Open
 **OpenAI proxy** - Replicates behavior of a number of OpenAI API endpoints
 - Allows porting of applications to a security-controlled environment where Open AI or Azure OpenAI backends must not be exposed directly
 
+**Site** - SharePoint site registered with the middleware for security scanning and file operations
+- Storage: `PERSISTENT_STORAGE_PATH/sites/{site_id}/site.json`
+- Tracks scan results and links to reports
+- Schema: See "Domain object schemas" section below
+- Specification: See `_V2_SPEC_SITES.md`, `_V2_SPEC_SITES_UI.md`, `_V2_SPEC_SITES_SECURITY_SCAN.md`
+
 **Report** - Timestamped zip archive of operation results for auditing and debugging
 - Created by internal endpoint functions (no create endpoint exposed)
 - Contains `report.json` with mandatory fields: `report_id`, `title`, `type`, `created_utc`, `ok`, `error`, `files`
@@ -154,6 +160,29 @@ Path: `PERSISTENT_STORAGE_PATH/domains/{domain_id}/domain.json`
 - `site_url` - full SharePoint site URL
 - `list_name` - name of the SharePoint list
 - `filter` - optional OData filter expression
+
+**Site (`site.json`)**
+
+Note: `site_id` is not stored in the JSON file. It is derived from the containing folder name at runtime.
+Path: `PERSISTENT_STORAGE_PATH/sites/{site_id}/site.json`
+
+```json
+{
+  "name": "AI Search Test 01",
+  "site_url": "https://contoso.sharepoint.com/sites/AiSearchTest01",
+  "file_scan_result": "",
+  "security_scan_result": "4 groups, 8 users, 11 individual permissions",
+  "last_security_scan_report_id": "site_scans/2026-02-03_23-21-43_[security_scan]_[AiSearchTest01]",
+  "last_security_scan_date": "2026-02-03T23:21:43.000000+00:00"
+}
+```
+
+- `name` - display name for the site
+- `site_url` - full SharePoint site URL (trailing slash removed on save)
+- `file_scan_result` - result summary of last file scan (read-only in UI)
+- `security_scan_result` - result summary of last security scan (read-only in UI)
+- `last_security_scan_report_id` - report ID of last security scan (for linking to report)
+- `last_security_scan_date` - ISO 8601 timestamp of last security scan
 
 **Job Metadata (returned in `start_json` and `end_json` events)**
 
@@ -253,8 +282,9 @@ Version 2 routers (as specified in this document):
 - inventory router - implements everything under `/v2/inventory/`
 - crawler router - implements everything under `/v2/crawler/`
 - domains router - implements everything under `/v2/domains/`
+- sites router - implements everything under `/v2/sites/`
 - jobs router - implements everything under `/v2/jobs/`
-
+- reports router - implements everything under `/v2/reports/`
 
 ### Action-Suffixed syntax uses explicit action names
 
@@ -896,6 +926,27 @@ Create, Update, Delete operations usually support the `format=stream` query para
   - Only supports `format=stream`
   - Tests: error cases, create, create with sources, update, rename (ID change), delete
   - Result: `{ok, error, data: {passed, failed, passed_tests, failed_tests}}`
+
+**Sites**
+- L(jhu)C(jh)G(jh)U(jh)D(jh): `/v2/sites` - SharePoint sites registered with the middleware
+  - Exception: no `dry_run` flag needed here
+  - `PUT /v2/sites/update?site_id={id}` supports rename via `site_id` in body (per DD-E014)
+  - `file_scan_result` and `security_scan_result` fields are read-only (not accepted via create/update)
+- X(s): `/v2/sites/selftest` - Self-test for sites CRUD operations
+  - Only supports `format=stream`
+  - Tests: error cases, create, get, update, rename (ID change), delete
+  - Result: `{ok, error, data: {passed, failed, passed_tests, failed_tests}}`
+- L(s): `/v2/sites/security_scan?site_id={id}&scope={scope}&include_subsites={bool}&delete_caches={bool}` - Security scan
+  - `site_id` - site to scan (required)
+  - `scope=all` (default) - scan groups + broken inheritance items
+  - `scope=site` - scan site groups only
+  - `scope=lists` - scan list/library structure only
+  - `scope=items` - scan broken inheritance items only
+  - `include_subsites=false` (default) - scan only the main site
+  - `delete_caches=false` (default) - use cached Entra ID group members
+  - Creates report archive after completion (type: `site_scan`)
+  - Updates site with scan result summary and report link
+  - Specification: See `_V2_SPEC_SITES_SECURITY_SCAN.md`
 
 **Crawler**
 - L(u): `/v2/crawler` - UI for crawling SharePoint sites and see current status
