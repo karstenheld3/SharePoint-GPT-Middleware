@@ -421,8 +421,8 @@ async def sites_root(request: Request):
             "confirm_message": "Delete site '{itemId}'?",
             "class": "btn-small btn-delete"
           },
-          {"text": "File Scan", "onclick": "showNotImplemented('File Scan')", "class": "btn-small btn-disabled"},
-          {"text": "Security Scan", "onclick": "showNotImplemented('Security Scan')", "class": "btn-small btn-disabled"}
+          {"text": "File Scan", "onclick": "showNotImplemented(\"File Scan\")", "class": "btn-small btn-disabled"},
+          {"text": "Security Scan", "onclick": "showNotImplemented(\"Security Scan\")", "class": "btn-small btn-disabled"}
         ]
       }
     ]
