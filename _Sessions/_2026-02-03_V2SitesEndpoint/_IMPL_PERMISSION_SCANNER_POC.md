@@ -23,7 +23,10 @@
 - Site URL from `CRAWLER_SELFTEST_SHAREPOINT_SITE` env var
 - All scripts standalone executable with `python script.py`
 - Import path requires `sys.path.insert(0, src_folder)` for relative imports
-- **`skip()` is IGNORED** by SharePoint for list items - use `filter(f"ID gt {last_id}")` instead [TESTED]
+- **`skip()` is IGNORED** by SharePoint for list items - use `filter(f"ID gt {last_id}")` instead [VERIFIED]
+  - External source: `_INFO_SHAREPOINT_LISTITEM.md [SPAPI-IN07]` confirms `$skip` not supported
+- **5,000 item view threshold** - queries without indexed columns fail [VERIFIED]
+  - ID column is always indexed, so `ID gt {last_id}` is safe
 - **`execute_batch()` does NOT work** for file uploads - use sequential `execute_query()` [TESTED]
 
 ## Table of Contents
@@ -313,6 +316,11 @@ def main():
 - [x] **PSCP-IP01-VC-15**: 01A_delete runs successfully
 
 ## 7. Document History
+
+**[2026-02-03 14:20]**
+- Added: External source reference `_INFO_SHAREPOINT_LISTITEM.md [SPAPI-IN07]` confirming $skip limitation
+- Added: 5,000 item view threshold with indexed column note
+- Changed: `[TESTED]` → `[VERIFIED]` for $skip limitation (external confirmation)
 
 **[2026-02-03 14:15]**
 - Synced: Implementation findings from code execution

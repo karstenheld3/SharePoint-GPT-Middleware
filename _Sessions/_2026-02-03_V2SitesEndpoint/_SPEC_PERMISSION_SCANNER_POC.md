@@ -23,7 +23,10 @@
 - Use `connect_to_site_using_client_id_and_certificate()` from `common_sharepoint_functions_v2.py`
 - Test with `Sites.Selected` first; document if upgrade to `Sites.FullControl.All` needed
 - All scripts must be standalone executable with `python script.py`
-- **`$skip` is NOT supported** for SharePoint list items - use `$skiptoken` for pagination [TESTED]
+- **`$skip` is NOT supported** for SharePoint list items - use `$skiptoken` for pagination [VERIFIED]
+  - External source: `_INFO_SHAREPOINT_LISTITEM.md [SPAPI-IN07]` confirms this limitation
+- **5,000 item view threshold** - queries without indexed columns fail on large lists [VERIFIED]
+  - Use `$filter` on indexed columns only (ID is always indexed)
 - **Throttling**: Production implementation must handle Retry-After header [ASSUMED]
 
 ## Table of Contents
@@ -367,6 +370,11 @@ Create `_POC_PERMISSION_SCANNER_RESULTS.md` after running tests with:
 - Recommendations for implementation
 
 ## 9. Document History
+
+**[2026-02-03 14:20]**
+- Added: External source reference `_INFO_SHAREPOINT_LISTITEM.md [SPAPI-IN07]` confirming $skip limitation
+- Added: 5,000 item view threshold warning with indexed column requirement
+- Changed: `[TESTED]` → `[VERIFIED]` for $skip limitation (external confirmation)
 
 **[2026-02-03 14:05]**
 - Added: `$skip` limitation to MUST-NOT-FORGET (SharePoint ignores for list items) [TESTED]

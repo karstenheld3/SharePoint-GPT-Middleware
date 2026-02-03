@@ -28,28 +28,31 @@ The Permission Scanner POC validated that Office365-REST-Python-Client supports 
 
 ### Performance (02B) - POC_PermissionTest_6000
 
-- **PERF-01: Full Enumeration** - PASS: 6000 items in 17.5s (2 pages) using `ID > last_id` filter [TESTED]
-- **PERF-02: Bulk vs Naive** - PASS: 52x speedup (0.5s bulk vs 24s naive for 100 items) [TESTED]
-- **PERF-03: Batched RoleAssignments** - PASS: 3.4x speedup (0.8s batch vs 2.7s sequential) [TESTED]
-- **PERF-04: Pagination** - PASS: 6000 unique items in 1.98s using `ID > last_id` filter [TESTED]
+- **PERF-01: Full Enumeration** - PASS: 6000 items in ~20s (2 pages) using `ID > last_id` filter [TESTED]
+- **PERF-02: Bulk vs Naive** - PASS: ~50x speedup (0.5s bulk vs 27s naive for 100 items) [TESTED]
+- **PERF-03: Batched RoleAssignments** - PASS: ~2x speedup (1.6s batch vs 3.3s sequential) [TESTED]
+- **PERF-04: Pagination** - PASS: 6000 unique items in ~1.7s using `ID > last_id` filter [TESTED]
 
 **Summary**: 4 PASS, 0 FAIL
 
 **Key Performance Findings**:
-- `top(5000)` works correctly, ~1.5s per 5000 items
+- `top(5000)` works correctly, ~1-4s per 5000 items (varies by network)
 - `skip()` is **ignored** by SharePoint - use `$filter` with `ID gt {last_id}` instead [TESTED]
 - **Workaround works**: `ID > last_id` filter retrieves all 6000 items correctly
-- Bulk `$select` is 52x faster than per-item fetches
-- `execute_batch()` is 3.4x faster than sequential `execute_query()`
+- Bulk `$select` is ~50x faster than per-item fetches
+- `execute_batch()` is ~2x faster than sequential `execute_query()`
 
 **Pagination Recommendation**: Use list view threshold (5000 items max) or implement server-side filtering instead of `skip()`. For libraries >5000 items, use indexed columns with `$filter`.
 
 ### Critical Finding: `$skip` Not Supported [VERIFIED]
 
-**Research confirmed** (Microsoft documentation, Stack Overflow):
+**Research confirmed** (Microsoft documentation, Stack Overflow, internal docs):
 - SharePoint REST API **ignores** `$skip` for list items
 - Only works for "collections" (like list of lists), not list items
 - This is documented behavior, not a bug
+- External source: `_INFO_SHAREPOINT_LISTITEM.md [SPAPI-IN07]` confirms limitation
+- **5,000 item threshold**: Queries without indexed columns fail on large lists
+  - ID column is always indexed, so `ID gt {last_id}` filter is safe
 
 **Working pagination method** (tested in POC):
 ```python
@@ -119,9 +122,10 @@ No permission upgrade needed.
 2. **Use `$expand` for RoleAssignments** to get permissions in single call
 3. **Use `execute_batch()`** for multiple queries to reduce round-trips
 4. **Implement Python-side filtering** since `$filter` on `HasUniqueRoleAssignments` may not work
-5. **Use `$skiptoken` for pagination** - `skip()` is ignored by SharePoint [TESTED]
+5. **Use `$skiptoken` or `ID gt {last_id}` for pagination** - `skip()` is ignored [VERIFIED]
 6. **Implement throttling retry** with Retry-After header support
-7. **Check for `odata.nextLink`** in responses for automatic pagination
+7. **Check for `odata.nextLink`** (or `__next` in verbose OData) for automatic pagination
+8. **Use indexed columns for $filter** on large lists (>5000 items) - ID is always indexed
 
 ## Files Created
 
@@ -146,6 +150,11 @@ src/pocs/permission_scanner/
 4. Implement CSV output matching PowerShell scanner format
 
 ## Document History
+
+**[2026-02-03 14:20]**
+- Added: External source reference `_INFO_SHAREPOINT_LISTITEM.md [SPAPI-IN07]`
+- Added: 5,000 item threshold and indexed column requirement
+- Added: Recommendation #8 for indexed columns on large lists
 
 **[2026-02-03 14:05]**
 - Added: Critical Finding section explaining `$skip` not supported (verified via research)

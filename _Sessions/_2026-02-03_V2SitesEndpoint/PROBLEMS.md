@@ -4,39 +4,30 @@
 
 ## Open
 
-### SITE-PR-001: Define site.json schema
-
-- **Status**: Open
-- **Priority**: High
-- **Description**: Define the complete schema for site.json including all fields
-- **Fields identified**:
-  - `name` - Site display name (required)
-  - `site_url` - SharePoint site URL (required, trailing slash stripped)
-  - `file_scan_result` - Result of file scan operation (read-only)
-  - `security_scan_result` - Result of security scan operation (read-only)
-- **Note**: `site_id` derived from folder name, not stored in JSON
-
-### SITE-PR-002: Integrate sites router into app.py
-
-- **Status**: Open
-- **Priority**: High
-- **Description**: Determine how to register the new sites router in the FastAPI application
-
-### SITE-PR-003: Add sites folder to hardcoded_config.py
-
-- **Status**: Open
-- **Priority**: Medium
-- **Description**: Add PERSISTENT_STORAGE_PATH_SITES_SUBFOLDER constant
-
-### SITE-PR-004: Implement placeholder scan buttons
-
-- **Status**: Open
-- **Priority**: Low
-- **Description**: [File Scan] and [Security Scan] buttons should be grey/disabled placeholders for now
+(None - all resolved)
 
 ## Resolved
 
-(None yet)
+### SITE-PR-001: Define site.json schema
+
+- **Status**: Resolved (2026-02-03)
+- **Resolution**: `SiteConfig` dataclass in `sites.py:44-50` defines schema
+- **Fields**: `site_id`, `name`, `site_url`, `file_scan_result`, `security_scan_result`
+
+### SITE-PR-002: Integrate sites router into app.py
+
+- **Status**: Resolved (2026-02-03)
+- **Resolution**: Router included at `app.py:515-516` with `set_config()`
+
+### SITE-PR-003: Add sites folder to hardcoded_config.py
+
+- **Status**: Resolved (2026-02-03)
+- **Resolution**: `PERSISTENT_STORAGE_PATH_SITES_SUBFOLDER="sites"` at line 36
+
+### SITE-PR-004: Implement placeholder scan buttons
+
+- **Status**: Resolved (2026-02-03)
+- **Resolution**: Sites router implemented with full UI including scan button placeholders
 
 ## Deferred
 

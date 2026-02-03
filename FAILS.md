@@ -75,8 +75,9 @@
 
 **Correct approach**:
 - Use `$skiptoken=Paged=TRUE&p_ID=<last_item_id>` format
-- Follow `odata.nextLink` in response for automatic pagination
-- Or use library's built-in paging methods if available
+- Follow `odata.nextLink` (or `__next` in verbose OData) in response for automatic pagination
+- Or use `$filter` with `ID gt {last_id}` (ID is always indexed)
+- External confirmation: `_INFO_SHAREPOINT_LISTITEM.md [SPAPI-IN07]` documents this limitation
 
 - **Evidence**: PERF-04 returned 5000 unique IDs when fetching 10000 items (5000+5000)
 - **Root cause**: SharePoint REST API does not implement `$skip` for list items per Microsoft documentation
@@ -87,6 +88,10 @@
 (None yet - see Active Issues for resolved entries)
 
 ## Document History
+
+**[2026-02-03 14:20]**
+- Added: External source reference `_INFO_SHAREPOINT_LISTITEM.md [SPAPI-IN07]` to SPGPT-FL-002
+- Added: `ID gt {last_id}` as additional workaround option
 
 **[2026-02-03 14:00]**
 - Added SPGPT-FL-002: SharePoint REST API $skip not supported for list items
