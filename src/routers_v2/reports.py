@@ -131,14 +131,18 @@ function renderReportRow(report) {{
 // ============================================
 async function showReportResult(reportId) {{
   try {{
-    const response = await fetch(`{router_prefix}/{router_name}/get?report_id=${{encodeURIComponent(reportId)}}&format=json`);
+    const endpointUrl = `{router_prefix}/{router_name}/get?report_id=${{encodeURIComponent(reportId)}}&format=json`;
+    const response = await fetch(endpointUrl);
     const result = await response.json();
     if (result.ok) {{
       const data = result.data;
       const status = data.ok === null || data.ok === undefined ? '-' : (data.ok ? 'OK' : 'FAIL');
       const body = document.querySelector('#modal .modal-body');
       body.innerHTML = `
-        <div class="modal-header"><h3>Result (${{status}}) - '${{escapeHtml(data.title || reportId)}}'</h3></div>
+        <div class="modal-header">
+          <h3>Result (${{status}}) - '${{escapeHtml(data.title || reportId)}}'</h3>
+          <div style="font-size: 0.8em; color: #666; margin-top: 4px;"><a href="${{endpointUrl}}" target="_blank" style="color: #0066cc;">${{endpointUrl}}</a></div>
+        </div>
         <div class="modal-scroll">
           <pre class="result-output">${{escapeHtml(JSON.stringify(data, null, 2))}}</pre>
         </div>
