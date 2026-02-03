@@ -644,7 +644,33 @@ function encodeId(id) {
 - **V2RP-IP02-TST-25**: UI empty state - Shows 'No reports found'
 - **V2RP-IP02-TST-26**: UI row styling - Failed reports have red color
 
+## Cross-Router Integration
+
+### Sites Router Integration
+
+The sites router uses the reports endpoint to display security scan results:
+
+1. **Storage**: `site.json` stores `last_security_scan_report_id` after each security scan
+2. **UI Links**: Sites table Security column renders:
+   - "View Results" -> `/v2/reports/get?report_id=...&format=html`
+   - "Download Zip" -> `/v2/reports/download?report_id=...`
+
+**Implementation in sites.py:**
+```javascript
+function renderSecurityCell(item) {
+  const summary = item.security_scan_result || '-';
+  const reportId = item.last_security_scan_report_id || '';
+  if (!reportId) return summary;
+  const viewUrl = '/v2/reports/get?report_id=' + encodeURIComponent(reportId) + '&format=html';
+  const downloadUrl = '/v2/reports/download?report_id=' + encodeURIComponent(reportId);
+  return summary + '<br><a href="' + viewUrl + '">View Results</a> | <a href="' + downloadUrl + '">Download Zip</a>';
+}
+```
+
 ## Spec Changes
+
+**[2026-02-03 23:15]**
+- Added: Cross-Router Integration section documenting sites router usage
 
 **[2024-12-30 10:50]**
 - Added: Plan ID V2RP-IP02 to header block

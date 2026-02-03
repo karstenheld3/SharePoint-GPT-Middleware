@@ -117,11 +117,8 @@ Shows report.json content in formatted view (same pattern as Jobs UI Result dial
 ```
 +---------------------------------------------------------------+
 | Result (OK) - 'TEST01 full crawl'                        [x]  |
+| /v2/reports/get?report_id=crawls%2F...&format=json            |
 +---------------------------------------------------------------+
-| Report ID:  crawls/2024-01-15_14-25-00_TEST01_all_full        |
-| Type:       crawl                                             |
-| Created:    2024-01-15 14:30:00                               |
-|                                                               |
 | +-----------------------------------------------------------+ |
 | | {                                                         | |
 | |   "report_id": "crawls/2024-01-15...",                    | |
@@ -134,6 +131,11 @@ Shows report.json content in formatted view (same pattern as Jobs UI Result dial
 |                                                         [OK]  |
 +---------------------------------------------------------------+
 ```
+
+**Modal header elements:**
+- Title: `Result (OK|FAIL) - '[report title]'`
+- Endpoint URL: clickable link to `/v2/reports/get?report_id=...&format=json`
+- Link opens in new tab for direct API access
 
 ### Empty State
 

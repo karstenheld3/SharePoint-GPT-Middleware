@@ -470,3 +470,22 @@ if report.ok is None or report not finished: display "-"
 elif report.ok == true: display "OK"
 else: display "FAIL"
 ```
+
+### Cross-Router Report Links
+
+Other routers can link to report results using the `/v2/reports/get` endpoint:
+
+**View Results (HTML page):**
+```
+/v2/reports/get?report_id={report_id}&format=html
+```
+
+**Download ZIP:**
+```
+/v2/reports/download?report_id={report_id}
+```
+
+**Example: Sites router security scan result links**
+- Sites router stores `last_security_scan_report_id` in site.json
+- UI renders "View Results" link: `/v2/reports/get?report_id=...&format=html`
+- UI renders "Download Zip" link: `/v2/reports/download?report_id=...`
