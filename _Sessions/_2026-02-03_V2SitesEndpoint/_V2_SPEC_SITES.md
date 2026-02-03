@@ -55,6 +55,8 @@ Note: `site_id` is NOT stored in the JSON file. It is derived from the containin
 - `site_url` - SharePoint site URL (required, string, trailing slash stripped)
 - `file_scan_result` - Result of file scan operation (optional, string, read-only in UI)
 - `security_scan_result` - Result of security scan operation (optional, string, read-only in UI)
+- `last_security_scan_report_id` - Report ID for last security scan (optional, string, read-only)
+- `last_security_scan_date` - UTC timestamp of last security scan in "YYYY-MM-DD HH:MM" format (optional, string, read-only)
 
 **Site** (as returned in API responses)
 
@@ -63,6 +65,8 @@ Note: `site_id` is NOT stored in the JSON file. It is derived from the containin
 - `site_url` - SharePoint site URL (string)
 - `file_scan_result` - Scan result or empty string (string)
 - `security_scan_result` - Scan result or empty string (string)
+- `last_security_scan_report_id` - Report ID or empty string (string)
+- `last_security_scan_date` - Scan date or empty string (string)
 
 ## Storage Structure
 
@@ -88,7 +92,9 @@ PERSISTENT_STORAGE_PATH/
   "name": "Marketing Site",
   "site_url": "https://contoso.sharepoint.com/sites/Marketing",
   "file_scan_result": "",
-  "security_scan_result": ""
+  "security_scan_result": "",
+  "last_security_scan_report_id": "",
+  "last_security_scan_date": ""
 }
 ```
 
@@ -99,6 +105,8 @@ PERSISTENT_STORAGE_PATH/
 - `site_id` - Must not start with `_` (reserved for internal folders)
 - `file_scan_result` - Optional, defaults to empty string
 - `security_scan_result` - Optional, defaults to empty string
+- `last_security_scan_report_id` - Optional, defaults to empty string, set by security scan
+- `last_security_scan_date` - Optional, defaults to empty string, format "YYYY-MM-DD HH:MM" UTC
 
 ## Endpoint Specification
 

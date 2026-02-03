@@ -74,13 +74,13 @@ main page: /v2/sites?format=ui
 |                                                                                                                                       |
 | [New Site] [Run Selftest]                                                                                                             |
 |                                                                                                                                       |
-| +----------+----------------+----------------------------------------+-------+----------+---------------------------------------------+
-| | Site ID  | Name           | Site URL                               | Files | Security | Actions                                     |
-| +----------+----------------+----------------------------------------+-------+----------+---------------------------------------------+
-| | site01   | Marketing Site | https://contoso.sharepoint.com/...     | -     | -        | [Edit] [Delete] [File Scan] [Security Scan] |
-| | site02   | HR Portal      | https://contoso.sharepoint.com/...     | -     | -        | [Edit] [Delete] [File Scan] [Security Scan] |
-| | site03   | Engineering    | https://contoso.sharepoint.com/...     | -     | -        | [Edit] [Delete] [File Scan] [Security Scan] |
-| +----------+----------------+----------------------------------------+-------+----------+---------------------------------------------+
+| +----------+----------------+----------------------------------------+----------+-------+---------------------------------------------+
+| | Site ID  | Name           | Site URL                               | Security | Files | Actions                                     |
+| +----------+----------------+----------------------------------------+----------+-------+---------------------------------------------+
+| | site01   | Marketing Site | https://contoso.sharepoint.com/...     | -        | -     | [Edit] [Delete] [Security Scan] [File Scan] |
+| | site02   | HR Portal      | https://contoso.sharepoint.com/...     | -        | -     | [Edit] [Delete] [Security Scan] [File Scan] |
+| | site03   | Engineering    | https://contoso.sharepoint.com/...     | -        | -     | [Edit] [Delete] [Security Scan] [File Scan] |
+| +----------+----------------+----------------------------------------+----------+-------+---------------------------------------------+
 |                                                                                                                                       |
 +---------------------------------------------------------------------------------------------------------------------------------------+
 
@@ -136,7 +136,7 @@ Modal (Edit Site):
 ## Functional Requirements
 
 **SITE-UI-FR-01: Site List Display**
-- Display all sites in a table with columns: Site ID, Name, Site URL, Files, Security, Actions
+- Display all sites in a table with columns: Site ID, Name, Site URL, Security, Files, Actions
 - Show site count in page header (e.g., "Sites (3)")
 - Empty state: "No sites found." message when list is empty
 
@@ -167,10 +167,25 @@ Modal (Edit Site):
 - Success: reload list, show success toast
 - Error: show error toast
 
-**SITE-UI-FR-05: Scan Buttons (Placeholder)**
+**SITE-UI-FR-05: Scan Buttons**
 - [File Scan] button - grey/disabled appearance, shows toast "File Scan not yet implemented"
-- [Security Scan] button - grey/disabled appearance, shows toast "Security Scan not yet implemented"
-- Both buttons use `btn-disabled` class for visual indication
+- [Security Scan] button - opens security scan dialog with scope and options
+
+**SITE-UI-FR-07: Security Column Display**
+- If no security scan performed: shows "-"
+- If security scan performed, Security column displays:
+  - Line 1: Summary stats (e.g., "7 groups, 10 users, 2 subsites, 13 individual permissions")
+  - Line 2: `YYYY-MM-DD HH:MM - View Results | Download Zip`
+- "View Results" link opens modal with full report.json content (via `/v2/reports/get?format=json`)
+- "Download Zip" link downloads the report archive (via `/v2/reports/download`)
+- Date format: UTC timestamp in "YYYY-MM-DD HH:MM" format
+
+**SITE-UI-FR-08: View Results Modal**
+- Modal header displays: `Result (OK|FAIL) - '[title]'`
+- Below title: clickable endpoint URL link (e.g., `/v2/reports/get?report_id=...&format=json`)
+- Link opens in new tab for direct API access
+- Modal body: formatted JSON of full report.json content
+- Modal footer: OK button to close
 
 **SITE-UI-FR-06: Selftest**
 - [Run Selftest] button in toolbar
