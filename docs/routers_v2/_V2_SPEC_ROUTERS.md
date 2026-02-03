@@ -1,6 +1,8 @@
-# Routers Technical Specification Version 2
+# SPEC: Routers Technical Specification Version 2
 
+**Doc ID**: ROUT-SP01
 **Goal**: Specify V2 routers with consistent endpoint patterns, interactive UI, and streaming job support for the SharePoint-GPT-Middleware.
+**Timeline**: Created 2024-12-17, Updated 3 times (2024-12-17 - 2026-02-04)
 
 **Depends on:**
 - `hardcoded_config.py` for `PERSISTENT_STORAGE_LOG_EVENTS_PER_WRITE` and path constants
@@ -13,33 +15,33 @@
 
 ## Table of Contents
 
-1. Scenario
-2. Context
-3. Domain Objects
-4. Endpoint Architecture and Design
-   - Domain Object Schemas
-   - Endpoint Design Decisions
-   - Action-Suffixed Syntax
-   - Query Params Syntax
-   - Shorthand Notation
-   - Specification of Endpoints
-   - Endpoint Return Formats
-5. Crawling Process
-   - Local Files
-   - Map Files
-   - Source-Specific Processing
-   - Crawling Process Steps
-6. Logging Specification
-   - Functional Requirements
-   - Implementation Guarantees
-   - MiddlewareLogger Class
-   - Log Output Formats
-7. Job Streaming Specification
-   - Functional Requirements
-   - Implementation Guarantees
-   - StreamingJobWriter
-   - Examples
-8. Spec Changes
+1. [Scenario](#scenario)
+2. [Context](#context)
+3. [Domain Objects](#domain-objects)
+4. [Endpoint Architecture and Design](#endpoint-architecture-and-design)
+   - [Domain Object Schemas](#domain-object-schemas)
+   - [Endpoint Design Decisions](#endpoint-design-decisions)
+   - [Action-Suffixed Syntax](#action-suffixed-syntax-uses-explicit-action-names)
+   - [Query Params Syntax](#query-params-syntax-uses-explicit-query-params-for-ids-and-data-format)
+   - [Shorthand Notation](#shorthand-specification-notation)
+   - [Specification of Endpoints](#specification-of-endpoints)
+   - [Endpoint Return Formats](#endpoint-return-formats)
+5. [Crawling Process](#crawling-process)
+   - [Local Files](#local-files)
+   - [Map Files](#map-files)
+   - [Source-Specific Processing](#source-specific-processing)
+   - [Crawling Process Steps](#crawling-process-steps)
+6. [Logging Specification](#logging-specification)
+   - [Functional Requirements](#fr-logging)
+   - [Implementation Guarantees](#ig-logging)
+   - [MiddlewareLogger Class](#middlewarelogger-class)
+   - [Log Output Formats](#log-output-formats)
+7. [Job Streaming Specification](#job-streaming-specification)
+   - [Functional Requirements](#fr-streaming)
+   - [Implementation Guarantees](#ig-streaming)
+   - [StreamingJobWriter](#streamingjobwriter)
+   - [Examples](#examples)
+8. [Document History](#document-history)
 
 This document describes the design and implementation of the **second generation** routers used for crawling, access to domain objects, and long-running job management. First generation routers and endpoints are out of scope and should remain untouched to ensure backwards compatibility.
 
@@ -82,7 +84,7 @@ A FastAPI-based middleware application that bridges SharePoint content with Open
   - `files_map.csv` - caches local storage, contains file download and processing status
   - `vectorstore_map.csv`- caches vector store data, contains everything in other map files + upload and embedding status
 
-**Domain** - Knownledge domain to be used for RAG use cases
+**Domain** - Knowledge domain to be used for RAG use cases
 - To be crawled (downloaded and embedded) from SharePoint into a single vector store
 - Maps to exactly one vector store (1:1 relation)
 - Supports many sources in different SharePoint sites and SharePoint filters
@@ -1610,7 +1612,10 @@ async def demorouter_create(request: Request):
       source_url=str(request.url),
       router_prefix=router_prefix
     )
-    stream_logger = MiddlewareLogger.create(stream_job_writer=writer)
+    stream_logger = MiddlewareLogger.create(
+      log_inner_function_headers_and_footers=False,
+      stream_job_writer=writer
+    )
     stream_logger.log_function_header("demorouter_create")
     
     async def stream_create():
@@ -1690,6 +1695,8 @@ class StreamingJobWriter:
     Create job file and initialize writer.
     - router_prefix: Injected from app.py (e.g., '/v2') for constructing monitor_url
     - Generates unique job_id (jb_[NUMBER])
+    - Creates job file: [TIMESTAMP]_[[ACTION]]_[[JB_ID]]_[[OBJECT_ID]].running
+    - Retries with new job_id on collision (V2JB-FR-02)
     - Creates job file: [TIMESTAMP]_[[ACTION]]_[[JB_ID]]_[[OBJECT_ID]].running
     - Retries with new job_id on collision (V2JB-FR-02)
     """
@@ -1780,11 +1787,18 @@ def delete_job(persistent_storage_path: str, job_id: str) -> bool:
 def force_cancel_job(persistent_storage_path: str, job_id: str) -> bool:
   """Force cancel stalled job by renaming .running -> .cancelled. Cleans up control files."""
 
-### Spec Changes
+## Document History
+
+**[2026-02-04 00:34]**
+- Added: Site domain object and schema (site.json)
+- Added: Sites router `/v2/sites/` with CRUD + selftest + security_scan endpoints
+- Added: Reports router to V2 router list
+- Changed: ToC now has anchor links per SPEC template
+- Changed: Section renamed from "Spec Changes" to "Document History"
 
 **[2025-12-27 15:20]**
 - Added: `X(s): /v2/jobs/selftest` endpoint - self-test for jobs router operations (46 tests)
 
 **[2024-12-17 12:10]**
 - Added: "Scenario" section with Problem/Solution/What we don't want
-- Added: Spec Changes section
+- Initial specification created
