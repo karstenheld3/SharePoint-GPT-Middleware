@@ -17,7 +17,7 @@
 
 - Output CSV files MUST match PowerShell scanner format exactly (column order, escaping, UTF-8 no BOM)
 - Use `ID gt {last_id}` for pagination, NOT `skip()` (SharePoint ignores skip)
-- Azure AD group resolution has max nesting level (default: 5)
+- Entra ID group resolution has max nesting level (default: 5)
 - Filter out "Limited Access" permission level by default
 - Streaming endpoint with SSE progress updates
 
@@ -149,7 +149,7 @@ A **ScanResult** is stored as a report archive following `_V2_SPEC_REPORTS.md`.
 - `Email` - Email address
 - `PermissionLevel` - Permission level(s), comma-separated
 - `ViaGroup` - Group name if access is via group
-- `ViaGroupId` - Group ID (SharePoint ID or Azure GUID)
+- `ViaGroupId` - Group ID (SharePoint ID or Entra ID GUID)
 - `ViaGroupType` - SharePointGroup, SecurityGroup, M365Group
 - `AssignmentType` - User, Group, SharingLink, Direct
 - `NestingLevel` - 0=direct, 1=via group, 2+=nested group
@@ -218,6 +218,7 @@ Follows `_V2_SPEC_ROUTERS.md` conventions:
 - `site_id` (required) - Site to scan
 - `scope` (optional) - `all` (default), `site`, `lists`, `items`
 - `include_subsites` (optional) - true/false, default: false
+- `delete_caches` (optional) - true/false, default: false. Deletes cached Entra ID group members before scan.
 
 **Job lifecycle:**
 1. Job created with `jb_*` ID, state=`running`
@@ -321,7 +322,7 @@ Report accessible via:
 
 **SCAN-FR-03: Site-Level Scanning**
 - Enumerate all SharePoint groups (Owners, Members, Visitors, custom)
-- Resolve group members including nested Azure AD groups
+- Resolve group members including nested Entra ID groups
 - Record direct user assignments at site level
 - Output to 02_SiteGroups.csv and 03_SiteUsers.csv
 
@@ -366,7 +367,7 @@ Report accessible via:
 
 **SCAN-DD-02:** Stream progress via SSE, not WebSocket. Rationale: Matches existing middleware patterns (crawler, selftest).
 
-**SCAN-DD-03:** Store results in site folder. Rationale: Associates scan results with site, enables future download feature.
+**SCAN-DD-03:** Store results as report archive per `_V2_SPEC_REPORTS.md`. Rationale: Consistent with other V2 routers, enables viewing/download via `/v2/reports`.
 
 **SCAN-DD-04:** Match PowerShell CSV format exactly. Rationale: Enables comparison, existing tooling compatibility, user familiarity.
 
@@ -374,17 +375,23 @@ Report accessible via:
 
 **SCAN-DD-06:** Default to not including subsites. Rationale: Subsite scanning can be very slow on large site collections.
 
+**SCAN-DD-07:** Cache Entra ID group members persistently across scans. Rationale: Tenant group memberships rarely change; caching avoids redundant Graph API calls and reduces throttling risk. Based on PowerShell scanner pattern from `_SPEC_SHAREPOINT_PERMISSION_INSIGHTS_SCANNER.md [SPAPI-SP01]`.
+
 ## 8. Implementation Guarantees
 
 **SCAN-IG-01:** CSV output is byte-for-byte compatible with PowerShell scanner format (same columns, order, escaping).
 
-**SCAN-IG-02:** All users with access are captured regardless of assignment path (direct, SP group, Azure group, nested).
+**SCAN-IG-02:** All users with access are captured regardless of assignment path (direct, SP group, Entra ID group, nested).
 
 **SCAN-IG-03:** Progress events sent at least every 5 seconds during long operations.
 
 **SCAN-IG-04:** Scan can be interrupted without corrupting partial output files.
 
-**SCAN-IG-05:** Azure AD group nesting resolved up to 5 levels to prevent infinite loops.
+**SCAN-IG-05:** Entra ID group nesting resolved up to 5 levels to prevent infinite loops.
+
+**SCAN-IG-06:** Honor SharePoint throttling: implement Retry-After header handling and exponential backoff on 429 responses.
+
+**SCAN-IG-07:** Group member caches persist across scanning sessions until explicitly deleted via `delete_caches=true`.
 
 ## 9. Key Mechanisms
 
@@ -422,9 +429,9 @@ while True:
 def resolve_group_members(group, nesting_level=1, parent_group=""):
     members = []
     for member in group.users:
-        if is_azure_ad_group(member):
+        if is_entra_id_group(member):
             # Recursive resolution
-            nested = resolve_azure_group(member.login_name, nesting_level + 1, group.title)
+            nested = resolve_entra_group(member.login_name, nesting_level + 1, group.title)
             members.extend(nested)
         else:
             members.append({
@@ -435,6 +442,35 @@ def resolve_group_members(group, nesting_level=1, parent_group=""):
             })
     return members
 ```
+
+### Group Member Caching
+
+**Storage:** `LOCAL_PERSISTENT_STORAGE_PATH/sites/_entra_group_cache/`
+
+One JSON file per Entra ID group, using group ID as filename.
+
+**Example:** `_entra_group_cache/3b7af3f4-c9d6-4118-bfe5-52a4b08e7c6b.json`
+
+**Cache file structure:**
+```json
+{
+  "group_id": "3b7af3f4-c9d6-4118-bfe5-52a4b08e7c6b",
+  "group_display_name": "NestedSecurityGroup01",
+  "group_type": "SecurityGroup",
+  "cached_utc": "2026-02-03T14:00:00Z",
+  "member_count": 5,
+  "members": [
+    {"login_name": "user1@contoso.com", "display_name": "User One", "email": "user1@contoso.com"},
+    {"login_name": "user2@contoso.com", "display_name": "User Two", "email": "user2@contoso.com"}
+  ]
+}
+```
+
+**Behavior:**
+- Entra ID groups cached by group ID (tenant-wide, persists across all scans)
+- SharePoint groups NOT cached (site-specific, resolved fresh each scan)
+- `delete_caches=true` deletes all files in `_entra_group_cache/` folder before scan
+- Cache lookup before Graph API call; cache miss triggers API call and stores result
 
 ## 10. Action Flow
 
@@ -452,18 +488,18 @@ Server-side:
 ├─> Connect to SharePoint site
 ├─> Create output folder
 │
-├─> If scan_site_level:
+├─> If scope in (all, site, lists, items):
 │   ├─> Load site groups (Owners, Members, Visitors, custom)
 │   ├─> For each group:
-│   │   ├─> Resolve members (recursive for Azure AD)
+│   │   ├─> Resolve members (recursive for Entra ID)
 │   │   └─> Write to 02_SiteGroups.csv, 03_SiteUsers.csv
 │   └─> Load direct role assignments
 │
-├─> If scan_lists:
+├─> If scope in (all, lists):
 │   ├─> Load lists (filter by template, exclude built-in)
 │   └─> Write to 01_SiteContents.csv
 │
-├─> If scan_items:
+├─> If scope in (all, items):
 │   ├─> For each list:
 │   │   ├─> Query items with HasUniqueRoleAssignments
 │   │   ├─> For each broken item:
@@ -484,7 +520,7 @@ Server-side:
 ### Request
 
 ```
-GET /v2/sites/security_scan?site_id=site01&scan_site_level=true&scan_lists=true&scan_items=true&include_subsites=false
+GET /v2/sites/security_scan?site_id=site01&scope=all&include_subsites=false
 ```
 
 ### SSE Response Stream
@@ -512,7 +548,7 @@ data: {"ok": true, "data": {"files": [...], "stats": {...}}}
 ## 12. User Actions
 
 - **Open Security Scan Dialog**: Click [Security Scan] button on site row
-- **Configure Scope**: Check/uncheck scope options in dialog
+- **Configure Scope**: Select scope from dropdown in dialog
 - **Start Scan**: Click [Start Scan] to begin scanning
 - **Monitor Progress**: View progress bar and step description
 - **Cancel Scan**: Click [Cancel] to abort (best-effort)
@@ -535,14 +571,16 @@ Modal (Security Scan):
 |        +------------------+                                   |
 |                                                               |
 | [ ] Include subsites                                          |
+| [ ] Delete cached Entra ID group members                      |
 |                                                               |
 | Endpoint Preview:                                             |
 | +-----------------------------------------------------------+ |
-| | /v2/sites/security_scan?site_id=site01&scope=all          | |
+| | /v2/sites/security_scan?site_id=site01&scope=all&...      | |
 | +-----------------------------------------------------------+ |
 |                                                               |
 |                                          [OK] [Cancel]        |
 +---------------------------------------------------------------+
+```
 
 Completion (shown in console log, link to report):
 ```
@@ -649,6 +687,31 @@ Id,Type,Url,LoginName,DisplayName,Email,PermissionLevel,SharedDateTime,SharedByD
 - Sharing links show in `SharedDateTime`, `SharedByDisplayName`, `SharedByLoginName`
 
 ## Document History
+
+**[2026-02-03 15:45]**
+- Changed: Cache folder renamed to `_entra_group_cache/` (underscore prefix)
+- Added: Rule in `_V2_SPEC_SITES.md` that folders starting with `_` are ignored by sites endpoints
+
+**[2026-02-03 15:33]**
+- Changed: Cache now uses one JSON file per Entra ID group (not single file)
+- Changed: Storage path to `LOCAL_PERSISTENT_STORAGE_PATH/sites/_entra_group_cache/`
+- Added: Metadata fields to cache JSON (group_display_name, group_type, member_count)
+- Changed: All "Azure AD" references renamed to "Entra ID" throughout
+- Changed: SharePoint groups NOT cached (resolved fresh each scan)
+
+**[2026-02-03 15:26]**
+- Added: `delete_caches` query param for clearing cached group members
+- Added: SCAN-DD-07 for persistent group member caching
+- Added: SCAN-IG-07 for cache persistence guarantee
+- Added: Group Member Caching section in Key Mechanisms
+- Changed: Dialog now includes "Delete cached Entra ID group members" checkbox
+
+**[2026-02-03 15:19]**
+- Fixed: Action flow now uses `scope in (all, site, lists, items)` instead of old booleans
+- Fixed: Request example uses `scope=all` param
+- Fixed: SCAN-DD-03 now references report archive storage
+- Fixed: User Actions uses "Select scope from dropdown"
+- Added: SCAN-IG-06 for SharePoint throttling handling
 
 **[2026-02-03 15:06]**
 - Changed: Consolidated 4 scope params into single `scope` param (matches crawler pattern)

@@ -66,6 +66,8 @@ def validate_site_id(site_id: str) -> tuple[bool, str]:
   """Validate site_id format. Returns (is_valid, error_message)."""
   if not site_id or not site_id.strip():
     return False, "Site ID is required."
+  if site_id.startswith('_'):
+    return False, "Site ID must not start with '_' (reserved for internal folders)"
   if not re.match(r'^[a-zA-Z0-9_-]+$', site_id):
     return False, "Site ID must match pattern [a-zA-Z0-9_-]+"
   return True, ""
@@ -117,13 +119,16 @@ def load_site(storage_path: str, site_id: str, logger=None) -> SiteConfig:
   )
 
 def load_all_sites(storage_path: str, logger=None) -> list[SiteConfig]:
-  """Load all sites from disk."""
+  """Load all sites from disk. Folders starting with '_' are ignored (internal storage)."""
   sites_folder = get_sites_folder_path(storage_path)
   if not os.path.exists(sites_folder):
     return []
   
   sites = []
   for site_id in os.listdir(sites_folder):
+    # Skip folders starting with '_' (reserved for internal storage like caches)
+    if site_id.startswith('_'):
+      continue
     site_folder = os.path.join(sites_folder, site_id)
     if os.path.isdir(site_folder):
       try:
@@ -831,8 +836,9 @@ async def sites_selftest(request: Request):
   stream_logger = MiddlewareLogger.create(stream_job_writer=writer)
   stream_logger.log_function_header("sites_selftest")
   
-  test_id = f"_test_{uuid.uuid4().hex[:8]}"
+  test_id = f"selftest_{uuid.uuid4().hex[:8]}"
   renamed_test_id = f"{test_id}_renamed"
+  underscore_folder_id = f"_internal_{uuid.uuid4().hex[:8]}"
   
   test_site_v1 = {"site_id": test_id, "name": "Test Site", "site_url": "https://test.sharepoint.com/sites/Test"}
   test_site_v2 = {"name": "Updated Site", "site_url": "https://test.sharepoint.com/sites/Updated"}
@@ -850,7 +856,7 @@ async def sites_selftest(request: Request):
     def next_test(description: str):
       nonlocal test_num
       test_num += 1
-      return log(f"[ {test_num} / 6 ] {description}")
+      return log(f"[ {test_num} / 9 ] {description}")
     
     def check(condition: bool, ok_msg: str, fail_msg: str):
       nonlocal ok_count, fail_count
@@ -926,6 +932,41 @@ async def sites_selftest(request: Request):
         r = await client.get(f"{base_url}{router_prefix}/{router_name}/get?site_id={renamed_test_id}&format=json")
         sse = check(r.status_code == 404, "Verify site deleted (404)", f"Expected 404, got: {r.status_code}")
         if sse: yield sse
+        
+        # Test 7: Create with underscore prefix should fail
+        sse = next_test("Creating site with underscore prefix (should fail)...")
+        if sse: yield sse
+        
+        underscore_site = {"site_id": "_invalid_site", "name": "Invalid", "site_url": "https://test.sharepoint.com"}
+        r = await client.post(create_url, json=underscore_site)
+        result = r.json()
+        sse = check(result.get("ok") == False and "must not start with '_'" in result.get("error", ""), "Reject underscore prefix site_id", f"Expected rejection, got: {result}")
+        if sse: yield sse
+        
+        # Test 8: Create underscore folder directly, verify not in list
+        sse = next_test("Verifying underscore folders ignored in list...")
+        if sse: yield sse
+        
+        # Create underscore folder directly on disk
+        storage_path = get_persistent_storage_path(request)
+        underscore_folder = get_site_folder_path(storage_path, underscore_folder_id)
+        os.makedirs(underscore_folder, exist_ok=True)
+        with open(os.path.join(underscore_folder, CRAWLER_HARDCODED_CONFIG.SITE_JSON), 'w') as f:
+          json.dump({"name": "Internal", "site_url": "https://internal.test"}, f)
+        
+        r = await client.get(f"{base_url}{router_prefix}/{router_name}?format=json")
+        sites_list = r.json().get("data", [])
+        site_ids = [s.get("site_id") for s in sites_list]
+        sse = check(underscore_folder_id not in site_ids, f"Underscore folder '{underscore_folder_id}' not in list", f"Found in list: {site_ids}")
+        if sse: yield sse
+        
+        # Test 9: Cleanup underscore folder
+        sse = next_test("Cleaning up underscore folder...")
+        if sse: yield sse
+        
+        shutil.rmtree(underscore_folder, ignore_errors=True)
+        sse = check(not os.path.exists(underscore_folder), "Underscore folder cleaned up", "Folder still exists")
+        if sse: yield sse
       
       # Summary
       sse = log(f"")
@@ -950,6 +991,10 @@ async def sites_selftest(request: Request):
         async with httpx.AsyncClient(timeout=10.0) as cleanup_client:
           await cleanup_client.delete(f"{base_url}{router_prefix}/{router_name}/delete?site_id={test_id}")
           await cleanup_client.delete(f"{base_url}{router_prefix}/{router_name}/delete?site_id={renamed_test_id}")
+        # Cleanup underscore folder if it exists
+        storage_path = get_persistent_storage_path(request)
+        underscore_folder = get_site_folder_path(storage_path, underscore_folder_id)
+        shutil.rmtree(underscore_folder, ignore_errors=True)
       except: pass
       writer.finalize()
   

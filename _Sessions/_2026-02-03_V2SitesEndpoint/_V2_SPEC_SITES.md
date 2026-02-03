@@ -73,8 +73,13 @@ PERSISTENT_STORAGE_PATH/
 │   │   └── site.json         # Site configuration
 │   ├── site02/
 │   │   └── site.json
+│   ├── _entra_group_cache/   # Ignored (starts with _)
 │   └── ...
 ```
+
+**Folder Naming Rules:**
+- Folders starting with `_` are ignored by sites endpoints (used for internal storage like caches)
+- Site IDs must not start with `_`
 
 ### site.json Schema
 
@@ -91,6 +96,7 @@ PERSISTENT_STORAGE_PATH/
 - `name` - Required, non-empty string
 - `site_url` - Required, non-empty string, must start with `https://`
 - `site_url` - Trailing slash automatically stripped on create/update
+- `site_id` - Must not start with `_` (reserved for internal folders)
 - `file_scan_result` - Optional, defaults to empty string
 - `security_scan_result` - Optional, defaults to empty string
 
