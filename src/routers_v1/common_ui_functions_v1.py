@@ -160,7 +160,7 @@ def generate_table_page(title: str, count: int, table_html: str, back_link: Opti
   scripts = generate_update_count_script() if dynamic_count else ""
   body_attributes = 'hx-on::after-swap="updateCount()"' if dynamic_count else ""
   
-  head = generate_html_head(f"{title} ({count_display})", scripts)
+  head = generate_html_head(f"{title} ({count})", scripts)
   body_tag = f"<body {body_attributes}>" if body_attributes else "<body>"
   
   return f"""{head}
