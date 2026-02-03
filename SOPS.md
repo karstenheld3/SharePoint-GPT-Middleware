@@ -20,6 +20,20 @@
 5. If router `/` endpoint (`root()`) shows documentation, add endpoint link there
 6. Add link to home page in `app.py` > `root()` available links section
 
+## V2 Router Navigation Consistency
+
+All V2 routers with UI (`format=ui`) must use identical `main_page_nav_html` containing links to all main V2 endpoints:
+
+```
+Back to Main Page | Domains | Sites | Crawler | Jobs | Reports
+```
+
+When adding a new V2 router with UI:
+1. Add its link to `main_page_nav_html` in ALL existing V2 routers
+2. Copy the complete `main_page_nav_html` from an existing router (e.g., `domains.py`)
+
+Files to update: `domains.py`, `sites.py`, `crawler.py`, `jobs.py`, `reports.py`
+
 ## Adding a new `/v2/` router
 
 1. Determine router root format support using shorthand notation (see `_V2_SPEC_ROUTERS.md`):
