@@ -21,6 +21,7 @@
 - Entra ID cache in `_entra_group_cache/` folder (underscore prefix = ignored by sites list)
 - SharePoint groups NOT cached (resolved fresh each scan)
 - Honor 429 throttling with Retry-After and exponential backoff
+- Load `security_scan_settings.json` before scan; create with defaults if missing
 
 ## Table of Contents
 
@@ -43,6 +44,7 @@ PERSISTENT_STORAGE_PATH/
 ├── sites/
 │   ├── _entra_group_cache/               # [NEW] Entra ID group member cache
 │   │   └── {group_id}.json               # One file per group
+│   ├── security_scan_settings.json       # [NEW] Scanner settings (see SPEC Section 9)
 │   └── {site_id}/
 │       └── site.json                     # Updated with security_scan_result
 └── reports/
@@ -111,6 +113,11 @@ CSV_COLUMNS_SITE_GROUPS = ["Id", "Role", "Title", "PermissionLevel", "Owner"]
 CSV_COLUMNS_SITE_USERS = ["Id", "LoginName", "DisplayName", "Email", "PermissionLevel", "ViaGroup", "ViaGroupId", "ViaGroupType", "AssignmentType", "NestingLevel", "ParentGroup"]
 CSV_COLUMNS_INDIVIDUAL_ITEMS = ["Id", "Type", "Title", "Url"]
 CSV_COLUMNS_INDIVIDUAL_ACCESS = ["Id", "Type", "Url", "LoginName", "DisplayName", "Email", "PermissionLevel", "SharedDateTime", "SharedByDisplayName", "SharedByLoginName", "ViaGroup", "ViaGroupId", "ViaGroupType", "AssignmentType", "NestingLevel", "ParentGroup"]
+
+# Settings Functions
+def get_default_scanner_settings() -> dict: ...
+def load_scanner_settings(storage_path: str) -> dict: ...
+def save_scanner_settings(storage_path: str, settings: dict) -> None: ...
 
 # Cache Functions
 def get_entra_cache_folder(storage_path: str) -> str: ...
@@ -205,7 +212,60 @@ def delete_all_entra_caches(storage_path: str) -> int:
     return count
 ```
 
-### SCAN-IP01-IS-04: Implement SharePoint connection function
+### SCAN-IP01-IS-04: Implement Scanner Settings Functions
+
+**Location**: `common_security_scan_functions_v2.py` > settings functions
+
+**Action**: Add settings load/save functions with defaults
+
+**Code**:
+```python
+SCANNER_SETTINGS_FILENAME = "security_scan_settings.json"
+
+def get_default_scanner_settings() -> dict:
+    """Return default scanner settings matching PowerShell scanner configuration.
+    See SPEC Section 9 'Scanner Settings Configuration' for full schema."""
+    return {
+        "do_not_resolve_these_groups": [...],  # See SPEC for defaults
+        "ignore_accounts": [...],
+        "ignore_permission_levels": ["Limited Access"],
+        "ignore_sharepoint_groups": [],
+        "max_group_nesting_level": 5,
+        "built_in_lists": [...],  # 48 system lists - see SPEC
+        "fields_to_load": ["SharedWithUsers", "SharedWithDetails"],
+        "ignore_fields": [...],  # 47 system fields - see SPEC
+        "output_columns": [...]  # 13 columns - see SPEC
+    }
+
+def get_scanner_settings_path(storage_path: str) -> str:
+    """Get path to scanner settings file."""
+    return os.path.join(storage_path, 
+        CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_SITES_SUBFOLDER,
+        SCANNER_SETTINGS_FILENAME)
+
+def load_scanner_settings(storage_path: str) -> dict:
+    """Load scanner settings from file; create with defaults if missing."""
+    settings_path = get_scanner_settings_path(storage_path)
+    if not os.path.exists(settings_path):
+        defaults = get_default_scanner_settings()
+        save_scanner_settings(storage_path, defaults)
+        return defaults
+    try:
+        with open(settings_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        # Invalid JSON - log warning and return defaults
+        return get_default_scanner_settings()
+
+def save_scanner_settings(storage_path: str, settings: dict) -> None:
+    """Save scanner settings to file."""
+    settings_path = get_scanner_settings_path(storage_path)
+    os.makedirs(os.path.dirname(settings_path), exist_ok=True)
+    with open(settings_path, 'w', encoding='utf-8') as f:
+        json.dump(settings, f, indent=2)
+```
+
+### SCAN-IP01-IS-05: Implement SharePoint connection function
 
 **Location**: `common_security_scan_functions_v2.py` > `connect_to_sharepoint()`
 

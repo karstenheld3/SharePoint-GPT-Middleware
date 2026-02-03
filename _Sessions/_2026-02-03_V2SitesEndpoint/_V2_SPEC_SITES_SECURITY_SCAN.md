@@ -20,6 +20,7 @@
 - Entra ID group resolution has max nesting level (default: 5)
 - Filter out "Limited Access" permission level by default
 - Streaming endpoint with SSE progress updates
+- Load `security_scan_settings.json` before scan; create with defaults if missing
 
 ## Table of Contents
 
@@ -361,6 +362,14 @@ Report accessible via:
 - Abort on authentication or connection errors
 - Report final error count in completion event
 
+**SCAN-FR-10: Scanner Settings Configuration**
+- Load `security_scan_settings.json` from `LOCAL_PERSISTENT_STORAGE_PATH/sites/` before each scan
+- Create file with defaults if it does not exist
+- Apply settings: filter accounts, permission levels, groups per configuration
+- Use `max_group_nesting_level` from settings (default: 5)
+- Skip lists matching `built_in_lists` array
+- Skip groups matching `do_not_resolve_these_groups` or `ignore_sharepoint_groups`
+
 ## 7. Design Decisions
 
 **SCAN-DD-01:** Use Office365-REST-Python-Client for SharePoint access. Rationale: POC validated this library supports all required operations.
@@ -471,6 +480,87 @@ One JSON file per Entra ID group, using group ID as filename.
 - SharePoint groups NOT cached (site-specific, resolved fresh each scan)
 - `delete_caches=true` deletes all files in `_entra_group_cache/` folder before scan
 - Cache lookup before Graph API call; cache miss triggers API call and stores result
+
+### Scanner Settings Configuration
+
+**Storage:** `LOCAL_PERSISTENT_STORAGE_PATH/sites/security_scan_settings.json`
+
+Settings file is loaded before each security scan. If the file does not exist, an empty default is created.
+
+**Schema:**
+```json
+{
+  "do_not_resolve_these_groups": ["Everyone except external users"],
+  "ignore_accounts": ["SHAREPOINT\\system", "app@sharepoint", "c:0!.s|windows"],
+  "ignore_permission_levels": ["Limited Access"],
+  "ignore_sharepoint_groups": [],
+  "max_group_nesting_level": 5,
+  "built_in_lists": [
+    "Access Requests", "App Packages", "appdata", "appfiles", "Apps in Testing",
+    "AuditLogs", "Cache Profiles", "Composed Looks", "Content and Structure Reports",
+    "Content type publishing error log", "Converted Forms", "Device Channels",
+    "Documents", "Form Templates", "fpdatasources",
+    "Get started with Apps for Office and SharePoint", "List Template Gallery",
+    "Long Running Operation Status", "Maintenance Log Library", "Master Docs",
+    "Master Page Gallery", "MicroFeed", "NintexFormXml", "Notification List",
+    "Project Policy Item List", "Quick Deploy Items", "Relationships List",
+    "Reporting Metadata", "Reporting Templates", "Reusable Content",
+    "Search Config List", "Site Assets", "Site Collection Documents",
+    "Site Collection Images", "Site Pages", "Solution Gallery", "Style Library",
+    "Suggested Content Browser Locations", "TaxonomyHiddenList", "Theme Gallery",
+    "Translation Packages", "Translation Status", "User Information List",
+    "Variation Labels", "Web Part Gallery", "wfpub", "wfsvc",
+    "Workflow History", "Workflow Tasks"
+  ],
+  "fields_to_load": ["SharedWithUsers", "SharedWithDetails"],
+  "ignore_fields": [
+    "_CheckinComment", "_CommentCount", "_ComplianceFlags", "_ComplianceTag",
+    "_ComplianceTagUserId", "_ComplianceTagWrittenTime", "_CopySource", "_DisplayName",
+    "_dlc_DocId", "_dlc_DocIdUrl", "_ExtendedDescription", "_IsRecord", "_LikeCount",
+    "_ModerationComments", "_ModerationStatus", "_UIVersionString", "Author",
+    "AppAuthor", "AppEditor", "CheckoutUser", "ComplianceAssetId", "ContentType",
+    "Created", "DocIcon", "Edit", "Editor", "FileSizeDisplay", "FileLeafRef",
+    "FolderChildCount", "ID", "ItemChildCount", "Language", "LinkTitle",
+    "LinkFilename", "LinkFilenameNoMenu", "MediaServiceAutoTags", "MediaServiceOCR",
+    "MediaServiceKeyPoints", "Modified", "ParentVersionString", "PublishingStartDate",
+    "PublishingExpirationDate", "ParentLeafName", "SharedWithUsers", "SharedWithDetails",
+    "Tag", "Title"
+  ],
+  "output_columns": ["LoginName", "DisplayName", "Email", "PermissionLevel", "SharedDateTime", "SharedByDisplayName", "SharedByLoginName", "ViaGroup", "ViaGroupId", "ViaGroupType", "AssignmentType", "NestingLevel", "ParentGroup"]
+}
+```
+
+**Field Descriptions:**
+
+- `do_not_resolve_these_groups` - Entra ID group names to skip resolving (e.g., large groups that would slow scanning)
+- `ignore_accounts` - Account login names to exclude from results (system accounts)
+- `ignore_permission_levels` - Permission levels to filter out (default: "Limited Access")
+- `ignore_sharepoint_groups` - SharePoint group names to skip entirely
+- `max_group_nesting_level` - Maximum depth for nested group resolution (default: 5)
+- `built_in_lists` - List titles to exclude from scanning (48 system lists)
+- `fields_to_load` - SharePoint list fields to include when scanning items with broken inheritance
+- `ignore_fields` - SharePoint list fields to exclude (inverse of fields_to_load)
+- `output_columns` - Columns to include in 05_IndividualPermissionItemAccess.csv (after Id, Type, Url prefix)
+
+**PowerShell Variable Mapping:**
+
+| PowerShell | JSON Key | Description |
+|------------|----------|-------------|
+| `$doNotResolveTheseGroups` | `do_not_resolve_these_groups` | Groups to skip resolving |
+| `$ignoreAccounts` | `ignore_accounts` | System accounts to exclude |
+| `$ignorePermissionLevels` | `ignore_permission_levels` | Permission levels to filter |
+| `$ignoreSharePointGroups` | `ignore_sharepoint_groups` | SP groups to skip |
+| `$maxGroupNestinglevel` | `max_group_nesting_level` | Max nesting depth |
+| `$builtInLists` | `built_in_lists` | Lists to exclude |
+| `$fieldsToLoad` | `fields_to_load` | Fields to load for items |
+| `$ignoreFields` | `ignore_fields` | Fields to exclude |
+| `$outputColumns` | `output_columns` | Columns for item access CSV |
+
+**Behavior:**
+- File created with defaults if missing on first scan
+- Loaded at scan start; changes take effect on next scan
+- Invalid JSON logs warning and uses defaults
+- Empty arrays mean "skip nothing" for filter settings
 
 ## 10. Action Flow
 
