@@ -14,6 +14,62 @@
 
 ## Resolved Issues
 
+### 2026-02-04 - SSE Streaming Architecture
+
+#### [RESOLVED] `SCAN-FL-004` Sync functions cannot yield SSE events - pattern repeatedly implemented wrong
+
+- **Original severity**: [HIGH]
+- **Resolved**: 2026-02-04 00:00
+- **Solution**: Refactored `scan_site_contents()`, `scan_site_groups()`, `scan_broken_inheritance_items()` from sync functions to async generators that yield SSE events directly
+
+- **Severity**: [HIGH]
+- **When**: 2026-02-03 23:50
+- **Where**: `common_security_scan_functions_v2.py` - `scan_site_contents()`, `scan_site_groups()`, `scan_broken_inheritance_items()`
+- **What**: Scan functions are sync and call `writer.emit_log()` which queues events, but cannot yield them. Events only appear after entire function completes, not in realtime.
+
+**Why it keeps happening (Root Cause Analysis):**
+
+1. **Incorrect mental model**: Thinking "emit" means "send" when it actually means "queue"
+2. **Copy-paste without understanding**: Copying `writer.emit_log()` pattern without understanding that sync functions CANNOT yield
+3. **Ignoring working examples**: Crawler selftest uses `yield log()` pattern - every log is yielded immediately
+4. **Wrong abstraction**: Created sync functions that do their own logging instead of generators that yield events
+
+**The correct pattern IS documented and implemented:**
+
+```python
+# WRONG - sync function queues events, caller must drain after function returns
+def scan_something(writer):
+    writer.emit_log("Step 1...")  # Queued, not sent
+    # ... long operation ...
+    writer.emit_log("Step 2...")  # Queued, not sent
+    return result
+# Caller: for sse in writer.drain_sse_queue(): yield sse  # All logs appear at once
+
+# CORRECT - async generator yields events immediately
+async def scan_something(writer):
+    yield writer.emit_log("Step 1...")  # Sent immediately
+    # ... operation ...
+    yield writer.emit_log("Step 2...")  # Sent immediately
+    return result  # Use writer._step_result for return value
+# Caller: async for event in scan_something(writer): yield event
+```
+
+**Evidence**: Crawler selftest shows realtime logs. Security scan shows logs only after each major step completes.
+
+**Why the pattern is not obvious despite being implemented:**
+
+1. The `emit_log()` function name suggests it emits/sends, but it only queues
+2. The drain pattern (`for sse in writer.drain_sse_queue(): yield sse`) works but batches logs
+3. No clear documentation that "time-consuming operations with logging MUST be async generators"
+4. Agent focuses on making code work (logs appear eventually) not on UX (logs appear realtime)
+
+**Fix**: Refactor all scan functions to async generators that yield SSE events directly.
+
+**Prevention rule to add to DevSystem:**
+> Any function that: (1) takes significant time AND (2) needs to show progress to user MUST be an async generator that yields SSE events. Sync functions with `emit_log()` will batch all logs until function returns.
+
+## Resolved Issues
+
 ### 2026-02-03 - Broken Inheritance Items Bug
 
 #### [RESOLVED] `SCAN-FL-003` Iterator consumed before iteration in scan_broken_inheritance_items
