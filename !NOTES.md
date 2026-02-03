@@ -23,6 +23,13 @@
 - `get_folder_for_type()` in `common_report_functions_v2.py` adds the 's' suffix automatically
 - Passing plural form (e.g., `"site_scans"`) results in double suffix (`"site_scanss"`)
 
+## Environment
+
+**Windows - No grep**: Use PowerShell alternatives:
+- `Select-String "pattern" file.txt` (like grep)
+- `Get-Content file.txt | Select-String "pattern"` (piped)
+- `(Get-Content file.txt -Raw) -match "pattern"` (regex match)
+
 ## Folder Conventions
 
 **POC Scripts**: All Proof of Concept scripts go in `./src/pocs/[poc_name]/`
