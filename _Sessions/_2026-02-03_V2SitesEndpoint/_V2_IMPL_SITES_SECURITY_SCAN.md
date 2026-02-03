@@ -1,6 +1,6 @@
 # IMPL: Sites Security Scan
 
-**Doc ID**: SCAN-IP01
+**Doc ID**: SSCSCN-IP01
 **Goal**: Implement security scan endpoint for scanning SharePoint site permissions and generating CSV reports.
 **Timeline**: Created 2026-02-03, Updated 2 times (2026-02-03 - 2026-02-03)
 **Target files**:
@@ -8,7 +8,7 @@
 - `src/routers_v2/common_security_scan_functions_v2.py` (NEW ~600 lines)
 
 **Depends on:**
-- `_V2_SPEC_SITES_SECURITY_SCAN.md [SITE-SP03]` for functional requirements
+- `_V2_SPEC_SITES_SECURITY_SCAN.md [SSCSCN-SP01]` for functional requirements
 - `_V2_SPEC_REPORTS.md` for report archive creation
 - `_POC_PERMISSION_SCANNER_RESULTS.md [PSCP-RS01]` for validated API patterns
 
@@ -56,37 +56,37 @@ PERSISTENT_STORAGE_PATH/
 
 ### Input Validation
 
-- **SCAN-IP01-EC-01**: Missing site_id -> Return 400 "Missing 'site_id' parameter"
-- **SCAN-IP01-EC-02**: Non-existent site_id -> Return 404 "Site not found"
-- **SCAN-IP01-EC-03**: Invalid scope value -> Return 400 "Invalid scope. Use: all, site, lists, items"
+- **SSCSCN-IP01-EC-01**: Missing site_id -> Return 400 "Missing 'site_id' parameter"
+- **SSCSCN-IP01-EC-02**: Non-existent site_id -> Return 404 "Site not found"
+- **SSCSCN-IP01-EC-03**: Invalid scope value -> Return 400 "Invalid scope. Use: all, site, lists, items"
 
 ### SharePoint Connectivity
 
-- **SCAN-IP01-EC-04**: Site connection fails -> Emit error event, abort scan
-- **SCAN-IP01-EC-05**: Authentication expired mid-scan -> Attempt reconnect, fail after 3 retries
-- **SCAN-IP01-EC-06**: 429 throttling response -> Honor Retry-After header, exponential backoff
+- **SSCSCN-IP01-EC-04**: Site connection fails -> Emit error event, abort scan
+- **SSCSCN-IP01-EC-05**: Authentication expired mid-scan -> Attempt reconnect, fail after 3 retries
+- **SSCSCN-IP01-EC-06**: 429 throttling response -> Honor Retry-After header, exponential backoff
 
 ### Data Anomalies
 
-- **SCAN-IP01-EC-07**: Empty site (no groups, no lists) -> Generate valid CSVs with headers only
-- **SCAN-IP01-EC-08**: Group with circular reference -> Skip and log warning after max nesting
-- **SCAN-IP01-EC-09**: Item access denied -> Log warning, continue with other items
-- **SCAN-IP01-EC-10**: Corrupt group member data -> Skip member, log warning
+- **SSCSCN-IP01-EC-07**: Empty site (no groups, no lists) -> Generate valid CSVs with headers only
+- **SSCSCN-IP01-EC-08**: Group with circular reference -> Skip and log warning after max nesting
+- **SSCSCN-IP01-EC-09**: Item access denied -> Log warning, continue with other items
+- **SSCSCN-IP01-EC-10**: Corrupt group member data -> Skip member, log warning
 
 ### Cache Operations
 
-- **SCAN-IP01-EC-11**: Cache folder doesn't exist -> Create on first write
-- **SCAN-IP01-EC-12**: Corrupt cache file -> Delete and re-fetch from API
-- **SCAN-IP01-EC-13**: delete_caches with no cache folder -> Succeed silently
+- **SSCSCN-IP01-EC-11**: Cache folder doesn't exist -> Create on first write
+- **SSCSCN-IP01-EC-12**: Corrupt cache file -> Delete and re-fetch from API
+- **SSCSCN-IP01-EC-13**: delete_caches with no cache folder -> Succeed silently
 
 ### Cancellation
 
-- **SCAN-IP01-EC-14**: User cancels mid-scan -> Clean up temp files, no report created
-- **SCAN-IP01-EC-15**: Connection lost mid-stream -> Job marked failed, partial data discarded
+- **SSCSCN-IP01-EC-14**: User cancels mid-scan -> Clean up temp files, no report created
+- **SSCSCN-IP01-EC-15**: Connection lost mid-stream -> Job marked failed, partial data discarded
 
 ## 3. Implementation Steps
 
-### SCAN-IP01-IS-01: Create common_security_scan_functions_v2.py
+### SSCSCN-IP01-IS-01: Create common_security_scan_functions_v2.py
 
 **Location**: `src/routers_v2/common_security_scan_functions_v2.py` (NEW)
 
@@ -147,7 +147,7 @@ def scan_broken_inheritance_items(ctx, output_folder, writer) -> dict: ...
 async def run_security_scan(params: dict, writer: StreamingJobWriter) -> AsyncGenerator: ...
 ```
 
-### SCAN-IP01-IS-02: Implement CSV escaping function
+### SSCSCN-IP01-IS-02: Implement CSV escaping function
 
 **Location**: `common_security_scan_functions_v2.py` > `csv_escape()`
 
@@ -170,7 +170,7 @@ def csv_escape(value) -> str:
     return value
 ```
 
-### SCAN-IP01-IS-03: Implement Entra ID group cache functions
+### SSCSCN-IP01-IS-03: Implement Entra ID group cache functions
 
 **Location**: `common_security_scan_functions_v2.py` > cache functions
 
@@ -212,7 +212,7 @@ def delete_all_entra_caches(storage_path: str) -> int:
     return count
 ```
 
-### SCAN-IP01-IS-04: Implement Scanner Settings Functions
+### SSCSCN-IP01-IS-04: Implement Scanner Settings Functions
 
 **Location**: `common_security_scan_functions_v2.py` > settings functions
 
@@ -231,7 +231,7 @@ def get_default_scanner_settings() -> dict:
         "ignore_permission_levels": ["Limited Access"],
         "ignore_sharepoint_groups": [],
         "max_group_nesting_level": 5,
-        "built_in_lists": [...],  # 48 system lists - see SPEC
+        "ignore_lists": [...],  # System lists to skip - see SPEC
         "fields_to_load": ["SharedWithUsers", "SharedWithDetails"],
         "ignore_fields": [...],  # 47 system fields - see SPEC
         "output_columns": [...]  # 13 columns - see SPEC
@@ -265,7 +265,7 @@ def save_scanner_settings(storage_path: str, settings: dict) -> None:
         json.dump(settings, f, indent=2)
 ```
 
-### SCAN-IP01-IS-05: Implement SharePoint connection function
+### SSCSCN-IP01-IS-05: Implement SharePoint connection function
 
 **Location**: `common_security_scan_functions_v2.py` > `connect_to_sharepoint()`
 
@@ -282,7 +282,7 @@ def connect_to_sharepoint(site_url: str, client_id: str, client_secret: str, ten
     return ctx
 ```
 
-### SCAN-IP01-IS-04B: Initialize Microsoft Graph client for Entra ID resolution
+### SSCSCN-IP01-IS-04B: Initialize Microsoft Graph client for Entra ID resolution
 
 **Location**: `common_security_scan_functions_v2.py` > `get_graph_client()`
 
@@ -343,7 +343,7 @@ def resolve_entra_group_members(storage_path: str, group_id: str, nesting_level:
 
 **Note**: Requires `GroupMember.Read.All` permission. Use same app registration as SharePoint or separate Graph-only app.
 
-### SCAN-IP01-IS-05: Implement group resolution functions
+### SSCSCN-IP01-IS-05: Implement group resolution functions
 
 **Location**: `common_security_scan_functions_v2.py` > group resolution
 
@@ -351,31 +351,56 @@ def resolve_entra_group_members(storage_path: str, group_id: str, nesting_level:
 
 **Code**:
 ```python
-def is_entra_id_group(member) -> bool:
-    """Check if member is an Entra ID (Azure AD) group."""
-    login_name = member.login_name or ""
-    # Entra ID groups have c:0t.c|tenant|{guid} or c:0-.f|rolemanager|{guid} format
-    return "|" in login_name and ("c:0t.c" in login_name or "c:0-.f" in login_name)
+def is_entra_id_group(login_name: str) -> bool:
+    """Check if login name represents an Entra ID (Azure AD) group."""
+    if not login_name: return False
+    # Entra ID groups have these prefix patterns:
+    # - c:0t.c|tenant|{guid} - Security Groups
+    # - c:0o.c|federateddirectoryclaimprovider|{guid} - M365 Groups
+    # - c:0-.f|rolemanager|{identifier} - Special claims (e.g., "Everyone except external users")
+    return "|" in login_name and any(prefix in login_name for prefix in ["c:0t.c", "c:0-.f", "c:0o.c"])
 
 def extract_group_id_from_login(login_name: str) -> str | None:
     """Extract Entra ID group GUID from login name."""
-    # Format: c:0t.c|tenant|{guid} or similar
+    # Format: c:0t.c|tenant|{guid} or c:0o.c|federateddirectoryclaimprovider|{guid}_o
     parts = login_name.split("|")
     if len(parts) >= 3:
-        return parts[-1]
+        group_id = parts[-1]
+        # M365 groups have _o suffix that must be stripped for Graph API calls
+        if group_id.endswith("_o"): group_id = group_id[:-2]
+        return group_id
     return None
 
-def resolve_sharepoint_group_members(ctx, group, storage_path, nesting_level=1, parent_group="") -> list:
+def resolve_sharepoint_group_members(ctx, group, storage_path, nesting_level=1, parent_group="", settings=None) -> list:
     """Resolve all members of a SharePoint group, including nested Entra ID groups."""
     if nesting_level > MAX_NESTING_LEVEL:
         return []
+    if settings is None: settings = {}
+    do_not_resolve = set(settings.get("do_not_resolve_these_groups", []))
     
     members = []
     group.users.get().execute_query()
     
     for user in group.users:
-        if is_entra_id_group(user):
+        if is_entra_id_group(user.login_name):
             group_id = extract_group_id_from_login(user.login_name)
+            group_display_name = user.title or user.login_name
+            
+            # Check if group should not be resolved - still add entry, just skip nested resolution
+            if group_display_name in do_not_resolve:
+                members.append({
+                    "login_name": user.login_name,
+                    "display_name": group_display_name,
+                    "email": "",
+                    "nesting_level": nesting_level,
+                    "parent_group": parent_group,
+                    "via_group": group.title,
+                    "via_group_id": str(group.id),
+                    "via_group_type": "SharePointGroup",
+                    "assignment_type": "Group"
+                })
+                continue  # Skip nested resolution but entry is added
+            
             if group_id:
                 nested = resolve_entra_group_members(
                     storage_path, group_id, nesting_level + 1, group.title)
@@ -394,7 +419,7 @@ def resolve_sharepoint_group_members(ctx, group, storage_path, nesting_level=1, 
     return members
 ```
 
-### SCAN-IP01-IS-06: Implement site groups scanning
+### SSCSCN-IP01-IS-06: Implement site groups scanning
 
 **Location**: `common_security_scan_functions_v2.py` > `scan_site_groups()`
 
@@ -477,7 +502,7 @@ async def scan_site_groups(ctx, storage_path, output_folder, writer) -> dict:
 
 **Note**: Uses `$expand` pattern from POC TC-06 to get permission level names. Filters out "Limited Access" entries per MUST-NOT-FORGET.
 
-### SCAN-IP01-IS-07: Implement list/library scanning
+### SSCSCN-IP01-IS-07: Implement list/library scanning
 
 **Location**: `common_security_scan_functions_v2.py` > `scan_site_contents()`
 
@@ -521,7 +546,7 @@ async def scan_site_contents(ctx, output_folder, writer) -> dict:
     return stats
 ```
 
-### SCAN-IP01-IS-08: Implement broken inheritance item scanning
+### SSCSCN-IP01-IS-08: Implement broken inheritance item scanning
 
 **Location**: `common_security_scan_functions_v2.py` > `scan_broken_inheritance_items()`
 
@@ -574,7 +599,7 @@ async def scan_broken_inheritance_items(ctx, storage_path, output_folder, writer
     return stats
 ```
 
-### SCAN-IP01-IS-08B: Implement subsite scanning
+### SSCSCN-IP01-IS-08B: Implement subsite scanning
 
 **Location**: `common_security_scan_functions_v2.py` > `scan_subsites()`
 
@@ -619,7 +644,7 @@ async def scan_subsites(ctx, storage_path, output_folder, writer, depth=0) -> di
     return stats
 ```
 
-### SCAN-IP01-IS-09: Implement main security_scan endpoint
+### SSCSCN-IP01-IS-09: Implement main security_scan endpoint
 
 **Location**: `sites.py` > add new endpoint
 
@@ -643,7 +668,7 @@ async def sites_security_scan(request: Request):
     ...
 ```
 
-### SCAN-IP01-IS-10: Add Security Scan dialog JavaScript
+### SSCSCN-IP01-IS-10: Add Security Scan dialog JavaScript
 
 **Location**: `sites.py` > `get_router_specific_js()`
 
@@ -692,7 +717,7 @@ function updateSecurityScanPreview() { ... }
 function startSecurityScan(event) { ... }
 ```
 
-### SCAN-IP01-IS-11: Update action buttons in sites UI
+### SSCSCN-IP01-IS-11: Update action buttons in sites UI
 
 **Location**: `sites.py` > `sites_root()` columns definition
 
@@ -703,7 +728,7 @@ function startSecurityScan(event) { ... }
 {"text": "Security Scan", "onclick": "showSecurityScanDialog(\"{itemId}\")", "class": "btn-small btn-primary"}
 ```
 
-### SCAN-IP01-IS-12: Implement security_scan selftest endpoint
+### SSCSCN-IP01-IS-12: Implement security_scan selftest endpoint
 
 **Location**: `sites.py` > add selftest endpoint
 
@@ -721,7 +746,7 @@ async def sites_security_scan_selftest(request: Request):
     ...
 ```
 
-### SCAN-IP01-IS-13: Create report archive on completion
+### SSCSCN-IP01-IS-13: Create report archive on completion
 
 **Location**: `common_security_scan_functions_v2.py` > `run_security_scan()`
 
@@ -768,7 +793,7 @@ report_id = create_report(
 
 **Note**: Function is `create_report()` not `create_report_archive()`. Signature takes `(report_type, filename, files, metadata, ...)`.
 
-### SCAN-IP01-IS-14: Update site.security_scan_result on completion
+### SSCSCN-IP01-IS-14: Update site.security_scan_result on completion
 
 **Location**: `run_security_scan()` after report creation
 
@@ -786,76 +811,76 @@ save_site_to_file(storage_path, site)
 
 ### Category 1: Input Validation (4 tests)
 
-- **SCAN-IP01-TC-01**: Missing site_id -> ok=false, "Missing 'site_id' parameter"
-- **SCAN-IP01-TC-02**: Non-existent site_id -> ok=false, 404, "Site not found"
-- **SCAN-IP01-TC-03**: Invalid scope value -> ok=false, "Invalid scope"
-- **SCAN-IP01-TC-04**: Valid params -> ok=true, scan starts
+- **SSCSCN-IP01-TC-01**: Missing site_id -> ok=false, "Missing 'site_id' parameter"
+- **SSCSCN-IP01-TC-02**: Non-existent site_id -> ok=false, 404, "Site not found"
+- **SSCSCN-IP01-TC-03**: Invalid scope value -> ok=false, "Invalid scope"
+- **SSCSCN-IP01-TC-04**: Valid params -> ok=true, scan starts
 
 ### Category 2: CSV Output Format (5 tests)
 
-- **SCAN-IP01-TC-05**: CSV headers match PowerShell format -> exact column order
-- **SCAN-IP01-TC-06**: CSV escaping matches PowerShell -> quotes, commas, newlines
-- **SCAN-IP01-TC-07**: UTF-8 encoding without BOM -> first bytes not EF BB BF
-- **SCAN-IP01-TC-08**: Empty values rendered correctly -> "" or empty
-- **SCAN-IP01-TC-09**: Nesting levels correct -> 0=direct, 1=via group, 2+=nested
+- **SSCSCN-IP01-TC-05**: CSV headers match PowerShell format -> exact column order
+- **SSCSCN-IP01-TC-06**: CSV escaping matches PowerShell -> quotes, commas, newlines
+- **SSCSCN-IP01-TC-07**: UTF-8 encoding without BOM -> first bytes not EF BB BF
+- **SSCSCN-IP01-TC-08**: Empty values rendered correctly -> "" or empty
+- **SSCSCN-IP01-TC-09**: Nesting levels correct -> 0=direct, 1=via group, 2+=nested
 
 ### Category 3: Group Resolution (4 tests)
 
-- **SCAN-IP01-TC-10**: SharePoint group members resolved -> users listed
-- **SCAN-IP01-TC-11**: Entra ID nested groups resolved -> up to 5 levels
-- **SCAN-IP01-TC-12**: Circular reference handled -> stops at max level
-- **SCAN-IP01-TC-13**: Cache used on second scan -> faster, same results
+- **SSCSCN-IP01-TC-10**: SharePoint group members resolved -> users listed
+- **SSCSCN-IP01-TC-11**: Entra ID nested groups resolved -> up to 5 levels
+- **SSCSCN-IP01-TC-12**: Circular reference handled -> stops at max level
+- **SSCSCN-IP01-TC-13**: Cache used on second scan -> faster, same results
 
 ### Category 4: Report Archive (3 tests)
 
-- **SCAN-IP01-TC-14**: Report ZIP created in correct location
-- **SCAN-IP01-TC-15**: report.json contains correct metadata
-- **SCAN-IP01-TC-16**: site.security_scan_result updated
+- **SSCSCN-IP01-TC-14**: Report ZIP created in correct location
+- **SSCSCN-IP01-TC-15**: report.json contains correct metadata
+- **SSCSCN-IP01-TC-16**: site.security_scan_result updated
 
 ### Category 5: Selftest (7 tests)
 
-- **SCAN-IP01-TC-17**: TC-01 Connect to selftest site
-- **SCAN-IP01-TC-18**: TC-02 Enumerate site groups
-- **SCAN-IP01-TC-19**: TC-03 Resolve group members
-- **SCAN-IP01-TC-20**: TC-04 Query lists with HasUniqueRoleAssignments
-- **SCAN-IP01-TC-21**: TC-05 Resolve item role assignments
-- **SCAN-IP01-TC-22**: TC-06 Create report archive
-- **SCAN-IP01-TC-23**: TC-07 Verify CSV output format
+- **SSCSCN-IP01-TC-17**: TC-01 Connect to selftest site
+- **SSCSCN-IP01-TC-18**: TC-02 Enumerate site groups
+- **SSCSCN-IP01-TC-19**: TC-03 Resolve group members
+- **SSCSCN-IP01-TC-20**: TC-04 Query lists with HasUniqueRoleAssignments
+- **SSCSCN-IP01-TC-21**: TC-05 Resolve item role assignments
+- **SSCSCN-IP01-TC-22**: TC-06 Create report archive
+- **SSCSCN-IP01-TC-23**: TC-07 Verify CSV output format
 
 ## 5. Verification Checklist
 
 ### Prerequisites
 
-- [ ] **SCAN-IP01-VC-01**: `_V2_SPEC_SITES_SECURITY_SCAN.md` read and understood
-- [ ] **SCAN-IP01-VC-02**: `_POC_PERMISSION_SCANNER_RESULTS.md` patterns reviewed
-- [ ] **SCAN-IP01-VC-03**: PowerShell CSV output format documented
+- [ ] **SSCSCN-IP01-VC-01**: `_V2_SPEC_SITES_SECURITY_SCAN.md` read and understood
+- [ ] **SSCSCN-IP01-VC-02**: `_POC_PERMISSION_SCANNER_RESULTS.md` patterns reviewed
+- [ ] **SSCSCN-IP01-VC-03**: PowerShell CSV output format documented
 
 ### Implementation
 
-- [ ] **SCAN-IP01-VC-04**: IS-01 common_security_scan_functions_v2.py created
-- [ ] **SCAN-IP01-VC-05**: IS-02 CSV escaping function implemented
-- [ ] **SCAN-IP01-VC-06**: IS-03 Entra ID cache functions implemented
-- [ ] **SCAN-IP01-VC-07**: IS-04 SharePoint connection function implemented
-- [ ] **SCAN-IP01-VC-07B**: IS-04B Graph client for Entra ID resolution implemented
-- [ ] **SCAN-IP01-VC-08**: IS-05 Group resolution functions implemented
-- [ ] **SCAN-IP01-VC-09**: IS-06 Site groups scanning implemented
-- [ ] **SCAN-IP01-VC-10**: IS-07 List/library scanning implemented
-- [ ] **SCAN-IP01-VC-11**: IS-08 Broken inheritance scanning implemented
-- [ ] **SCAN-IP01-VC-11B**: IS-08B Subsite scanning implemented
-- [ ] **SCAN-IP01-VC-12**: IS-09 security_scan endpoint implemented
-- [ ] **SCAN-IP01-VC-13**: IS-10 Security Scan dialog JS implemented
-- [ ] **SCAN-IP01-VC-14**: IS-11 Action buttons updated
-- [ ] **SCAN-IP01-VC-15**: IS-12 Selftest endpoint implemented
-- [ ] **SCAN-IP01-VC-16**: IS-13 Report archive creation implemented
-- [ ] **SCAN-IP01-VC-17**: IS-14 Site update on completion implemented
+- [ ] **SSCSCN-IP01-VC-04**: IS-01 common_security_scan_functions_v2.py created
+- [ ] **SSCSCN-IP01-VC-05**: IS-02 CSV escaping function implemented
+- [ ] **SSCSCN-IP01-VC-06**: IS-03 Entra ID cache functions implemented
+- [ ] **SSCSCN-IP01-VC-07**: IS-04 SharePoint connection function implemented
+- [ ] **SSCSCN-IP01-VC-07B**: IS-04B Graph client for Entra ID resolution implemented
+- [ ] **SSCSCN-IP01-VC-08**: IS-05 Group resolution functions implemented
+- [ ] **SSCSCN-IP01-VC-09**: IS-06 Site groups scanning implemented
+- [ ] **SSCSCN-IP01-VC-10**: IS-07 List/library scanning implemented
+- [ ] **SSCSCN-IP01-VC-11**: IS-08 Broken inheritance scanning implemented
+- [ ] **SSCSCN-IP01-VC-11B**: IS-08B Subsite scanning implemented
+- [ ] **SSCSCN-IP01-VC-12**: IS-09 security_scan endpoint implemented
+- [ ] **SSCSCN-IP01-VC-13**: IS-10 Security Scan dialog JS implemented
+- [ ] **SSCSCN-IP01-VC-14**: IS-11 Action buttons updated
+- [ ] **SSCSCN-IP01-VC-15**: IS-12 Selftest endpoint implemented
+- [ ] **SSCSCN-IP01-VC-16**: IS-13 Report archive creation implemented
+- [ ] **SSCSCN-IP01-VC-17**: IS-14 Site update on completion implemented
 
 ### Validation
 
-- [ ] **SCAN-IP01-VC-18**: All test cases pass
-- [ ] **SCAN-IP01-VC-19**: Selftest passes 7/7
-- [ ] **SCAN-IP01-VC-20**: CSV output matches PowerShell scanner exactly
-- [ ] **SCAN-IP01-VC-21**: Manual UI verification complete
-- [ ] **SCAN-IP01-VC-22**: Report visible in /v2/reports?type=site_scan
+- [ ] **SSCSCN-IP01-VC-18**: All test cases pass
+- [ ] **SSCSCN-IP01-VC-19**: Selftest passes 7/7
+- [ ] **SSCSCN-IP01-VC-20**: CSV output matches PowerShell scanner exactly
+- [ ] **SSCSCN-IP01-VC-21**: Manual UI verification complete
+- [ ] **SSCSCN-IP01-VC-22**: Report visible in /v2/reports?type=site_scan
 
 ## 6. Document History
 

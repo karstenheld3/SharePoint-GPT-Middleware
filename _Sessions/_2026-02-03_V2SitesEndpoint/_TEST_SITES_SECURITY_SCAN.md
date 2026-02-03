@@ -1,14 +1,14 @@
-# TEST: Sites Security Scan
+﻿# TEST: Sites Security Scan
 
-**Doc ID**: SCAN-TP01
+**Doc ID**: SSCSCN-TP01
 **Feature**: SECURITY_SCAN
 **Goal**: Verify security scan endpoint correctly captures all permission assignment paths and outputs CSV matching PowerShell scanner format.
 **Timeline**: Created 2026-02-03, Updated 0 times
 **Target file**: `src/routers_v2/common_security_scan_functions_v2.py`
 
 **Depends on:**
-- `_V2_SPEC_SITES_SECURITY_SCAN.md` [SITE-SP03] for requirements
-- `_V2_IMPL_SITES_SECURITY_SCAN.md` [SCAN-IP01] for implementation details
+- `_V2_SPEC_SITES_SECURITY_SCAN.md` [SSCSCN-SP01] for requirements
+- `_V2_IMPL_SITES_SECURITY_SCAN.md` [SSCSCN-IP01] for implementation details
 
 ## MUST-NOT-FORGET
 
@@ -274,81 +274,97 @@ Disconnect-PnPOnline
 
 ### Category 1: CSV Format Verification (5 tests)
 
-- **SCAN-TC-01**: CSV column order matches SPEC Section 14 -> ok=true, columns in exact order
-- **SCAN-TC-02**: CSV escaping for quotes -> ok=true, value `"test"` becomes `"""test"""`
-- **SCAN-TC-03**: CSV escaping for commas -> ok=true, value `a,b` becomes `"a,b"`
-- **SCAN-TC-04**: CSV escaping for newlines -> ok=true, value with `\n` quoted
-- **SCAN-TC-05**: UTF-8 encoding without BOM -> ok=true, no BOM bytes at file start
+- **SSCSCN-TC-01**: CSV column order matches SPEC Section 14 -> ok=true, columns in exact order
+- **SSCSCN-TC-02**: CSV escaping for quotes -> ok=true, value `"test"` becomes `"""test"""`
+- **SSCSCN-TC-03**: CSV escaping for commas -> ok=true, value `a,b` becomes `"a,b"`
+- **SSCSCN-TC-04**: CSV escaping for newlines -> ok=true, value with `\n` quoted
+- **SSCSCN-TC-05**: UTF-8 encoding without BOM -> ok=true, no BOM bytes at file start
 
 ### Category 2: SharePoint Group Resolution (6 tests)
 
-- **SCAN-TC-06**: Site Owners group captured -> ok=true, Role=SiteOwners, PermissionLevel=Full Control
-- **SCAN-TC-07**: Site Members group captured -> ok=true, Role=SiteMembers, PermissionLevel=Edit
-- **SCAN-TC-08**: Site Visitors group captured -> ok=true, Role=SiteVisitors, PermissionLevel=Read
-- **SCAN-TC-09**: Custom SP group captured -> ok=true, Role=Custom
-- **SCAN-TC-10**: Limited Access filtered out -> ok=true, no entries with PermissionLevel="Limited Access"
-- **SCAN-TC-11**: SP group members have NestingLevel=1 -> ok=true, ViaGroupType=SharePointGroup
+- **SSCSCN-TC-06**: Site Owners group captured -> ok=true, Role=SiteOwners, PermissionLevel=Full Control
+- **SSCSCN-TC-07**: Site Members group captured -> ok=true, Role=SiteMembers, PermissionLevel=Edit
+- **SSCSCN-TC-08**: Site Visitors group captured -> ok=true, Role=SiteVisitors, PermissionLevel=Read
+- **SSCSCN-TC-09**: Custom SP group captured -> ok=true, Role=Custom
+- **SSCSCN-TC-10**: Limited Access filtered out -> ok=true, no entries with PermissionLevel="Limited Access"
+- **SSCSCN-TC-11**: SP group members have NestingLevel=1 -> ok=true, ViaGroupType=SharePointGroup
 
 ### Category 3: Entra ID Group Resolution (7 tests)
 
-- **SCAN-TC-12**: Security group in SP group resolved -> ok=true, members appear with NestingLevel=2
-- **SCAN-TC-13**: Nested security group (level 2) resolved -> ok=true, NestingLevel=3
-- **SCAN-TC-14**: Deeply nested group (level 3) resolved -> ok=true, NestingLevel=4
-- **SCAN-TC-15**: M365 group resolved -> ok=true, ViaGroupType=SecurityGroup
-- **SCAN-TC-16**: Entra members have empty Id field -> ok=true, Id="" for nested members
-- **SCAN-TC-17**: ParentGroup populated correctly -> ok=true, shows immediate parent group name
-- **SCAN-TC-18**: Max nesting level (5) enforced -> ok=true, stops at level 5
+- **SSCSCN-TC-12**: Security group in SP group resolved -> ok=true, members appear with NestingLevel=2
+- **SSCSCN-TC-13**: Nested security group (level 2) resolved -> ok=true, NestingLevel=3
+- **SSCSCN-TC-14**: Deeply nested group (level 3) resolved -> ok=true, NestingLevel=4
+- **SSCSCN-TC-15**: M365 group resolved -> ok=true, ViaGroupType=SecurityGroup
+- **SSCSCN-TC-16**: Entra members have empty Id field -> ok=true, Id="" for nested members
+- **SSCSCN-TC-17**: ParentGroup populated correctly -> ok=true, shows immediate parent group name
+- **SSCSCN-TC-18**: Max nesting level (5) enforced -> ok=true, stops at level 5
 
 ### Category 4: Direct Assignments (3 tests)
 
-- **SCAN-TC-19**: Direct user at site level -> ok=true, NestingLevel=0, AssignmentType=User
-- **SCAN-TC-20**: Direct user on item -> ok=true, appears in 05_IndividualPermissionItemAccess.csv
-- **SCAN-TC-21**: Direct group on item -> ok=true, group members resolved
+- **SSCSCN-TC-19**: Direct user at site level -> ok=true, NestingLevel=0, AssignmentType=User
+- **SSCSCN-TC-20**: Direct user on item -> ok=true, appears in 05_IndividualPermissionItemAccess.csv
+- **SSCSCN-TC-21**: Direct group on item -> ok=true, group members resolved
 
 ### Category 5: Broken Inheritance (5 tests)
 
-- **SCAN-TC-22**: Item with unique permissions in 04 CSV -> ok=true, HasUniqueRoleAssignments=true items listed
-- **SCAN-TC-23**: Folder with unique permissions -> ok=true, Type=FOLDER
-- **SCAN-TC-24**: List item with unique permissions -> ok=true, Type=ITEM
-- **SCAN-TC-25**: All accessors in 05 CSV -> ok=true, every user with access listed
-- **SCAN-TC-26**: Sharing link info captured -> ok=true, SharedDateTime, SharedByDisplayName populated
+- **SSCSCN-TC-22**: Item with unique permissions in 04 CSV -> ok=true, HasUniqueRoleAssignments=true items listed
+- **SSCSCN-TC-23**: Folder with unique permissions -> ok=true, Type=FOLDER
+- **SSCSCN-TC-24**: List item with unique permissions -> ok=true, Type=ITEM
+- **SSCSCN-TC-25**: All accessors in 05 CSV -> ok=true, every user with access listed
+- **SSCSCN-TC-26**: Sharing link info captured -> ok=true, SharedDateTime, SharedByDisplayName populated
 
 ### Category 6: Sharing Links (4 tests)
 
-- **SCAN-TC-27**: Organization-wide link -> ok=true, AssignmentType=SharingLink
-- **SCAN-TC-28**: People-specific link -> ok=true, specific users listed
-- **SCAN-TC-29**: Anonymous link -> ok=true, captured if present
-- **SCAN-TC-30**: Sharing link ViaGroup format -> ok=true, ViaGroup contains "SharingLinks.*"
+- **SSCSCN-TC-27**: Organization-wide link -> ok=true, AssignmentType=SharingLink
+- **SSCSCN-TC-28**: People-specific link -> ok=true, specific users listed
+- **SSCSCN-TC-29**: Anonymous link -> ok=true, captured if present
+- **SSCSCN-TC-30**: Sharing link ViaGroup format -> ok=true, ViaGroup contains "SharingLinks.*"
 
 ### Category 7: Scope Options (4 tests)
 
-- **SCAN-TC-31**: scope=all scans everything -> ok=true, all 5 CSVs populated
-- **SCAN-TC-32**: scope=site skips items -> ok=true, only 02/03 CSVs
-- **SCAN-TC-33**: scope=lists includes structure -> ok=true, 01/02/03 CSVs
-- **SCAN-TC-34**: include_subsites=true -> ok=true, subsite in 01 CSV with Type=SUBSITE
+- **SSCSCN-TC-31**: scope=all scans everything -> ok=true, all 5 CSVs populated
+- **SSCSCN-TC-32**: scope=site skips items -> ok=true, only 02/03 CSVs
+- **SSCSCN-TC-33**: scope=lists includes structure -> ok=true, 01/02/03 CSVs
+- **SSCSCN-TC-34**: include_subsites=true -> ok=true, subsite in 01 CSV with Type=SUBSITE
+
+### Category 7B: Subsite Scanning (6 tests)
+
+- **SSCSCN-TC-49**: Subsite lists in 01_SiteContents.csv -> ok=true, subsite Documents/Site Pages listed
+- **SSCSCN-TC-50**: Subsite groups in 02_SiteGroups.csv -> ok=true, "Subsite01 Owners/Members/Visitors" listed
+- **SSCSCN-TC-51**: Subsite users in 03_SiteUsers.csv -> ok=true, subsite group members resolved
+- **SSCSCN-TC-52**: Subsite broken inheritance in 04/05 CSVs -> ok=true, subsite items with broken permissions captured
+- **SSCSCN-TC-53**: Subsite with broken inheritance itself -> ok=true, subsite appears in 04 CSV if HasUniqueRoleAssignments=true
+- **SSCSCN-TC-54**: Recursive subsite scanning -> ok=true, sub-subsites scanned when include_subsites=true
+
+### Category 7C: Group Resolution Edge Cases (4 tests)
+
+- **SSCSCN-TC-55**: M365 group with _o suffix -> ok=true, group ID correctly extracted, Graph API call succeeds
+- **SSCSCN-TC-56**: do_not_resolve_these_groups adds entry -> ok=true, "Everyone except external users" appears in 03_SiteUsers.csv
+- **SSCSCN-TC-57**: do_not_resolve_these_groups skips resolution -> ok=true, no nested members for skipped groups
+- **SSCSCN-TC-58**: Special claim c:0-.f format detected -> ok=true, "Everyone except external users" identified as group
 
 ### Category 8: Caching (4 tests)
 
-- **SCAN-TC-35**: Entra group cached after first resolve -> ok=true, cache file created
-- **SCAN-TC-36**: Cache hit on second scan -> ok=true, no Graph API call
-- **SCAN-TC-37**: delete_caches=true clears cache -> ok=true, cache folder empty
-- **SCAN-TC-38**: Corrupt cache file handled -> ok=true, re-fetches from API
+- **SSCSCN-TC-35**: Entra group cached after first resolve -> ok=true, cache file created
+- **SSCSCN-TC-36**: Cache hit on second scan -> ok=true, no Graph API call
+- **SSCSCN-TC-37**: delete_caches=true clears cache -> ok=true, cache folder empty
+- **SSCSCN-TC-38**: Corrupt cache file handled -> ok=true, re-fetches from API
 
 ### Category 9: Error Handling (7 tests)
 
-- **SCAN-TC-39**: Invalid site_id -> ok=false, error="Site not found"
-- **SCAN-TC-40**: Access denied on item -> ok=true, item skipped, scan continues
-- **SCAN-TC-41**: Empty site (no groups) -> ok=true, CSVs with headers only
-- **SCAN-TC-42**: Cancellation mid-scan -> ok=false, no report created
-- **SCAN-TC-46**: Invalid scope parameter -> ok=false, error="Invalid scope"
-- **SCAN-TC-47**: 429 throttling response -> ok=true, scan retries with backoff
-- **SCAN-TC-48**: Auth token refresh mid-scan -> ok=true, scan continues after reconnect
+- **SSCSCN-TC-39**: Invalid site_id -> ok=false, error="Site not found"
+- **SSCSCN-TC-40**: Access denied on item -> ok=true, item skipped, scan continues
+- **SSCSCN-TC-41**: Empty site (no groups) -> ok=true, CSVs with headers only
+- **SSCSCN-TC-42**: Cancellation mid-scan -> ok=false, no report created
+- **SSCSCN-TC-46**: Invalid scope parameter -> ok=false, error="Invalid scope"
+- **SSCSCN-TC-47**: 429 throttling response -> ok=true, scan retries with backoff
+- **SSCSCN-TC-48**: Auth token refresh mid-scan -> ok=true, scan continues after reconnect
 
 ### Category 10: Report Output (3 tests)
 
-- **SCAN-TC-43**: Report archive created -> ok=true, ZIP in reports/site_scans/
-- **SCAN-TC-44**: report.json contains stats -> ok=true, groups_found, users_found populated
-- **SCAN-TC-45**: Report accessible via /v2/reports -> ok=true, listed and downloadable
+- **SSCSCN-TC-43**: Report archive created -> ok=true, ZIP in reports/site_scans/
+- **SSCSCN-TC-44**: report.json contains stats -> ok=true, groups_found, users_found populated
+- **SSCSCN-TC-45**: Report accessible via /v2/reports -> ok=true, listed and downloadable
 
 ## 7. Test Phases
 
@@ -366,10 +382,10 @@ Ordered execution sequence:
    - Creates sharing links
    - Creates subsite
 
-3. **Phase 3: Unit Tests** - SCAN-TC-01 to SCAN-TC-05
+3. **Phase 3: Unit Tests** - SSCSCN-TC-01 to SSCSCN-TC-05
    - CSV format verification (no SharePoint needed)
 
-4. **Phase 4: Integration Tests** - SCAN-TC-06 to SCAN-TC-45
+4. **Phase 4: Integration Tests** - SSCSCN-TC-06 to SSCSCN-TC-45
    - Run security scan
    - Verify CSV output
 
@@ -426,32 +442,40 @@ Artifacts to remove after testing:
 ## 10. Verification Checklist
 
 ### Setup Verification
-- [ ] **SCAN-TP01-VC-01**: Entra ID users created (6)
-- [ ] **SCAN-TP01-VC-02**: Security groups created with nesting (3)
-- [ ] **SCAN-TP01-VC-03**: M365 group created (1)
-- [ ] **SCAN-TP01-VC-04**: SharePoint custom group created
-- [ ] **SCAN-TP01-VC-05**: Broken inheritance items created (4)
-- [ ] **SCAN-TP01-VC-06**: Sharing links created
-- [ ] **SCAN-TP01-VC-07**: Subsite created
+- [ ] **SSCSCN-TP01-VC-01**: Entra ID users created (6)
+- [ ] **SSCSCN-TP01-VC-02**: Security groups created with nesting (3)
+- [ ] **SSCSCN-TP01-VC-03**: M365 group created (1)
+- [ ] **SSCSCN-TP01-VC-04**: SharePoint custom group created
+- [ ] **SSCSCN-TP01-VC-05**: Broken inheritance items created (4)
+- [ ] **SSCSCN-TP01-VC-06**: Sharing links created
+- [ ] **SSCSCN-TP01-VC-07**: Subsite created
 
 ### Test Execution
-- [ ] **SCAN-TP01-VC-08**: CSV format tests pass (TC-01 to TC-05)
-- [ ] **SCAN-TP01-VC-09**: SP group tests pass (TC-06 to TC-11)
-- [ ] **SCAN-TP01-VC-10**: Entra ID group tests pass (TC-12 to TC-18)
-- [ ] **SCAN-TP01-VC-11**: Direct assignment tests pass (TC-19 to TC-21)
-- [ ] **SCAN-TP01-VC-12**: Broken inheritance tests pass (TC-22 to TC-26)
-- [ ] **SCAN-TP01-VC-13**: Sharing link tests pass (TC-27 to TC-30)
-- [ ] **SCAN-TP01-VC-14**: Scope option tests pass (TC-31 to TC-34)
-- [ ] **SCAN-TP01-VC-15**: Caching tests pass (TC-35 to TC-38)
-- [ ] **SCAN-TP01-VC-16**: Error handling tests pass (TC-39 to TC-42, TC-46 to TC-48)
-- [ ] **SCAN-TP01-VC-17**: Report output tests pass (TC-43 to TC-45)
+- [ ] **SSCSCN-TP01-VC-08**: CSV format tests pass (TC-01 to TC-05)
+- [ ] **SSCSCN-TP01-VC-09**: SP group tests pass (TC-06 to TC-11)
+- [ ] **SSCSCN-TP01-VC-10**: Entra ID group tests pass (TC-12 to TC-18)
+- [ ] **SSCSCN-TP01-VC-11**: Direct assignment tests pass (TC-19 to TC-21)
+- [ ] **SSCSCN-TP01-VC-12**: Broken inheritance tests pass (TC-22 to TC-26)
+- [ ] **SSCSCN-TP01-VC-13**: Sharing link tests pass (TC-27 to TC-30)
+- [ ] **SSCSCN-TP01-VC-14**: Scope option tests pass (TC-31 to TC-34)
+- [ ] **SSCSCN-TP01-VC-15**: Caching tests pass (TC-35 to TC-38)
+- [ ] **SSCSCN-TP01-VC-16**: Error handling tests pass (TC-39 to TC-42, TC-46 to TC-48)
+- [ ] **SSCSCN-TP01-VC-17**: Report output tests pass (TC-43 to TC-45)
+- [ ] **SSCSCN-TP01-VC-21**: Subsite scanning tests pass (TC-49 to TC-54)
+- [ ] **SSCSCN-TP01-VC-22**: Group resolution edge case tests pass (TC-55 to TC-58)
 
 ### Cleanup Verification
-- [ ] **SCAN-TP01-VC-18**: SharePoint test objects removed
-- [ ] **SCAN-TP01-VC-19**: Entra ID test objects removed
-- [ ] **SCAN-TP01-VC-20**: No orphaned test data
+- [ ] **SSCSCN-TP01-VC-18**: SharePoint test objects removed
+- [ ] **SSCSCN-TP01-VC-19**: Entra ID test objects removed
+- [ ] **SSCSCN-TP01-VC-20**: No orphaned test data
 
 ## 11. Document History
+
+**[2026-02-03 22:40]**
+- Added: TC-49 to TC-54 (subsite scanning - 6 tests)
+- Added: TC-55 to TC-58 (group resolution edge cases - 4 tests)
+- Added: VC-21, VC-22 verification checklist items
+- Changed: Test count from 48 to 58
 
 **[2026-02-03 16:30]**
 - Added: TC-46 (invalid scope), TC-47 (throttling), TC-48 (auth refresh)

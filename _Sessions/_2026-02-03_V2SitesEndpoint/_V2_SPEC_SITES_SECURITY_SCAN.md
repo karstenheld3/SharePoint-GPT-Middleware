@@ -1,6 +1,6 @@
 # SPEC: Sites Security Scan
 
-**Doc ID**: SITE-SP03
+**Doc ID**: SSCSCN-SP01
 **Goal**: Specify the security scan feature for scanning SharePoint site permissions and generating CSV reports.
 **Target file**: `/src/routers_v2/sites.py`
 
@@ -367,7 +367,7 @@ Report accessible via:
 - Create file with defaults if it does not exist
 - Apply settings: filter accounts, permission levels, groups per configuration
 - Use `max_group_nesting_level` from settings (default: 5)
-- Skip lists matching `built_in_lists` array
+- Skip lists matching `ignore_lists` array
 - Skip groups matching `do_not_resolve_these_groups` or `ignore_sharepoint_groups`
 
 ## 7. Design Decisions
@@ -452,6 +452,37 @@ def resolve_group_members(group, nesting_level=1, parent_group=""):
     return members
 ```
 
+**Entra ID Group Detection:**
+Groups are identified by login name prefix patterns:
+- `c:0t.c|tenant|{guid}` - Security Groups
+- `c:0o.c|federateddirectoryclaimprovider|{guid}` - M365 Groups
+- `c:0-.f|rolemanager|{identifier}` - Special claims (e.g., "Everyone except external users")
+
+**M365 Group ID Extraction:**
+M365 groups have `_o` suffix in login name that must be stripped before Graph API calls:
+```python
+# Login: c:0o.c|federateddirectoryclaimprovider|60ac7968-89f9-490e-9500-aeecc62200d7_o
+group_id = login_name.split("|")[-1]  # "60ac7968-..._o"
+if group_id.endswith("_o"):
+    group_id = group_id[:-2]  # Strip _o suffix for Graph API
+```
+
+**do_not_resolve_these_groups Behavior:**
+Groups in this list are NOT resolved (no nested member lookup), but ARE added to output:
+```python
+if group_display_name in do_not_resolve_these_groups:
+    # Add entry for the group itself (appears in 03_SiteUsers.csv)
+    members.append({
+        "LoginName": login_name,
+        "DisplayName": group_display_name,
+        "ViaGroup": parent_group.title,
+        "AssignmentType": "Group"
+    })
+    # Skip nested resolution - do NOT call Graph API
+    continue
+```
+This ensures groups like "Everyone except external users" appear in output even though their members cannot be resolved.
+
 ### Group Member Caching
 
 **Storage:** `LOCAL_PERSISTENT_STORAGE_PATH/sites/_entra_group_cache/`
@@ -495,7 +526,7 @@ Settings file is loaded before each security scan. If the file does not exist, a
   "ignore_permission_levels": ["Limited Access"],
   "ignore_sharepoint_groups": [],
   "max_group_nesting_level": 5,
-  "built_in_lists": [
+  "ignore_lists": [
     "Access Requests", "App Packages", "appdata", "appfiles", "Apps in Testing",
     "AuditLogs", "Cache Profiles", "Composed Looks", "Content and Structure Reports",
     "Content type publishing error log", "Converted Forms", "Device Channels",
@@ -537,7 +568,7 @@ Settings file is loaded before each security scan. If the file does not exist, a
 - `ignore_permission_levels` - Permission levels to filter out (default: "Limited Access")
 - `ignore_sharepoint_groups` - SharePoint group names to skip entirely
 - `max_group_nesting_level` - Maximum depth for nested group resolution (default: 5)
-- `built_in_lists` - List titles to exclude from scanning (48 system lists)
+- `ignore_lists` - List titles to exclude from scanning (48 system lists)
 - `fields_to_load` - SharePoint list fields to include when scanning items with broken inheritance
 - `ignore_fields` - SharePoint list fields to exclude (inverse of fields_to_load)
 - `output_columns` - Columns to include in 05_IndividualPermissionItemAccess.csv (after Id, Type, Url prefix)
@@ -551,7 +582,7 @@ Settings file is loaded before each security scan. If the file does not exist, a
 | `$ignorePermissionLevels` | `ignore_permission_levels` | Permission levels to filter |
 | `$ignoreSharePointGroups` | `ignore_sharepoint_groups` | SP groups to skip |
 | `$maxGroupNestinglevel` | `max_group_nesting_level` | Max nesting depth |
-| `$builtInLists` | `built_in_lists` | Lists to exclude |
+| `$builtInLists` | `ignore_lists` | Lists to exclude |
 | `$fieldsToLoad` | `fields_to_load` | Fields to load for items |
 | `$ignoreFields` | `ignore_fields` | Fields to exclude |
 | `$outputColumns` | `output_columns` | Columns for item access CSV |

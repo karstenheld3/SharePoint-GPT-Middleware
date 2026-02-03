@@ -1,6 +1,6 @@
 # _V2_SPEC_SITES_SECURITY_SCAN_REVIEW.md
 
-**Doc ID**: SITE-SP03-RV01
+**Doc ID**: SSCSCN-SP01-RV01
 **Goal**: Document potential issues, risks, and suggestions for improvement
 **Reviewed**: 2026-02-03 15:19
 **Context**: Devil's Advocate review of security scan specification before IMPL plan
