@@ -1,0 +1,14 @@
+{
+  "DirectUser": "scantest_user1@whizzyapps.onmicrosoft.com",
+  "MembersUser": "scantest_user2@whizzyapps.onmicrosoft.com",
+  "CustomGroup": "ScanTest Custom Group",
+  "Subsite": "ScanTestSubsite",
+  "CreatedAt": "2026-02-03T17:06:17Z",
+  "TestList": "ScanTestList",
+  "SiteUrl": "https://whizzyapps.sharepoint.com/sites/AiSearchTest01",
+  "TestFolders": [
+    "TestFolder_DirectShare",
+    "TestFolder_GroupShare",
+    "TestFolder_SharingLink"
+  ]
+}

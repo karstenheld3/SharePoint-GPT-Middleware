@@ -1,0 +1,17 @@
+﻿{
+    "Groups":  {
+                   "ScanTest_SecurityGroup02":  "3e5ccbf1-cf65-456b-87b9-d6d5a002a824",
+                   "ScanTest_SecurityGroup03":  "06c58c3d-a8a4-4805-8603-2a9215276465",
+                   "ScanTest_SecurityGroup01":  "c2bfa136-9719-4a20-b386-8591802896ad",
+                   "ScanTest_M365Group01":  "60ac7968-89f9-490e-9500-aeecc62200d7"
+               },
+    "Users":  {
+                  "scantest_user2":  "8b4eaf49-60f9-400c-b26d-a930d397d248",
+                  "scantest_user1":  "d5812dab-d4ad-4dc6-b12b-fecb1d7560b7",
+                  "scantest_user4":  "cc71b7e0-e775-4dfc-818d-4d985a701c9a",
+                  "scantest_user3":  "0b750ac8-702d-48b6-b01d-426d93bab481",
+                  "scantest_user6":  "9ea69885-e956-4daf-8d4e-1a1626752a27",
+                  "scantest_user5":  "a57168e3-3f7b-4ef9-bd02-693a45a3f855"
+              },
+    "CreatedAt":  "2026-02-03T16:59:17Z"
+}

@@ -350,7 +350,7 @@ Report accessible via:
 - Column order must match PowerShell scanner exactly
 
 **SCAN-FR-08: Report Archive Creation**
-- Create report archive using `common_report_functions_v2.create_report_archive()`
+- Create report archive using `common_report_functions_v2.create_report()`
 - Store in `PERSISTENT_STORAGE_PATH/reports/site_scans/`
 - Filename: `{timestamp}_{site_id}_security.zip`
 - Update site.security_scan_result field with report_id
@@ -688,6 +688,9 @@ Id,Type,Url,LoginName,DisplayName,Email,PermissionLevel,SharedDateTime,SharedByD
 
 ## Document History
 
+**[2026-02-03 16:15]**
+- Fixed: SCAN-FR-08 function name `create_report_archive()` -> `create_report()` (synced from IMPL)
+
 **[2026-02-03 15:45]**
 - Changed: Cache folder renamed to `_entra_group_cache/` (underscore prefix)
 - Added: Rule in `_V2_SPEC_SITES.md` that folders starting with `_` are ignored by sites endpoints
@@ -697,6 +700,9 @@ Id,Type,Url,LoginName,DisplayName,Email,PermissionLevel,SharedDateTime,SharedByD
 - Changed: Storage path to `LOCAL_PERSISTENT_STORAGE_PATH/sites/_entra_group_cache/`
 - Added: Metadata fields to cache JSON (group_display_name, group_type, member_count)
 - Changed: All "Azure AD" references renamed to "Entra ID" throughout
+- Changed: SharePoint groups NOT cached (resolved fresh each scan)
+
+**[2026-02-03 15:30]**
 - Changed: SharePoint groups NOT cached (resolved fresh each scan)
 
 **[2026-02-03 15:26]**
