@@ -169,6 +169,93 @@ See STRUT plan below.
 
 ## POC COMPLETE - DECISION: GO
 
+## STRUT Plan: Security Scanner Implementation
+
+[x] P1 [IMPLEMENT]: Core Functions
+├─ Objectives:
+│   └─ [x] All security scan functions implemented ← P1-D1, P1-D2, P1-D3
+├─ Strategy: Create common_security_scan_functions_v2.py following IMPL plan
+├─ [x] P1-S1 [IMPLEMENT](csv_escape, csv_row functions)
+├─ [x] P1-S2 [IMPLEMENT](resolve_entra_group_members with Graph API)
+├─ [x] P1-S3 [IMPLEMENT](resolve_sharepoint_group_members)
+├─ [x] P1-S4 [IMPLEMENT](scan_site_groups for 02/03 CSVs)
+├─ [x] P1-S5 [IMPLEMENT](scan_items_with_broken_inheritance for 04/05 CSVs)
+├─ [x] P1-S6 [IMPLEMENT](run_security_scan orchestrator)
+├─ Deliverables:
+│   ├─ [x] P1-D1: common_security_scan_functions_v2.py created
+│   ├─ [x] P1-D2: All scan functions compile without errors
+│   └─ [x] P1-D3: Functions follow SPEC CSV format
+└─> Transitions:
+    - P1-D1 - P1-D3 checked → P2 [ENDPOINT] ✓
+
+[x] P2 [ENDPOINT]: SSE Endpoint Implementation
+├─ Objectives:
+│   └─ [x] Security scan endpoint operational ← P2-D1, P2-D2
+├─ Strategy: Add endpoint to sites.py router, integrate with job system
+├─ [x] P2-S1 [IMPLEMENT](/v2/sites/security_scan SSE endpoint)
+├─ [x] P2-S2 [IMPLEMENT](job lifecycle: start, progress, complete, cancel)
+├─ [x] P2-S3 [IMPLEMENT](report archive creation via common_report_functions_v2)
+├─ [x] P2-S4 [VERIFY](endpoint compiles and responds)
+├─ Deliverables:
+│   ├─ [x] P2-D1: Endpoint registered and responding
+│   └─ [x] P2-D2: SSE events streaming correctly
+└─> Transitions:
+    - P2-D1, P2-D2 checked → P3 [UI] ✓
+
+[x] P3 [UI]: Dialog and Integration
+├─ Objectives:
+│   └─ [x] Security scan accessible from UI ← P3-D1, P3-D2
+├─ Strategy: Add modal dialog, scope dropdown, connect to endpoint
+├─ [x] P3-S1 [IMPLEMENT](showSecurityScanDialog JS function)
+├─ [x] P3-S2 [IMPLEMENT](scope dropdown, checkboxes, endpoint preview)
+├─ [x] P3-S3 [IMPLEMENT](progress display and cancel button)
+├─ [x] P3-S4 [CONNECT](Security Scan button to dialog)
+├─ [ ] P3-S5 [TEST-MANUAL](open dialog, verify layout)
+├─ Deliverables:
+│   ├─ [x] P3-D1: Dialog opens from table action
+│   └─ [ ] P3-D2: Dialog layout matches SPEC UX design
+└─> Transitions:
+    - P3-D1, P3-D2 checked → P4 [TEST]
+
+[ ] P4 [TEST]: End-to-End Testing
+├─ Objectives:
+│   ├─ [ ] Test data created ← P4-D1
+│   ├─ [ ] Scan produces correct output ← P4-D2, P4-D3
+│   └─ [ ] Edge cases handled ← P4-D4
+├─ Strategy: Run PowerShell setup, execute scan, verify CSV output
+├─ [ ] P4-S1 [RUN](01_Create_EntraID_UsersAnd_Groups.ps1)
+├─ [ ] P4-S2 [RUN](02_Create_SharePoint_Permission_Cases.ps1)
+├─ [ ] P4-S3 [TEST](security scan via UI - scope=all)
+├─ [ ] P4-S4 [VERIFY](CSV output against expected results)
+├─ [ ] P4-S5 [TEST](cancel functionality)
+├─ [ ] P4-S6 [TEST](cache behavior - delete_caches option)
+├─ Deliverables:
+│   ├─ [ ] P4-D1: Test data created in SharePoint/Entra
+│   ├─ [ ] P4-D2: Security scan completes successfully
+│   ├─ [ ] P4-D3: CSV format matches SPEC
+│   └─ [ ] P4-D4: Error handling verified
+└─> Transitions:
+    - P4-D1 - P4-D4 checked → P5 [FIX]
+    - Any test fails → P5 [FIX]
+
+[ ] P5 [FIX]: Fix Issues and Cleanup
+├─ Objectives:
+│   └─ [ ] All issues resolved, test data cleaned ← P5-D1, P5-D2, P5-D3
+├─ Strategy: Fix bugs found in testing, cleanup test data, commit
+├─ [ ] P5-S1 [FIX](any bugs found during testing)
+├─ [ ] P5-S2 [RUN](03_Remove_SharePoint_Permission_Cases.ps1)
+├─ [ ] P5-S3 [RUN](04_Remove_EntraID_UsersAnd_Groups.ps1)
+├─ [ ] P5-S4 [VERIFY](all test data removed)
+├─ [ ] P5-S5 [UPDATE](SPEC/IMPL if implementation diverged)
+├─ [ ] P5-S6 [COMMIT]("feat(sites): add security scan endpoint")
+├─ Deliverables:
+│   ├─ [ ] P5-D1: All bugs fixed
+│   ├─ [ ] P5-D2: Test data cleaned up
+│   └─ [ ] P5-D3: Code committed
+└─> Transitions:
+    - P5-D1 - P5-D3 checked → [END]
+    - Critical bug unfixable → [CONSULT]
+
 ## Tried But Not Used
 
 (None yet)
