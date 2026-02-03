@@ -2262,7 +2262,11 @@ function formatResultOkFail(ok) {{
 }}
 function formatTimestamp(ts) {{
   if (!ts) return '-';
-  try {{ return ts.replace('T', ' ').substring(0, 19); }} catch (e) {{ return '-'; }}
+  try {{
+    const date = new Date(ts);
+    const pad = (n) => String(n).padStart(2, '0');
+    return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds());
+  }} catch (e) {{ return '-'; }}
 }}
 function renderJobRow(job) {{
   const parsed = parseSourceUrl(job.source_url);
