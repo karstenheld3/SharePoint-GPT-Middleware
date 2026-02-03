@@ -1285,16 +1285,18 @@ async def sites_security_scan(request: Request):
     try:
       yield writer.emit_start()
       
-      sse = stream_logger.log_function_output(f"Starting security scan for site '{site_id}'...")
-      if sse: yield sse
-      sse = stream_logger.log_function_output(f"  Site URL: {site.site_url}")
-      if sse: yield sse
-      sse = stream_logger.log_function_output(f"  Scope: {scope}")
-      if sse: yield sse
-      sse = stream_logger.log_function_output(f"  Include subsites: {include_subsites}")
-      if sse: yield sse
-      sse = stream_logger.log_function_output(f"  Delete caches: {delete_caches}")
-      if sse: yield sse
+      def log(msg: str):
+        sse = stream_logger.log_function_output(msg)
+        writer.drain_sse_queue()
+        return sse
+      
+      import asyncio
+      
+      yield log(f"Starting security scan for site '{site_id}'...")
+      yield log(f"  Site URL: {site.site_url}")
+      yield log(f"  Scope: {scope}")
+      yield log(f"  Include subsites: {include_subsites}")
+      yield log(f"  Delete caches: {delete_caches}")
       
       async for event in run_security_scan(
         site_url=site.site_url,
@@ -1311,6 +1313,7 @@ async def sites_security_scan(request: Request):
         logger=stream_logger
       ):
         yield event
+        await asyncio.sleep(0)  # Force flush each event to browser
       
       # Get results
       result = writer._step_result or {}

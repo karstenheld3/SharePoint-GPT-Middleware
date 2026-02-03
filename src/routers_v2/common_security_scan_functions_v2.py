@@ -548,6 +548,7 @@ async def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, o
     
     # Paginate through items
     last_id = 0
+    batch_num = 0
     while True:
       try:
         items = lst.items.filter(f"ID gt {last_id}").select(
@@ -559,6 +560,13 @@ async def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, o
         break
       
       if len(items) == 0: break
+      
+      # Progress indicator after fetching each batch
+      batch_num += 1
+      items_with_perms = sum(1 for i in items if i.properties.get("HasUniqueRoleAssignments"))
+      if items_with_perms > 0:  # Show progress when there are items to check
+        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        yield writer.emit_log(f"[{ts}]       Fetched {len(items)} items ({items_with_perms} with unique permissions)...")
       
       for item in items:
         stats["items_scanned"] += 1
