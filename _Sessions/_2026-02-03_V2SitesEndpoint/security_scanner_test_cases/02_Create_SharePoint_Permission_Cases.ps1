@@ -1,6 +1,6 @@
 # 02_Create_SharePoint_Permission_Cases.ps1
 # Creates SharePoint permission test cases for security scan testing
-# Part of SCAN-TP01 test plan
+# Part of SSCSCN-TP01 test plan
 # Requires: PnP.PowerShell module
 
 # === Configuration ===

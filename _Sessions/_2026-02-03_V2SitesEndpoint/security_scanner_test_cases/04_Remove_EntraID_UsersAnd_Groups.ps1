@@ -1,6 +1,6 @@
 # 04_Remove_EntraID_UsersAnd_Groups.ps1
 # Removes Entra ID users and groups created by script 01
-# Part of SCAN-TP01 test plan
+# Part of SSCSCN-TP01 test plan
 
 # === Default objects to remove (if tracking file not found) ===
 $defaultUsers = @(

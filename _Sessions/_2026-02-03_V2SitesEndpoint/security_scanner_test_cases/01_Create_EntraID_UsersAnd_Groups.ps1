@@ -1,6 +1,6 @@
 # 01_Create_EntraID_UsersAnd_Groups.ps1
 # Creates Entra ID users and groups for security scan testing
-# Part of SCAN-TP01 test plan
+# Part of SSCSCN-TP01 test plan
 
 # === Configuration ===
 $testUserPassword = "P@ssw0rd123!"  # Temporary password, user must change on first login

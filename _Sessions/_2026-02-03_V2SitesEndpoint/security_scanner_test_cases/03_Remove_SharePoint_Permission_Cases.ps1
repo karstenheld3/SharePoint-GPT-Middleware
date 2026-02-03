@@ -1,6 +1,6 @@
 # 03_Remove_SharePoint_Permission_Cases.ps1
 # Removes SharePoint permission test cases created by script 02
-# Part of SCAN-TP01 test plan
+# Part of SSCSCN-TP01 test plan
 # Requires: PnP.PowerShell module
 
 # === Helper Functions ===
