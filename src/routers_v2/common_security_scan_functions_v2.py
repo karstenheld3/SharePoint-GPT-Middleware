@@ -164,9 +164,13 @@ def is_entra_id_group(login_name: str) -> bool:
 
 def extract_group_id_from_login(login_name: str) -> str | None:
   """Extract Entra ID group GUID from login name."""
-  # Format: c:0t.c|tenant|{guid} or similar
+  # Format: c:0t.c|tenant|{guid} or c:0o.c|federateddirectoryclaimprovider|{guid}_o
   parts = login_name.split("|")
-  if len(parts) >= 3: return parts[-1]
+  if len(parts) >= 3:
+    group_id = parts[-1]
+    # M365 groups have _o suffix that must be stripped for Graph API calls
+    if group_id.endswith("_o"): group_id = group_id[:-2]
+    return group_id
   return None
 
 async def resolve_entra_group_members(storage_path: str, graph_client: GraphServiceClient, group_id: str, group_name: str, nesting_level: int, parent_group: str, writer, logger: MiddlewareLogger) -> list:
@@ -256,9 +260,22 @@ async def resolve_sharepoint_group_members(ctx: ClientContext, group, storage_pa
       group_display_name = user.title or login_name
       writer.emit_log(f"[{ts}]           -> Entra ID group (group_id={group_id})")
       
-      # Check if group should not be resolved (from settings)
+      # Check if group should not be resolved (from settings) - still add entry, just skip nested resolution
       if group_display_name in do_not_resolve:
-        writer.emit_log(f"[{ts}]           SKIPPED: Group in do_not_resolve_these_groups setting")
+        writer.emit_log(f"[{ts}]           SKIPPED nested resolution: Group in do_not_resolve_these_groups setting")
+        # Add entry for the group itself (not resolved)
+        members.append({
+          "Id": "",
+          "LoginName": login_name,
+          "DisplayName": group_display_name,
+          "Email": "",
+          "NestingLevel": nesting_level,
+          "ParentGroup": parent_group,
+          "ViaGroup": group.title,
+          "ViaGroupId": str(group.id),
+          "ViaGroupType": "SharePointGroup",
+          "AssignmentType": "Group"
+        })
         continue
       
       if group_id and graph_client:
@@ -279,7 +296,6 @@ async def resolve_sharepoint_group_members(ctx: ClientContext, group, storage_pa
       elif not graph_client:
         writer.emit_log(f"[{ts}]           WARNING: No Graph client, cannot resolve Entra group")
     else:
-      writer.emit_log(f"[{ts}]           -> User (not Entra group)")
       members.append({
         "Id": str(user.id) if user.id else "",
         "LoginName": login_name,
@@ -304,11 +320,15 @@ def scan_site_contents(ctx: ClientContext, output_folder: str, writer, logger: M
   """Scan lists/libraries and write 01_SiteContents.csv."""
   stats = {"lists_scanned": 0}
   contents_file = os.path.join(output_folder, "01_SiteContents.csv")
-  write_csv_header(contents_file, CSV_COLUMNS_SITE_CONTENTS)
+  
+  # Only write header when called from main scan (step > 0), not from subsite scanning
+  if current_step > 0:
+    write_csv_header(contents_file, CSV_COLUMNS_SITE_CONTENTS)
   
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-  writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Scanning site contents...")
-  lists = ctx.web.lists.get().execute_query()
+  if current_step > 0:
+    writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Scanning site contents...")
+  lists = ctx.web.lists.get().select(["Id", "Title", "BaseTemplate", "Hidden", "RootFolder"]).expand(["RootFolder"]).execute_query()
   
   rows = []
   for lst in lists:
@@ -320,10 +340,9 @@ def scan_site_contents(ctx: ClientContext, output_folder: str, writer, logger: M
     list_type = "LIST" if lst.base_template == 100 else "LIBRARY"
     if lst.base_template == 119: list_type = "SITEPAGES"
     
-    # Get root folder URL
+    # Get root folder URL from expanded property
     try:
-      lst.root_folder.get().execute_query()
-      url = lst.root_folder.server_relative_url
+      url = lst.root_folder.properties.get("ServerRelativeUrl", "") if lst.root_folder else ""
     except:
       url = ""
     
@@ -354,11 +373,14 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
   groups_file = os.path.join(output_folder, "02_SiteGroups.csv")
   users_file = os.path.join(output_folder, "03_SiteUsers.csv")
   
-  write_csv_header(groups_file, CSV_COLUMNS_SITE_GROUPS)
-  write_csv_header(users_file, CSV_COLUMNS_SITE_USERS)
+  # Only write headers when called from main scan (step > 0), not from subsite scanning
+  if current_step > 0:
+    write_csv_header(groups_file, CSV_COLUMNS_SITE_GROUPS)
+    write_csv_header(users_file, CSV_COLUMNS_SITE_USERS)
   
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-  writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Scanning site groups (graph_client_available={graph_client is not None})...")
+  if current_step > 0:
+    writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Scanning site groups (graph_client_available={graph_client is not None})...")
   
   # Load site groups with role assignments to get permission levels
   role_assignments = ctx.web.role_assignments.get()
@@ -484,22 +506,25 @@ def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, output_
   if settings is None: settings = {}
   
   # Extract settings
-  built_in_lists = set(settings.get("built_in_lists", []))
+  ignore_lists = set(settings.get("ignore_lists", []))
   ignore_permission_levels = set(settings.get("ignore_permission_levels", ["Limited Access"]))
   ignore_accounts = set(settings.get("ignore_accounts", []))
   
   items_file = os.path.join(output_folder, "04_IndividualPermissionItems.csv")
   access_file = os.path.join(output_folder, "05_IndividualPermissionItemAccess.csv")
   
-  write_csv_header(items_file, CSV_COLUMNS_INDIVIDUAL_ITEMS)
-  write_csv_header(access_file, CSV_COLUMNS_INDIVIDUAL_ACCESS)
+  # Only write headers when called from main scan (step > 0), not from subsite scanning
+  if current_step > 0:
+    write_csv_header(items_file, CSV_COLUMNS_INDIVIDUAL_ITEMS)
+    write_csv_header(access_file, CSV_COLUMNS_INDIVIDUAL_ACCESS)
   
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-  writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Scanning items with broken inheritance...")
+  if current_step > 0:
+    writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Scanning items with broken inheritance...")
   
   all_lists = ctx.web.lists.get().execute_query()
-  # Filter to relevant lists (skip hidden and built-in lists from settings)
-  lists_to_scan = [lst for lst in all_lists if lst.base_template in INCLUDED_TEMPLATES and not lst.properties.get("Hidden", False) and lst.title not in built_in_lists]
+  # Filter to relevant lists: skip hidden and lists in ignore_lists
+  lists_to_scan = [lst for lst in all_lists if lst.base_template in INCLUDED_TEMPLATES and not lst.properties.get("Hidden", False) and lst.title not in ignore_lists]
   total_lists = len(lists_to_scan)
   
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -602,6 +627,126 @@ def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, output_
 # ----------------------------------------- END: Scanning Functions -----------------------------------------------------------
 
 
+# ----------------------------------------- START: Subsite Scanning -----------------------------------------------------------
+
+async def scan_subsites(
+  parent_ctx: ClientContext,
+  storage_path: str,
+  output_folder: str,
+  graph_client,
+  writer,
+  logger: MiddlewareLogger,
+  settings: dict,
+  client_id: str,
+  tenant_id: str,
+  cert_path: str,
+  cert_password: str,
+  depth: int = 0,
+  max_depth: int = 5
+) -> dict:
+  """Recursively scan subsites when include_subsites=true (SCAN-FR-06)."""
+  stats = {"subsites_scanned": 0, "groups_found": 0, "users_found": 0, "items_scanned": 0, "broken_inheritance": 0}
+  
+  if depth >= max_depth:
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    writer.emit_log(f"[{ts}]   WARNING: Max subsite depth ({max_depth}) reached, skipping deeper subsites")
+    return stats
+  
+  # Get subsites with Url, Title and HasUniqueRoleAssignments properties loaded
+  try:
+    webs = parent_ctx.web.webs.get().select(["Id", "Title", "Url", "HasUniqueRoleAssignments"]).execute_query()
+  except Exception as e:
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    writer.emit_log(f"[{ts}]   ERROR: Failed to get subsites -> {e}")
+    return stats
+  
+  subsites = list(webs)
+  if not subsites:
+    return stats
+  
+  ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  writer.emit_log(f"[{ts}]   Found {len(subsites)} subsite(s) at depth={depth}".replace("(s)", "s" if len(subsites) != 1 else ""))
+  
+  contents_file = os.path.join(output_folder, "01_SiteContents.csv")
+  
+  for idx, subweb in enumerate(subsites, 1):
+    stats["subsites_scanned"] += 1
+    subsite_url = subweb.url
+    subsite_title = subweb.title or "Untitled"
+    subsite_id = subweb.id
+    
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    writer.emit_log(f"[{ts}]   ( {idx} / {len(subsites)} ) SUBSITE: '{subsite_title}' url='{subsite_url}'")
+    
+    # Add subsite to 01_SiteContents.csv
+    append_csv_rows(contents_file, [{
+      "Id": str(subsite_id),
+      "Type": "SUBSITE",
+      "Title": subsite_title,
+      "Url": subsite_url
+    }], CSV_COLUMNS_SITE_CONTENTS)
+    
+    # Check if subsite has broken inheritance - add to 04_IndividualPermissionItems.csv
+    has_unique = subweb.properties.get("HasUniqueRoleAssignments", False)
+    if has_unique:
+      items_file = os.path.join(output_folder, "04_IndividualPermissionItems.csv")
+      append_csv_rows(items_file, [{
+        "Id": str(subsite_id),
+        "Type": "SUBSITE",
+        "Title": subsite_title,
+        "Url": subsite_url
+      }], CSV_COLUMNS_INDIVIDUAL_ITEMS)
+      stats["broken_inheritance"] += 1
+      ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+      writer.emit_log(f"[{ts}]     Subsite has broken inheritance")
+    
+    # Create new context for subsite using same credentials
+    try:
+      from routers_v2.common_sharepoint_functions_v2 import connect_to_site_using_client_id_and_certificate
+      sub_ctx = connect_to_site_using_client_id_and_certificate(subsite_url, client_id, tenant_id, cert_path, cert_password)
+      sub_ctx.web.get().execute_query()
+      
+      ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+      writer.emit_log(f"[{ts}]     Connected to subsite")
+      
+      # Scan subsite site contents (lists/libraries) - append to same CSV
+      contents_stats = scan_site_contents(sub_ctx, output_folder, writer, logger, 0, 0)
+      for sse in writer.drain_sse_queue(): pass
+      
+      # Scan subsite groups
+      group_stats = await scan_site_groups(sub_ctx, storage_path, output_folder, graph_client, writer, logger, 0, 0, settings)
+      for sse in writer.drain_sse_queue(): pass  # Drain queue but don't yield here
+      stats["groups_found"] += group_stats["groups_found"]
+      stats["users_found"] += group_stats["users_found"]
+      
+      # Scan subsite broken inheritance items
+      ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+      writer.emit_log(f"[{ts}]     Scanning subsite items with broken inheritance...")
+      loop = asyncio.get_event_loop()
+      item_stats = scan_broken_inheritance_items(sub_ctx, storage_path, output_folder, graph_client, writer, logger, loop, 0, 0, settings)
+      for sse in writer.drain_sse_queue(): pass
+      ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+      writer.emit_log(f"[{ts}]     {item_stats['items_scanned']} items scanned, {item_stats['broken_inheritance']} with broken inheritance.")
+      stats["items_scanned"] += item_stats["items_scanned"]
+      stats["broken_inheritance"] += item_stats["broken_inheritance"]
+      
+      # Recurse into sub-subsites
+      sub_stats = await scan_subsites(sub_ctx, storage_path, output_folder, graph_client, writer, logger, settings, client_id, tenant_id, cert_path, cert_password, depth + 1, max_depth)
+      stats["subsites_scanned"] += sub_stats["subsites_scanned"]
+      stats["groups_found"] += sub_stats["groups_found"]
+      stats["users_found"] += sub_stats["users_found"]
+      stats["items_scanned"] += sub_stats["items_scanned"]
+      stats["broken_inheritance"] += sub_stats["broken_inheritance"]
+      
+    except Exception as e:
+      ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+      writer.emit_log(f"[{ts}]     ERROR: Failed to scan subsite '{subsite_title}' -> {e}")
+  
+  return stats
+
+# ----------------------------------------- END: Subsite Scanning -------------------------------------------------------------
+
+
 # ----------------------------------------- START: Main Scanner ---------------------------------------------------------------
 
 async def run_security_scan(
@@ -641,15 +786,17 @@ async def run_security_scan(
   
   # Load scanner settings
   settings = load_scanner_settings(storage_path)
+  settings_path = get_scanner_settings_path(storage_path)
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-  yield writer.emit_log(f"[{ts}] Loaded scanner settings (max_group_nesting_level={settings.get('max_group_nesting_level', 5)})")
+  yield writer.emit_log(f"[{ts}] Loaded scanner settings from path='{settings_path}'")
   
   # Calculate total steps based on scope
-  # Steps: 1=Connect, 2=Graph client, 3=Site contents (if scope), 4=Site groups (if scope), 5=Broken items (if scope), 6=Create report
+  # Steps: 1=Connect, 2=Graph client, 3=Site contents (if scope), 4=Site groups (if scope), 5=Broken items (if scope), 6=Subsites (if enabled), 7=Create report
   total_steps = 3  # Connect + Graph + Report always
   if scope in ["all", "site", "lists"]: total_steps += 1
   if scope in ["all", "site"]: total_steps += 1
   if scope in ["all", "items"]: total_steps += 1
+  if include_subsites: total_steps += 1
   current_step = 0
   
   # Delete caches if requested (step 0 - not counted)
@@ -727,6 +874,21 @@ async def run_security_scan(
       for sse in writer.drain_sse_queue(): yield sse
       stats["items_scanned"] = item_stats["items_scanned"]
       stats["broken_inheritance"] = item_stats["broken_inheritance"]
+    
+    # Scan subsites if requested (SCAN-FR-06)
+    if include_subsites:
+      current_step += 1
+      ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+      yield writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Scanning subsites recursively...")
+      subsite_stats = await scan_subsites(ctx, storage_path, output_folder, graph_client, writer, logger, settings, client_id, tenant_id, cert_path, cert_password)
+      for sse in writer.drain_sse_queue(): yield sse
+      ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+      yield writer.emit_log(f"[{ts}]   {subsite_stats['subsites_scanned']} subsite(s) scanned.".replace("(s)", "s" if subsite_stats['subsites_scanned'] != 1 else ""))
+      # Add subsite stats to totals
+      stats["groups_found"] += subsite_stats["groups_found"]
+      stats["users_found"] += subsite_stats["users_found"]
+      stats["items_scanned"] += subsite_stats["items_scanned"]
+      stats["broken_inheritance"] += subsite_stats["broken_inheritance"]
     
     # Final step: Create report archive
     current_step += 1
