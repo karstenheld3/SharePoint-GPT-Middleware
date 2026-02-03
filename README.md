@@ -68,12 +68,14 @@ src/
 └── routers_v2/                     # V2 routers (mounted at /v2) - current
     ├── crawler.py                  # Crawling with streaming jobs
     ├── domains.py                  # Domain CRUD with interactive UI
-    ├── inventory.py                # Vector store management
+    ├── sites.py                    # SharePoint site registration
     ├── jobs.py                     # Job monitoring and control
     ├── reports.py                  # Crawl report archives
     ├── common_ui_functions_v2.py   # Unified UI generation (HTMX/SSE)
     ├── common_job_functions_v2.py  # Streaming job infrastructure
-    └── common_report_functions_v2.py  # Report archive utilities
+    ├── common_report_functions_v2.py   # Report archive utilities
+    ├── common_sharepoint_functions_v2.py  # SharePoint API access
+    └── common_openai_functions_v2.py  # OpenAI API utilities
 ```
 
 ### Storage Structure
@@ -83,6 +85,7 @@ The application uses a persistent storage system to organize domains, crawled co
 ```
 PERSISTENT_STORAGE_PATH/
 ├── domains/          # Domain configurations (domain.json, files_metadata.json)
+├── sites/            # Registered SharePoint sites (site.json per site)
 ├── crawler/          # Crawled SharePoint content organized by domain/source
 ├── jobs/             # Streaming job files for long-running operations
 ├── reports/          # Crawl report archives (ZIP files with map snapshots)
@@ -229,6 +232,19 @@ Access crawl report archives for auditing:
 | `/v2/reports/download` | GET | Download report as ZIP |
 | `/v2/reports/delete` | GET/DELETE | Delete report archive |
 
+### V2 Sites (`/v2/sites`)
+
+Manage SharePoint sites registered with the middleware:
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/v2/sites` | GET | List all sites (`format=json/html/ui`) |
+| `/v2/sites/get` | GET | Get single site configuration |
+| `/v2/sites/create` | POST | Register new SharePoint site |
+| `/v2/sites/update` | PUT | Update site configuration |
+| `/v2/sites/delete` | GET/DELETE | Delete site registration |
+| `/v2/sites/selftest` | GET | Run endpoint self-test (`format=stream` for SSE) |
+
 ### V2 Inventory (`/v2/inventory`)
 
 Manage OpenAI backend resources:
@@ -238,6 +254,36 @@ Manage OpenAI backend resources:
 | `/v2/inventory` | GET | Inventory UI (`format=ui`) |
 | `/v2/inventory/vector_stores` | GET | List vector stores |
 | `/v2/inventory/vector_stores/files` | GET | List files in vector store |
+
+## Dependencies
+
+### Core Libraries
+
+| Library | Version | Purpose |
+|---------|---------|---------|
+| **fastapi** | 0.116.1 | Web framework for REST API endpoints |
+| **uvicorn** | 0.35.0 | ASGI server with hot reload support |
+| **openai** | 2.8.0 | OpenAI API client for vector stores and embeddings |
+| **Office365-REST-Python-Client** | 2.6.2 | SharePoint REST API access for crawling |
+| **azure-identity** | 1.15.0 | Azure AD authentication (managed identity, service principal) |
+| **cryptography** | 41.0.7 | Certificate handling for SharePoint auth |
+| **httpx** | 0.28.1 | Async HTTP client for API calls |
+| **aiohttp** | 3.12.15 | Async HTTP for streaming responses |
+| **python-dotenv** | 1.1.1 | Environment variable loading from .env |
+| **python-multipart** | 0.0.20 | Form data parsing for file uploads |
+
+### Development Dependencies
+
+| Library | Purpose |
+|---------|---------|
+| **pytest** | Testing framework |
+| **ruff** | Linting and formatting |
+
+### Not Yet Used (Planned for Permission Scanner)
+
+| Library | Purpose |
+|---------|---------|
+| **msgraph-sdk** | Microsoft Graph API for Azure AD group resolution |
 
 ## Configuration
 
