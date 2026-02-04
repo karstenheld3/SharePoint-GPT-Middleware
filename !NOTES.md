@@ -37,6 +37,29 @@
 - `Get-Content file.txt | Select-String "pattern"` (piped)
 - `(Get-Content file.txt -Raw) -match "pattern"` (regex match)
 
+## Batch Files
+
+All batch files are in the workspace root. Double-click to run or execute from terminal.
+
+**Development:**
+- `InstallAndCompileDependencies.bat` - Install dependencies, regenerate `requirements.txt`
+- `Windsurf.bat` - Launch Windsurf IDE with workspace
+
+**Azure Deployment:**
+- `CreateAzureAppService.bat` - Create new Azure App Service (first-time setup)
+- `DeployAzureAppService.bat` - Deploy code to Azure App Service
+- `DeleteAzureAppService.bat` - Delete Azure App Service
+
+**Configuration:**
+- `AddRemoveCrawlerPermissions.bat` - Manage Entra ID app permissions
+- `AddRemoveCrawlerSharePointSites.bat` - Manage Sites.Selected permissions
+- `CreateSelfSignedCertificateRunAsAdmin.bat` - Generate certificate (run as admin)
+
+**Environment Switching:**
+- `Set-OpenAi-Env.bat` - Use OpenAI API
+- `Set-AzureOpenAiService-Env.bat` - Use Azure OpenAI Service
+- `Set-AzureOpenAiProject-Env.bat` - Use Azure OpenAI Project
+
 ## Folder Conventions
 
 **POC Scripts**: All Proof of Concept scripts go in `./src/pocs/[poc_name]/`
