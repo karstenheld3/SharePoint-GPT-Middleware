@@ -329,7 +329,7 @@ a:hover { text-decoration: underline; }
 /* Page Header */
 .page-header { padding: 12px 16px; border-bottom: 1px solid #ddd; background: #f8f9fa; flex-shrink: 0; }
 .page-header h1 { margin: 0 0 8px 0; }
-.nav-links { font-size: 0.9em; }
+.nav-links { }
 
 /* Report Header */
 .report-header { display: flex; gap: 32px; padding: 12px 16px; background: #fff; border-bottom: 1px solid #ddd; flex-shrink: 0; }
