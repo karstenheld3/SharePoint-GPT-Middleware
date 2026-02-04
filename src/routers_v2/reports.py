@@ -378,7 +378,7 @@ a:hover { text-decoration: underline; }
 .csv-table th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; z-index: 1; }
 .csv-table tr:nth-child(even) { background: #fafafa; }
 .csv-table tr:hover { background: #f0f7ff; }
-.csv-table tbody tr:last-child td { border-bottom: none; }
+.csv-table tbody tr:last-child td { border-bottom: 1px solid #ddd; }
 
 /* Loading */
 .loading { padding: 24px; color: #666; text-align: center; }
@@ -437,7 +437,7 @@ function renderTreeNode(node, path) {
       var folderPath = path ? path + '/' + name : name;
       html += '<div class="tree-node folder" data-path="' + escapeHtml(folderPath) + '">';
       html += '<div class="folder-row" onclick="toggleFolder(this.parentNode)">';
-      html += '<span class="folder-toggle">v</span>';
+      html += '<span class="folder-toggle">⊟</span>';
       html += '<span class="folder-name">' + escapeHtml(name) + '</span>';
       html += '</div>';
       html += '<div class="tree-children">' + renderTreeNode(value, folderPath) + '</div>';
@@ -459,10 +459,10 @@ function toggleFolder(node) {
   var toggle = node.querySelector('.folder-toggle');
   if (children.classList.contains('collapsed')) {
     children.classList.remove('collapsed');
-    toggle.textContent = 'v';
+    toggle.textContent = '⊟';
   } else {
     children.classList.add('collapsed');
-    toggle.textContent = '>';
+    toggle.textContent = '⊞';
   }
 }
 
