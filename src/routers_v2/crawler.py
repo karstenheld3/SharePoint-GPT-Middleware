@@ -2293,7 +2293,12 @@ function renderJobRow(job) {{
 function renderJobActions(job) {{
   const jobId = job.job_id;
   const state = job.state;
+  const reportId = job.result?.data?.report_id;
   let actions = [];
+  if (reportId) {{
+    const viewUrl = '/v2/reports/view?report_id=' + encodeURIComponent(reportId) + '&format=ui';
+    actions.push('<a href="' + viewUrl + '" class="btn-small" style="text-decoration:none;">View</a>');
+  }}
   if (state === 'completed' || state === 'cancelled') {{
     actions.push('<button class="btn-small" onclick="showJobResult(\\'' + jobId + '\\')">Result</button>');
   }}

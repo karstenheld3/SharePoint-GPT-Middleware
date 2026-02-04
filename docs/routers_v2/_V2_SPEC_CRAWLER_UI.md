@@ -53,6 +53,7 @@ Users need to monitor crawler progress, view real-time output, and control runni
 
 - **Run Selftest**: Click [Run Selftest] button -> Open selftest options dialog
 - **Delete Selected**: Click [Delete (N)] button -> Delete all checked jobs (with confirmation)
+- **View**: Click [View] button -> Open report in Report Viewer (only for jobs with report_id)
 - **Result**: Click [Result] button -> Show job result in modal dialog
 - **Monitor**: Click [Monitor] button -> Stream live output to console panel
 - **Pause**: Click [Pause] button -> Pause running job, button changes to [Resume]
@@ -78,7 +79,7 @@ Users need to monitor crawler progress, view real-time output, and control runni
 | +---+----+-------------+-----------+--------+--------+---------+---------------------------------------------+      |
 | |[ ]| 42 | crawl       | domain_01 | running| -      | ...     | [Monitor] [Pause] [Cancel] [Delete]         |      |
 | |[ ]| 41 | embed_data  | domain_02 | paused | -      | ...     | [Monitor] [Resume] [Cancel] [Delete]        |      |
-| |[ ]| 40 | crawl       | domain_01 | done   | OK     | ...     | [Result] [Monitor] [Delete]                 |      |
+| |[ ]| 40 | crawl       | domain_01 | done   | OK     | ...     | [View] [Result] [Monitor] [Delete]          |      |
 | +---+----+-------------+-----------+--------+--------+---------+---------------------------------------------+      |
 |                                                                                                                     |
 | +-------------------------------------------------------------------------------------------------------------------+
@@ -109,8 +110,10 @@ Users need to monitor crawler progress, view real-time output, and control runni
 
 - **running**: [Monitor] [Pause] [Cancel] [Delete]
 - **paused**: [Monitor] [Resume] [Cancel] [Delete]
-- **completed**: [Result] [Monitor] [Delete]
-- **cancelled**: [Result] [Monitor] [Delete]
+- **completed**: [View]* [Result] [Monitor] [Delete]
+- **cancelled**: [View]* [Result] [Monitor] [Delete]
+
+*[View] only appears when job.result.data.report_id exists (crawl jobs create reports)
 
 ### Result Modal Dialog
 
