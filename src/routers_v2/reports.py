@@ -328,7 +328,7 @@ a:hover { text-decoration: underline; }
 
 /* Page Header */
 .page-header { padding: 12px 16px; border-bottom: 1px solid #ddd; background: #f8f9fa; flex-shrink: 0; }
-.page-header h1 { margin: 8px 0 0 0; font-size: 1.4em; }
+.page-header h1 { margin: 0 0 8px 0; }
 .nav-links { font-size: 0.9em; }
 
 /* Report Header */
