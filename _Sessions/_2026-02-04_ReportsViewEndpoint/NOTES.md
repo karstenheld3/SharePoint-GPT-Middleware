@@ -9,7 +9,7 @@
 
 ## Current Phase
 
-**Phase**: EXPLORE
+**Phase**: DELIVER
 **Workflow**: BUILD
 **Assessment**: COMPLEXITY-MEDIUM (multiple files, UI work, follows existing patterns)
 
@@ -54,6 +54,12 @@ Tree on left, table on right. Horizontal drag handle between panels (same look/f
 On page load, automatically select and display the first CSV file for immediate content display.
 
 ## Important Findings
+
+### Button Styling for Navigation [TESTED]
+
+When a link needs to look exactly like a button, do NOT style an `<a>` tag with inline CSS. Browser defaults differ between `<a>` and `<button>` elements (box-sizing, line-height, vertical-align).
+
+**Solution:** Use `<button onclick="window.location.href='...'">` for navigation that requires button styling.
 
 ### Existing Patterns
 

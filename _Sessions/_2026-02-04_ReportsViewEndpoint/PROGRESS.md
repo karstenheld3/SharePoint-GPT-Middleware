@@ -6,22 +6,17 @@
 
 - [x] **EXPLORE** - done - Analyzed report structures, clarified design
 - [x] **DESIGN** - done - Created SPEC and IMPL documents
-- [ ] **IMPLEMENT** - pending - Code the endpoint and UI
-- [ ] **REFINE** - pending - Test and verify
-- [ ] **DELIVER** - pending - Commit and close
+- [x] **IMPLEMENT** - done - Endpoint and UI implemented
+- [x] **REFINE** - done - Tested and verified
+- [ ] **DELIVER** - pending - Finalize session
 
 ## To Do
 
-1. Add `/reports/view` endpoint to `reports.py`
-2. Add `generate_report_view_page()` function
-3. Add `get_report_view_css()` and `get_report_view_js()` functions
-4. Add [View] button to reports UI columns
-5. Test endpoint locally
-6. Verify tree and table render correctly
+1. Finalize session and archive
 
 ## In Progress
 
-(Waiting for user to start implementation)
+(None)
 
 ## Done
 
@@ -32,7 +27,19 @@
 - [x] Design decisions confirmed (no temp extraction, use existing endpoints)
 - [x] Created `_V2_SPEC_REPORTS_VIEW.md` [RPTV-SP01]
 - [x] Created `_V2_IMPL_REPORTS_VIEW.md` [RPTV-IP01]
+- [x] Implemented `/v2/reports/view` endpoint with split-panel UI
+- [x] Fixed responsive layout issues (flexbox)
+- [x] Fixed resize handle hover color to match console (#0090F1)
+- [x] Fixed header order (title first, nav links below)
+- [x] Fixed title font size and spacing to match Jobs router
+- [x] Fixed nav links font size consistency
+- [x] Added Download button to CSV table header
+- [x] Added View button to reports list UI
+- [x] Added View button to crawler UI (links to report viewer)
+- [x] Fixed View button styling in crawler UI [TESTED]
 
 ## Tried But Not Used
 
-(None yet)
+- Styling `<a>` tag to match `<button>` via inline CSS - unreliable due to browser defaults [TESTED]
+  - Different box-sizing, line-height, vertical-align between elements
+  - Solution: Use `<button onclick="window.location.href='...'">` instead
