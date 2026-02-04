@@ -349,19 +349,19 @@ a:hover { text-decoration: underline; }
 .tree-node { user-select: none; }
 .tree-node.folder > .folder-row { display: flex; align-items: center; padding: 3px 0; cursor: pointer; }
 .tree-node.folder > .folder-row:hover { background: #e8e8e8; }
-.folder-toggle { width: 16px; text-align: center; font-size: 0.8em; color: #666; }
+.folder-toggle { width: 16px; min-width: 16px; flex-shrink: 0; text-align: center; font-size: 0.8em; color: #666; }
 .folder-name { font-weight: 500; }
 .tree-children { padding-left: 16px; }
 .tree-children.collapsed { display: none; }
 
-.tree-node.file { padding: 3px 0 3px 20px; cursor: pointer; }
+.tree-node.file { padding: 3px 0 3px 16px; cursor: pointer; margin-right: 0; }
 .tree-node.file:hover { background: #e8f4fc; }
 .tree-node.file.selected { background: #cce5ff; }
 .tree-node.file.disabled { color: #999; cursor: not-allowed; }
 .tree-node.file.disabled:hover { background: transparent; }
 
 /* Resize Handle */
-.resize-handle { width: 5px; background: #ddd; cursor: col-resize; flex-shrink: 0; transition: background 0.2s; }
+.resize-handle { width: 5px; background: #ddd; cursor: col-resize; flex-shrink: 0; }
 .resize-handle:hover, .resize-handle.active { background: #0090F1; }
 
 /* Table Panel */
