@@ -320,24 +320,25 @@ def generate_reports_ui_page(reports: list) -> str:
 
 def get_report_view_css() -> str:
   return """
-/* Base */
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; }
+/* Base - Full viewport */
+html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; flex-direction: column; }
 a { color: #0066cc; text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 /* Page Header */
-.page-header { padding: 12px 16px; border-bottom: 1px solid #ddd; background: #f8f9fa; }
+.page-header { padding: 12px 16px; border-bottom: 1px solid #ddd; background: #f8f9fa; flex-shrink: 0; }
 .page-header h1 { margin: 8px 0 0 0; font-size: 1.4em; }
 .nav-links { font-size: 0.9em; }
 
 /* Report Header */
-.report-header { display: flex; gap: 32px; padding: 12px 16px; background: #fff; border-bottom: 1px solid #ddd; }
+.report-header { display: flex; gap: 32px; padding: 12px 16px; background: #fff; border-bottom: 1px solid #ddd; flex-shrink: 0; }
 .report-info { display: flex; flex-direction: column; gap: 4px; font-size: 0.9em; }
 .status-ok { color: #28a745; font-weight: 600; }
 .status-fail { color: #dc3545; font-weight: 600; }
 
-/* Viewer Container */
-.viewer-container { display: flex; height: calc(100vh - 140px); }
+/* Viewer Container - Fill remaining space */
+.viewer-container { display: flex; flex: 1; min-height: 0; }
 
 /* Tree Panel */
 .tree-panel { width: 280px; min-width: 150px; display: flex; flex-direction: column; background: #fafafa; border-right: 1px solid #ddd; }
@@ -369,8 +370,8 @@ a:hover { text-decoration: underline; }
 .empty-state { padding: 24px; color: #666; text-align: center; }
 
 /* CSV Table */
-.csv-table { border-collapse: collapse; font-size: 12px; white-space: nowrap; }
-.csv-table th, .csv-table td { border: 1px solid #ddd; padding: 4px 8px; text-align: left; max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
+.csv-table { border-collapse: collapse; font-size: 12px; white-space: nowrap; width: 100%; }
+.csv-table th, .csv-table td { border: 1px solid #ddd; padding: 6px 10px; text-align: left; max-width: 400px; overflow: hidden; text-overflow: ellipsis; }
 .csv-table th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; z-index: 1; }
 .csv-table tr:nth-child(even) { background: #fafafa; }
 .csv-table tr:hover { background: #f0f7ff; }
