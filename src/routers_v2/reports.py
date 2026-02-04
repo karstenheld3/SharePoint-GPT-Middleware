@@ -354,7 +354,7 @@ a:hover { text-decoration: underline; }
 .tree-children { padding-left: 16px; }
 .tree-children.collapsed { display: none; }
 
-.tree-node.file { padding: 3px 0 3px 16px; cursor: pointer; margin-right: 0; }
+.tree-node.file { padding: 3px 0 3px 6px; cursor: pointer; white-space: nowrap; }
 .tree-node.file:hover { background: #e8f4fc; }
 .tree-node.file.selected { background: #cce5ff; }
 .tree-node.file.disabled { color: #999; cursor: not-allowed; }
