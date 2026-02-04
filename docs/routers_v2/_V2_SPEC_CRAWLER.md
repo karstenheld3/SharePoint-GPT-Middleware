@@ -1,7 +1,7 @@
-# Crawler Technical Specification Version 2
+# SPEC: V2 Crawler
 
+**Doc ID**: V2CR-SP01
 **Goal**: Specify the crawling process, change detection, edge case handling, and local storage synchronization for SharePoint-GPT-Middleware.
-
 **Target file**: `/src/routers_v2/crawler.py`
 
 **Depends on:**
@@ -10,6 +10,15 @@
 
 **Does not depend on:**
 - V1 crawler implementations
+
+## MUST-NOT-FORGET
+
+- Use `sharepoint_unique_file_id` as immutable identifier for change detection
+- Compare all relevant fields: `filename`, `server_relative_url`, `file_size`, `last_modified_utc`
+- Integrity check runs per-source after download step completes
+- Non-embeddable files skipped during download, tracked in sharepoint_map only
+- Error handling: skip source on SharePoint connection failure, continue with next
+- Map file writes use buffered append with `APPEND_TO_MAP_FILES_EVERY_X_LINES` config
 
 ## Table of Contents
 
@@ -26,7 +35,7 @@
 11. Edge Case Handling Mechanism
 12. Integrity Check
 13. files_metadata.json Update
-14. Spec Changes
+14. Document History
 
 ## Scenario
 
@@ -802,9 +811,15 @@ Endpoint: `GET /v2/crawler/cleanup_metadata?domain_id={id}`
 - **File removed (A2):** Entry remains in `files_metadata.json` (historical record), cleanup removes if needed
 - **File restored (A10):** New entry created, carry-over from historical entry if exists
 
-## Spec Changes
+## Document History
 
-**[2026-01-13 11:04]**
+**[2026-02-04 07:56]**
+- Changed: Title to `# SPEC: V2 Crawler` per template
+- Added: Doc ID `V2CR-SP01`
+- Added: MUST-NOT-FORGET section with 6 critical rules
+- Changed: Section name from "Spec Changes" to "Document History"
+
+**[2026-02-04 07:31]**
 - Added **V2CR-FR-07**: Auto-Create Vector Store on First Crawl
 - Updated Embed Data step: auto-create vector store when `vector_store_id` is empty
 - Added fallback: use `domain_id` as name when `vector_store_name` is also empty

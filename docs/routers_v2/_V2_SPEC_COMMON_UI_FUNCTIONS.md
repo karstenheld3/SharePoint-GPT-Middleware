@@ -1,15 +1,22 @@
-# V2 Common UI Functions Specification
+# SPEC: V2 Common UI Functions
+
+**Doc ID**: V2UI-SP01
+**Goal**: Enable any V2 router to provide a full-featured interactive UI with minimal boilerplate code by calling shared Python functions that generate consistent HTML/JavaScript.
+**Target file**: `/src/routers_v2/common_ui_functions_v2.py`
+**Styles file**: `/src/static/css/routers_v2.css`
+
+## MUST-NOT-FORGET
+
+- Use string concatenation for onclick handlers, NOT template literals (breaks escaping)
+- Console panel always included (body has `has-console` class), visibility controlled by `console_initially_hidden`
+- Single active stream at a time - new `connectStream()` disconnects previous
+- All user content must be escaped via `escapeHtml()` before rendering
+- Modal ENTER key submits form via `type="submit"` on OK button with `form="formId"`
+- Row IDs sanitized via `sanitizeId()` for DOM compatibility
 
 ## Overview
 
 This specification defines a reusable UI library for V2 routers, following the pattern established by V1's `common_ui_functions.py` but extended to support the richer feature set demonstrated in `demorouter1.py` (the self-contained version).
-
-**Goal**: Enable any V2 router to provide a full-featured interactive UI with minimal boilerplate code by calling shared Python functions that generate consistent HTML/JavaScript.
-
-**Target file**: `/src/routers_v2/common_ui_functions_v2.py`
-**Styles file**: `/src/static/css/routers_v2.css` (already exists, to be extended)
-
----
 
 ### Functional Requirements
 
@@ -1216,7 +1223,7 @@ return PlainTextResponse(generate_endpoint_docs(doc, router_prefix), ...)
 
 ---
 
-## Spec Changes
+## Document History
 
 **[2026-02-04 07:31]**
 - Fixed: Styles file path `/static/css/routers_v2.css` to `/src/static/css/routers_v2.css`
@@ -1267,3 +1274,9 @@ return PlainTextResponse(generate_endpoint_docs(doc, router_prefix), ...)
 
 **[2024-12-17 10:00]**
 - Initial specification created
+
+**[2026-02-04 07:56]**
+- Changed: Title to `# SPEC: V2 Common UI Functions` per template
+- Added: Doc ID `V2UI-SP01`
+- Added: MUST-NOT-FORGET section with 6 critical rules
+- Changed: Section name from "Spec Changes" to "Document History"

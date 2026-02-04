@@ -1,5 +1,6 @@
-# V2 Crawler UI Specification
+# SPEC: V2 Crawler UI
 
+**Doc ID**: V2CR-SP02
 **Goal**: Provide monitoring and control UI for running crawler jobs
 **Target file**: `/src/routers_v2/crawler.py`
 
@@ -10,6 +11,14 @@
 
 **Does not depend on:**
 - `_V2_SPEC_CRAWLER_RESULTS_UI.md` (separate router)
+
+## MUST-NOT-FORGET
+
+- Filters to crawler jobs only (not all streaming jobs)
+- Same UI pattern as demorouter (console visible by default)
+- Uses common UI functions from `common_ui_functions_v2.py`
+- Selftest dialog has phase selection and skip_cleanup options
+- Bulk delete requires confirmation dialog
 
 ## Table of Contents
 
@@ -330,9 +339,16 @@ Minimal JS needed:
 
 Most functionality reuses common UI functions.
 
-## Spec Changes
+## Document History
 
-- 2026-01-03: Fixed Table Columns section to match implementation
-- 2026-01-03: Added delete functionality (bulk + individual), checkbox column
-- 2026-01-03: Added Selftest Options Dialog with phase selection and skip_cleanup
-- 2026-01-03: Added [Run Selftest] toolbar button, updated navigation links
+**[2026-02-04 08:01]**
+- Changed: Title to `# SPEC: V2 Crawler UI` per template
+- Added: Doc ID `V2CR-SP02`
+- Added: MUST-NOT-FORGET section with 5 critical rules
+- Changed: Section name from "Spec Changes" to "Document History"
+
+**[2026-01-03]**
+- Fixed: Table Columns section to match implementation
+- Added: Delete functionality (bulk + individual), checkbox column
+- Added: Selftest Options Dialog with phase selection and skip_cleanup
+- Added: [Run Selftest] toolbar button, updated navigation links

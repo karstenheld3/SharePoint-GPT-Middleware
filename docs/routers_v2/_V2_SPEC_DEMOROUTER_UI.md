@@ -1,10 +1,10 @@
-# V2 Demo Router UI Specification
+# SPEC: V2 Demo Router UI
+
+**Doc ID**: V2DM-SP01
+**Goal**: Document the original self-contained demo router implementation as reference for UI patterns.
+**Target file**: `/src/routers_v2/demorouter1.py`
 
 > **Historical Reference:** This specification documents the original self-contained implementation in `demorouter1.py`. The UI patterns described here have been consolidated into `_V2_SPEC_COMMON_UI_FUNCTIONS.md` and implemented in `common_ui_functions_v2.py`. For new routers, use `demorouter2.py` as the reference implementation which uses the common UI library.
-
-This document specifies the interactive UI for the `/v2/demorouter1?format=ui` endpoint.
-
-**Note:** `demorouter1.py` is the self-contained version with all UI code inline.
 
 **Depends on:**
 - `_V2_SPEC_ROUTERS.md` for endpoint design, streaming job infrastructure, and SSE format.
@@ -12,6 +12,12 @@ This document specifies the interactive UI for the `/v2/demorouter1?format=ui` e
 **Does not depend on:**
 - `_V1_SPEC_COMMON_UI_FUNCTIONS.md`
 - `_V2_SPEC_COMMON_UI_FUNCTIONS.md`
+
+## MUST-NOT-FORGET
+
+- This is a HISTORICAL REFERENCE - use `demorouter2.py` for new routers
+- All inline UI patterns have been consolidated into `common_ui_functions_v2.py`
+- Self-contained version with all UI code inline (no common UI dependency)
 
 ## Overview
 
@@ -617,9 +623,14 @@ All V2 UI component styles are defined in `/static/css/styles.css` under the "V2
 - Data Source: Server-rendered initial (Jobs uses client-side fetch)
 - Item Actions: Edit, Delete (Jobs has Monitor, Pause, Resume, Cancel, Result)
 
----
+## Document History
 
-## Spec Changes
+**[2026-02-04 08:01]**
+- Changed: Title to `# SPEC: V2 Demo Router UI` per template
+- Added: Doc ID `V2DM-SP01`
+- Added: Goal and Target file to header block
+- Added: MUST-NOT-FORGET section with 3 critical rules
+- Changed: Section name from "Spec Changes" to "Document History"
 
 **[2025-12-18 19:55]**
 - Fixed: `showUpdateForm()` → `showEditItemForm()` throughout spec

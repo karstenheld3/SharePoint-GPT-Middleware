@@ -1,7 +1,6 @@
-# V2 Domains Router UI Specification
+# SPEC: V2 Domains UI
 
-This document specifies the interactive UI for the `/v2/domains?format=ui` endpoint.
-
+**Doc ID**: V2DM-SP02
 **Goal**: Provide a UI for managing knowledge domains used for crawling and semantic search.
 **Target file**: `/src/routers_v2/domains.py`
 
@@ -11,6 +10,14 @@ This document specifies the interactive UI for the `/v2/domains?format=ui` endpo
 
 **Does not depend on:**
 - `_V1_SPEC_COMMON_UI_FUNCTIONS.md`
+
+## MUST-NOT-FORGET
+
+- Domain ID rename supported in Edit form (follows demorouter2 pattern per DD-E014)
+- Console panel initially hidden (unlike demorouter)
+- Crawl modal has scope radio buttons and source_id dropdown interaction
+- No bulk selection (unlike demorouter2)
+- Storage is folder-per-domain: `{storage}/domains/{domain_id}/domain.json`
 
 ## Overview
 
@@ -734,13 +741,26 @@ Scope radio changes:
 - **Storage**: demorouter2={storage}/demorouter2/items.json, domains={storage}/domains/{domain_id}/domain.json
 - **Crawl modal**: domains=Yes (calls /v2/crawler endpoints), demorouter2=No
 
-## Spec Changes
+## Document History
 
-- 2025-12-30: Updated Router-Specific JavaScript Functions section: clarified auto-generated vs router-specific functions, added crawl helper functions
-- 2025-12-29: Added [Crawl] button feature (V2DM-FR-06) with modal dialog for crawl options, endpoint preview, and SSE streaming
-- 2025-12-27: Updated spec to match implementation: added selftest endpoint, console panel (hidden), corrected DELETE method
-- 2025-12-27: Added Domain ID rename support in Edit form (follows demorouter2 pattern per DD-E014)
-- 2025-12-18: Initial specification created
-- 2025-12-18: Fixed TypeScript interface (added description, file_sources, sitepage_sources, list_sources)
-- 2025-12-18: Updated storage to folder-per-domain structure matching V1
-- 2025-12-18: Use dataclasses from common_crawler_functions_v2.py
+**[2026-02-04 08:01]**
+- Changed: Title to `# SPEC: V2 Domains UI` per template
+- Added: Doc ID `V2DM-SP02`
+- Added: MUST-NOT-FORGET section with 5 critical rules
+- Changed: Section name from "Spec Changes" to "Document History"
+
+**[2025-12-30]**
+- Updated: Router-Specific JavaScript Functions section: clarified auto-generated vs router-specific functions, added crawl helper functions
+
+**[2025-12-29]**
+- Added: [Crawl] button feature (V2DM-FR-06) with modal dialog for crawl options, endpoint preview, and SSE streaming
+
+**[2025-12-27]**
+- Updated: Spec to match implementation: added selftest endpoint, console panel (hidden), corrected DELETE method
+- Added: Domain ID rename support in Edit form (follows demorouter2 pattern per DD-E014)
+
+**[2025-12-18]**
+- Initial specification created
+- Fixed: TypeScript interface (added description, file_sources, sitepage_sources, list_sources)
+- Updated: Storage to folder-per-domain structure matching V1
+- Changed: Use dataclasses from common_crawler_functions_v2.py
