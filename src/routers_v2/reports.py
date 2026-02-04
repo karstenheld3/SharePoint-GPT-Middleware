@@ -369,7 +369,7 @@ a:hover { text-decoration: underline; }
 .table-panel .panel-header { display: flex; justify-content: space-between; align-items: center; }
 .btn-download { padding: 6px 12px; font-size: 12px; background: #f8f9fa; color: #333; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; cursor: pointer; }
 .btn-download:hover { background: #e9ecef; text-decoration: none; }
-.csv-table-container { flex: 1; overflow: auto; padding: 0; background: #fff; border: 1px solid #ddd; border-top: none; }
+.csv-table-container { flex: 1; overflow: auto; padding: 0; background: #fff; border-right: 1px solid #ddd; border-bottom: 1px solid #ddd; }
 .empty-state { padding: 24px; color: #666; text-align: center; background: #fff; }
 
 /* CSV Table */
