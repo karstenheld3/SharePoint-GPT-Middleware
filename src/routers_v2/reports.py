@@ -342,7 +342,7 @@ a:hover { text-decoration: underline; }
 
 /* Tree Panel */
 .tree-panel { width: 280px; min-width: 150px; display: flex; flex-direction: column; background: #fafafa; border-right: 1px solid #ddd; }
-.panel-header { padding: 8px 12px; font-weight: 600; font-size: 0.85em; background: #f0f0f0; border-bottom: 1px solid #ddd; height: 34px; box-sizing: border-box; }
+.panel-header { padding: 8px 12px; font-weight: 600; font-size: 0.85em; background: #f0f0f0; border-bottom: 1px solid #ddd; height: 40px; box-sizing: border-box; }
 .file-tree { flex: 1; overflow: auto; padding: 8px; font-size: 0.85em; }
 
 /* Tree Nodes */
