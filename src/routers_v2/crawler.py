@@ -15,7 +15,7 @@ from routers_v2.common_crawler_functions_v2 import DomainConfig, FileSource, Lis
 from routers_v2.common_map_file_functions_v2 import SharePointMapRow, FilesMapRow, VectorStoreMapRow, ChangeDetectionResult, MapFileWriter, read_sharepoint_map, read_files_map, read_vectorstore_map, detect_changes, is_file_changed, is_file_changed_for_embed, sharepoint_map_row_to_files_map_row, files_map_row_to_vectorstore_map_row
 from routers_v2.common_sharepoint_functions_v2 import SharePointFile, connect_to_site_using_client_id_and_certificate, try_get_document_library, get_document_library_files, download_file_from_sharepoint, get_list_items, get_list_items_as_sharepoint_files, export_list_to_csv, get_site_pages, download_site_page_html, create_document_library, add_number_field_to_list, add_text_field_to_list, upload_file_to_library, upload_file_to_folder, update_file_content, rename_file, move_file, delete_file, create_folder_in_library, delete_document_library, create_list, add_list_item, update_list_item, delete_list_item, delete_list, create_site_page, update_site_page, rename_site_page, delete_site_page, file_exists_in_library
 from routers_v2.common_embed_functions_v2 import upload_file_to_openai, delete_file_from_openai, add_file_to_vector_store, remove_file_from_vector_store, list_vector_store_files, wait_for_vector_store_ready, get_failed_embeddings, upload_and_embed_file, remove_and_delete_file
-from routers_v2.common_openai_functions_v2 import create_vector_store, try_get_vector_store_by_id
+from routers_v2.common_openai_functions_v2 import create_vector_store
 
 router = APIRouter()
 config = None
@@ -97,23 +97,6 @@ def _export_list_item_to_csv(sp_item: SharePointMapRow, target_path: str, dry_ru
     return True, ""
   except Exception as e:
     return False, str(e)
-
-def clear_domain_vectorstore_maps(storage_path: str, domain_id: str, logger: MiddlewareLogger) -> int:
-  """Clear all vectorstore_map.csv files for a domain (stale references after VS recreation per edge case C4)."""
-  crawler_folder = os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_CRAWLER_SUBFOLDER, domain_id)
-  if not os.path.exists(crawler_folder):
-    return 0
-  cleared_count = 0
-  for root, dirs, files in os.walk(crawler_folder):
-    for filename in files:
-      if filename == CRAWLER_HARDCODED_CONFIG.VECTOR_STORE_MAP_CSV or filename.startswith("vectorstore_map_"):
-        file_path = os.path.join(root, filename)
-        try:
-          os.remove(file_path)
-          cleared_count += 1
-        except Exception as e:
-          logger.log_function_output(f"  WARNING: Could not delete {file_path}: {str(e)}")
-  return cleared_count
 
 async def step_download_source(storage_path: str, domain: DomainConfig, source, source_type: str, mode: str, dry_run: bool, retry_batches: int, writer: StreamingJobWriter, logger: MiddlewareLogger, crawler_config: dict, job_id: str = None) -> AsyncGenerator[str, None]:
   """Async generator that yields SSE events during execution. Result stored in writer.get_step_result()."""
@@ -376,8 +359,7 @@ async def crawl_domain(storage_path: str, domain: DomainConfig, mode: str, scope
     logger.log_function_output("WARNING: No sources configured")
     writer.set_crawl_results({"ok": True, "data": {"sources_processed": 0}})
     return
-  # FIX-01: Auto-create vector store if empty (per _V2_SPEC_CRAWLER.md:497-511)
-  # FIX-02: Validate vector store exists, recreate if deleted (edge case C4)
+  # FIX-01: Auto-create vector store if empty (per _V2_SPEC_CRAWLER.md:487-491)
   skip_embedding = False
   if not domain.vector_store_id:
     if dry_run:
@@ -394,27 +376,6 @@ async def crawl_domain(storage_path: str, domain: DomainConfig, mode: str, scope
         logger.log_function_output(f"  ERROR: Failed to create vector store -> {str(e)}")
         logger.log_function_output("  Embedding will be skipped for all sources.")
         skip_embedding = True
-  else:
-    # Validate vector store exists in OpenAI (edge case C4: VS_DELETED)
-    if not dry_run:
-      existing_vs = await try_get_vector_store_by_id(openai_client, domain.vector_store_id)
-      if existing_vs is None:
-        old_vs_id = domain.vector_store_id
-        logger.log_function_output(f"Vector store '{old_vs_id}' not found in OpenAI, creating new...")
-        try:
-          vs_name = domain.vector_store_name or domain.domain_id
-          new_vs = await create_vector_store(openai_client, vs_name)
-          domain.vector_store_id = new_vs.id
-          save_domain_to_file(storage_path, domain, logger)
-          logger.log_function_output(f"  Created vector store '{vs_name}' (ID={new_vs.id})")
-          # Clear stale vectorstore_map.csv files for this domain
-          cleared_count = clear_domain_vectorstore_maps(storage_path, domain.domain_id, logger)
-          if cleared_count > 0:
-            logger.log_function_output(f"  Cleared {cleared_count} stale vectorstore_map.csv file(s)")
-        except Exception as e:
-          logger.log_function_output(f"  ERROR: Failed to create vector store -> {str(e)}")
-          logger.log_function_output("  Embedding will be skipped for all sources.")
-          skip_embedding = True
   logger.log_function_output(f"Crawling {len(sources)} source(s)")
   for sse in writer.drain_sse_queue(): yield sse  # FIX-04: Drain after initial logs
   job_id = writer.job_id if dry_run else None
