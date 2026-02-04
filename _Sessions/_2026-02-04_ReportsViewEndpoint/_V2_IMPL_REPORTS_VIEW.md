@@ -6,7 +6,7 @@
 **Target file**: `/src/routers_v2/reports.py`
 
 **Depends on:**
-- `_SPEC_REPORTS_VIEW.md [RPTV-SP01]` for specification
+- `_V2_SPEC_REPORTS_VIEW.md [RPTV-SP01]` for specification
 - `_V2_IMPL_REPORTS.md [V2RP-IP02]` for existing reports router patterns
 
 ## MUST-NOT-FORGET

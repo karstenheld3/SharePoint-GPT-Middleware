@@ -30,8 +30,8 @@
 - [x] Problems identified and documented
 - [x] Analyzed report ZIP structures (crawl: hierarchical, site_scan: flat)
 - [x] Design decisions confirmed (no temp extraction, use existing endpoints)
-- [x] Created `_SPEC_REPORTS_VIEW.md` [RPTV-SP01]
-- [x] Created `_IMPL_REPORTS_VIEW.md` [RPTV-IP01]
+- [x] Created `_V2_SPEC_REPORTS_VIEW.md` [RPTV-SP01]
+- [x] Created `_V2_IMPL_REPORTS_VIEW.md` [RPTV-IP01]
 
 ## Tried But Not Used
 
