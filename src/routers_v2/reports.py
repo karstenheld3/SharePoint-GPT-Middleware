@@ -375,7 +375,8 @@ a:hover { text-decoration: underline; }
 /* CSV Table */
 .csv-table { border-collapse: collapse; font-size: 12px; white-space: nowrap; width: 100%; background: #fff; }
 .csv-table th, .csv-table td { border: 1px solid #ddd; padding: 6px 10px; text-align: left; max-width: 400px; overflow: hidden; text-overflow: ellipsis; }
-.csv-table th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; z-index: 1; }
+.csv-table th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; z-index: 1; border-top: none; }
+.csv-table th:first-child, .csv-table td:first-child { border-left: none; }
 .csv-table tr:nth-child(even) { background: #fafafa; }
 .csv-table tr:hover { background: #f0f7ff; }
 .csv-table tbody tr:last-child td { border-bottom: 1px solid #ddd; }
