@@ -366,6 +366,9 @@ a:hover { text-decoration: underline; }
 
 /* Table Panel */
 .table-panel { flex: 1; min-width: 300px; display: flex; flex-direction: column; overflow: hidden; background: #fff; }
+.panel-header { display: flex; justify-content: space-between; align-items: center; }
+.btn-download { padding: 2px 8px; font-size: 11px; background: #6c757d; color: #fff; border-radius: 3px; text-decoration: none; }
+.btn-download:hover { background: #5a6268; text-decoration: none; }
 .csv-table-container { flex: 1; overflow: auto; padding: 0; background: #fff; border: 1px solid #ddd; border-top: none; }
 .empty-state { padding: 24px; color: #666; text-align: center; background: #fff; }
 
@@ -485,13 +488,18 @@ function selectFirstCsvFile() {
 // CSV LOADING
 // ============================================
 function loadCsvFile(filePath) {
-  var header = document.getElementById('table-header');
+  var filenameEl = document.getElementById('table-filename');
+  var downloadBtn = document.getElementById('download-btn');
   var container = document.getElementById('csv-container');
   
-  header.textContent = filePath.split('/').pop();
+  var filename = filePath.split('/').pop();
+  filenameEl.textContent = filename;
   container.innerHTML = '<div class="loading">Loading...</div>';
   
   var url = routerPrefix + '/' + routerName + '/file?report_id=' + encodeURIComponent(reportId) + '&file_path=' + encodeURIComponent(filePath) + '&format=raw';
+  downloadBtn.href = url;
+  downloadBtn.download = filename;
+  downloadBtn.style.display = 'inline-block';
   fetch(url)
     .then(function(response) {
       if (!response.ok) throw new Error('Failed to load file');
@@ -648,7 +656,7 @@ def generate_report_view_page(report_id: str, metadata: dict) -> str:
     </div>
     <div class="resize-handle" id="resize-handle"></div>
     <div class="table-panel" id="table-panel">
-      <div class="panel-header" id="table-header">Select a CSV file</div>
+      <div class="panel-header" id="table-header"><span id="table-filename">Select a CSV file</span><a id="download-btn" class="btn-download" style="display:none;" download>Download</a></div>
       <div class="csv-table-container" id="csv-container">
         <div class="empty-state">Click a CSV file in the tree to view its contents</div>
       </div>

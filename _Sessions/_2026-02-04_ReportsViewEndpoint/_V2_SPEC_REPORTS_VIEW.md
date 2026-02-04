@@ -77,6 +77,7 @@
 - Load CSV via `/v2/reports/file` endpoint
 - Parse comma-delimited with header row
 - Display as HTML table with sticky headers
+- Download button in table header to download current CSV file
 
 **RPTV-FR-03: Resizable Panels**
 - Horizontal drag handle between tree and table

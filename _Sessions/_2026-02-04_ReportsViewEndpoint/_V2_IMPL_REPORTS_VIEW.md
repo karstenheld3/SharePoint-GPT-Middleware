@@ -336,11 +336,19 @@ function selectFirstCsvFile() {
 // CSV LOADING
 // ============================================
 async function loadCsvFile(filePath) {
-  const header = document.getElementById('table-header');
+  const filenameEl = document.getElementById('table-filename');
+  const downloadBtn = document.getElementById('download-btn');
   const container = document.getElementById('csv-container');
   
-  header.textContent = filePath.split('/').pop();
+  const filename = filePath.split('/').pop();
+  filenameEl.textContent = filename;
   container.innerHTML = '<div class="loading">Loading...</div>';
+  
+  // Update download button
+  const url = routerPrefix + '/' + routerName + '/file?report_id=' + encodeURIComponent(reportId) + '&file_path=' + encodeURIComponent(filePath) + '&format=raw';
+  downloadBtn.href = url;
+  downloadBtn.download = filename;
+  downloadBtn.style.display = 'inline-block';
   
   try {
     const url = routerPrefix + '/' + routerName + '/file?report_id=' + encodeURIComponent(reportId) + '&file_path=' + encodeURIComponent(filePath) + '&format=raw';
