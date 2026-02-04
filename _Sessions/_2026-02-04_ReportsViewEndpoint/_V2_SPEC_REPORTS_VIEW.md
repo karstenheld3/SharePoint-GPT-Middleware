@@ -82,7 +82,7 @@
 - Min width: 150px tree, 300px table
 
 **RPTV-FR-04: Navigation**
-- Back link to reports list
+- Standard nav bar: Back to Main Page | Domains | Sites | Crawler | Jobs | Reports
 - Report metadata header (title, type, created, status)
 
 **RPTV-FR-05: Auto-Selection**
@@ -126,12 +126,13 @@ View report archive contents with split-panel UI.
 ## UI Layout
 
 ```
-+------------------------------------------------------------------+
-| [Back to Reports]                              Report Viewer     |
-+------------------------------------------------------------------+
-| Title: "AiSearchTest01 incremental crawl"  Type: crawl           |
-| Created: 2026-02-04 07:09:16 UTC            Status: OK           |
-+------------------------------------------------------------------+
++---------------------------------------------------------------------------------+
+| Back to Main Page | Domains | Sites | Crawler | Jobs | Reports                 |
+| Report Viewer                                                                   |
++---------------------------------------------------------------------------------+
+| Title: "AiSearchTest01 incremental crawl"  Type: crawl                          |
+| Created: 2026-02-04 07:09:16 UTC            Status: OK                          |
++---------------------------------------------------------------------------------+
 |                    |                                             |
 |  [File Tree]       |  [CSV Table]                                |
 |                    |                                             |
