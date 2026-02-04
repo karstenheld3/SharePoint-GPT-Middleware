@@ -1,5 +1,6 @@
-# V2 Reports Specification
+# SPEC: V2 Reports
 
+**Doc ID**: V2RP-SP01
 **Goal**: Archive and retrieve report files from various operations for auditing and debugging.
 **Target file**: `/src/routers_v2/reports.py`
 **Helper file**: `/src/routers_v2/common_report_functions_v2.py`
@@ -9,6 +10,14 @@
 
 **Does not depend on:**
 - `_V2_SPEC_COMMON_UI_FUNCTIONS.md` (UI spec is separate)
+
+## MUST-NOT-FORGET
+
+- Report archives MUST contain `report.json` with mandatory fields: report_id, title, type, created_utc, ok, error, files
+- report_id format: `[folder]/[filename_without_zip]` (e.g., `crawls/2024-01-15_14-25-00_TEST01_all_full`)
+- No external create endpoint - reports created internally only (exception: demo/test endpoints)
+- Delete endpoint returns full report object (per DD-E017)
+- Result display pattern: `-` (pending), `OK` (success), `FAIL` (failure)
 
 ## Table of Contents
 
@@ -504,7 +513,13 @@ Other routers can link to report results using the `/v2/reports/get` endpoint:
 - UI renders "View Results" link: `/v2/reports/get?report_id=...&format=html`
 - UI renders "Download Zip" link: `/v2/reports/download?report_id=...`
 
-## Spec Changes
+## Document History
+
+**[2026-02-04 07:48]**
+- Changed: Title to `# SPEC: V2 Reports` per template
+- Added: Doc ID `V2RP-SP01`
+- Added: MUST-NOT-FORGET section
+- Changed: Section name from "Spec Changes" to "Document History"
 
 **[2026-02-04 07:34]**
 - Added: `/v2/reports/create_demo_reports` endpoint section

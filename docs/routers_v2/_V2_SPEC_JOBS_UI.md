@@ -1,10 +1,24 @@
-# V2 Jobs UI Specification
+# SPEC: V2 Jobs UI
 
-This document specifies the HTMX-based User Interface for the `/v2/jobs?format=ui` endpoint.
+**Doc ID**: V2JB-SP02
+**Goal**: Provide reactive web UI for monitoring and controlling long-running jobs
+**Target file**: `/src/routers_v2/jobs.py`
 
 **Depends on:**
-- `_V2_SPEC_ROUTERS.md` for streaming job infrastructure, SSE format, and job file specifications.
-- `_V2_SPEC_COMMON_UI_FUNCTIONS.md` for shared UI patterns and `common_ui_functions_v2.py` library.
+- `_V2_SPEC_ROUTERS.md` for streaming job infrastructure, SSE format, and job file specifications
+- `_V2_SPEC_COMMON_UI_FUNCTIONS.md` for shared UI patterns and `common_ui_functions_v2.py` library
+
+## MUST-NOT-FORGET
+
+- Use unified fetch/ReadableStream SSE pattern from `common_ui_functions_v2.py`, NOT HTMX SSE extension
+- Use string concatenation for onclick handlers, NOT template literals (breaks escaping)
+- Optimistic state updates after control actions (actual state change via SSE)
+- Suppress toasts when monitoring historical (completed/cancelled) jobs
+- Console shows ONE job at a time - clicking [Monitor] disconnects current stream
+- Result column: `-` (running/paused), `OK` (result.ok=true), `FAIL` (result.ok=false)
+- Rows with `state=cancelled` OR `result.ok=false` get class `row-cancel-or-fail`
+- Running jobs get class `row-running` (bold styling)
+- Stalled jobs (no activity for 5 min) show "(stalled)" in state column and [Force Cancel] button
 
 ## Overview
 
@@ -30,6 +44,65 @@ A reactive web UI for monitoring and controlling long-running jobs. Uses the uni
 - Polling-based updates (use SSE push)
 - Multiple simultaneous job monitors (one console, one active stream)
 - HTMX SSE extension (use unified fetch/ReadableStream pattern from `common_ui_functions_v2.py`)
+
+## Functional Requirements
+
+**V2JBUI-FR-01: Jobs Table**
+- Display all jobs in table with columns: Checkbox, ID, Router, Endpoint, Objects, State, Result, Started, Finished, Actions
+- Parse source_url client-side to extract Router, Endpoint, Object IDs
+- Support row selection via checkboxes
+
+**V2JBUI-FR-02: Monitor Job**
+- [Monitor] button connects SSE stream and shows console panel
+- Console displays real-time log events
+- Works for both active and historical (completed/cancelled) jobs
+
+**V2JBUI-FR-03: Job Control**
+- [Pause] button requests pause for running job
+- [Resume] button requests resume for paused job
+- [Cancel] button requests cancellation (with confirmation)
+- [Force Cancel] button for stalled jobs (with confirmation)
+
+**V2JBUI-FR-04: View Result**
+- [Result] button available for terminal states (completed/cancelled)
+- Opens modal with job result JSON
+
+**V2JBUI-FR-05: Delete Operations**
+- Per-row [Delete] button for individual job deletion (with confirmation)
+- Toolbar [Delete (n)] button enabled when rows selected
+- Confirmation dialog before bulk delete
+- Summary toast shows success/failure count
+- Select-all checkbox in table header for bulk selection
+
+**V2JBUI-FR-06: Real-time Updates**
+- Job rows update on SSE events (start_json, state_json, end_json)
+- Toast notifications for job state changes
+- Optimistic row updates after control actions
+
+## Design Decisions
+
+**V2JBUI-DD-01:** Single console panel. Only one job monitored at a time; clicking [Monitor] on different job disconnects current stream.
+
+**V2JBUI-DD-02:** Unified SSE pattern. Use fetch/ReadableStream from `common_ui_functions_v2.py`, not HTMX SSE extension.
+
+**V2JBUI-DD-03:** Optimistic updates. Control actions update row immediately; actual state confirmed via SSE.
+
+**V2JBUI-DD-04:** Historical log support. [Monitor] on completed/cancelled jobs shows historical log with suppressed toasts.
+
+**V2JBUI-DD-05:** Empty table, JS fetch. Server returns empty tbody; JavaScript fetches jobs on DOMContentLoaded.
+
+**V2JBUI-DD-06:** source_url parsing. Router, Endpoint, Objects extracted client-side from source_url (not stored separately).
+
+**V2JBUI-DD-07:** Stalled job detection. Jobs with `state=running` or `state=paused` and no file modification for 5 minutes are marked as "stalled". Stalled jobs show [Force Cancel] instead of normal control buttons.
+
+## Implementation Guarantees
+
+**V2JBUI-IG-01:** All user content escaped via `escapeHtml()` before rendering
+**V2JBUI-IG-02:** Bulk delete handles partial failures gracefully (reports success/failure counts)
+**V2JBUI-IG-03:** SSE connection cleaned up on page unload or new monitor request
+**V2JBUI-IG-04:** Timestamps converted to local timezone with fixed format `YYYY-MM-DD HH:MM:SS`
+**V2JBUI-IG-05:** Console output truncated at 1M characters to prevent memory issues
+**V2JBUI-IG-06:** Stalled job threshold is 5 minutes (300000ms) of no job file modification
 
 ## Domain Object Model
 
@@ -774,7 +847,24 @@ The Jobs UI uses `/static/css/routers_v2.css` which provides all V2 UI component
 
 No additional inline CSS required - all styles are shared with other V2 routers.
 
-## Spec Changes
+## Document History
+
+**[2026-02-04 07:52]**
+- Added: V2JBUI-DD-07 - Stalled job detection (5 min threshold)
+- Added: V2JBUI-IG-06 - Stalled job threshold constant
+- Added: V2JBUI-FR-03 - [Force Cancel] button for stalled jobs
+- Added: V2JBUI-FR-05 - Per-row [Delete] button, select-all checkbox
+- Added: MUST-NOT-FORGET - row-running class, stalled job behavior
+
+**[2026-02-04 07:48]**
+- Changed: Title to `# SPEC: V2 Jobs UI` per template
+- Added: Doc ID `V2JB-SP02`
+- Added: Goal and Target file to header block
+- Added: MUST-NOT-FORGET section with 7 critical rules
+- Added: Functional Requirements section (V2JBUI-FR-01 to FR-06)
+- Added: Design Decisions section (V2JBUI-DD-01 to DD-06)
+- Added: Implementation Guarantees section (V2JBUI-IG-01 to IG-05)
+- Changed: Section name from "Spec Changes" to "Document History"
 
 **[2025-12-27 15:30]**
 - Changed: [Clear] button now also clears the monitor URL link from console header

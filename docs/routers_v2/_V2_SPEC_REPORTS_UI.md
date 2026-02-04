@@ -1,22 +1,34 @@
-# V2 Reports UI Specification
+# SPEC: V2 Reports UI
 
+**Doc ID**: V2RP-SP02
 **Goal**: Provide UI for viewing, downloading, and managing report archives
 **Target file**: `/src/routers_v2/reports.py`
 
 **Depends on:**
-- `_V2_SPEC_REPORTS.md` for report domain objects and archive structure
+- `_V2_SPEC_REPORTS.md [V2RP-SP01]` for report domain objects and archive structure
 - `_V2_SPEC_ROUTERS.md` for endpoint design and JSON result format
 - `_V2_SPEC_COMMON_UI_FUNCTIONS.md` for UI generation functions
+
+## MUST-NOT-FORGET
+
+- Use string concatenation for onclick handlers, NOT template literals (breaks escaping)
+- Console panel hidden by default (only shows for demo report creation streaming)
+- Result column: `-` (null), `OK` (true), `FAIL` (false) - same pattern as Jobs UI
+- Rows with `ok === false` get class `row-cancel-or-fail`
+- Use `escapeHtml()` for all user-provided content in rendered HTML
 
 ## Table of Contents
 
 1. Overview
 2. Scenario
-3. User Actions
-4. UX Design
-5. Key Mechanisms
-6. Action Flow
-7. Implementation Notes
+3. Functional Requirements
+4. Design Decisions
+5. Implementation Guarantees
+6. User Actions
+7. UX Design
+8. Key Mechanisms
+9. Action Flow
+10. Implementation Notes
 
 ## Overview
 
@@ -39,6 +51,54 @@ Users need to review historical operation results (crawls, site scans) for audit
 - Inline editing of reports
 - Automatic cleanup (user controls deletion)
 - Elaborate UI components
+
+## Functional Requirements
+
+**V2RPUI-FR-01: Reports Table**
+- Display all reports in sortable table with columns: Checkbox, Type, Title, Created, Result, Actions
+- Sort by created_utc descending (newest first)
+- Support row selection via checkboxes
+
+**V2RPUI-FR-02: View Report Result**
+- [Result] button opens modal with formatted report.json content
+- Modal title shows result status and report title
+- Endpoint URL clickable link opens in new tab
+
+**V2RPUI-FR-03: Download Report**
+- [Download] button triggers ZIP file download
+- Browser handles file save dialog
+
+**V2RPUI-FR-04: Delete Report**
+- [Delete] button removes single report
+- Confirmation dialog required before delete
+- Toast notification on success
+
+**V2RPUI-FR-05: Bulk Delete**
+- Toolbar [Delete (n)] button enabled when rows selected
+- Confirmation dialog before bulk delete
+- Summary toast shows success/failure count
+
+**V2RPUI-FR-06: Create Demo Reports**
+- Toolbar button starts streaming demo report creation
+- Console panel shows progress
+- Table reloads on completion
+
+## Design Decisions
+
+**V2RPUI-DD-01:** Single-page UI. All operations on one page, no navigation between views.
+
+**V2RPUI-DD-02:** Console hidden by default. Only streaming operations (demo reports) show console.
+
+**V2RPUI-DD-03:** Server pre-renders rows. Initial page load includes rendered rows; JS refreshes on DOMContentLoaded.
+
+**V2RPUI-DD-04:** Result pattern matches Jobs UI. Consistent `-`/`OK`/`FAIL` display across V2 UIs.
+
+## Implementation Guarantees
+
+**V2RPUI-IG-01:** All user content escaped via `escapeHtml()` before rendering
+**V2RPUI-IG-02:** Bulk delete handles partial failures gracefully (reports success/failure counts)
+**V2RPUI-IG-03:** Table updates immediately after delete operations (no full page reload)
+**V2RPUI-IG-04:** Timestamps converted to local timezone with fixed format `YYYY-MM-DD HH:MM:SS`
 
 ## User Actions
 
@@ -265,7 +325,20 @@ Uses existing classes from `/src/static/css/routers_v2.css`:
 - `.empty-state` for empty table message
 - Modal, toast, console classes from common UI
 
-## Spec Changes
+## Document History
+
+**[2026-02-04 07:52]**
+- Fixed: V2RPUI-FR-04 - Single delete DOES require confirmation dialog (matches code)
+
+**[2026-02-04 07:48]**
+- Changed: Title to `# SPEC: V2 Reports UI` per template
+- Added: Doc ID `V2RP-SP02`
+- Added: MUST-NOT-FORGET section
+- Added: Functional Requirements section (V2RPUI-FR-01 to FR-06)
+- Added: Design Decisions section (V2RPUI-DD-01 to DD-04)
+- Added: Implementation Guarantees section (V2RPUI-IG-01 to IG-04)
+- Changed: Section name from "Spec Changes" to "Document History"
+- Updated: Table of Contents
 
 **[2026-02-04 07:34]**
 - Added: "Create Demo Reports" toolbar button to match implementation
