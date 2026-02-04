@@ -607,6 +607,60 @@ function escapeHtml(str) {
 }
 """
 
+def generate_report_view_error_page(report_id: str, error_message: str) -> str:
+  """Generate HTML error page for report viewer when report not found or other errors."""
+  import html
+  
+  nav_links = main_page_nav_html.replace("{router_prefix}", router_prefix)
+  escaped_report_id = html.escape(report_id)
+  escaped_error = html.escape(error_message)
+  
+  return f'''<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Report Viewer - Error</title>
+  <style>
+{get_report_view_css()}
+.error-container {{
+  max-width: 600px;
+  margin: 40px auto;
+  padding: 20px;
+  background: #fff3f3;
+  border: 1px solid #ffcccc;
+  border-radius: 4px;
+}}
+.error-container h2 {{
+  color: #cc0000;
+  margin-top: 0;
+}}
+.error-detail {{
+  margin-top: 15px;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-family: monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+}}
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <h1>Report Viewer</h1>
+    <div class="nav-links">{nav_links}</div>
+  </div>
+  
+  <div class="error-container">
+    <h2>Report Not Found</h2>
+    <p>Report ID '<strong>{escaped_report_id}</strong>' was not found.</p>
+    <div class="error-detail">Error: '{escaped_error}'</div>
+    <p style="margin-top: 20px;"><a href="{router_prefix}/{router_name}?format=ui">Back to Reports</a></p>
+  </div>
+</body>
+</html>'''
+
 def generate_report_view_page(report_id: str, metadata: dict) -> str:
   """Generate HTML page for report viewer with tree and table panels."""
   import html
@@ -703,7 +757,7 @@ async def list_reports_endpoint(request: Request):
       description=f"Report archive management. Storage: PERSISTENT_STORAGE_PATH/reports/",
       router_prefix=f"{router_prefix}/{router_name}",
       endpoints=endpoints,
-      navigation_html=main_page_nav_html
+      navigation_html=main_page_nav_html.replace("{router_prefix}", router_prefix)
     ))
   
   format_param = request_params.get("format", "json")
@@ -715,7 +769,7 @@ async def list_reports_endpoint(request: Request):
     return HTMLResponse(generate_reports_ui_page(reports))
   elif format_param == "html":
     logger.log_function_footer()
-    return html_result("Reports", reports, main_page_nav_html)
+    return html_result("Reports", reports, main_page_nav_html.replace("{router_prefix}", router_prefix))
   
   logger.log_function_footer()
   return json_result(True, "", reports)
@@ -753,17 +807,17 @@ async def get_report_endpoint(request: Request):
   
   if not report_id:
     logger.log_function_footer()
-    if format_param == "html": return html_result("Error", {"error": "Missing 'report_id' parameter."}, main_page_nav_html)
+    if format_param == "html": return html_result("Error", {"error": "Missing 'report_id' parameter."}, main_page_nav_html.replace("{router_prefix}", router_prefix))
     return json_result(False, "Missing 'report_id' parameter.", {})
   
   metadata = get_report_metadata(report_id, logger=logger)
   if metadata is None:
     logger.log_function_footer()
-    if format_param == "html": return html_result("Not Found", {"error": f"Report '{report_id}' not found."}, main_page_nav_html)
+    if format_param == "html": return html_result("Not Found", {"error": f"Report '{report_id}' not found."}, main_page_nav_html.replace("{router_prefix}", router_prefix))
     return JSONResponse({"ok": False, "error": f"Report '{report_id}' not found.", "data": {}}, status_code=404)
   
   logger.log_function_footer()
-  if format_param == "html": return html_result(f"Report: {metadata.get('title', report_id)}", metadata, main_page_nav_html)
+  if format_param == "html": return html_result(f"Report: {metadata.get('title', report_id)}", metadata, main_page_nav_html.replace("{router_prefix}", router_prefix))
   return json_result(True, "", metadata)
 
 # ----------------------------------------- END: /reports/get endpoint ---------------------------------------------------
@@ -835,9 +889,9 @@ async def get_file_endpoint(request: Request):
   else:
     try:
       text_content = content.decode('utf-8')
-      return html_result(f"File: {file_path}", {"content": text_content}, main_page_nav_html)
+      return html_result(f"File: {file_path}", {"content": text_content}, main_page_nav_html.replace("{router_prefix}", router_prefix))
     except UnicodeDecodeError:
-      return html_result("Error", {"error": "File is binary, cannot display as HTML."}, main_page_nav_html)
+      return html_result("Error", {"error": "File is binary, cannot display as HTML."}, main_page_nav_html.replace("{router_prefix}", router_prefix))
 
 # ----------------------------------------- END: /reports/file endpoint --------------------------------------------------
 
@@ -966,7 +1020,8 @@ async def view_report_endpoint(request: Request):
   metadata = get_report_metadata(report_id, logger=logger)
   if metadata is None:
     logger.log_function_footer()
-    return JSONResponse({"ok": False, "error": f"Report '{report_id}' not found.", "data": {}}, status_code=404)
+    error_msg = f"Report '{report_id}' not found."
+    return HTMLResponse(generate_report_view_error_page(report_id, error_msg), status_code=404)
   
   logger.log_function_footer()
   return HTMLResponse(generate_report_view_page(report_id, metadata))

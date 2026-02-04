@@ -477,6 +477,15 @@ function startCrawl(event) {{
   connectStream(url, {{ reloadOnFinish: false, showResult: 'toast', clearConsole: false }});
   showToast('Crawl Started', domainId, 'info');
 }}
+
+function queryDomain(domainId) {{
+  const domain = domainsState.get(domainId);
+  if (!domain || !domain.vector_store_id) {{
+    showToast('Error', 'Domain has no vector store configured', 'error');
+    return;
+  }}
+  window.location.href = '/query2?vsid=' + encodeURIComponent(domain.vector_store_id) + '&query=List+all+files&results=50';
+}}
 """
 
 # ----------------------------------------- END: Router-specific Form JS -----------------------------------------------------
@@ -535,11 +544,12 @@ async def domains_root(request: Request):
       {"field": "domain_id", "header": "Domain ID"},
       {"field": "name", "header": "Name", "default": "-"},
       {"field": "vector_store_name", "header": "Vector Store Name", "default": "-"},
-      {"field": "vector_store_id", "header": "Vector Store ID", "default": "-"},
+      {"field": "vector_store_id", "header": "Vector Store ID", "default": "-", "link_template": "/v1/inventory/vectorstore_files?vector_store_id={value}&format=ui"},
       {
         "field": "actions",
         "header": "Actions",
         "buttons": [
+          {"text": "Query", "onclick": "queryDomain('{itemId}')", "class": "btn-small"},
           {"text": "Crawl", "onclick": "showCrawlDomainForm('{itemId}')", "class": "btn-small"},
           {"text": "Edit", "onclick": "showEditDomainForm('{itemId}')", "class": "btn-small"},
           {

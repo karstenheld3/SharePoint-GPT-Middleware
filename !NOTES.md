@@ -73,3 +73,4 @@ All batch files are in the workspace root. Double-click to run or execute from t
 - `GLOB` - Global/workspace-wide
 - `SITE` - SharePoint Sites management
 - `PSCP` - Permission Scanner POC
+- `V2FX` - V2 Endpoint Fixes

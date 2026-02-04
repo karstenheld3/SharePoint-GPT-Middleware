@@ -1040,13 +1040,14 @@ async def _selftest_wait_for_mutation(ctx, check_func, description: str, logger:
   return False
 
 async def _selftest_run_crawl(base_url: str, domain_id: str, endpoint: str, mode: str = None, scope: str = None, source_id: str = None, dry_run: bool = False, timeout: float = 300.0) -> dict:
-  """Execute crawl endpoint via HTTP and wait for completion. Returns JSON result."""
+  """Execute crawl endpoint via HTTP and wait for completion. Returns JSON result with job_id."""
   params = {"domain_id": domain_id, "format": "stream"}
   if mode: params["mode"] = mode
   if scope: params["scope"] = scope
   if source_id: params["source_id"] = source_id
   if dry_run: params["dry_run"] = "true"
   url = f"{base_url}/v2/crawler/{endpoint}"
+  job_id = None
   try:
     async with httpx.AsyncClient(timeout=timeout) as client:
       async with client.stream("GET", url, params=params) as response:
@@ -1055,27 +1056,43 @@ async def _selftest_run_crawl(base_url: str, domain_id: str, endpoint: str, mode
           body = await response.aread()
           try:
             result = json.loads(body)
-            return {"ok": result.get("ok", False), "error": result.get("error", f"HTTP {response.status_code}")}
-          except: return {"ok": False, "error": f"HTTP {response.status_code}"}
+            return {"ok": result.get("ok", False), "error": result.get("error", f"HTTP {response.status_code}"), "job_id": None}
+          except: return {"ok": False, "error": f"HTTP {response.status_code}", "job_id": None}
         current_event_type = None
         async for line in response.aiter_lines():
           if line.startswith("event: "):
             current_event_type = line[7:].strip()
           elif line.startswith("data: "):
             data_str = line[6:]
-            if current_event_type == "end_json":
+            if current_event_type == "start_json":
+              try:
+                start_data = json.loads(data_str)
+                job_id = start_data.get("job_id")
+              except: pass
+            elif current_event_type == "end_json":
               try:
                 result = json.loads(data_str)
-                return result.get("result", {"ok": result.get("ok", False), "error": result.get("error", "")})
+                final_result = result.get("result", {"ok": result.get("ok", False), "error": result.get("error", "")})
+                final_result["job_id"] = job_id
+                return final_result
               except: pass
-        return {"ok": False, "error": "No end event received"}
+        return {"ok": False, "error": "No end event received", "job_id": job_id}
   except Exception as e:
-    return {"ok": False, "error": str(e)}
+    return {"ok": False, "error": str(e), "job_id": job_id}
 
 def _selftest_get_site_path(site_url: str) -> str:
   """Extract site path from URL (e.g., '/sites/demosite')"""
   from urllib.parse import urlparse
   return urlparse(site_url).path.rstrip('/')
+
+async def _selftest_delete_job(base_url: str, job_id: str) -> bool:
+  """Delete a job created during selftest. Returns True if deleted successfully."""
+  if not job_id: return False
+  try:
+    async with httpx.AsyncClient(timeout=10.0) as client:
+      response = await client.delete(f"{base_url}/v2/jobs/delete?job_id={job_id}")
+      return response.status_code == 200
+  except: return False
 
 @router.get(f"/{router_name}/selftest")
 async def crawler_selftest(request: Request):
@@ -1154,8 +1171,17 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
   ctx = None
   site_path = ""
   vector_store_id = ""
+  selftest_job_ids = []  # Track job IDs created during selftest for cleanup
   # base_url is passed from request.base_url
   
+  async def run_crawl_and_track(domain_id: str, endpoint: str, mode: str = None, scope: str = None, source_id: str = None, dry_run: bool = False, timeout: float = 300.0) -> dict:
+    """Run crawl and track job_id for cleanup."""
+    result = await _selftest_run_crawl(base_url, domain_id, endpoint, mode, scope, source_id, dry_run, timeout)
+    job_id = result.get("job_id")
+    if job_id:
+      selftest_job_ids.append(job_id)
+    return result
+
   def log(msg: str):
     sse = logger.log_function_output(msg)
     writer.drain_sse_queue()
@@ -1513,25 +1539,25 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
       
       # I1: Missing domain_id
       yield next_test("I1: Missing domain_id")
-      result = await _selftest_run_crawl(base_url, "", "crawl", mode="full", scope="all")
+      result = await run_crawl_and_track( "", "crawl", mode="full", scope="all")
       if not result.get("ok", True): yield check_ok("Correctly rejected missing domain_id")
       else: yield check_fail("Should have rejected missing domain_id")
       
       # I2: Invalid domain_id
       yield next_test("I2: Invalid domain_id")
-      result = await _selftest_run_crawl(base_url, "INVALID_DOMAIN_12345", "crawl", mode="full", scope="all")
+      result = await run_crawl_and_track( "INVALID_DOMAIN_12345", "crawl", mode="full", scope="all")
       if not result.get("ok", True): yield check_ok("Correctly rejected invalid domain_id")
       else: yield check_fail("Should have rejected invalid domain_id")
       
       # I3: Invalid scope - should return 400
       yield next_test("I3: Invalid scope returns 400")
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="INVALID_SCOPE_XYZ")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="INVALID_SCOPE_XYZ")
       if not result.get("ok", True) and "scope" in result.get("error", "").lower(): yield check_ok("Correctly rejected invalid scope")
       else: yield check_fail(f"Should have rejected invalid scope -> {result.get('error', 'No error')}")
       
       # I4: Invalid mode - should return 400
       yield next_test("I4: Invalid mode returns 400")
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="INVALID_MODE_XYZ", scope="files")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="INVALID_MODE_XYZ", scope="files")
       if not result.get("ok", True) and "mode" in result.get("error", "").lower(): yield check_ok("Correctly rejected invalid mode")
       else: yield check_fail(f"Should have rejected invalid mode -> {result.get('error', 'No error')}")
       
@@ -1559,7 +1585,7 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
         
         # Run crawl - should handle unreachable source gracefully
         _selftest_clear_domain_folder(storage_path, unreachable_domain_id)
-        result = await _selftest_run_crawl(base_url, unreachable_domain_id, "crawl", mode="full", scope="files")
+        result = await run_crawl_and_track( unreachable_domain_id, "crawl", mode="full", scope="files")
         
         # Check: crawl should complete (ok may be False due to errors, but should not crash)
         # The valid source should have been processed, unreachable source should log error and skip
@@ -1600,7 +1626,7 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
       # A1: mode=full, scope=all
       yield next_test("A1: Full crawl scope=all")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="all")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="all")
       if result.get("ok"):
         failures = _selftest_verify_snapshot(storage_path, SELFTEST_DOMAIN_ID, SNAP_FULL_ALL)
         if not failures:
@@ -1612,7 +1638,7 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
       # A2: mode=full, scope=files
       yield next_test("A2: Full crawl scope=files")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files")
       if result.get("ok"):
         failures = _selftest_verify_snapshot(storage_path, SELFTEST_DOMAIN_ID, SNAP_FULL_FILES)
         if not failures: yield check_ok("State matches expected")
@@ -1622,7 +1648,7 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
       # A3: mode=full, scope=lists
       yield next_test("A3: Full crawl scope=lists")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="lists")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="lists")
       if result.get("ok"):
         failures = _selftest_verify_snapshot(storage_path, SELFTEST_DOMAIN_ID, SNAP_FULL_LISTS)
         if not failures: yield check_ok("State matches expected")
@@ -1632,7 +1658,7 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
       # A4: mode=full, scope=sitepages - runs but finds 0 sources (no sitepage_sources configured)
       yield next_test("A4: Full crawl scope=sitepages (empty)")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="sitepages")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="sitepages")
       # Should succeed with 0 sources processed (no sitepage_sources in domain config)
       if result.get("ok"): yield check_ok("Handled empty sitepage_sources")
       else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
@@ -1645,35 +1671,35 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
       # B1: scope=files, source_id=files_all
       yield next_test("B1: scope=files, source_id=files_all")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files", source_id="files_all")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files", source_id="files_all")
       if result.get("ok"): yield check_ok("source_id filter applied")
       else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
       
       # B2: scope=files, source_id=files_crawl1
       yield next_test("B2: scope=files, source_id=files_crawl1 (filtered)")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files", source_id="files_crawl1")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files", source_id="files_crawl1")
       if result.get("ok"): yield check_ok("Filtered source applied")
       else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
       
       # B3: scope=lists, source_id=lists_active
       yield next_test("B3: scope=lists, source_id=lists_active")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="lists", source_id="lists_active")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="lists", source_id="lists_active")
       if result.get("ok"): yield check_ok("Filtered list applied")
       else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
       
       # B4: Invalid source_id
       yield next_test("B4: Invalid source_id")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files", source_id="INVALID_SOURCE")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files", source_id="INVALID_SOURCE")
       # Should succeed with 0 sources processed
       yield check_ok("Gracefully handled")
       
       # B5: scope=all + source_id
       yield next_test("B5: scope=all + source_id=files_all")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="all", source_id="files_all")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="all", source_id="files_all")
       if result.get("ok"): yield check_ok("Combined filter applied")
       else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
       yield phase_end(7, "source_id Filter Tests")
@@ -1685,7 +1711,7 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
       # D1: /crawl dry_run=true
       yield next_test("D1: /crawl with dry_run=true")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="all", dry_run=True)
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="all", dry_run=True)
       failures = _selftest_verify_snapshot(storage_path, SELFTEST_DOMAIN_ID, SNAP_EMPTY)
       if not failures: yield check_ok("dry_run did not modify state")
       else: yield check_fail(f"dry_run modified state -> {failures}")
@@ -1693,7 +1719,7 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
       # D2: /download_data dry_run=true
       yield next_test("D2: /download_data with dry_run=true")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "download_data", mode="full", scope="files", dry_run=True)
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "download_data", mode="full", scope="files", dry_run=True)
       failures = _selftest_verify_snapshot(storage_path, SELFTEST_DOMAIN_ID, SNAP_EMPTY)
       if not failures: yield check_ok("dry_run download did not modify state")
       else: yield check_fail(f"dry_run modified state -> {failures}")
@@ -1701,9 +1727,9 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
       # D3: Process dry_run - first download, then test process dry_run
       yield next_test("D3: /process_data with dry_run=true")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
-      await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "download_data", mode="full", scope="files", source_id="files_crawl1")
+      await run_crawl_and_track( SELFTEST_DOMAIN_ID, "download_data", mode="full", scope="files", source_id="files_crawl1")
       _selftest_save_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_AFTER_DOWNLOAD")
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "process_data", scope="files", source_id="files_crawl1", dry_run=True)
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "process_data", scope="files", source_id="files_crawl1", dry_run=True)
       # Restore and verify state unchanged
       failures_before = _selftest_verify_snapshot(storage_path, SELFTEST_DOMAIN_ID, {"01_files/files_crawl1": {"files_map_rows": 6}})
       _selftest_restore_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_AFTER_DOWNLOAD")
@@ -1713,9 +1739,9 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
       
       # D4: Embed dry_run - process first, then test embed dry_run
       yield next_test("D4: /embed_data with dry_run=true")
-      await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "process_data", scope="files", source_id="files_crawl1")
+      await run_crawl_and_track( SELFTEST_DOMAIN_ID, "process_data", scope="files", source_id="files_crawl1")
       _selftest_save_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_AFTER_PROCESS")
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "embed_data", mode="full", scope="files", source_id="files_crawl1", dry_run=True)
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "embed_data", mode="full", scope="files", source_id="files_crawl1", dry_run=True)
       # Verify vectorstore_map.csv not created
       vs_map_check = os.path.join(storage_path, "crawler", SELFTEST_DOMAIN_ID, "01_files", "files_crawl1", CRAWLER_HARDCODED_CONFIG.VECTOR_STORE_MAP_CSV)
       if not os.path.exists(vs_map_check): yield check_ok("dry_run embed did not create vectorstore_map")
@@ -1729,19 +1755,19 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
       # E1: download_data only
       yield next_test("E1: /download_data step")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "download_data", mode="full", scope="all")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "download_data", mode="full", scope="all")
       if result.get("ok"): yield check_ok()
       else: yield check_fail(f"Download failed -> error='{result.get('error', 'Unknown')}'")
       
       # E2: process_data (continues from E1)
       yield next_test("E2: /process_data step")
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "process_data", scope="all")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "process_data", scope="all")
       if result.get("ok"): yield check_ok()
       else: yield check_fail(f"Process failed -> error='{result.get('error', 'Unknown')}'")
       
       # E3: embed_data (continues from E2)
       yield next_test("E3: /embed_data step")
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "embed_data", mode="full", scope="all")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "embed_data", mode="full", scope="all")
       if result.get("ok"): yield check_ok()
       else: yield check_fail(f"Embed failed -> error='{result.get('error', 'Unknown')}'")
       yield phase_end(9, "Individual Steps Tests")
@@ -1796,27 +1822,27 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
       # F1: mode=incremental, scope=all
       yield next_test("F1: Incremental crawl scope=all")
       _selftest_restore_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_FULL_ALL")
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="all")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="all")
       if result.get("ok"): yield check_ok()
       else: yield check_fail(f"Incremental crawl failed -> error='{result.get('error', 'Unknown')}'")
       
       # F2: mode=incremental, scope=files
       yield next_test("F2: Incremental crawl scope=files")
       _selftest_restore_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_FULL_ALL")
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="files")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="files")
       if result.get("ok"): yield check_ok()
       else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
       
       # F3 & F4: Lists and sitepages incremental
       yield next_test("F3: Incremental crawl scope=lists")
       _selftest_restore_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_FULL_ALL")
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="lists")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="lists")
       if result.get("ok"): yield check_ok()
       else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
       
       yield next_test("F4: Incremental crawl scope=sitepages")
       _selftest_restore_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_FULL_ALL")
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="sitepages")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="sitepages")
       if result.get("ok"): yield check_ok()
       else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
       yield phase_end(11, "Incremental Crawl Tests")
@@ -1827,13 +1853,13 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
       
       yield next_test("G1: Incremental scope=files, source_id=files_all")
       _selftest_restore_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_FULL_ALL")
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="files", source_id="files_all")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="files", source_id="files_all")
       if result.get("ok"): yield check_ok("source_id filter applied")
       else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
       
       yield next_test("G2: Incremental scope=files, source_id=files_crawl1")
       _selftest_restore_snapshot(storage_path, SELFTEST_DOMAIN_ID, "SNAP_FULL_ALL")
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="files", source_id="files_crawl1")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="files", source_id="files_crawl1")
       if result.get("ok"): yield check_ok("Filtered source applied")
       else: yield check_fail(f"Crawl failed -> error='{result.get('error', 'Unknown')}'")
       yield phase_end(12, "Incremental source_id Tests")
@@ -1873,7 +1899,7 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
       missing_file_path = os.path.join(storage_path, "crawler", SELFTEST_DOMAIN_ID, "01_files", "files_all", "02_embedded", "file1.txt")
       if os.path.exists(missing_file_path):
         os.remove(missing_file_path)
-        result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="files", source_id="files_all")
+        result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="files", source_id="files_all")
         # Check file was re-downloaded
         if os.path.exists(missing_file_path): yield check_ok("File re-downloaded")
         else: yield check_fail("File not re-downloaded")
@@ -1890,7 +1916,7 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
             break
         if found_alt:
           os.remove(found_alt)
-          result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="files", source_id="files_all")
+          result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="files", source_id="files_all")
           if os.path.exists(found_alt): yield check_ok("File re-downloaded")
           else: yield check_fail("File not re-downloaded")
         else:
@@ -1903,7 +1929,7 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
       orphan_path = os.path.join(storage_path, "crawler", SELFTEST_DOMAIN_ID, "01_files", "files_all", "02_embedded", "orphan_test.txt")
       os.makedirs(os.path.dirname(orphan_path), exist_ok=True)
       with open(orphan_path, 'w') as f: f.write("orphan")
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="files", source_id="files_all")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="files", source_id="files_all")
       if result.get("ok"): yield check_ok("Crawl succeeded with orphan file")
       else: yield check_fail(f"Crawl failed -> {result.get('error', 'Unknown')}")
       
@@ -1919,7 +1945,7 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
       corrupt_path = os.path.join(storage_path, "crawler", SELFTEST_DOMAIN_ID, "01_files", "files_all", CRAWLER_HARDCODED_CONFIG.FILE_MAP_CSV)
       if os.path.exists(corrupt_path):
         with open(corrupt_path, 'w') as f: f.write("corrupted,data\n")
-        result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files", source_id="files_all")
+        result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files", source_id="files_all")
         if result.get("ok"): yield check_ok("Full crawl recovered from corruption")
         else: yield check_fail(f"Recovery failed -> {result.get('error', 'Unknown')}")
       else: yield check_fail("Map file not found")
@@ -2008,7 +2034,7 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
       # L3: Crawl report created with map files and correct structure
       yield next_test("L3: Crawl report created with map files")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files", source_id="files_crawl1")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files", source_id="files_crawl1")
       report_id = result.get("data", {}).get("report_id", "")
       l3_errors = []
       if not report_id:
@@ -2054,7 +2080,7 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
       reports_folder = os.path.join(storage_path, "reports", "crawls")
       reports_before = len([f for f in os.listdir(reports_folder) if SELFTEST_DOMAIN_ID in f]) if os.path.exists(reports_folder) else 0
       # Run crawl with dry_run=true
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files", source_id="files_crawl1", dry_run=True)
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files", source_id="files_crawl1", dry_run=True)
       # Count reports after
       reports_after = len([f for f in os.listdir(reports_folder) if SELFTEST_DOMAIN_ID in f]) if os.path.exists(reports_folder) else 0
       if reports_after == reports_before: yield check_ok("No new report created with dry_run=true")
@@ -2110,13 +2136,13 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
       # N1: Test crawl with empty domain folder
       yield next_test("N1: Full crawl on clean state")
       _selftest_clear_domain_folder(storage_path, SELFTEST_DOMAIN_ID)
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files", source_id="files_crawl1")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="full", scope="files", source_id="files_crawl1")
       if result.get("ok"): yield check_ok("Clean state crawl succeeded")
       else: yield check_fail(f"Crawl failed -> {result.get('error', 'Unknown')}")
       
       # N2: Incremental on fresh state (no changes)
       yield next_test("N2: Incremental crawl detects no changes")
-      result = await _selftest_run_crawl(base_url, SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="files", source_id="files_crawl1")
+      result = await run_crawl_and_track( SELFTEST_DOMAIN_ID, "crawl", mode="incremental", scope="files", source_id="files_crawl1")
       if result.get("ok"): yield check_ok("Incremental detected no changes")
       else: yield check_fail(f"Crawl failed -> {result.get('error', 'Unknown')}")
       
@@ -2162,6 +2188,22 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
         crawler_path = os.path.join(storage_path, "crawler", SELFTEST_DOMAIN_ID)
         if os.path.exists(crawler_path): shutil.rmtree(crawler_path)
       except: pass
+      
+      # Delete jobs created during selftest (except main job)
+      yield log("  Deleting selftest sub-jobs...")
+      try:
+        main_job_id = writer.job_id
+        deleted_jobs = 0
+        for job_id in selftest_job_ids:
+          if job_id and job_id != main_job_id:
+            if await _selftest_delete_job(base_url, job_id):
+              deleted_jobs += 1
+        if deleted_jobs > 0:
+          yield log(f"    Deleted {deleted_jobs} sub-job(s)")
+        else:
+          yield log(f"    No sub-jobs to delete")
+      except Exception as e:
+        yield log(f"    Warning: Failed to delete some jobs: {e}")
       
       # Delete selftest reports
       yield log("  Deleting selftest reports...")
@@ -2225,6 +2267,16 @@ async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int
 def get_router_specific_js() -> str:
   return f"""
 const jobsState = new Map();
+const STALE_THRESHOLD_MS = 300000; // 5 minutes
+
+function isStalled(job) {{
+  if (job.state !== 'running' && job.state !== 'paused') return false;
+  if (!job.last_modified_utc) return false;
+  const mtime = new Date(job.last_modified_utc).getTime();
+  const age = Date.now() - mtime;
+  return age > STALE_THRESHOLD_MS;
+}}
+
 document.addEventListener('DOMContentLoaded', async () => {{ await refreshJobsTable(); initConsoleResize(); }});
 async function refreshJobsTable() {{
   try {{
@@ -2273,24 +2325,27 @@ function renderJobRow(job) {{
   const started = formatTimestamp(job.started_utc);
   const finished = formatTimestamp(job.finished_utc);
   const resultDisplay = formatResultOkFail(job.result?.ok);
+  const stalled = isStalled(job);
+  const stateDisplay = stalled ? job.state + ' (stalled)' : job.state;
   const isCancelOrFail = job.state === 'cancelled' || (job.result && !job.result.ok);
   const isRunning = job.state === 'running';
-  const actions = renderJobActions(job);
+  const actions = renderJobActions(job, stalled);
   const rowId = sanitizeId(job.job_id);
   const rowClass = isRunning ? 'row-running' : (isCancelOrFail ? 'row-cancel-or-fail' : '');
-  return '<tr id="job-' + rowId + '"' + (rowClass ? ' class="' + rowClass + '"' : '') + '>' +
+  const rowStyle = (isRunning || stalled) ? ' style="font-weight: bold"' : '';
+  return '<tr id="job-' + rowId + '"' + (rowClass ? ' class="' + rowClass + '"' : '') + rowStyle + '>' +
     '<td><input type="checkbox" class="item-checkbox" data-item-id="' + escapeHtml(job.job_id) + '" onchange="updateSelectedCount()"></td>' +
     '<td>' + escapeHtml(job.job_id) + '</td>' +
     '<td>' + escapeHtml(parsed.endpoint) + '</td>' +
     '<td>' + escapeHtml(parsed.domainId) + '</td>' +
-    '<td>' + escapeHtml(job.state || '-') + '</td>' +
+    '<td>' + escapeHtml(stateDisplay || '-') + '</td>' +
     '<td>' + escapeHtml(resultDisplay) + '</td>' +
     '<td>' + escapeHtml(started) + '</td>' +
     '<td>' + escapeHtml(finished) + '</td>' +
     '<td class="actions">' + actions + '</td>' +
     '</tr>';
 }}
-function renderJobActions(job) {{
+function renderJobActions(job, stalled) {{
   const jobId = job.job_id;
   const state = job.state;
   const reportId = job.result?.data?.report_id;
@@ -2298,17 +2353,27 @@ function renderJobActions(job) {{
   if (reportId) {{
     const viewUrl = '/v2/reports/view?report_id=' + encodeURIComponent(reportId) + '&format=ui';
     actions.push('<button class="btn-small" onclick="window.location.href=\\'' + viewUrl + '\\'">View</button>');
+  }} else {{
+    actions.push('<button class="btn-small" disabled>View</button>');
   }}
   if (state === 'completed' || state === 'cancelled') {{
     actions.push('<button class="btn-small" onclick="showJobResult(\\'' + jobId + '\\')">Result</button>');
   }}
   actions.push('<button class="btn-small" onclick="monitorJob(\\'' + jobId + '\\')">Monitor</button>');
   if (state === 'running') {{
-    actions.push('<button class="btn-small" onclick="controlJob(\\'' + jobId + '\\', \\'pause\\')">Pause</button>');
-    actions.push('<button class="btn-small" onclick="if(confirm(\\'Cancel job ' + jobId + '?\\')) controlJob(\\'' + jobId + '\\', \\'cancel\\')">Cancel</button>');
+    if (stalled) {{
+      actions.push('<button class="btn-small" onclick="if(confirm(\\'Force cancel stalled job ' + jobId + '?\\')) controlJob(\\'' + jobId + '\\', \\'cancel\\', true)">Force Cancel</button>');
+    }} else {{
+      actions.push('<button class="btn-small" onclick="controlJob(\\'' + jobId + '\\', \\'pause\\')">Pause</button>');
+      actions.push('<button class="btn-small" onclick="if(confirm(\\'Cancel job ' + jobId + '?\\')) controlJob(\\'' + jobId + '\\', \\'cancel\\')">Cancel</button>');
+    }}
   }} else if (state === 'paused') {{
-    actions.push('<button class="btn-small" onclick="controlJob(\\'' + jobId + '\\', \\'resume\\')">Resume</button>');
-    actions.push('<button class="btn-small" onclick="if(confirm(\\'Cancel job ' + jobId + '?\\')) controlJob(\\'' + jobId + '\\', \\'cancel\\')">Cancel</button>');
+    if (stalled) {{
+      actions.push('<button class="btn-small" onclick="if(confirm(\\'Force cancel stalled job ' + jobId + '?\\')) controlJob(\\'' + jobId + '\\', \\'cancel\\', true)">Force Cancel</button>');
+    }} else {{
+      actions.push('<button class="btn-small" onclick="controlJob(\\'' + jobId + '\\', \\'resume\\')">Resume</button>');
+      actions.push('<button class="btn-small" onclick="if(confirm(\\'Cancel job ' + jobId + '?\\')) controlJob(\\'' + jobId + '\\', \\'cancel\\')">Cancel</button>');
+    }}
   }}
   actions.push('<button class="btn-small btn-delete" onclick="if(confirm(\\'Delete job ' + jobId + '?\\')) deleteJob(\\'' + jobId + '\\')">Delete</button>');
   return actions.join(' ');
@@ -2316,9 +2381,11 @@ function renderJobActions(job) {{
 function monitorJob(jobId) {{
   connectStream('{router_prefix}/jobs/monitor?job_id=' + encodeURIComponent(jobId) + '&format=stream');
 }}
-async function controlJob(jobId, action) {{
+async function controlJob(jobId, action, force) {{
   try {{
-    const response = await fetch('{router_prefix}/jobs/control?job_id=' + encodeURIComponent(jobId) + '&action=' + action);
+    let url = '{router_prefix}/jobs/control?job_id=' + encodeURIComponent(jobId) + '&action=' + action;
+    if (force) url += '&force=true';
+    const response = await fetch(url);
     const result = await response.json();
     if (result.ok) {{ showToast('Success', 'Job ' + action + ' requested', 'success'); refreshJobsTable(); }}
     else {{ showToast('Failed', result.error, 'error'); }}

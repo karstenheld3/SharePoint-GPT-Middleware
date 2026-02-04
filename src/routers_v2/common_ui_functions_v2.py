@@ -202,7 +202,12 @@ def generate_table_row(item: Dict, columns: List[Dict], row_id_field: str, row_i
       value = item.get(field, col.get("default", "-"))
       format_func = col.get("format")
       if format_func and callable(format_func): value = format_func(value)
-      cells.append(f'<td>{_escape_html(str(value))}</td>')
+      link_template = col.get("link_template")
+      if link_template and value and value != "-" and value != col.get("default", "-"):
+        link_url = link_template.replace("{value}", str(value))
+        cells.append(f'<td><a href="{_escape_html(link_url)}">{_escape_html(str(value))}</a></td>')
+      else:
+        cells.append(f'<td>{_escape_html(str(value))}</td>')
   
   return f'<tr id="{row_id_prefix}-{sanitized_id}">{"".join(cells)}</tr>'
 

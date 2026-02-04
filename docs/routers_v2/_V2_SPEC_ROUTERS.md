@@ -333,6 +333,7 @@ Version 2 routers (as specified in this document):
   - `html` -> HTML detail view (JSON converted to flat or nested HTML table)
   - `ui` -> Interactive UI listing all items with [Create], [Edit] / [View], [Delete] buttons for each item if supported by endpoint
   - `stream` ->  Server-Sent Events (SSE) stream with HTMX compatible syntax (`event:` and `data:` lines) with MIME type `Content-Type: text/event-stream`
+- **Error handling for `format=ui`**: When `format=ui` is requested, errors (validation failures, not found, etc.) MUST be rendered within the UI framework, not returned as raw JSON, HTML tables, or plain text. The error should be displayed in a user-friendly manner within the same UI layout (navigation, styling) as successful responses.
 
 **`dry_run` query param**
 - Specifies if an action is allowed to delete or modify data.
@@ -1788,6 +1789,9 @@ def force_cancel_job(persistent_storage_path: str, job_id: str) -> bool:
   """Force cancel stalled job by renaming .running -> .cancelled. Cleans up control files."""
 
 ## Document History
+
+**[2026-02-04 13:43]**
+- Added: Error handling requirement for `format=ui` - errors must render within UI framework
 
 **[2026-02-04 00:34]**
 - Added: Site domain object and schema (site.json)
