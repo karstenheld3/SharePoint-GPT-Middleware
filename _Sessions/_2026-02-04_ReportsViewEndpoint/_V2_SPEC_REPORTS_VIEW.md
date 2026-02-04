@@ -20,6 +20,7 @@
 - Non-CSV files visible but disabled (greyed out, not clickable)
 - Auto-select first CSV file on page load
 - Horizontal resizable divider same pattern as console vertical resize
+- Always URL-encode `report_id` in client-side fetch URLs (contains `/`)
 
 ## Table of Contents
 
@@ -54,7 +55,7 @@
 
 **RPTV-DD-01:** No temp extraction. Use existing `/v2/reports/file` endpoint to load CSV content on demand via client-side fetch.
 
-**RPTV-DD-02:** Tree data from report.json. Use `files[]` array from report metadata (fetched via `/v2/reports/get`). Each entry has `file_path` property.
+**RPTV-DD-02:** Tree data from report.json. Server fetches metadata via `get_report_metadata()` and embeds `files[]` array in page. Client uses this embedded data (no additional fetch needed).
 
 **RPTV-DD-03:** Hierarchical tree. Build folder structure from flat file paths. Folders are collapsible nodes.
 
@@ -126,28 +127,28 @@ View report archive contents with split-panel UI.
 ## UI Layout
 
 ```
-+---------------------------------------------------------------------------------+
-| Back to Main Page | Domains | Sites | Crawler | Jobs | Reports                 |
-| Report Viewer                                                                   |
-+---------------------------------------------------------------------------------+
-| Title: "AiSearchTest01 incremental crawl"  Type: crawl                          |
-| Created: 2026-02-04 07:09:16 UTC            Status: OK                          |
-+---------------------------------------------------------------------------------+
++------------------------------------------------------------------+
+| Back to Main Page | Domains | Sites | Crawler | Jobs | Reports   |
+| Report Viewer                                                    |
++------------------------------------------------------------------+
+| Title: "AiSearchTest01 incremental crawl"  Type: crawl           |
+| Created: 2026-02-04 07:09:16 UTC            Status: OK           |
++------------------------------------------------------------------+
 |                    |                                             |
 |  [File Tree]       |  [CSV Table]                                |
 |                    |                                             |
-|  > 01_files/       |  | Col1 | Col2 | Col3 | ...               |
-|    > DocLib01/     |  |------|------|------|                    |
-|      sharepoint_   |  | val  | val  | val  |                    |
-|      files_map.csv |  | val  | val  | val  |                    |
-|      vectorstore_  |  | ...  | ...  | ...  |                    |
+|  > 01_files/       |  | Col1 | Col2 | Col3 | ...                 |
+|    > DocLib01/     |  |------|------|------|                     |
+|      sharepoint_   |  | val  | val  | val  |                     |
+|      files_map.csv |  | val  | val  | val  |                     |
+|      vectorstore_  |  | ...  | ...  | ...  |                     |
 |    > DocLib02/     |                                             |
 |  > 02_lists/       |                                             |
 |  v report.json     |                                             |
 |                    |                                             |
 +--------------------+---------------------------------------------+
-        ^
-        | Drag handle (horizontal resize)
+                     ^
+                     | Drag handle (horizontal resize)
 ```
 
 ## Tree Component
@@ -223,6 +224,8 @@ async function loadCsvFile(filePath) {
   renderCsvTable(csvText);
 }
 ```
+
+**Error handling**: On fetch failure, display error message in table panel instead of CSV content.
 
 ### CSV Parsing
 
@@ -336,6 +339,11 @@ document.addEventListener('mouseup', () => {
 - `escapeHtml(str)` - Escape `<`, `>`, `&`, `"`
 
 ## Document History
+
+**[2026-02-04 08:35]**
+- Added: URL encoding note to MUST-NOT-FORGET (RV-06)
+- Changed: DD-02 clarified server embeds metadata (RV-04)
+- Added: Error handling note to CSV Loading (RV-05)
 
 **[2026-02-04 08:24]**
 - Changed: Reduced CSS/JS sections to outlines per SPEC-CT-01, SPEC-CT-02
