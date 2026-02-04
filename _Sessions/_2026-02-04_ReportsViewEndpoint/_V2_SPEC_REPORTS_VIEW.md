@@ -128,8 +128,8 @@ View report archive contents with split-panel UI.
 
 ```
 +------------------------------------------------------------------+
-| Back to Main Page | Domains | Sites | Crawler | Jobs | Reports   |
 | Report Viewer                                                    |
+| Back to Main Page | Domains | Sites | Crawler | Jobs | Reports   |
 +------------------------------------------------------------------+
 | Title: "AiSearchTest01 incremental crawl"  Type: crawl           |
 | Created: 2026-02-04 07:09:16 UTC            Status: OK           |

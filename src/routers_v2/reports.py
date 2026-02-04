@@ -361,8 +361,8 @@ a:hover { text-decoration: underline; }
 .tree-node.file.disabled:hover { background: transparent; }
 
 /* Resize Handle */
-.resize-handle { width: 5px; background: #ddd; cursor: col-resize; flex-shrink: 0; }
-.resize-handle:hover, .resize-handle.active { background: #bbb; }
+.resize-handle { width: 5px; background: #ddd; cursor: col-resize; flex-shrink: 0; transition: background 0.2s; }
+.resize-handle:hover, .resize-handle.active { background: #0090F1; }
 
 /* Table Panel */
 .table-panel { flex: 1; min-width: 300px; display: flex; flex-direction: column; overflow: hidden; background: #fff; }
@@ -626,8 +626,8 @@ def generate_report_view_page(report_id: str, metadata: dict) -> str:
 </head>
 <body>
   <div class="page-header">
-    <div class="nav-links">{nav_links}</div>
     <h1>Report Viewer</h1>
+    <div class="nav-links">{nav_links}</div>
   </div>
   
   <div class="report-header">
