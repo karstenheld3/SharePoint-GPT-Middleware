@@ -500,7 +500,15 @@ Expected outcome:
       - Write new `vector_store_id` back to domain.json
       - Log: "Created vector store '{name}' (ID={id})"
       - If creation fails: log error, skip embedding for all sources (continue crawl without embed)
-    - Validate vector store exists (404 if missing)
+    - If `vector_store_id` in domain.json is NOT empty:
+      - Validate vector store exists in OpenAI backend
+      - If vector store does NOT exist (deleted, expired, or invalid ID):
+        - Log: "Vector store '{id}' not found in OpenAI, creating new..."
+        - Create new vector store using `vector_store_name` (or `domain_id` if name is empty)
+        - Write new `vector_store_id` back to domain.json
+        - Log: "Created vector store '{name}' (ID={new_id})"
+        - Clear all `vectorstore_map.csv` files for this domain (stale references)
+        - If creation fails: log error, skip embedding for all sources
     - Load all vector store files 
 4. [For each source]
     - Loads `files_map.csv` (skip source if not found)
@@ -847,6 +855,10 @@ Endpoint: `GET /v2/crawler/cleanup_metadata?domain_id={id}`
   - Folder paths: `PERSISTENT_STORAGE_PATH_CRAWLER_SUBFOLDER`, `PERSISTENT_STORAGE_PATH_DOCUMENTS_FOLDER`, `PERSISTENT_STORAGE_PATH_LISTS_FOLDER`, `PERSISTENT_STORAGE_PATH_SITEPAGES_FOLDER`, `PERSISTENT_STORAGE_PATH_ORIGINALS_SUBFOLDER`, `PERSISTENT_STORAGE_PATH_EMBEDDED_SUBFOLDER`, `PERSISTENT_STORAGE_PATH_FAILED_SUBFOLDER`
   - File names: `DOMAIN_JSON`, `FILES_METADATA_JSON`, `SHAREPOINT_MAP_CSV`, `FILE_MAP_CSV`, `VECTOR_STORE_MAP_CSV`
   - Settings: `APPEND_TO_MAP_FILES_EVERY_X_LINES`, `DEFAULT_FILETYPES_ACCEPTED_BY_VECTOR_STORES`
+
+**[2026-02-04 14:02]**
+- Added: Vector store existence validation in embed step (edge case C4 handling)
+- If vector_store_id references non-existent store, create new and clear stale maps
 
 **[2024-12-27 16:53]**
 - Updated V2CR-FR-05: Replaced full-file rewrite with buffered append writes

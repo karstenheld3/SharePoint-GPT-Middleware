@@ -624,6 +624,51 @@ async def step_embed_source(
   Yields SSE log events.
   Updates vectorstore_map.csv and files_metadata.json.
   """
+
+async def ensure_vector_store_exists(
+  storage_path: str,
+  domain: DomainConfig,
+  dry_run: bool,
+  logger: MiddlewareLogger,
+  openai_client
+) -> tuple[bool, str | None]:
+  """
+  Validate vector store exists in OpenAI, create if missing (edge case C4).
+  
+  Called before embedding step begins (once per crawl, not per source).
+  
+  Logic:
+  1. If domain.vector_store_id is empty:
+     - Create new vector store using vector_store_name (or domain_id)
+     - Save domain.json with new vector_store_id
+     - Log: "Created vector store '{name}' (ID={id})"
+  
+  2. If domain.vector_store_id is NOT empty:
+     - Call openai_client.vector_stores.retrieve(domain.vector_store_id)
+     - If NOT found (404 or exception):
+       - Log: "Vector store '{id}' not found in OpenAI, creating new..."
+       - Create new vector store using vector_store_name (or domain_id)
+       - Save domain.json with new vector_store_id
+       - Clear all vectorstore_map.csv files for this domain (stale references)
+       - Log: "Created vector store '{name}' (ID={new_id})"
+     - If found: proceed with existing vector store
+  
+  dry_run behavior:
+  - Logs what would happen but doesn't create vector store
+  - Returns (True, None) to allow embed step to continue in simulation mode
+  
+  Returns: (success: bool, error_message: str | None)
+  - (True, None) if vector store ready
+  - (False, error) if creation failed
+  """
+
+def clear_domain_vectorstore_maps(storage_path: str, domain_id: str, logger: MiddlewareLogger) -> int:
+  """
+  Delete all vectorstore_map.csv files for a domain (stale references after VS recreation).
+  
+  Scans: crawler/{domain_id}/*/*/vectorstore_map.csv
+  Returns: number of files deleted
+  """
 ```
 
 ### Step function result handling
@@ -1402,6 +1447,10 @@ Systematic verification that all plan items are implemented. Check each item exi
 - Changed: Fixed hierarchy indenting to use └─ in dry_run chain flow
 - Added: "Does not depend on" section
 - Changed: Section titles "Matrix" -> removed (7. Spec Requirements Coverage, 8. Edge Case Handling)
+
+**[2026-02-04 14:05]**
+- Added: `ensure_vector_store_exists()` function for vector store validation (edge case C4)
+- Added: `clear_domain_vectorstore_maps()` function to clear stale map files
 
 **[2024-12-27 18:13]**
 - Restored temp file naming for dry_run: `sharepoint_map_[JOB_ID].csv`

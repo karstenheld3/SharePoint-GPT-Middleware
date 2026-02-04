@@ -409,12 +409,13 @@ Tests V2CR-FR-03 and V2CR-FR-04 from _V2_SPEC_CRAWLER.md
 - **J3**: WRONG_PATH - move file to wrong path on disk, run download -> moved back to correct path
 - **J4**: MAP_FILE_CORRUPTED - corrupt files_map.csv, run crawl -> falls back to mode=full
 
-### K. Advanced Edge Cases (4 tests)
+### K. Advanced Edge Cases (5 tests)
 
 - **K1**: FOLDER_RENAMED - rename subfolder in SharePoint -> all files inside detected as CHANGED
 - **K2**: RESTORED - restore file from recycle bin -> detected as ADDED (same sharepoint_unique_file_id)
 - **K3**: VS_EMBEDDING_FAILED - embed file that will fail -> moved to 03_failed/, error logged
 - **K4**: retry_batches - compare retry_batches=1 vs default behavior on transient failure
+- **K5**: VS_DELETED (C4) - delete vector store from OpenAI, run incremental crawl -> new VS created, domain.json updated, all vectorstore_map.csv cleared, files re-embedded
 
 ### L. Metadata & Reports (3 tests)
 
@@ -444,9 +445,9 @@ After deleting all SharePoint content:
 - **O2**: files_map.csv has 13 columns
 - **O3**: vectorstore_map.csv has 19 columns
 
-### Total: 54 tests (site pages skipped, I5-I8 tested implicitly)
+### Total: 55 tests (site pages skipped, I5-I8 tested implicitly)
 
-**Implementation Status**: All 54 tests implemented (2026-01-13)
+**Implementation Status**: 54 tests implemented (2026-01-13), K5 pending (2026-02-04)
 
 ## Test Phases
 
@@ -1048,6 +1049,10 @@ finally:
 - Added: Test artifacts for I5 (non_embeddable.zip), I6 (file_测试.txt), I7 (subfolder/file1.txt)
 - Updated: Snapshot definitions for 9 files total (5 with Crawl=1)
 - Fixed: Implementation checklist (17 phases, 56 tests, wait_for_vector_store_ready helper)
+
+**[2026-02-04 14:08]**
+- Added: K5 test case for VS_DELETED (edge case C4) - vector store validation before embed
+- Changed: Total tests from 54 to 55
 
 **[2025-01-02 20:03]**
 - Changed: C section marked as implicit (0 tests) - verified by A1 snapshot
