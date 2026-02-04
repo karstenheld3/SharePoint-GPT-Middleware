@@ -181,6 +181,7 @@ async function deleteReport(reportId, title) {{
 async function bulkDelete() {{
   const ids = getSelectedReportIds();
   if (ids.length === 0) return;
+  if (!confirm('Delete ' + ids.length + ' selected reports?')) return;
   
   let successCount = 0;
   for (const id of ids) {{
