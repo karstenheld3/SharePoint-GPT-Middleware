@@ -119,6 +119,7 @@ function renderReportRow(report) {{
     '<td>' + created + '</td>' +
     '<td>' + result + '</td>' +
     '<td class="actions">' +
+      '<button class="btn-small" onclick="window.location=\\'{router_prefix}/{router_name}/view?report_id=' + encodeURIComponent(reportId) + '&format=ui\\'">View</button> ' +
       '<button class="btn-small" onclick="showReportResult(\\'' + reportId + '\\')">Result</button> ' +
       '<button class="btn-small" data-url="{router_prefix}/{router_name}/download?report_id=' + encodeURIComponent(reportId) + '" onclick="downloadReport(this)">Download</button> ' +
       '<button class="btn-small btn-delete" onclick="if(confirm(\\'Delete report ' + escapedTitle + '?\\')) deleteReport(\\'' + reportId + '\\', \\'' + escapedTitle + '\\')">Delete</button>' +
@@ -313,6 +314,357 @@ def generate_reports_ui_page(reports: list) -> str:
   )
 
 # ----------------------------------------- END: UI Page Generation ------------------------------------------------------
+
+
+# ----------------------------------------- START: Report View Page Generation --------------------------------------------
+
+def get_report_view_css() -> str:
+  return """
+/* Base */
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; }
+a { color: #0066cc; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Page Header */
+.page-header { padding: 12px 16px; border-bottom: 1px solid #ddd; background: #f8f9fa; }
+.page-header h1 { margin: 8px 0 0 0; font-size: 1.4em; }
+.nav-links { font-size: 0.9em; }
+
+/* Report Header */
+.report-header { display: flex; gap: 32px; padding: 12px 16px; background: #fff; border-bottom: 1px solid #ddd; }
+.report-info { display: flex; flex-direction: column; gap: 4px; font-size: 0.9em; }
+.status-ok { color: #28a745; font-weight: 600; }
+.status-fail { color: #dc3545; font-weight: 600; }
+
+/* Viewer Container */
+.viewer-container { display: flex; height: calc(100vh - 140px); }
+
+/* Tree Panel */
+.tree-panel { width: 280px; min-width: 150px; display: flex; flex-direction: column; background: #fafafa; border-right: 1px solid #ddd; }
+.panel-header { padding: 8px 12px; font-weight: 600; font-size: 0.85em; background: #f0f0f0; border-bottom: 1px solid #ddd; }
+.file-tree { flex: 1; overflow: auto; padding: 8px; font-size: 0.85em; }
+
+/* Tree Nodes */
+.tree-node { user-select: none; }
+.tree-node.folder > .folder-row { display: flex; align-items: center; padding: 3px 0; cursor: pointer; }
+.tree-node.folder > .folder-row:hover { background: #e8e8e8; }
+.folder-toggle { width: 16px; text-align: center; font-size: 0.8em; color: #666; }
+.folder-name { font-weight: 500; }
+.tree-children { padding-left: 16px; }
+.tree-children.collapsed { display: none; }
+
+.tree-node.file { padding: 3px 0 3px 20px; cursor: pointer; }
+.tree-node.file:hover { background: #e8f4fc; }
+.tree-node.file.selected { background: #cce5ff; }
+.tree-node.file.disabled { color: #999; cursor: not-allowed; }
+.tree-node.file.disabled:hover { background: transparent; }
+
+/* Resize Handle */
+.resize-handle { width: 5px; background: #ddd; cursor: col-resize; flex-shrink: 0; }
+.resize-handle:hover, .resize-handle.active { background: #bbb; }
+
+/* Table Panel */
+.table-panel { flex: 1; min-width: 300px; display: flex; flex-direction: column; overflow: hidden; }
+.csv-table-container { flex: 1; overflow: auto; padding: 0; }
+.empty-state { padding: 24px; color: #666; text-align: center; }
+
+/* CSV Table */
+.csv-table { border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+.csv-table th, .csv-table td { border: 1px solid #ddd; padding: 4px 8px; text-align: left; max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
+.csv-table th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; z-index: 1; }
+.csv-table tr:nth-child(even) { background: #fafafa; }
+.csv-table tr:hover { background: #f0f7ff; }
+
+/* Loading */
+.loading { padding: 24px; color: #666; text-align: center; }
+"""
+
+def get_report_view_js() -> str:
+  return """
+// ============================================
+// INITIALIZATION
+// ============================================
+document.addEventListener('DOMContentLoaded', function() {
+  renderFileTree();
+  initPanelResize();
+  selectFirstCsvFile();
+});
+
+// ============================================
+// TREE BUILDING
+// ============================================
+function buildTreeStructure(files) {
+  var tree = {};
+  files.forEach(function(file) {
+    var parts = file.file_path.split('/');
+    var current = tree;
+    parts.forEach(function(part, idx) {
+      if (idx === parts.length - 1) {
+        current[part] = { _isFile: true, path: file.file_path, size: file.file_size };
+      } else {
+        if (!current[part]) current[part] = { _isFolder: true };
+        current = current[part];
+      }
+    });
+  });
+  return tree;
+}
+
+function renderFileTree() {
+  var tree = buildTreeStructure(filesData);
+  var container = document.getElementById('file-tree');
+  container.innerHTML = renderTreeNode(tree, '');
+}
+
+function renderTreeNode(node, path) {
+  var html = '';
+  var entries = Object.keys(node).filter(function(k) { return !k.startsWith('_'); }).sort(function(a, b) {
+    var aIsFolder = node[a]._isFolder;
+    var bIsFolder = node[b]._isFolder;
+    if (aIsFolder && !bIsFolder) return -1;
+    if (!aIsFolder && bIsFolder) return 1;
+    return a.localeCompare(b);
+  });
+  
+  entries.forEach(function(name) {
+    var value = node[name];
+    if (value._isFolder) {
+      var folderPath = path ? path + '/' + name : name;
+      html += '<div class="tree-node folder" data-path="' + escapeHtml(folderPath) + '">';
+      html += '<div class="folder-row" onclick="toggleFolder(this.parentNode)">';
+      html += '<span class="folder-toggle">v</span>';
+      html += '<span class="folder-name">' + escapeHtml(name) + '</span>';
+      html += '</div>';
+      html += '<div class="tree-children">' + renderTreeNode(value, folderPath) + '</div>';
+      html += '</div>';
+    } else if (value._isFile) {
+      var isCsv = name.toLowerCase().endsWith('.csv');
+      var fileClass = isCsv ? 'file csv' : 'file disabled';
+      var onclick = isCsv ? ' onclick="selectFile(this)"' : '';
+      html += '<div class="tree-node ' + fileClass + '" data-path="' + escapeHtml(value.path) + '"' + onclick + '>';
+      html += '<span class="file-name">' + escapeHtml(name) + '</span>';
+      html += '</div>';
+    }
+  });
+  return html;
+}
+
+function toggleFolder(node) {
+  var children = node.querySelector('.tree-children');
+  var toggle = node.querySelector('.folder-toggle');
+  if (children.classList.contains('collapsed')) {
+    children.classList.remove('collapsed');
+    toggle.textContent = 'v';
+  } else {
+    children.classList.add('collapsed');
+    toggle.textContent = '>';
+  }
+}
+
+// ============================================
+// FILE SELECTION
+// ============================================
+function selectFile(element) {
+  var selected = document.querySelectorAll('.tree-node.file.selected');
+  for (var i = 0; i < selected.length; i++) {
+    selected[i].classList.remove('selected');
+  }
+  element.classList.add('selected');
+  var filePath = element.dataset.path;
+  loadCsvFile(filePath);
+}
+
+function selectFirstCsvFile() {
+  var firstCsv = document.querySelector('.tree-node.file.csv');
+  if (firstCsv) selectFile(firstCsv);
+}
+
+// ============================================
+// CSV LOADING
+// ============================================
+function loadCsvFile(filePath) {
+  var header = document.getElementById('table-header');
+  var container = document.getElementById('csv-container');
+  
+  header.textContent = filePath.split('/').pop();
+  container.innerHTML = '<div class="loading">Loading...</div>';
+  
+  var url = routerPrefix + '/' + routerName + '/file?report_id=' + encodeURIComponent(reportId) + '&file_path=' + encodeURIComponent(filePath) + '&format=raw';
+  fetch(url)
+    .then(function(response) {
+      if (!response.ok) throw new Error('Failed to load file');
+      return response.text();
+    })
+    .then(function(csvText) {
+      var data = parseCsv(csvText);
+      renderCsvTable(data);
+    })
+    .catch(function(e) {
+      container.innerHTML = '<div class="empty-state">Error loading file: ' + escapeHtml(e.message) + '</div>';
+    });
+}
+
+function parseCsv(text) {
+  var lines = text.split(/\\r?\\n/).filter(function(line) { return line.trim(); });
+  return lines.map(function(line) {
+    var result = [];
+    var current = '';
+    var inQuotes = false;
+    for (var i = 0; i < line.length; i++) {
+      var char = line[i];
+      if (char === '"') {
+        if (inQuotes && line[i+1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        result.push(current);
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current);
+    return result;
+  });
+}
+
+function renderCsvTable(data) {
+  var container = document.getElementById('csv-container');
+  if (data.length === 0) {
+    container.innerHTML = '<div class="empty-state">Empty file</div>';
+    return;
+  }
+  
+  var html = '<table class="csv-table"><thead><tr>';
+  data[0].forEach(function(header) { html += '<th>' + escapeHtml(header) + '</th>'; });
+  html += '</tr></thead><tbody>';
+  
+  for (var i = 1; i < data.length; i++) {
+    html += '<tr>';
+    data[i].forEach(function(cell) { html += '<td title="' + escapeHtml(cell) + '">' + escapeHtml(cell) + '</td>'; });
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+// ============================================
+// PANEL RESIZE
+// ============================================
+function initPanelResize() {
+  var handle = document.getElementById('resize-handle');
+  var treePanel = document.getElementById('tree-panel');
+  var isResizing = false;
+  var startX, startWidth;
+  
+  handle.addEventListener('mousedown', function(e) {
+    isResizing = true;
+    startX = e.clientX;
+    startWidth = treePanel.offsetWidth;
+    handle.classList.add('active');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  
+  document.addEventListener('mousemove', function(e) {
+    if (!isResizing) return;
+    var delta = e.clientX - startX;
+    var newWidth = Math.max(150, Math.min(startWidth + delta, window.innerWidth - 350));
+    treePanel.style.width = newWidth + 'px';
+  });
+  
+  document.addEventListener('mouseup', function() {
+    if (isResizing) {
+      isResizing = false;
+      handle.classList.remove('active');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+  });
+}
+
+// ============================================
+// UTILITIES
+// ============================================
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+"""
+
+def generate_report_view_page(report_id: str, metadata: dict) -> str:
+  """Generate HTML page for report viewer with tree and table panels."""
+  import html
+  import json
+  
+  nav_links = main_page_nav_html.replace("{router_prefix}", router_prefix)
+  
+  title = html.escape(metadata.get("title", report_id))
+  report_type = html.escape(metadata.get("type", "-"))
+  created = metadata.get("created_utc", "-")
+  ok = metadata.get("ok")
+  status = "-" if ok is None else ("OK" if ok else "FAIL")
+  status_class = "" if ok is None else ("status-ok" if ok else "status-fail")
+  
+  # Serialize files array for JavaScript (server embeds, client uses directly)
+  files_json = json.dumps(metadata.get("files", []))
+  
+  return f'''<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Report Viewer - {title}</title>
+  <style>
+{get_report_view_css()}
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <div class="nav-links">{nav_links}</div>
+    <h1>Report Viewer</h1>
+  </div>
+  
+  <div class="report-header">
+    <div class="report-info">
+      <div><strong>Title:</strong> {title}</div>
+      <div><strong>Type:</strong> {report_type}</div>
+    </div>
+    <div class="report-info">
+      <div><strong>Created:</strong> {created}</div>
+      <div><strong>Status:</strong> <span class="{status_class}">{status}</span></div>
+    </div>
+  </div>
+  
+  <div class="viewer-container">
+    <div class="tree-panel" id="tree-panel">
+      <div class="panel-header">Files</div>
+      <div class="file-tree" id="file-tree"></div>
+    </div>
+    <div class="resize-handle" id="resize-handle"></div>
+    <div class="table-panel" id="table-panel">
+      <div class="panel-header" id="table-header">Select a CSV file</div>
+      <div class="csv-table-container" id="csv-container">
+        <div class="empty-state">Click a CSV file in the tree to view its contents</div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+var reportId = '{report_id}';
+var routerPrefix = '{router_prefix}';
+var routerName = '{router_name}';
+var filesData = {files_json};
+
+{get_report_view_js()}
+  </script>
+</body>
+</html>'''
+
+# ----------------------------------------- END: Report View Page Generation ----------------------------------------------
 
 
 # ----------------------------------------- START: /reports endpoint (List) ----------------------------------------------
@@ -562,6 +914,53 @@ async def delete_report_endpoint(request: Request):
   return json_result(True, "", deleted_metadata)
 
 # ----------------------------------------- END: /reports/delete endpoint ------------------------------------------------
+
+
+# ----------------------------------------- START: /reports/view endpoint -------------------------------------------------
+
+@router.get(f"/{router_name}/view")
+async def view_report_endpoint(request: Request):
+  """
+  View report archive contents with split-panel UI.
+  
+  Parameters:
+  - report_id: Report identifier (required)
+  - format: Response format (ui only)
+  
+  Examples:
+  /v2/reports/view?report_id=crawls/2024-01-15_14-25-00_TEST01_all_full&format=ui
+  """
+  logger = MiddlewareLogger.create()
+  logger.log_function_header("view_report_endpoint()")
+  request_params = dict(request.query_params)
+  
+  # DD-E001: Self-documentation on bare GET
+  if len(request_params) == 0:
+    logger.log_function_footer()
+    doc = textwrap.dedent(view_report_endpoint.__doc__)
+    return PlainTextResponse(generate_endpoint_docs(doc, router_prefix), media_type="text/plain; charset=utf-8")
+  
+  format_param = request_params.get("format", "")
+  report_id = request_params.get("report_id", None)
+  
+  if not report_id:
+    logger.log_function_footer()
+    return json_result(False, "Missing 'report_id' parameter.", {})
+  
+  if format_param != "ui":
+    logger.log_function_footer()
+    return json_result(False, "This endpoint only supports format=ui", {})
+  
+  # Fetch report metadata (server-side, embedded in page per RPTV-DD-02)
+  metadata = get_report_metadata(report_id, logger=logger)
+  if metadata is None:
+    logger.log_function_footer()
+    return JSONResponse({"ok": False, "error": f"Report '{report_id}' not found.", "data": {}}, status_code=404)
+  
+  logger.log_function_footer()
+  return HTMLResponse(generate_report_view_page(report_id, metadata))
+
+# ----------------------------------------- END: /reports/view endpoint ---------------------------------------------------
 
 
 # ----------------------------------------- START: /reports/create_demo_reports endpoint ---------------------------------

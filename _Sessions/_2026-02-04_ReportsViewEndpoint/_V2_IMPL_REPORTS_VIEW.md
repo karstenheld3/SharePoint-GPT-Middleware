@@ -18,6 +18,8 @@
 - Non-CSV files disabled in tree (greyed, not clickable)
 - Auto-select first CSV on page load
 - Always URL-encode `report_id` in client-side fetch URLs (contains `/`)
+- Use `main_page_nav_html.replace("{router_prefix}", router_prefix)` for navigation (per jobs.py pattern)
+- Custom pages use inline CSS/JS (not shared generate_ui_page) per jobs.py pattern
 
 ## Table of Contents
 
@@ -94,12 +96,13 @@ async def view_report_endpoint(request: Request):
 
 ### RPTV-IP01-IS-02: Page Generation Function
 
-Add after `generate_reports_ui_page()`:
+Add after `generate_reports_ui_page()`. Pattern follows `_generate_jobs_ui_page()` in jobs.py:
 
 ```python
 def generate_report_view_page(report_id: str, metadata: dict) -> str:
   """Generate HTML page for report viewer with tree and table panels."""
   import html
+  import json
   
   nav_links = main_page_nav_html.replace("{router_prefix}", router_prefix)
   
@@ -110,8 +113,7 @@ def generate_report_view_page(report_id: str, metadata: dict) -> str:
   status = "-" if ok is None else ("OK" if ok else "FAIL")
   status_class = "" if ok is None else ("status-ok" if ok else "status-fail")
   
-  # Serialize files array for JavaScript
-  import json
+  # Serialize files array for JavaScript (server embeds, client uses directly)
   files_json = json.dumps(metadata.get("files", []))
   
   return f'''<!DOCTYPE html>
@@ -447,26 +449,17 @@ function escapeHtml(str) {
 
 ### RPTV-IP01-IS-07: Add View Button to Reports UI
 
-Update `columns` array in `generate_reports_ui_page()`:
+Add View button to `renderReportRow()` function in `get_router_specific_js()`. Insert before Result button:
 
-```python
-columns = [
-  {"field": "type", "header": "Type", "default": "-"},
-  {"field": "title", "header": "Title", "default": "-"},
-  {"field": "created_utc", "header": "Created", "js_format": "formatTimestamp(item.created_utc)"},
-  {"field": "ok", "header": "Result", "js_format": "formatResult(item.ok)"},
-  {
-    "field": "actions",
-    "header": "Actions",
-    "buttons": [
-      {"text": "View", "onclick": "window.location='{routerPrefix}/{routerName}/view?report_id={itemId}&format=ui'", "class": "btn-small"},
-      {"text": "Result", "onclick": "showReportResult('{itemId}')", "class": "btn-small"},
-      {"text": "Download", "onclick": "downloadReport('{itemId}')", "class": "btn-small"},
-      # ... existing delete button
-    ]
-  }
-]
+```javascript
+// In renderReportRow() function, update the actions cell:
+'<td class="actions">' +
+  '<button class="btn-small" onclick="window.location=\'' + routerPrefix + '/' + routerName + '/view?report_id=' + encodeURIComponent(reportId) + '&format=ui\'">View</button> ' +
+  '<button class="btn-small" onclick="showReportResult(\'' + reportId + '\')">Result</button> ' +
+  // ... rest of buttons
 ```
+
+**Location in reports.py**: Around line 121-126 in `renderReportRow()` function.
 
 ## Verification Checklist
 
