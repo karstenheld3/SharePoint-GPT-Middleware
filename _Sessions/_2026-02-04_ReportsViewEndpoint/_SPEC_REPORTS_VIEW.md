@@ -68,11 +68,26 @@
 
 ## Functional Requirements
 
-**RPTV-FR-01:** Display file tree from report archive contents
-**RPTV-FR-02:** Load and display CSV file content as HTML table
-**RPTV-FR-03:** Resize tree/table panels via drag handle
-**RPTV-FR-04:** Navigate back to reports list
-**RPTV-FR-05:** Show report metadata header (title, type, created, status)
+**RPTV-FR-01: File Tree Display**
+- Build hierarchical tree from `files[]` array
+- Folders collapsible, CSV files clickable, non-CSV disabled
+
+**RPTV-FR-02: CSV Table View**
+- Load CSV via `/v2/reports/file` endpoint
+- Parse comma-delimited with header row
+- Display as HTML table with sticky headers
+
+**RPTV-FR-03: Resizable Panels**
+- Horizontal drag handle between tree and table
+- Min width: 150px tree, 300px table
+
+**RPTV-FR-04: Navigation**
+- Back link to reports list
+- Report metadata header (title, type, created, status)
+
+**RPTV-FR-05: Auto-Selection**
+- Select first CSV file on page load
+- Display its contents immediately
 
 ## Implementation Guarantees
 
@@ -277,136 +292,53 @@ document.addEventListener('mouseup', () => {
 
 ## CSS Styles
 
-```css
-/* Layout */
-.viewer-container {
-  display: flex;
-  height: calc(100vh - 120px);
-}
+**Layout classes:**
+- `.viewer-container` - Flex container, full viewport height minus header
+- `.tree-panel` - Left panel, 280px default, min 150px, light gray background
+- `.resize-handle` - 5px drag handle, darkens on hover, `col-resize` cursor
+- `.table-panel` - Right panel, flex:1, min 300px, scrollable
 
-.tree-panel {
-  width: 280px;
-  min-width: 150px;
-  overflow: auto;
-  border-right: 1px solid #ddd;
-  background: #fafafa;
-}
+**Tree classes:**
+- `.tree-node.folder` - Collapsible folder with toggle indicator
+- `.tree-node.file` - Clickable file, blue hover highlight
+- `.tree-node.file.selected` - Light blue background
+- `.tree-node.file.disabled` - Gray text, `not-allowed` cursor
+- `.tree-children` - 16px left indent per level
 
-.resize-handle {
-  width: 5px;
-  background: #ddd;
-  cursor: col-resize;
-}
-
-.resize-handle:hover {
-  background: #bbb;
-}
-
-.table-panel {
-  flex: 1;
-  min-width: 300px;
-  overflow: auto;
-  padding: 8px;
-}
-
-/* Tree */
-.tree-node {
-  padding: 2px 0;
-}
-
-.tree-node.folder > .folder-toggle {
-  display: inline-block;
-  width: 16px;
-  cursor: pointer;
-}
-
-.tree-node.file {
-  padding-left: 16px;
-  cursor: pointer;
-}
-
-.tree-node.file:hover {
-  background: #e8f4fc;
-}
-
-.tree-node.file.selected {
-  background: #cce5ff;
-}
-
-.tree-node.file.disabled {
-  color: #999;
-  cursor: not-allowed;
-}
-
-.tree-node.file.disabled:hover {
-  background: transparent;
-}
-
-.tree-children {
-  padding-left: 16px;
-}
-
-/* Table */
-.csv-table-container {
-  overflow: auto;
-  max-height: 100%;
-}
-
-.csv-table {
-  border-collapse: collapse;
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.csv-table th, .csv-table td {
-  border: 1px solid #ddd;
-  padding: 4px 8px;
-  text-align: left;
-}
-
-.csv-table th {
-  background: #f5f5f5;
-  font-weight: 600;
-  position: sticky;
-  top: 0;
-}
-
-.csv-table tr:hover {
-  background: #f9f9f9;
-}
-```
+**Table classes:**
+- `.csv-table` - Collapsed borders, 12px font, nowrap
+- `.csv-table th` - Sticky header, gray background
+- `.csv-table tr:hover` - Light hover highlight
 
 ## JavaScript Functions
 
-### Page Initialization
+**Initialization:**
+- `DOMContentLoaded` -> render tree, select first CSV, init resize
 
-```javascript
-let reportId = null;
-let reportData = null;
+**Tree functions:**
+- `buildTreeStructure(files)` - Convert flat `files[]` to nested object
+- `renderFileTree()` - Generate tree HTML with folders and files
+- `renderTreeNode(node, path)` - Recursive node rendering
+- `toggleFolder(node)` - Expand/collapse folder children
 
-document.addEventListener('DOMContentLoaded', async () => {
-  reportId = getReportIdFromUrl();
-  await loadReportMetadata();
-  renderFileTree();
-  selectFirstCsvFile();
-  initPanelResize();
-});
-```
+**File functions:**
+- `selectFile(element)` - Highlight and load CSV content
+- `selectFirstCsvFile()` - Find first `.csv` node, call selectFile
+- `loadCsvFile(filePath)` - Fetch via `/v2/reports/file`, call parseCsv
+- `parseCsv(text)` - Handle quoted values, return array of arrays
+- `renderCsvTable(data)` - Generate `<table>` HTML with thead/tbody
 
-### Core Functions
+**Resize functions:**
+- `initPanelResize()` - mousedown/mousemove/mouseup handlers for drag
 
-- `loadReportMetadata()` - Fetch report.json via `/v2/reports/get`
-- `buildTreeStructure(files)` - Convert flat files[] to nested tree
-- `renderFileTree()` - Generate tree HTML from structure
-- `toggleFolder(path)` - Expand/collapse folder node
-- `selectFile(path)` - Highlight file, load if CSV
-- `loadCsvFile(path)` - Fetch CSV via `/v2/reports/file`
-- `parseCsv(text)` - Parse CSV text to array of arrays
-- `renderCsvTable(data)` - Generate table HTML
-- `selectFirstCsvFile()` - Find and select first CSV alphabetically
-- `initPanelResize()` - Set up drag handle listeners
+**Utilities:**
+- `escapeHtml(str)` - Escape `<`, `>`, `&`, `"`
 
 ## Document History
+
+**[2026-02-04 08:24]**
+- Changed: Reduced CSS/JS sections to outlines per SPEC-CT-01, SPEC-CT-02
+- Changed: FR format to use sub-bullets per SPEC-RQ-01
 
 **[2026-02-04 08:20]**
 - Initial specification created
