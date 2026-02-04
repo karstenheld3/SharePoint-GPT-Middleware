@@ -23,6 +23,13 @@
 - `get_folder_for_type()` in `common_report_functions_v2.py` adds the 's' suffix automatically
 - Passing plural form (e.g., `"site_scans"`) results in double suffix (`"site_scanss"`)
 
+## Dependency Management
+
+**Always run `InstallAndCompileDependencies.bat` after adding new imports**
+- Updates `pyproject.toml` dependencies
+- Regenerates `requirements.txt` via `uv pip compile`
+- Required for Azure deployment (Oryx build uses requirements.txt)
+
 ## Environment
 
 **Windows - No grep**: Use PowerShell alternatives:

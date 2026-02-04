@@ -43,19 +43,46 @@ if (-not (Get-Module -Name Az -ListAvailable)) {
 }
 
 # Make sure Azure CLI is installed
-if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
+# Check known installation paths first (more reliable than Get-Command which depends on PATH)
+$azCliPaths = @(
+  "${env:ProgramFiles}\Microsoft SDKs\Azure\CLI2\wbin",      # 64-bit
+  "${env:ProgramFiles(x86)}\Microsoft SDKs\Azure\CLI2\wbin"  # 32-bit
+)
+$azCliInstalled = $false
+$azCliPath = $null
+
+foreach ($path in $azCliPaths) {
+  if (Test-Path (Join-Path $path "az.cmd")) {
+    $azCliInstalled = $true
+    $azCliPath = $path
+    break
+  }
+}
+
+if ($azCliInstalled) {
+  # Ensure az is in PATH for this session
+  if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
+    Write-Host "Azure CLI found at '$azCliPath', adding to PATH..."
+    $env:Path = "$azCliPath;$env:Path"
+  }
+  Write-Host "Azure CLI is installed."
+} else {
   Write-Host "Installing Azure CLI..."
   $installerUrl = "https://aka.ms/installazurecliwindows"
   $installerPath = "$env:TEMP\AzureCLI.msi"  
   Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
   Start-Process msiexec.exe -Wait -ArgumentList "/I $installerPath /quiet"
   Remove-Item $installerPath
-  $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
-  if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
+  
+  # Add the CLI path to current session (use 64-bit path as default)
+  $newCliPath = "${env:ProgramFiles}\Microsoft SDKs\Azure\CLI2\wbin"
+  if (Test-Path (Join-Path $newCliPath "az.cmd")) {
+    $env:Path = "$newCliPath;$env:Path"
+    Write-Host "Azure CLI installation successful"
+  } else {
     Write-Error "Azure CLI installation failed. Please install manually from: $installerUrl"
     exit 1
   }
-  Write-Host "Azure CLI installation successful"
 }
 
 # === Login to Azure ===

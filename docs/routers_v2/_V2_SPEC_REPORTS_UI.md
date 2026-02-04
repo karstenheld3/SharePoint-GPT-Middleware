@@ -24,7 +24,7 @@ The `/v2/reports?format=ui` endpoint provides management interface for report ar
 
 **Key characteristics:**
 - Single-page UI with reports table
-- Console panel hidden by default (no streaming operations)
+- Console panel hidden by default (shows for demo report creation)
 - Bulk delete support via checkboxes
 - View action opens modal with report.json content
 - Result column shows OK/FAIL status (same pattern as Jobs UI)
@@ -58,7 +58,7 @@ Users need to review historical operation results (crawls, site scans) for audit
 |                                                                                                                  |
 | Back to Main Page                                                                                                |
 |                                                                                                                  |
-| [Delete (0)]                                                                                                     |
+| [Create Demo Reports] [Delete (0)]                                                                               |
 |                                                                                                                  |
 | +---+-----------+------------------------------+---------------------+--------+--------------------------------+ |
 | |   | Type      | Title                        | Created             | Result | Actions                        | |
@@ -101,6 +101,7 @@ tr.row-cancel-or-fail { color: #b03030; }
 
 ### Toolbar
 
+- **Create Demo Reports** - Opens modal form for creating test reports (streaming)
 - **Delete (0)** - No selection -> Disabled
 - **Delete (n)** - n items selected -> Enabled, triggers bulk delete
 
@@ -223,9 +224,9 @@ User clicks [Delete (n)]
 
 ### Page Load
 
-1. Server returns HTML page with empty `<tbody id="items-tbody">`
-2. On `DOMContentLoaded`, JavaScript fetches `/v2/reports?format=json`
-3. JavaScript renders report rows into tbody
+1. Server returns HTML page with pre-rendered rows via `generate_ui_page(items=reports)`
+2. On `DOMContentLoaded`, JavaScript calls `reloadItems()` to refresh from API
+3. This ensures data is fresh and consistent with other V2 UIs
 
 ### Router-Specific JavaScript
 
@@ -259,7 +260,15 @@ function formatResult(ok) { /* -, OK, FAIL */ }
 
 ### CSS Classes
 
-Uses existing classes from `/static/css/routers_v2.css`:
+Uses existing classes from `/src/static/css/routers_v2.css`:
 - `.row-cancel-or-fail` for failed reports
 - `.empty-state` for empty table message
 - Modal, toast, console classes from common UI
+
+## Spec Changes
+
+**[2026-02-04 07:34]**
+- Added: "Create Demo Reports" toolbar button to match implementation
+- Fixed: Console panel note (shows for demo report creation)
+- Fixed: Page load description (server pre-renders rows, not empty tbody)
+- Fixed: CSS path from `/static/` to `/src/static/`

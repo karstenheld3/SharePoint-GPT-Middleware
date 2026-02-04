@@ -1,14 +1,24 @@
-# V2 Reports Router Implementation Plan
+# IMPL: V2 Reports Router
 
-**Plan ID**: V2RP-IP02
+**Doc ID**: V2RP-IP02
 **Goal**: Implement reports router with endpoints and UI for managing report archives
-**Target file**: `/src/routers_v2/reports.py`
+
+**Target files**:
+- `/src/routers_v2/reports.py` (NEW ~720 lines)
+- `/src/routers_v2/common_report_functions_v2.py` (DONE ~230 lines)
 
 **Depends on:**
-- `_V2_SPEC_REPORTS.md` for endpoint specification
-- `_V2_SPEC_REPORTS_UI.md` for UI specification
-- `_V2_COMMON_REPORT_FUNCTIONS_IMPL.md` for helper functions (implemented, tested)
+- `_V2_SPEC_REPORTS.md [V2RP-SP01]` for endpoint specification
+- `_V2_SPEC_REPORTS_UI.md [V2RP-SP02]` for UI specification
 - `common_ui_functions_v2.py` for UI generation
+
+## MUST-NOT-FORGET
+
+- Use `#items-tbody` not `#reports-tbody` (common UI pattern)
+- Use `.item-checkbox` not `.report-checkbox` (common UI pattern)
+- Use string concatenation, NOT template literals for row rendering with onclick
+- Do NOT redefine `updateSelectedCount()`, `toggleSelectAll()`, `getSelectedIds()` - use common functions
+- Always `escapeHtml()` user content before inserting into HTML
 
 ## Table of Contents
 
@@ -22,6 +32,8 @@
 
 ## Implementation Status
 
+**Status: COMPLETE** - All endpoints and UI implemented.
+
 **Helper functions (DONE):**
 - [x] `common_report_functions_v2.py` - 68 tests passing
 - [x] `create_report()` with dry_run and logger
@@ -32,13 +44,14 @@
 - [x] `get_report_archive_path()`
 - [x] Long path support for Windows
 
-**Router (TODO):**
-- [ ] `/v2/reports` - List endpoint
-- [ ] `/v2/reports/get` - Get metadata endpoint
-- [ ] `/v2/reports/file` - Get file endpoint
-- [ ] `/v2/reports/download` - Download ZIP endpoint
-- [ ] `/v2/reports/delete` - Delete endpoint
-- [ ] UI page generation
+**Router (DONE):**
+- [x] `/v2/reports` - List endpoint
+- [x] `/v2/reports/get` - Get metadata endpoint
+- [x] `/v2/reports/file` - Get file endpoint
+- [x] `/v2/reports/download` - Download ZIP endpoint
+- [x] `/v2/reports/delete` - Delete endpoint
+- [x] `/v2/reports/create_demo_reports` - Demo report creation (streaming)
+- [x] UI page generation with `generate_ui_page()`
 
 ## File Structure
 
@@ -227,6 +240,27 @@ async def delete_report_endpoint(request: Request):
   # Return 404 if not found
 ```
 
+### GET /v2/reports/create_demo_reports
+
+**Spec:** V2RP-DD-03 exception (demo/test endpoint)
+
+```python
+@router.get(f'/{router_name}/create_demo_reports')
+async def create_demo_reports_endpoint(request: Request):
+  """
+  Create demo reports for testing purposes. Streaming only.
+  
+  Parameters:
+  - format=stream (required)
+  - count: Number of reports (default: 5, max: 20)
+  - report_type: crawl or site_scan (default: crawl)
+  - delay_ms: Delay per report (default: 300, max: 5000)
+  """
+  # Uses StreamingJobWriter for SSE output
+  # Emits start_json, log events, end_json
+  # Creates reports via create_report() helper
+```
+
 ## UI Implementation
 
 ### Page Generation
@@ -401,153 +435,51 @@ function reloadItems() {{
 
 ## JavaScript Functions
 
+**Reference:** See `get_router_specific_js()` in `reports.py` for actual implementation.
+
+The router-specific JS follows the Critical Implementation Patterns above. Key points:
+
 ### State Management
 
 ```javascript
-const reportsState = new Map();
+const reportsState = new Map();  // Router-specific state
 ```
 
-### Page Init
+### Functions Provided by Common UI (DO NOT REDEFINE)
+
+- `formatTimestamp(ts)` - Format ISO timestamp
+- `formatResultOkFail(ok)` - Format boolean to -, OK, FAIL
+- `sanitizeId(id)` - Sanitize for row ID attribute
+- `updateSelectedCount()` - Update count + button state
+- `toggleSelectAll()` - Toggle all checkboxes
+- `getSelectedIds()` - Get checked `data-item-id` values
+- `escapeHtml(text)` - XSS prevention
+
+### Router-Specific Functions
+
+- `reloadItems()` - Standard name, calls API and re-renders
+- `renderAllReports()` - Render all rows to `#items-tbody`
+- `renderReportRow(report)` - **Uses string concatenation, NOT template literals**
+- `showReportResult(reportId)` - Direct modal body manipulation
+- `downloadReport(btn)` - Uses `btn.dataset.url`
+- `deleteReport(reportId, title)` - With confirm dialog
+- `bulkDelete()` - Loop through selected
+- `getSelectedReportIds()` - Wrapper: `return getSelectedIds();`
+- `showCreateDemoReportsForm()` - Modal form for demo creation
+
+### Row Rendering Pattern (String Concatenation)
 
 ```javascript
-document.addEventListener('DOMContentLoaded', () => {
-  reloadReports();
-  initConsoleResize();
-});
-```
-
-### Core Functions
-
-```javascript
-async function reloadReports() {
-  const response = await fetch('/v2/reports?format=json');
-  const result = await response.json();
-  if (result.ok) {
-    reportsState.clear();
-    result.data.forEach(r => reportsState.set(r.report_id, r));
-    renderAllReports();
-  }
-}
-
-function renderAllReports() {
-  const tbody = document.getElementById('reports-tbody');
-  if (reportsState.size === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No reports found</td></tr>';
-    return;
-  }
-  tbody.innerHTML = '';
-  reportsState.forEach(report => {
-    tbody.innerHTML += renderReportRow(report);
-  });
-  updateSelectedCount();
-}
-
-function renderReportRow(report) {
-  const rowClass = report.ok === false ? 'row-cancel-or-fail' : '';
-  const result = formatResult(report.ok);
-  const created = formatTimestamp(report.created_utc);
-  return `<tr id="report-${encodeId(report.report_id)}" class="${rowClass}">
-    <td><input type="checkbox" class="report-checkbox" data-report-id="${report.report_id}" onchange="updateSelectedCount()"></td>
-    <td>${report.type}</td>
-    <td>${report.title}</td>
-    <td>${created}</td>
-    <td>${result}</td>
-    <td>
-      <button onclick="showReportResult('${report.report_id}')">Result</button>
-      <button onclick="downloadReport('${report.report_id}')">Download</button>
-      <button onclick="deleteReport('${report.report_id}', '${report.title}')">Delete</button>
-    </td>
-  </tr>`;
-}
-```
-
-### Actions
-
-```javascript
-async function showReportResult(reportId) {
-  const response = await fetch(`/v2/reports/get?report_id=${encodeURIComponent(reportId)}&format=json`);
-  const result = await response.json();
-  if (result.ok) {
-    showResultModal(result.data);
-  } else {
-    showToast('Error', result.error, 'error');
-  }
-}
-
-function downloadReport(reportId) {
-  window.location = `/v2/reports/download?report_id=${encodeURIComponent(reportId)}`;
-}
-
-async function deleteReport(reportId, title) {
-  const response = await fetch(`/v2/reports/delete?report_id=${encodeURIComponent(reportId)}`, { method: 'DELETE' });
-  const result = await response.json();
-  if (result.ok) {
-    reportsState.delete(reportId);
-    renderAllReports();
-    showToast('Deleted', `Report '${title}' deleted.`, 'success');
-  } else {
-    showToast('Error', result.error, 'error');
-  }
-}
-
-async function bulkDelete() {
-  const ids = getSelectedReportIds();
-  if (ids.length === 0) return;
-  
-  let successCount = 0;
-  for (const id of ids) {
-    const response = await fetch(`/v2/reports/delete?report_id=${encodeURIComponent(id)}`, { method: 'DELETE' });
-    const result = await response.json();
-    if (result.ok) {
-      reportsState.delete(id);
-      successCount++;
-    }
-  }
-  renderAllReports();
-  showToast('Deleted', `${successCount} report(s) deleted.`, successCount === ids.length ? 'success' : 'warning');
-}
-```
-
-### Selection
-
-```javascript
-function updateSelectedCount() {
-  const checkboxes = document.querySelectorAll('.report-checkbox:checked');
-  const count = checkboxes.length;
-  document.getElementById('selected-count').textContent = count;
-  document.getElementById('bulk-delete-btn').disabled = count === 0;
-}
-
-function toggleSelectAll() {
-  const selectAll = document.getElementById('select-all').checked;
-  document.querySelectorAll('.report-checkbox').forEach(cb => cb.checked = selectAll);
-  updateSelectedCount();
-}
-
-function getSelectedReportIds() {
-  return Array.from(document.querySelectorAll('.report-checkbox:checked'))
-    .map(cb => cb.dataset.reportId);
-}
-```
-
-### Helpers
-
-```javascript
-function formatResult(ok) {
-  if (ok === null || ok === undefined) return '-';
-  return ok ? 'OK' : 'FAIL';
-}
-
-function formatTimestamp(ts) {
-  if (!ts) return '-';
-  const date = new Date(ts);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-}
-
-function encodeId(id) {
-  return id.replace(/[^a-zA-Z0-9]/g, '_');
-}
+// CORRECT - string concatenation with escaped quotes
+return '<tr id="report-' + escapedId + '">' +
+  '<td><input type="checkbox" class="item-checkbox" data-item-id="' + reportId + '" onchange="updateSelectedCount()"></td>' +
+  '<td>' + escapeHtml(report.type) + '</td>' +
+  // ... more cells ...
+  '<td class="actions">' +
+    '<button class="btn-small" onclick="showReportResult(\\'' + reportId + '\\')">Result</button> ' +
+    '<button class="btn-small btn-delete" onclick="if(confirm(\\'Delete?\\')) deleteReport(\\'' + reportId + '\\')">Delete</button>' +
+  '</td>' +
+'</tr>';
 ```
 
 ## Final Checks
@@ -591,26 +523,27 @@ function encodeId(id) {
 ### Spec Compliance Checklist
 
 **From _V2_SPEC_REPORTS.md:**
-- [ ] **V2RP-IP02-VC-01**: V2RP-FR-01 - List all reports, sorted by created_utc desc
-- [ ] **V2RP-IP02-VC-02**: V2RP-FR-02 - Filter by type
-- [ ] **V2RP-IP02-VC-03**: V2RP-FR-03 - Get single report metadata
-- [ ] **V2RP-IP02-VC-04**: V2RP-FR-04 - Get file from archive
-- [ ] **V2RP-IP02-VC-05**: V2RP-FR-05 - Download as ZIP
-- [ ] **V2RP-IP02-VC-06**: V2RP-FR-06 - Delete single report
-- [ ] **V2RP-IP02-VC-07**: V2RP-DD-05 - Result pattern (-, OK, FAIL)
-- [ ] **V2RP-IP02-VC-08**: DD-E001 - Self-documentation on bare GET
-- [ ] **V2RP-IP02-VC-09**: DD-E010 - GET allowed for /delete
-- [ ] **V2RP-IP02-VC-10**: DD-E017 - Delete returns full object
+- [x] **V2RP-IP02-VC-01**: V2RP-FR-01 - List all reports, sorted by created_utc desc
+- [x] **V2RP-IP02-VC-02**: V2RP-FR-02 - Filter by type
+- [x] **V2RP-IP02-VC-03**: V2RP-FR-03 - Get single report metadata
+- [x] **V2RP-IP02-VC-04**: V2RP-FR-04 - Get file from archive
+- [x] **V2RP-IP02-VC-05**: V2RP-FR-05 - Download as ZIP
+- [x] **V2RP-IP02-VC-06**: V2RP-FR-06 - Delete single report
+- [x] **V2RP-IP02-VC-07**: V2RP-DD-05 - Result pattern (-, OK, FAIL)
+- [x] **V2RP-IP02-VC-08**: DD-E001 - Self-documentation on bare GET
+- [x] **V2RP-IP02-VC-09**: DD-E010 - GET allowed for /delete
+- [x] **V2RP-IP02-VC-10**: DD-E017 - Delete returns full object
 
 **From _V2_SPEC_REPORTS_UI.md:**
-- [ ] **V2RP-IP02-VC-11**: Single-page UI with reports table
-- [ ] **V2RP-IP02-VC-12**: Console panel hidden by default
-- [ ] **V2RP-IP02-VC-13**: Bulk delete support
-- [ ] **V2RP-IP02-VC-14**: Result dialog modal
-- [ ] **V2RP-IP02-VC-15**: Navigation links (Back, Jobs, Crawler)
-- [ ] **V2RP-IP02-VC-16**: Row styling for failed reports
-- [ ] **V2RP-IP02-VC-17**: Empty state message
-- [ ] **V2RP-IP02-VC-18**: Timestamp formatting
+- [x] **V2RP-IP02-VC-11**: Single-page UI with reports table
+- [x] **V2RP-IP02-VC-12**: Console panel hidden by default
+- [x] **V2RP-IP02-VC-13**: Bulk delete support
+- [x] **V2RP-IP02-VC-14**: Result dialog modal
+- [x] **V2RP-IP02-VC-15**: Navigation links (Back, Jobs, Crawler, etc.)
+- [x] **V2RP-IP02-VC-16**: Row styling for failed reports
+- [x] **V2RP-IP02-VC-17**: Empty state message
+- [x] **V2RP-IP02-VC-18**: Timestamp formatting
+- [x] **V2RP-IP02-VC-19**: Create Demo Reports streaming endpoint
 
 ### Test Scenarios
 
@@ -667,7 +600,17 @@ function renderSecurityCell(item) {
 }
 ```
 
-## Spec Changes
+## Document History
+
+**[2026-02-04 07:37]**
+- Changed: Title to `# IMPL: V2 Reports Router` per template
+- Changed: `Plan ID` to `Doc ID` per template
+- Added: MUST-NOT-FORGET section with critical patterns
+- Changed: Implementation Status - all items now marked DONE
+- Added: `/v2/reports/create_demo_reports` endpoint section
+- Fixed: JavaScript Functions section - removed contradictory code, references actual impl
+- Changed: Verification checklist - all items checked
+- Added: VC-19 for create_demo_reports endpoint
 
 **[2026-02-03 23:15]**
 - Added: Cross-Router Integration section documenting sites router usage

@@ -55,7 +55,7 @@ Reports created by internal endpoint functions only - no create endpoint exposed
 
 **V2RP-DD-02:** report_id format. `[folder]/[filename_without_zip]` (e.g., `crawls/2024-01-15_14-25-00_TEST01_all_full`).
 
-**V2RP-DD-03:** No create endpoint. Reports created by internal Python functions called from other routers.
+**V2RP-DD-03:** No external create endpoint. Reports created by internal Python functions called from other routers. Exception: demo/test endpoints for development purposes.
 
 **V2RP-DD-04:** Minimal metadata. Only `report_id`, `title`, `type`, `created_utc`, `ok`, `error`, `files` are mandatory. Rest is type-specific.
 
@@ -432,6 +432,20 @@ Delete report. Bare GET returns self-documentation.
 }
 ```
 
+### GET /v2/reports/create_demo_reports
+
+Create demo reports for testing purposes. Streaming endpoint only.
+
+**Parameters:**
+- `format=stream` (required) - Only streaming format supported
+- `count` (optional) - Number of reports to create (default: 5, max: 20)
+- `report_type` (optional) - Type of report: `crawl` or `site_scan` (default: crawl)
+- `delay_ms` (optional) - Delay per report in milliseconds (default: 300, max: 5000)
+
+**SSE Events:** Standard start_json, log, end_json pattern
+
+**Note:** This is a demo/test endpoint per DD-03 exception.
+
 ## Key Mechanisms
 
 ### Type-to-Folder Conversion
@@ -489,3 +503,9 @@ Other routers can link to report results using the `/v2/reports/get` endpoint:
 - Sites router stores `last_security_scan_report_id` in site.json
 - UI renders "View Results" link: `/v2/reports/get?report_id=...&format=html`
 - UI renders "Download Zip" link: `/v2/reports/download?report_id=...`
+
+## Spec Changes
+
+**[2026-02-04 07:34]**
+- Added: `/v2/reports/create_demo_reports` endpoint section
+- Changed: DD-03 clarified to allow demo/test endpoints as exception

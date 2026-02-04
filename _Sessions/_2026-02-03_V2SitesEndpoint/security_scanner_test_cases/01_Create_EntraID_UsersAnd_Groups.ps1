@@ -95,17 +95,42 @@ if ([string]::IsNullOrWhiteSpace($config.CRAWLER_SHAREPOINT_TENANT_NAME)) {
 Write-Host "Tenant ID: $tenantId" -ForegroundColor Gray
 Write-Host "Domain: $domain" -ForegroundColor Gray
 
-# === Import required modules ===
+# === Check and install required modules ===
+$requiredModules = @("Az.Accounts", "Az.Resources", "Microsoft.Graph.Authentication", "Microsoft.Graph.Users", "Microsoft.Graph.Groups")
+$missingModules = @()
+
+foreach ($moduleName in $requiredModules) {
+    $installed = Get-Module -Name $moduleName -ListAvailable
+    if ($installed) {
+        Write-Host "[OK] $moduleName v$($installed[0].Version)" -ForegroundColor Green
+    } else {
+        Write-Host "[MISSING] $moduleName" -ForegroundColor Yellow
+        $missingModules += $moduleName
+    }
+}
+
+if ($missingModules.Count -gt 0) {
+    Write-Host "`nAttempting to install missing modules..." -ForegroundColor Cyan
+    foreach ($moduleName in $missingModules) {
+        Write-Host "[INSTALLING] $moduleName..." -ForegroundColor Yellow
+        try {
+            Install-Module -Name $moduleName -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop
+            Write-Host "  Installed successfully" -ForegroundColor Green
+        } catch {
+            Write-Host "`nERROR: Could not install $moduleName automatically." -ForegroundColor Red
+            Write-Host "Please install missing modules manually (run as Administrator):" -ForegroundColor Yellow
+            Write-Host "  Install-Module $($missingModules -join ', ') -Scope CurrentUser -Force" -ForegroundColor White
+            throw "Required modules missing. See above for installation instructions."
+        }
+    }
+}
+
+# Import modules
 Import-Module Az.Accounts -ErrorAction SilentlyContinue
 Import-Module Az.Resources -ErrorAction SilentlyContinue
 Import-Module Microsoft.Graph.Authentication -ErrorAction SilentlyContinue
 Import-Module Microsoft.Graph.Users -ErrorAction SilentlyContinue
 Import-Module Microsoft.Graph.Groups -ErrorAction SilentlyContinue
-
-# Verify Graph module is available
-if (-not (Get-Command "Get-MgUser" -ErrorAction SilentlyContinue)) {
-    throw "Microsoft.Graph module is required. Install with: Install-Module Microsoft.Graph -Scope CurrentUser -Force"
-}
 Write-Host "Modules loaded" -ForegroundColor Green
 
 # === Login to Azure (same pattern as AddRemoveCrawlerPermissions.ps1) ===

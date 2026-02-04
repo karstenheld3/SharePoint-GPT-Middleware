@@ -7,7 +7,7 @@ This specification defines a reusable UI library for V2 routers, following the p
 **Goal**: Enable any V2 router to provide a full-featured interactive UI with minimal boilerplate code by calling shared Python functions that generate consistent HTML/JavaScript.
 
 **Target file**: `/src/routers_v2/common_ui_functions_v2.py`
-**Styles file**: `/static/css/routers_v2.css` (already exists, to be extended)
+**Styles file**: `/src/static/css/routers_v2.css` (already exists, to be extended)
 
 ---
 
@@ -55,7 +55,7 @@ This specification defines a reusable UI library for V2 routers, following the p
   - `showResult`: Where to display result ('toast' | 'modal' | 'none', default 'toast')
 
 **V2UI-FR-05: Job Control**
-- Pause/Resume button during active stream
+- Pause/Resume/Cancel buttons during active stream
 - Button state reflects job state (disabled when no active job)
 - Integrate with `/v2/jobs/control` endpoint
 
@@ -772,9 +772,8 @@ Note: `bulkDelete()` is router-specific (different endpoints/state management).
 ├──────────────────────────────────────────────────────────────────────────────┤
 │  High-Level Page Generators                                                  │
 │  └─> generate_ui_page()            # Complete UI page with all features      │
-│  └─> generate_list_page()          # Simpler list without full UI            │
 │  └─> generate_router_docs_page()   # Router root docs (HTML)                 │
-│  └─> generate_endpoint_docs_page() # Action endpoint docs (plain text)       │
+│  └─> generate_endpoint_docs()      # Action endpoint docs (plain text)       │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │  Component Generators                                                        │
 │  └─> generate_html_head()          # <head> with CSS/JS links                │
@@ -961,7 +960,7 @@ def generate_modal_structure() -> str:
 
 def generate_console_panel(
   title: str = "Console Output",
-  include_pause_resume: bool = True
+  include_pause_resume_cancel: bool = True
 ) -> str:
   """Generate console panel with resize handle and controls."""
 
@@ -1218,6 +1217,13 @@ return PlainTextResponse(generate_endpoint_docs(doc, router_prefix), ...)
 ---
 
 ## Spec Changes
+
+**[2026-02-04 07:31]**
+- Fixed: Styles file path `/static/css/routers_v2.css` to `/src/static/css/routers_v2.css`
+- Fixed: FR-05 now mentions Cancel button alongside Pause/Resume
+- Fixed: `generate_console_panel()` parameter name to `include_pause_resume_cancel`
+- Removed: Non-existent `generate_list_page()` from layer architecture
+- Fixed: `generate_endpoint_docs_page()` to `generate_endpoint_docs()` (actual function name)
 
 **[2025-12-18 20:45]**
 - Changed: Moved `.modal-error` from header to footer (left-aligned, buttons right-aligned)

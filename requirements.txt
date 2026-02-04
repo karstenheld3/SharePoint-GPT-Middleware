@@ -3,7 +3,9 @@
 aiohappyeyeballs==2.6.1
     # via aiohttp
 aiohttp==3.12.15
-    # via sharepoint-gpt-middleware (src/pyproject.toml)
+    # via
+    #   sharepoint-gpt-middleware (src/pyproject.toml)
+    #   microsoft-kiota-authentication-azure
 aiosignal==1.4.0
     # via aiohttp
 annotated-types==0.7.0
@@ -17,9 +19,13 @@ anyio==4.10.0
 attrs==25.3.0
     # via aiohttp
 azure-core==1.35.0
-    # via azure-identity
+    # via
+    #   azure-identity
+    #   microsoft-kiota-authentication-azure
 azure-identity==1.15.0
-    # via sharepoint-gpt-middleware (src/pyproject.toml)
+    # via
+    #   sharepoint-gpt-middleware (src/pyproject.toml)
+    #   msgraph-sdk
 certifi==2025.8.3
     # via
     #   httpcore
@@ -54,6 +60,10 @@ h11==0.16.0
     # via
     #   httpcore
     #   uvicorn
+h2==4.3.0
+    # via httpx
+hpack==4.1.0
+    # via h2
 httpcore==1.0.9
     # via httpx
 httptools==0.6.4
@@ -61,15 +71,42 @@ httptools==0.6.4
 httpx==0.28.1
     # via
     #   sharepoint-gpt-middleware (src/pyproject.toml)
+    #   microsoft-kiota-http
+    #   msgraph-core
     #   openai
+hyperframe==6.1.0
+    # via h2
 idna==3.10
     # via
     #   anyio
     #   httpx
     #   requests
     #   yarl
+importlib-metadata==8.7.1
+    # via opentelemetry-api
 jiter==0.10.0
     # via openai
+microsoft-kiota-abstractions==1.9.8
+    # via
+    #   microsoft-kiota-authentication-azure
+    #   microsoft-kiota-http
+    #   microsoft-kiota-serialization-form
+    #   microsoft-kiota-serialization-json
+    #   microsoft-kiota-serialization-multipart
+    #   microsoft-kiota-serialization-text
+    #   msgraph-core
+microsoft-kiota-authentication-azure==1.9.8
+    # via msgraph-core
+microsoft-kiota-http==1.9.8
+    # via msgraph-core
+microsoft-kiota-serialization-form==1.9.8
+    # via msgraph-sdk
+microsoft-kiota-serialization-json==1.9.8
+    # via msgraph-sdk
+microsoft-kiota-serialization-multipart==1.9.8
+    # via msgraph-sdk
+microsoft-kiota-serialization-text==1.9.8
+    # via msgraph-sdk
 msal==1.33.0
     # via
     #   azure-identity
@@ -77,6 +114,10 @@ msal==1.33.0
     #   office365-rest-python-client
 msal-extensions==1.3.1
     # via azure-identity
+msgraph-core==1.3.8
+    # via msgraph-sdk
+msgraph-sdk==1.53.0
+    # via sharepoint-gpt-middleware (src/pyproject.toml)
 multidict==6.6.4
     # via
     #   aiohttp
@@ -85,6 +126,20 @@ office365-rest-python-client==2.6.2
     # via sharepoint-gpt-middleware (src/pyproject.toml)
 openai==2.8.0
     # via sharepoint-gpt-middleware (src/pyproject.toml)
+opentelemetry-api==1.39.1
+    # via
+    #   microsoft-kiota-abstractions
+    #   microsoft-kiota-authentication-azure
+    #   microsoft-kiota-http
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
+opentelemetry-sdk==1.39.1
+    # via
+    #   microsoft-kiota-abstractions
+    #   microsoft-kiota-authentication-azure
+    #   microsoft-kiota-http
+opentelemetry-semantic-conventions==0.60b1
+    # via opentelemetry-sdk
 propcache==0.3.2
     # via
     #   aiohttp
@@ -122,6 +177,8 @@ sniffio==1.3.1
     #   openai
 starlette==0.47.3
     # via fastapi
+std-uritemplate==2.0.8
+    # via microsoft-kiota-abstractions
 tqdm==4.67.1
     # via openai
 typing-extensions==4.15.0
@@ -132,6 +189,9 @@ typing-extensions==4.15.0
     #   fastapi
     #   office365-rest-python-client
     #   openai
+    #   opentelemetry-api
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
     #   pydantic
     #   pydantic-core
     #   starlette
@@ -148,3 +208,5 @@ websockets==15.0.1
     # via uvicorn
 yarl==1.20.1
     # via aiohttp
+zipp==3.23.0
+    # via importlib-metadata

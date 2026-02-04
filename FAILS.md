@@ -53,6 +53,40 @@
   2. On accessDenied: reconnect directly to target site, retry without `-Site` parameter
 - **Verified**: POC script `.tmp-poc-add-site-to-sitesselected.ps1` confirmed fix works
 
+### 2026-02-04 - Missing Dependency in Azure Deployment
+
+#### [RESOLVED] `SPGPT-FL-003` New Import Added Without Updating pyproject.toml
+
+- **When**: 2026-02-04 06:30
+- **Where**: `src/routers_v2/common_security_scan_functions_v2.py:8` imports `msgraph`
+- **What**: Azure deployment failed with `ModuleNotFoundError: No module named 'msgraph'`
+
+**Wrong Assumptions:**
+
+1. `[VERIFIED-WRONG]` **"Local testing validates all dependencies"**
+   - Assumed: If code works locally, dependencies are properly declared
+   - Reality: Local venv had `msgraph-sdk` installed manually during development; `pyproject.toml` was never updated
+   - Why wrong: Local environment accumulated packages not tracked in dependency file
+
+2. `[VERIFIED-WRONG]` **"requirements.txt is auto-generated correctly"**
+   - Assumed: `uv pip compile` would catch all imports
+   - Reality: `uv pip compile` only includes packages declared in `pyproject.toml`, not installed packages
+   - Why wrong: Misunderstood that compile reads pyproject.toml, not scans imports
+
+**Correct approach**:
+- When adding new `import X` to code, immediately add `X` to `pyproject.toml` dependencies
+- Run `InstallAndCompileDependencies.bat` to regenerate `requirements.txt`
+- Verify new package appears in `requirements.txt` before committing
+
+- **Evidence**: Commit `04623a2` created file with `from msgraph import GraphServiceClient` but no pyproject.toml change
+- **Root cause**: Dependency added to code but not to `pyproject.toml`; local venv masked the issue
+- **Fix**: Added `msgraph-sdk>=1.0.0` to `pyproject.toml`, regenerate `requirements.txt`
+
+**Resolution**:
+- **Resolved**: 2026-02-04 07:36
+- **Solution**: Added `msgraph-sdk>=1.0.0` to `pyproject.toml` dependencies
+- **Prevention**: Added note to `!NOTES.md` about running `InstallAndCompileDependencies.bat` after new imports
+
 ### 2026-02-03 - SharePoint REST API Pagination
 
 #### [ACTIVE] `SPGPT-FL-002` `$skip` Not Supported for SharePoint List Items
@@ -88,6 +122,9 @@
 (None yet - see Active Issues for resolved entries)
 
 ## Document History
+
+**[2026-02-04 07:36]**
+- Added: SPGPT-FL-003 - Missing msgraph-sdk dependency in Azure deployment
 
 **[2026-02-03 14:20]**
 - Added: External source reference `_INFO_SHAREPOINT_LISTITEM.md [SPAPI-IN07]` to SPGPT-FL-002
