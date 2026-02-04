@@ -17,6 +17,7 @@
 - Use existing endpoints: `/v2/reports/get` for metadata, `/v2/reports/file` for CSV content
 - Non-CSV files disabled in tree (greyed, not clickable)
 - Auto-select first CSV on page load
+- Always URL-encode `report_id` in client-side fetch URLs (contains `/`)
 
 ## Table of Contents
 
