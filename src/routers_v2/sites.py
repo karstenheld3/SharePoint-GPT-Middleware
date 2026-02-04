@@ -651,7 +651,7 @@ async def sites_root(request: Request):
       list_endpoint=f"{router_prefix}/{router_name}?format=json",
       delete_endpoint=f"{router_prefix}/{router_name}/delete?site_id={{itemId}}",
       additional_js=get_router_specific_js(),
-      additional_css=".console-panel { height: 450px !important; }"
+      additional_css="td:nth-child(3) { max-width: 280px; word-break: break-all; } td:nth-child(6) { white-space: normal; }"
     )
     return HTMLResponse(html)
   
