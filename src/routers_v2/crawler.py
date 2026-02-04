@@ -2297,7 +2297,7 @@ function renderJobActions(job) {{
   let actions = [];
   if (reportId) {{
     const viewUrl = '/v2/reports/view?report_id=' + encodeURIComponent(reportId) + '&format=ui';
-    actions.push('<a href="' + viewUrl + '" class="btn-small" style="text-decoration:none;display:inline-block;background:#f0f0f0;color:#000;border:none;">View</a>');
+    actions.push('<button class="btn-small" onclick="window.location.href=\\'' + viewUrl + '\\'">View</button>');
   }}
   if (state === 'completed' || state === 'cancelled') {{
     actions.push('<button class="btn-small" onclick="showJobResult(\\'' + jobId + '\\')">Result</button>');
