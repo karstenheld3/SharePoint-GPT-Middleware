@@ -342,7 +342,7 @@ a:hover { text-decoration: underline; }
 
 /* Tree Panel */
 .tree-panel { width: 280px; min-width: 150px; display: flex; flex-direction: column; background: #fafafa; border-right: 1px solid #ddd; }
-.panel-header { padding: 8px 12px; font-weight: 600; font-size: 0.85em; background: #f0f0f0; border-bottom: 1px solid #ddd; }
+.panel-header { padding: 8px 12px; font-weight: 600; font-size: 0.85em; background: #f0f0f0; border-bottom: 1px solid #ddd; height: 34px; box-sizing: border-box; }
 .file-tree { flex: 1; overflow: auto; padding: 8px; font-size: 0.85em; }
 
 /* Tree Nodes */
@@ -366,7 +366,7 @@ a:hover { text-decoration: underline; }
 
 /* Table Panel */
 .table-panel { flex: 1; min-width: 300px; display: flex; flex-direction: column; overflow: hidden; background: #fff; }
-.panel-header { display: flex; justify-content: space-between; align-items: center; }
+.table-panel .panel-header { display: flex; justify-content: space-between; align-items: center; }
 .btn-download { padding: 6px 12px; font-size: 12px; background: #f8f9fa; color: #333; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; cursor: pointer; }
 .btn-download:hover { background: #e9ecef; text-decoration: none; }
 .csv-table-container { flex: 1; overflow: auto; padding: 0; background: #fff; border: 1px solid #ddd; border-top: none; }
