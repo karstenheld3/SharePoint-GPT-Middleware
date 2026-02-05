@@ -53,7 +53,25 @@ reloadItems = async function() { ... };
 3. Click "Crawl" button - form opens with domain selected
 4. No console errors (previously showed RangeError: Maximum call stack size exceeded)
 
+## FIX-002: Vector Store ID Not Displayed After Crawl
+
+**Date**: 2026-02-05
+**Status**: RESOLVED
+
+**Symptom**: After crawling a domain, the Vector Store ID column still shows "-" even though a vector store was created.
+
+**Root Cause**: `startCrawl()` function called `connectStream()` with `reloadOnFinish: false`, preventing UI refresh after crawl completion.
+
+**Fix Applied**: Changed `reloadOnFinish: false` to `reloadOnFinish: true` in line 485.
+
+**Location**: `src/routers_v2/domains.py` line 485
+
+**Verification**: After crawl completes, table refreshes and shows new vector_store_id.
+
 ## Document History
+
+**[2026-02-05 16:08]**
+- Added: FIX-002 - Vector Store ID not displayed after crawl
 
 **[2026-02-05 15:52]**
 - Updated: FIX-001 - Corrected fix using function expression instead of declaration

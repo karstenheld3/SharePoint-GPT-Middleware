@@ -482,7 +482,7 @@ function startCrawl(event) {{
   closeModal();
   showConsole();
   clearConsole();
-  connectStream(url, {{ reloadOnFinish: false, showResult: 'toast', clearConsole: false }});
+  connectStream(url, {{ reloadOnFinish: true, showResult: 'toast', clearConsole: false }});
   showToast('Crawl Started', domainId, 'info');
 }}
 
