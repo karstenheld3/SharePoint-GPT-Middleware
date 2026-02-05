@@ -320,6 +320,14 @@ async function cacheDomains() {{
   }}
 }}
 
+// Override reloadItems to also update domainsState cache
+// Must use assignment (not function declaration) to avoid hoisting issues
+const _originalReloadItems = reloadItems;
+reloadItems = async function() {{
+  await _originalReloadItems();
+  await cacheDomains();
+}};
+
 function showCrawlDomainForm(domainId) {{
   const domain = domainsState.get(domainId);
   if (!domain) {{
