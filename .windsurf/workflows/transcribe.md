@@ -362,7 +362,31 @@ Pages completed: 4 of 20
 ### 6e. Continue with next chunk
 Repeat until all pages processed.
 
-## Step 7: Finalize
+## Step 7: Stitch Pages (Mode A only)
+
+After batch transcription completes, stitch individual page markdown files into a single document:
+
+```powershell
+# Stitch pages into final markdown with proper page separators
+$inputFolder = "[OUTPUT_FOLDER]"  # e.g., "_PrivateSessions/.../OJ_L_202401689_EN_TXT"
+$outputFile = "[OUTPUT_FOLDER].md"  # e.g., "_PrivateSessions/.../OJ_L_202401689_EN_TXT.md"
+
+$pages = Get-ChildItem "$inputFolder\*.md" | Where-Object { $_.Name -match '_page\d+\.md$' } | Sort-Object { [int]($_.Name -replace '.*_page(\d+)\.md','$1') }
+$content = $pages | ForEach-Object {
+    $text = Get-Content $_.FullName -Raw
+    if (-not $text.EndsWith("`n")) { $text += "`n" }
+    $text + "`n---`n`n"
+}
+($content -join "").TrimEnd() | Set-Content $outputFile -Encoding UTF8
+Write-Host "Stitched $($pages.Count) pages to $outputFile"
+```
+
+**Key points:**
+- Ensures newline before `---` separator
+- Sorts pages numerically (page1, page2, ... page10, page11)
+- Trims trailing whitespace from final output
+
+## Step 8: Finalize
 
 1. Remove progress markers
 2. Generate/verify Table of Contents
@@ -398,123 +422,46 @@ Index file format:
 ...
 ```
 
-## Verification
+## Verification (Mode B only)
 
-After transcription, run `/verify` to:
-1. Compare page count
-2. Check all sections present
-3. Verify all figures have BOTH:
-   - ASCII art block (` ```ascii `)
-   - XML description block (`<transcription_notes>`)
-4. Verify page boundary markers:
-   - `<transcription_page_header>` after each `---` (if header exists in source)
-   - `<transcription_page_footer>` before each `---` (if footer exists in source)
-5. Cross-check text accuracy
-6. Validate XML tags are well-formed
+Mode A uses the judge prompt for automatic quality scoring. For Mode B, verify manually:
+
+**After each chunk:**
+1. Page count matches source images?
+2. All sections present (compare against source)?
+3. Figures have BOTH ASCII art AND `<transcription_notes>`?
+4. Page boundary markers correct (`<transcription_page_header>`, `<transcription_page_footer>`)?
+
+**After completion:**
+1. Re-read 3-5 random source pages
+2. Compare word-for-word against markdown
+3. Check numbers, proper nouns, special characters
+4. Fix any discrepancies found
 
 ## Best Practices
 
 1. **4 pages max per call** - Prevents context overflow and ensures quality
 2. **Write immediately** - Append to file after each chunk
 3. **Track progress** - Use progress markers for resumability
-4. **300 DPI for PDFs** - Higher quality for accurate transcription
-5. **Keep source images** - Required for `/verify`
+4. **150 DPI for PDFs** - Optimal balance of quality and speed
+5. **Keep source images** - Required for verification
 6. **No omissions** - Every piece of content must be transcribed
-7. **ASCII + XML for figures** - Every figure requires both ASCII art and `<transcription_notes>` XML block
+7. **ASCII + JSON for figures** - Every figure requires both ASCII art and `<transcription_json>` block
 8. **Page boundaries** - Preserve headers/footers with `<transcription_page_header>` and `<transcription_page_footer>` tags
 
-## Appendix: Built-in Transcription Prompt (Mode B)
+## Prompts Reference
 
-Use this prompt when llm-transcription skill is not available:
+Prompts are stored in: `DevSystemV3.2/skills/llm-transcription/prompts/`
 
----
+| File | Version | Purpose |
+|------|---------|---------|
+| `transcription.md` | v13 - No HTML | Main transcription prompt with ASCII + JSON extraction |
+| `judge.md` | v2 - JSON Aware | Quality scoring with text/structure/graphics weights |
 
-**Transcription Prompt v1B**
+**Key features of current prompts:**
+- **ASCII + JSON mandatory** for all figures and tables
+- **No HTML tags** - pure markdown only
+- **Anti-duplication** - data in graphics OR text, not both
+- **Section markers** - `<!-- Section N -->` and `<!-- Column N -->`
+- **No `---` within pages** - reserved for page boundaries
 
-Transcribe this document page image to Markdown. **Accuracy over speed.**
-
-**Key Areas:**
-1. Graphics - Essential graphics with labeled ASCII art and data extraction
-2. Structure - Semantic hierarchy matching visual document outline
-3. Text - Character-level accuracy
-
-**CRITICAL RULES:**
-
-DO:
-- Label every node in diagrams: `[DATABASE]`, `[PROCESS]`, `(pending)`
-- Extract ALL data values from charts (numbers > visual fidelity)
-- Match header levels to visual hierarchy (H1=title, H2=sections, H3=subsections)
-- Use `[unclear]` for text you cannot read with confidence
-
-DON'T:
-- Don't transcribe UI chrome (toolbars, ribbons, browser elements)
-- Don't count decorative logos/separators as missed graphics
-- Don't use headers for formatting convenience - only for real sections
-- Don't guess numbers - mark as `[unclear: ~value?]` if uncertain
-
-**Graphics:**
-
-TRANSCRIBE (essential): Charts, diagrams, flowcharts, infographics, data visualizations, maps, technical illustrations
-
-SKIP (decorative): UI chrome, toolbars, logos, watermarks, separators, backgrounds - add only: `<!-- Decorative: [list] -->`
-
-Every essential graphic MUST have:
-
-```markdown
-<transcription_image>
-**Figure N: [Caption]**
-
-```ascii
-[TITLE - WHAT THIS SHOWS]
-[Visual with INLINE labels - every node named]
-Legend: [A]=Item1 [B]=Item2
-```
-
-<transcription_notes>
-- Data: [all numbers, percentages, values]
-- Colors: [color] = [meaning]
-- ASCII misses: [what couldn't be shown]
-</transcription_notes>
-</transcription_image>
-```
-
-**Structure:**
-
-Headers must match the VISUAL document structure:
-- H1 = Document title (one per page max)
-- H2 = Major sections visible in document
-- H3 = Subsections within sections
-
-Multi-column: Read top-to-bottom within each column, mark with `<!-- Column N -->`.
-
-**Text Accuracy:**
-
-- Every word exactly as shown
-- Numbers must match exactly
-- Mark unclear text: `[unclear]` or `[unclear: best guess?]`
-
-Special Characters:
-- Superscripts: use actual Unicode (not ^1 ^2 ^3)
-- Greek: use actual Unicode characters
-- Math: use LaTeX syntax
-- Symbols: use proper Unicode
-
-**Output Structure:**
-
-```markdown
-# [Document Title]
-
-<transcription_page_header> [if present] </transcription_page_header>
-
-## [Section]
-
-[Content...]
-
-<transcription_image>
-**Figure 1: [Caption]**
-[ASCII with inline labels]
-<transcription_notes>[Data, colors, misses]</transcription_notes>
-</transcription_image>
-
-<transcription_page_footer> [if present] </transcription_page_footer>
-```
