@@ -133,14 +133,14 @@ Accordions, dropdowns, and collapsible sections must be expanded before capture.
      window.scrollTo(0, 0);
    })()")
 6. browser_wait_for(time: 1)  // Final settle
-7. browser_screenshot(fullPage: true)
+7. browser_screenshot(fullPage: true, type: "jpeg")
 ```
 
 **Handling fixed/sticky headers:**
 To prevent fixed/sticky headers from repeating in the screenshot, remove their fixed/sticky positioning.
 ```
 1. browser_evaluate(expression: "document.querySelectorAll('header, nav, [class*=\"sticky\"], [class*=\"fixed\"]').forEach(el => el.style.position = 'relative')")
-2. browser_screenshot(fullPage: true)
+2. browser_screenshot(fullPage: true, type: "jpeg")
 ```
 
 ## 5. Find and Extract Links

@@ -24,7 +24,7 @@ from pathlib import Path
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))
-TOOLS_DIR = os.path.join(WORKSPACE_ROOT, ".tools")
+TOOLS_DIR = os.path.join(WORKSPACE_ROOT, "..", ".tools")
 GS_PATH = os.path.join(TOOLS_DIR, "gs", "bin", "gswin64c.exe")
 PDFINFO_PATH = os.path.join(TOOLS_DIR, "poppler", "Library", "bin", "pdfinfo.exe")
 PDFIMAGES_PATH = os.path.join(TOOLS_DIR, "poppler", "Library", "bin", "pdfimages.exe")

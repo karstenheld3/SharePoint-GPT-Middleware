@@ -22,7 +22,7 @@ def main():
 Examples:
   python -m llm_computer_use_v2 "Click the Start button"
   python -m llm_computer_use_v2 -x "Open Notepad"
-  python -m llm_computer_use_v2 -n 5 -k api-keys.txt "What time is it?"
+  python -m llm_computer_use_v2 -n 5 -k ../.tools/.api-keys.txt "What time is it?"
         """
     )
     

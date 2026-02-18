@@ -176,7 +176,7 @@ def get_temp_dir(temp_folder: Path | None = None) -> Path:
     if temp_folder:
         temp_dir = temp_folder
     else:
-        temp_dir = Path.cwd() / '.tools' / '_image_to_markdown'
+        temp_dir = Path.cwd().parent / '.tools' / '_image_to_markdown'
     temp_dir.mkdir(parents=True, exist_ok=True)
     return temp_dir
 
@@ -217,11 +217,24 @@ def retry_with_backoff(fn, retries=3, backoff=(1, 2, 4)):
     raise last_error
 
 
-def call_openai_vision(model: str, image_data: str, media_type: str,
-                       prompt: str, api_key: str, api_params: dict) -> dict:
-    """Call OpenAI vision API synchronously."""
-    import httpx
-    
+async def async_retry_with_backoff(fn, retries=3, backoff=(1, 2, 4)):
+    """Retry async function with exponential backoff."""
+    last_error = None
+    for attempt in range(retries):
+        try:
+            return await fn()
+        except Exception as e:
+            last_error = e
+            if attempt < retries - 1:
+                wait = backoff[attempt] if attempt < len(backoff) else backoff[-1]
+                await asyncio.sleep(wait)
+    raise last_error
+
+
+async def call_openai_vision(model: str, image_data: str, media_type: str,
+                            prompt: str, api_key: str, api_params: dict,
+                            client) -> dict:
+    """Call OpenAI vision API using shared async client."""
     headers = {
         'Authorization': f'Bearer {api_key}',
         'Content-Type': 'application/json'
@@ -247,11 +260,10 @@ def call_openai_vision(model: str, image_data: str, media_type: str,
     if 'reasoning_effort' in api_params:
         payload['reasoning_effort'] = api_params['reasoning_effort']
     
-    with httpx.Client(timeout=180.0) as client:
-        response = client.post('https://api.openai.com/v1/chat/completions',
-                               headers=headers, json=payload)
-        response.raise_for_status()
-        result = response.json()
+    response = await client.post('https://api.openai.com/v1/chat/completions',
+                                 headers=headers, json=payload)
+    response.raise_for_status()
+    result = response.json()
     
     return {
         'content': result['choices'][0]['message']['content'],
@@ -261,11 +273,10 @@ def call_openai_vision(model: str, image_data: str, media_type: str,
     }
 
 
-def call_anthropic_vision(model: str, image_data: str, media_type: str,
-                          prompt: str, api_key: str, api_params: dict) -> dict:
-    """Call Anthropic vision API synchronously."""
-    import httpx
-    
+async def call_anthropic_vision(model: str, image_data: str, media_type: str,
+                               prompt: str, api_key: str, api_params: dict,
+                               client) -> dict:
+    """Call Anthropic vision API using shared async client."""
     headers = {
         'x-api-key': api_key,
         'anthropic-version': '2023-06-01',
@@ -288,11 +299,10 @@ def call_anthropic_vision(model: str, image_data: str, media_type: str,
     if 'thinking' in api_params:
         payload['thinking'] = api_params['thinking']
     
-    with httpx.Client(timeout=180.0) as client:
-        response = client.post('https://api.anthropic.com/v1/messages',
-                               headers=headers, json=payload)
-        response.raise_for_status()
-        result = response.json()
+    response = await client.post('https://api.anthropic.com/v1/messages',
+                                 headers=headers, json=payload)
+    response.raise_for_status()
+    result = response.json()
     
     content = ''
     for block in result.get('content', []):
@@ -308,34 +318,31 @@ def call_anthropic_vision(model: str, image_data: str, media_type: str,
     }
 
 
-def call_vision_api(model: str, image_data: str, media_type: str, prompt: str,
-                    api_keys: dict, api_params: dict, provider: str) -> dict:
-    """Call appropriate vision API based on provider."""
+async def call_vision_api(model: str, image_data: str, media_type: str, prompt: str,
+                          api_keys: dict, api_params: dict, provider: str,
+                          client) -> dict:
+    """Call appropriate vision API based on provider using shared client."""
     if provider == 'anthropic':
         api_key = api_keys.get('ANTHROPIC_API_KEY')
         if not api_key:
             raise ValueError("ANTHROPIC_API_KEY not found")
-        return retry_with_backoff(
-            lambda: call_anthropic_vision(model, image_data, media_type, prompt, api_key, api_params)
+        return await async_retry_with_backoff(
+            lambda: call_anthropic_vision(model, image_data, media_type, prompt, api_key, api_params, client)
         )
     else:
         api_key = api_keys.get('OPENAI_API_KEY')
         if not api_key:
             raise ValueError("OPENAI_API_KEY not found")
-        return retry_with_backoff(
-            lambda: call_openai_vision(model, image_data, media_type, prompt, api_key, api_params)
+        return await async_retry_with_backoff(
+            lambda: call_openai_vision(model, image_data, media_type, prompt, api_key, api_params, client)
         )
 
 
 async def generate_transcription_async(image_data: str, media_type: str, prompt: str,
-                                        model: str, api_keys: dict, api_params: dict, 
-                                        provider: str) -> dict:
-    """Generate transcription asynchronously."""
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(
-        None, 
-        lambda: call_vision_api(model, image_data, media_type, prompt, api_keys, api_params, provider)
-    )
+                                        model: str, api_keys: dict, api_params: dict,
+                                        provider: str, client=None) -> dict:
+    """Generate transcription using shared client."""
+    return await call_vision_api(model, image_data, media_type, prompt, api_keys, api_params, provider, client)
 
 
 def parse_judge_response(content: str) -> dict:
@@ -364,8 +371,8 @@ def calculate_weighted_score(judge_data: dict) -> float:
 
 async def judge_transcription_async(image_data: str, media_type: str, transcription: str,
                                      judge_prompt: str, judge_model: str, api_keys: dict,
-                                     api_params: dict, provider: str) -> dict:
-    """Judge a transcription asynchronously."""
+                                     api_params: dict, provider: str, client=None) -> dict:
+    """Judge a transcription using shared client."""
     full_prompt = f"""{judge_prompt}
 
 ---
@@ -379,7 +386,7 @@ async def judge_transcription_async(image_data: str, media_type: str, transcript
 """
     
     result = await generate_transcription_async(
-        image_data, media_type, full_prompt, judge_model, api_keys, api_params, provider
+        image_data, media_type, full_prompt, judge_model, api_keys, api_params, provider, client
     )
     
     try:
@@ -408,14 +415,31 @@ async def process_image_ensemble(image_data: str, media_type: str,
                                   provider: str, judge_provider: str,
                                   min_score: float, max_refinements: int,
                                   worker_id: int, file_idx: int, total_files: int) -> dict:
-    """Run ensemble + judge + select + maybe refine pipeline."""
+    """Run ensemble + judge + select + maybe refine pipeline with shared client."""
+    import httpx
+    
+    async with httpx.AsyncClient(
+        timeout=180.0,
+        limits=httpx.Limits(max_connections=100, max_keepalive_connections=50)
+    ) as client:
+        return await _run_ensemble(image_data, media_type, transcribe_prompt, judge_prompt,
+                                    model, judge_model, initial_candidates, api_keys,
+                                    api_params, judge_api_params, provider, judge_provider,
+                                    min_score, max_refinements, worker_id, file_idx, total_files, client)
+
+
+async def _run_ensemble(image_data, media_type, transcribe_prompt, judge_prompt,
+                        model, judge_model, initial_candidates, api_keys,
+                        api_params, judge_api_params, provider, judge_provider,
+                        min_score, max_refinements, worker_id, file_idx, total_files, client):
+    """Inner ensemble logic with shared client."""
     total_input_tokens = 0
     total_output_tokens = 0
     
     log(worker_id, file_idx, total_files, f"Transcribing ({initial_candidates} candidates)...")
     transcription_tasks = [
-        generate_transcription_async(image_data, media_type, transcribe_prompt, 
-                                      model, api_keys, api_params, provider)
+        generate_transcription_async(image_data, media_type, transcribe_prompt,
+                                      model, api_keys, api_params, provider, client)
         for _ in range(initial_candidates)
     ]
     transcriptions = await asyncio.gather(*transcription_tasks, return_exceptions=True)
@@ -434,7 +458,7 @@ async def process_image_ensemble(image_data: str, media_type: str,
     log(worker_id, file_idx, total_files, f"Judging {len(valid_transcriptions)} candidates...")
     judge_tasks = [
         judge_transcription_async(image_data, media_type, t['content'], judge_prompt,
-                                   judge_model, api_keys, judge_api_params, judge_provider)
+                                   judge_model, api_keys, judge_api_params, judge_provider, client)
         for t in valid_transcriptions
     ]
     judge_results = await asyncio.gather(*judge_tasks, return_exceptions=True)
@@ -483,14 +507,14 @@ Please improve the transcription based on the judge feedback above.
         
         try:
             refined = await generate_transcription_async(
-                image_data, media_type, refinement_prompt, model, api_keys, api_params, provider
+                image_data, media_type, refinement_prompt, model, api_keys, api_params, provider, client
             )
             total_input_tokens += refined['input_tokens']
             total_output_tokens += refined['output_tokens']
             
             refined_judge = await judge_transcription_async(
                 image_data, media_type, refined['content'], judge_prompt,
-                judge_model, api_keys, judge_api_params, judge_provider
+                judge_model, api_keys, judge_api_params, judge_provider, client
             )
             total_input_tokens += refined_judge['input_tokens']
             total_output_tokens += refined_judge['output_tokens']
@@ -624,6 +648,8 @@ Examples:
                         help=f'Parallel workers (default: {DEFAULT_WORKERS})')
     
     parser.add_argument('--keys-file', type=Path, default=Path('.env'), help='API keys file (default: .env)')
+    parser.add_argument('--config-folder', type=Path, default=None,
+                        help='Directory containing model JSON configs (default: script dir)')
     parser.add_argument('--temperature', default='medium', choices=EFFORT_LEVELS,
                         help='Temperature effort level (default: medium)')
     parser.add_argument('--reasoning-effort', default='medium', choices=EFFORT_LEVELS,
@@ -669,15 +695,15 @@ def main():
         if not args.output_folder:
             args.output_folder = args.input_folder / 'transcripts'
     
-    script_dir = get_script_dir()
-    registry, mapping, pricing = load_configs(script_dir)
+    config_dir = args.config_folder if args.config_folder else get_script_dir()
+    registry, mapping, pricing = load_configs(config_dir)
     
     api_keys = load_api_keys(args.keys_file)
     if not api_keys.get('OPENAI_API_KEY') and not api_keys.get('ANTHROPIC_API_KEY'):
         print("[ERROR] No API keys found. Set OPENAI_API_KEY or ANTHROPIC_API_KEY in .env", file=sys.stderr)
         sys.exit(1)
     
-    prompts_dir = script_dir / 'prompts'
+    prompts_dir = config_dir / 'prompts'
     if args.transcribe_prompt_file:
         transcribe_prompt = args.transcribe_prompt_file.read_text(encoding='utf-8')
     elif (prompts_dir / 'transcription.md').exists():

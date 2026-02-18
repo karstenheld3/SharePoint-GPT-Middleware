@@ -3,7 +3,7 @@
 Downsize PDF images using Ghostscript.
 Reduces file size by resampling images to specified DPI.
 
-Output: .tools/_pdf_output/[PDF_FILENAME]_[DPI]dpi.pdf
+Output: ../.tools/_pdf_output/[PDF_FILENAME]_[DPI]dpi.pdf
 
 Usage:
   python downsize-pdf-images.py <input.pdf> [--output <dir>] [--dpi <dpi>] [--preset <preset>]
@@ -20,8 +20,8 @@ from pathlib import Path
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))
-GS_PATH = os.path.join(WORKSPACE_ROOT, ".tools", "gs", "bin", "gswin64c.exe")
-DEFAULT_OUTPUT_DIR = os.path.join(WORKSPACE_ROOT, ".tools", "_pdf_output")
+GS_PATH = os.path.join(WORKSPACE_ROOT, "..", ".tools", "gs", "bin", "gswin64c.exe")
+DEFAULT_OUTPUT_DIR = os.path.join(WORKSPACE_ROOT, "..", ".tools", "_pdf_output")
 DEFAULT_DPI = 150
 
 PRESETS = {

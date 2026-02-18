@@ -9,7 +9,7 @@ NOTE: This tests BURST capacity (max concurrent requests), not sustained RPM.
 Results are specific to the API key used and may vary based on server load.
 
 Usage:
-  python find-workers-limit.py --model gpt-4o --keys-file .api-keys.txt
+  python find-workers-limit.py --model gpt-4o --keys-file ..\.tools\.api-keys.txt
   python find-workers-limit.py --model claude-3-5-sonnet-20241022 --output-file limits.json --verbose
 """
 

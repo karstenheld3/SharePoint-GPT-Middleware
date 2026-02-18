@@ -121,7 +121,7 @@ If Playwright commands fail or JavaScript is blocked, use desktop screenshot to 
 ```powershell
 & "[DEVSYSTEM_FOLDER]/skills/windows-desktop-control/simple-screenshot.ps1"
 ```
-Captures full screen to `.tools/_screenshots/` - helps identify popups, dialogs, or blockers.
+Captures full screen to `../.tools/_screenshots/` - helps identify popups, dialogs, or blockers.
 
 **Source access failure handling:**
 If both `read_url_content` and Playwright fail after 2 retries:
@@ -325,6 +325,6 @@ read_url_content("https://github.com/[org]/[repo]/issues/...")
 
 ## Tool Locations
 
-- **pdf-tools** - `.tools/` (binaries), `[DEVSYSTEM_FOLDER]/skills/pdf-tools/` (scripts)
+- **pdf-tools** - `../.tools/` (binaries), `[DEVSYSTEM_FOLDER]/skills/pdf-tools/` (scripts)
 - **llm-transcription** - `[DEVSYSTEM_FOLDER]/skills/llm-transcription/`
 - **ms-playwright-mcp** - MCP server (configured in mcp_config.json)

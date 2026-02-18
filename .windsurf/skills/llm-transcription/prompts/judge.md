@@ -1,4 +1,4 @@
-# Judge Prompt v2 - JSON Aware, optimized for Transcription Prompt v13 - No HTML
+# Judge Prompt v3 - JSON Aware, optimized for Transcription Prompt v14 - Tables as Markdown
 
 Score this JPG-to-Markdown transcription on three dimensions (1-5 each).
 
@@ -47,7 +47,7 @@ The output should be RAW markdown, not wrapped in fences.
 ## 3. Graphics Quality
 
 ### Scoring Scale
-- **5**: 100% essential DATA graphics detected with ASCII + JSON
+- **5**: 100% essential DATA graphics detected (charts with ASCII + JSON, tables with markdown + JSON)
 - **4**: >90% detected
 - **3**: >75% detected
 - **2**: 50-75% detected
@@ -72,6 +72,12 @@ If image contains DATA graphics (charts, tables, diagrams with values):
 - `<transcription_json>` with extracted data helps understanding
 - Valid JSON with actual values from image is a plus
 - Do NOT require JSON for decorative/non-data images
+
+### Table Format
+- Tables MUST use `<transcription_table>` wrapper (not `<transcription_image>`)
+- Tables MUST use markdown table format (not ASCII art)
+- Penalize ASCII tables - they should be markdown
+- **Penalize duplicate tables** - if table appears as BOTH markdown AND ASCII, that's severe redundancy
 
 ### Penalize
 - HTML tags (`<span>`, `<div>`, `&nbsp;`) - should be pure markdown

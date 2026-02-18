@@ -61,6 +61,7 @@ Rules and usage for Microsoft Playwright MCP server.
 - Always call `browser_snapshot` before clicking to get current refs
 - Use `browser_close` when done to free resources
 - For logged-in sessions: Use persistent user profile or storage state
+- Always use `type: "jpeg"` for screenshots (default is png, which produces unnecessarily large files)
 
 ## Configuration
 
@@ -106,7 +107,7 @@ Rules and usage for Microsoft Playwright MCP server.
 - **browser_press_key** - `browser_press_key(key: "Enter")` or `browser_press_key(key: "Control+A")`
 
 ### Inspection
-- **browser_screenshot** - `browser_screenshot()` or `browser_screenshot(fullPage: true)`
+- **browser_screenshot** - `browser_screenshot(type: "jpeg")` or `browser_screenshot(fullPage: true, type: "jpeg")`
 - **browser_console_messages** - Get console logs
 - **browser_evaluate** - `browser_evaluate(expression: "document.title")`
 
@@ -138,7 +139,7 @@ After navigation or click, call `browser_snapshot()` to verify page loaded and g
 
 ### Full Page Screenshot
 ```
-browser_screenshot(fullPage: true)
+browser_screenshot(fullPage: true, type: "jpeg")
 ```
 
 For cookie popups, lazy-load scrolling, and expanding collapsed items, see [PLAYWRIGHT_ADVANCED_WORKFLOWS.md](PLAYWRIGHT_ADVANCED_WORKFLOWS.md).

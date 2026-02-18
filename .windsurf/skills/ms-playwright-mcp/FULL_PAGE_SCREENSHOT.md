@@ -5,7 +5,7 @@ Detailed workflows for capturing entire scrollable pages.
 ## Basic Full Page Screenshot
 
 ```
-1. browser_screenshot(fullPage: true)
+1. browser_screenshot(fullPage: true, type: "jpeg")
 ```
 
 ## Complete Workflow (Handles Lazy-Load + Popups)
@@ -28,7 +28,7 @@ Detailed workflows for capturing entire scrollable pages.
      window.scrollTo(0, 0);
    }")
 6. browser_wait_for(time: 1)  // Final settle
-7. browser_screenshot(fullPage: true)
+7. browser_screenshot(fullPage: true, type: "jpeg")
 ```
 
 ## Handling Fixed/Sticky Headers
@@ -43,7 +43,7 @@ Fixed and sticky headers repeat at each viewport boundary in full page screensho
          el.style.position = 'relative';
        });
    }")
-2. browser_screenshot(fullPage: true)
+2. browser_screenshot(fullPage: true, type: "jpeg")
 ```
 
 ## Scroll Strategies for Lazy-Loaded Content

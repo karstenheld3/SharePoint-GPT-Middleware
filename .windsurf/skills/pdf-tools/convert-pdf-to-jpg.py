@@ -3,7 +3,7 @@
 Convert PDF pages to JPG images for Windsurf Agent vision analysis.
 Uses Poppler's pdftoppm via pdf2image library.
 
-Output: .tools/_pdf_to_jpg_converted/[PDF_FILENAME]/[PDF_FILENAME]_page001.jpg
+Output: ../.tools/_pdf_to_jpg_converted/[PDF_FILENAME]/[PDF_FILENAME]_page001.jpg
 Each PDF gets its own subfolder to track previous conversions.
 
 Usage:
@@ -19,8 +19,8 @@ import argparse, os, sys
 from pathlib import Path
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))
-POPPLER_PATH = os.path.join(WORKSPACE_ROOT, ".tools", "poppler", "Library", "bin")
-DEFAULT_OUTPUT_DIR = os.path.join(WORKSPACE_ROOT, ".tools", "_pdf_to_jpg_converted")
+POPPLER_PATH = os.path.join(WORKSPACE_ROOT, "..", ".tools", "poppler", "Library", "bin")
+DEFAULT_OUTPUT_DIR = os.path.join(WORKSPACE_ROOT, "..", ".tools", "_pdf_to_jpg_converted")
 DEFAULT_DPI = 150
 
 def parse_page_range(page_str: str, total_pages: int) -> tuple[int, int]:

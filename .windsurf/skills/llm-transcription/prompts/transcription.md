@@ -1,4 +1,4 @@
-# Transcription Prompt v13 - No HTML
+# Transcription Prompt v14 - Tables as Markdown
 
 Transcribe this document page image to Markdown. **Accuracy over speed.**
 
@@ -23,7 +23,8 @@ All three matter equally.
 - Use `[unclear]` for text you cannot read with confidence
 - Use `<!-- Section N -->` and nested `<!-- Column N -->` for multi-column text-only layouts (no transcriptions, minimal markdown)
 - For graphical or colorized layouts, figures and tables, keep detailed `<transcription_notes>` with colors, visual details, and context
-- **Always include BOTH ````ascii` AND `<transcription_json>` for figures and tables**
+- **Figures/charts**: use `<transcription_image>` with ````ascii` + `<transcription_json>`
+- **Tables**: use `<transcription_table>` with markdown table + `<transcription_json>`
 
 **DON'T:**
 - **Don't wrap your entire output in ```markdown code fences**
@@ -35,10 +36,11 @@ All three matter equally.
 - Don't guess numbers - mark as `[unclear: ~value?]` if uncertain
 - **Don't duplicate data** - if a chart's data appears in surrounding text, don't repeat it in both places
 - **Don't skip ASCII art** - every chart/graph needs BOTH ASCII representation AND JSON data
+- **Don't use ASCII for tables** - tables use markdown format, not ASCII
 
 **FORBIDDEN TAGS (break markdown rendering):**
 - Never use `<content>`, `<data>`, `<section>` or similar custom tags outside code blocks
-- Only allowed tags: `<transcription_image>`, `<transcription_json>`, `<transcription_notes>`, `<transcription_page_header>`, `<transcription_page_footer>`
+- Only allowed tags: `<transcription_image>`, `<transcription_table>`, `<transcription_json>`, `<transcription_notes>`, `<transcription_page_header>`, `<transcription_page_footer>`
 
 ---
 
@@ -88,7 +90,7 @@ JSON contains:
 
 ### Table Example
 
-<transcription_image>
+<transcription_table>
 **Table 1: Quarterly Revenue**
 
 | Region | Q1 | Q2 | Q3 | Q4 |
@@ -105,7 +107,7 @@ JSON contains:
 - Source: Financial Report 2023
 - Units: millions USD
 </transcription_notes>
-</transcription_image>
+</transcription_table>
 
 ### ANTI-DUPLICATION RULE
 
@@ -199,16 +201,20 @@ Nested content under items:
 
 ## 4. Tables
 
-Markdown for simple tables:
-```
+**Always use markdown tables** (never ASCII) wrapped in `<transcription_table>`:
+
+<transcription_table>
+**Table N: [Title]**
+
 | Column A | Column B |
 |----------|----------|
 | Value 1  | Value 2  |
-```
 
-ASCII for complex tables:
-```ascii
-+----------+----------+
-| Col A    | Col B    |
-+----------+----------+
-```
+<transcription_json>
+{"table_type": "...", "data": [...]}
+</transcription_json>
+
+<transcription_notes>
+- [visual details, colors, source]
+</transcription_notes>
+</transcription_table>
