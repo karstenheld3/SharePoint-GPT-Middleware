@@ -29,6 +29,29 @@
 
 Task 3: Security Scanner Refinement - SSE streaming fix applied, pending full E2E test
 
+### Task 4: Permission Scanner Optimization (NEW)
+
+**Tasks Plan**: `TASKS_PERMISSION_SCANNER_POWERSHELL_OPTIMIZATION.md [PSCP-TK01]`
+**Source**: `_INFO_SITE_PERMISSION_SCANNER_ASSESSMENT_POWERSHELL.md [PSCP-IN02]`
+
+**Phase 1 (POC) - COMPLETE [2026-02-19]:**
+- [x] **PSCP-TK-001** - POC: Bulk HasUniqueRoleAssignments via REST - SUCCESS (0.77s for 3 items)
+- [x] **PSCP-TK-002** - POC: Batched RoleAssignments via REST - FAILED (returns empty data)
+
+**Phase 2 (Core) - PENDING:**
+- [ ] **PSCP-TK-003** - Add REST bulk query function to script
+- [ ] **PSCP-TK-004** - Replace per-item HasUniqueRoleAssignments check
+
+**Phase 3 - SKIPPED (GET batching doesn't work):**
+- [~] **PSCP-TK-005** - Add batched RoleAssignments function - SKIPPED
+- [~] **PSCP-TK-006** - Replace per-item RoleAssignments loading - SKIPPED
+
+**Phase 4 (Hardening) - PENDING:**
+- [ ] **PSCP-TK-007** - Add retry wrapper with Retry-After handling [P]
+
+**Critical path**: TK-001 -> TK-003 -> TK-004 (minimum viable optimization)
+**Next**: Phase 2 implementation
+
 ## Done
 
 ### Task 1: V2 Sites Endpoint (Completed)

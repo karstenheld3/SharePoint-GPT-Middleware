@@ -92,6 +92,20 @@ Record this prompt as outlined in NOTES_TEMPLATE.md in session management skill.
 
 **Output**: `_INFO_SITE_PERMISSION_SCANNER_ASSESSMENT.md [PERM-IN01]`
 
+### PowerShell Scanner Optimization (2026-02-19)
+
+````
+Research: How can we optimize performance of SharePointPermissionScanner.ps1?
+Currently it takes way too long - list elements are scanned individually.
+Write _INFO_SITE_PERMISSION_SCANNER_ASSESSMENT_POWERSHELL.md for PnP PowerShell only.
+Then /critique and /reconcile to validate findings.
+Then /write-tasks-plan for incremental improvements.
+````
+
+**Output**: `_INFO_SITE_PERMISSION_SCANNER_ASSESSMENT_POWERSHELL.md [PSCP-IN02]`
+**Review**: `_INFO_SITE_PERMISSION_SCANNER_ASSESSMENT_POWERSHELL_REVIEW.md [PSCP-IN02-RV01]`
+**Tasks**: `TASKS_PERMISSION_SCANNER_POWERSHELL_OPTIMIZATION.md [PSCP-TK01]`
+
 ## Key Decisions
 
 - Follow domains router pattern exactly for consistency
@@ -104,6 +118,15 @@ Record this prompt as outlined in NOTES_TEMPLATE.md in session management skill.
 - Domains router uses `common_ui_functions_v2.py` generate_ui_page() for table rendering
 - Storage pattern: `PERSISTENT_STORAGE_PATH/sites/{site_id}/site.json`
 - LCGUD format explained in `_V2_SPEC_ROUTERS.md`
+
+### PnP PowerShell GET Batching [TESTED 2026-02-19]
+
+**Finding**: `Invoke-PnPSPRestMethod -Batch` does NOT work correctly for GET requests on RoleAssignments.
+- Batch method returns 0 role assignments per item
+- Per-item method returns 5 role assignments (correct)
+- **Conclusion**: GET batching returns empty/incorrect data - cannot use for optimization
+
+**Impact**: Phase 3 of Permission Scanner optimization skipped. Use per-item Load-CSOMProperties.
 
 ### SSE Streaming Pattern [TESTED]
 
