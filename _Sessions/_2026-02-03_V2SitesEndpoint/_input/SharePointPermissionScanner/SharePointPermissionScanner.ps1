@@ -13,13 +13,12 @@ function SearchFileInFolderOrAnyParentFolder([string]$path, [string]$filename) {
 $includeFile1 = (SearchFileInFolderOrAnyParentFolder -path $PSScriptRoot -filename "_includes.ps1")
 if ($includeFile1 -eq ""){Write-Host "ERROR: Include file not found! Put '_includes.ps1' in script or parent folder" -ForegroundColor Red; exit}
 . $includeFile1
-# read password file from C:\users\[LOGGED_IN_USER]\AppData\Local\[ACCOUNT].txt or create new one and create credentials
-# You can also create [ACCOUNT].txt in command line: "PASSWORD_HERE" | ConvertTo-SecureString -AsPlainText -Force | ConvertFrom-SecureString | Out-File "$($env:LOCALAPPDATA)\[ACCOUNT].txt"
-$spoCredentials = Get-CredentialsOfUser -username "a7afe51@eur.corp.vattenfall.com" -verifyPassword $true
-$azureCredentials = $spoCredentials
+# Using browser authentication ($useInteractiveLogin = $true)
+$spoCredentials = $null
+$azureCredentials = $null
 #################### END: LOAD INCLUDE AND GET CREDENTIALS ######################
 
-$scriptTitle = "Permission Insights Scanner"
+$scriptTitle = "SharePoint Permission Scanner"
 
 # What it does: Export permissions of SharePoint site / subsite / library / folder defined in input file as CSV files into output folder per url (also called 'job').
 # Output files:
@@ -127,6 +126,46 @@ $summaryFile = (Get-Item $MyInvocation.MyCommand.Definition).Basename + "-Summar
 $summaryFile = Join-Path $PSScriptRoot "$($summaryFile)" # append path where this script is located
 $summaryFileColumns = @("Job","LastLib","LastItem","Type","ScannedItems","BrokenPermissions","Url")
 ######################### END: VARIABLES TO BE CHANGED BY DEVELOPER ######################
+
+# OPTIMIZATION: Get all items with HasUniqueRoleAssignments in single REST call (TK-003)
+# Replaces per-item Get-PnPProperty calls which cause 1 HTTP request per item
+function Get-ItemsWithUniquePermissions {
+    param(
+        [Parameter(Mandatory=$true)][string]$ListTitle,
+        [Parameter(Mandatory=$true)][string]$SiteUrl
+    )
+    
+    $allItems = [System.Collections.ArrayList]@()
+    $nextUrl = "/_api/web/lists/getbytitle('$ListTitle')/items?`$select=ID,FileRef,FileLeafRef,FSObjType,HasUniqueRoleAssignments&`$top=5000"
+    
+    while ($nextUrl) {
+        try {
+            $response = Invoke-PnPSPRestMethod -Url $nextUrl
+            $allItems.AddRange($response.value) | Out-Null
+            
+            # Handle pagination via odata.nextLink
+            if ($response.'odata.nextLink') {
+                $fullNextUrl = $response.'odata.nextLink'
+                $nextUrl = $fullNextUrl.Substring($fullNextUrl.IndexOf("/_api"))
+            } else {
+                $nextUrl = $null
+            }
+        } catch {
+            Write-Host "    ERROR in Get-ItemsWithUniquePermissions: $_" -ForegroundColor Red
+            break
+        }
+    }
+    
+    # Filter items with broken inheritance
+    $brokenItems = $allItems | Where-Object { $_.HasUniqueRoleAssignments -eq $true }
+    
+    return @{
+        AllItems = $allItems
+        BrokenItems = $brokenItems
+        TotalCount = $allItems.Count
+        BrokenCount = $brokenItems.Count
+    }
+}
 
 function ensureSharePointSiteIsConnected ([string]$siteUrl, $credentials) {
     # make sure site is connected: connect if context is $null or urls do not match
@@ -735,30 +774,53 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
 
             # get all items in list and sort by full filename
             if ($scanIndividualItems) {
-                $items = Get-PnPListItem -List $list.Title -PageSize 4995 | Sort-Object -Property @{Expression = {$_["FileRef"]}; Descending = $False}
-                if($items -eq $null) { $items = @() } elseif($items.GetType().toString() -ne "System.Object[]") { $items = @($items) }
-                if ($urlType -eq "Folder"){
+                # OPTIMIZATION TK-004: Use bulk REST query to get HasUniqueRoleAssignments for all items
+                # This replaces per-item Get-PnPProperty calls (1 HTTP request per item -> 1 request per 5000 items)
+                Write-Host "    Loading items with bulk REST query..."
+                $bulkItemData = Get-ItemsWithUniquePermissions -ListTitle $list.Title -SiteUrl $siteUrl
+                Write-Host "    $($bulkItemData.TotalCount) items found, $($bulkItemData.BrokenCount) with broken permissions."
+                
+                # Create HashSet of broken item IDs for fast lookup (cast to string to avoid Int64/Int32 mismatch)
+                $brokenItemIds = @{}
+                foreach ($brokenItem in $bulkItemData.BrokenItems) {
+                    $brokenItemIds[[string]$brokenItem.ID] = $true
+                }
+                
+                # Only load CSOM items if there are broken permissions to process
+                if ($bulkItemData.BrokenCount -gt 0) {
+                    $items = Get-PnPListItem -List $list.Title -PageSize 4995 | Sort-Object -Property @{Expression = {$_["FileRef"]}; Descending = $False}
+                    if($items -eq $null) { $items = @() } elseif($items.GetType().toString() -ne "System.Object[]") { $items = @($items) }
+                    if ($urlType -eq "Folder"){
+                        $allItems = [System.Collections.ArrayList]@()
+                        # add files to be scanned
+                        foreach($item in $items){
+                            # if url type is folder, ignore files that are not below folder
+                            if ( -not ([string]$item["FileRef"]).StartsWith($folderRelativeUrl,"CurrentCultureIgnoreCase") ) { continue }
+                            $allItems.Add($item) | out-null
+                        }
+                    } else { $allItems = $items }
+                } else {
                     $allItems = [System.Collections.ArrayList]@()
-                    # add files to be scanned
-                    foreach($item in $items){
-                        # if url type is folder, ignore files that are not below folder
-                        if ( -not ([string]$item["FileRef"]).StartsWith($folderRelativeUrl,"CurrentCultureIgnoreCase") ) { continue }
-                        $allItems.Add($item) | out-null
-                    }
-                } else { $allItems = $items }
-
-                if ($allItems.Count -gt 10){ Write-Host "    $($allItems.Count) items found." }
+                }
             } else { $allItems = [System.Collections.ArrayList]@() }
 
             # run over all items and check for broken permission inheritance
             $bucket=0
+            $processedBroken = 0
             for ($i=0; $i -lt $allItems.Count; $i++) {
-                if( (($i -ne 0) -and (($i + $logEveryXItems) % $logEveryXItems -eq 0)) -or ($i -eq ($allItems.Count-1)) ){ $bucket++; Write-Host "      Processing items [ $bucket / $([math]::Ceiling( $allItems.Count / $logEveryXItems)) ]..." }
-
                 $item = $allItems[$i]
-                Get-PnPProperty -ClientObject $item -Property HasUniqueRoleAssignments | Out-Null
-                # skip items with permission inheritance
-                if ($item.HasUniqueRoleAssignments) {
+                
+                # OPTIMIZATION TK-004: Skip items without broken permissions (already known from bulk query)
+                if (-not $brokenItemIds.ContainsKey([string]$item.Id)) { continue }
+                
+                $processedBroken++
+                if( ($processedBroken % $logEveryXItems -eq 0) -or ($processedBroken -eq $bulkItemData.BrokenCount) ){ 
+                    $bucket++
+                    Write-Host "      Processing broken items [ $processedBroken / $($bulkItemData.BrokenCount) ]..." 
+                }
+
+                # Item has broken permissions (no need to call Get-PnPProperty anymore)
+                if ($true) {
                     switch ($listType){
                         "List" {
                             $itemRelativeUrl = ($list.DefaultViewUrl + "?FilterField1=ID&FilterValue1=$($item.Id)")
