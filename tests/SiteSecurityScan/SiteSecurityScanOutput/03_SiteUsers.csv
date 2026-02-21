@@ -1,0 +1,9 @@
+Id,LoginName,DisplayName,Email,PermissionLevel,ViaGroup,ViaGroupId,ViaGroupType,AssignmentType,NestingLevel,ParentGroup
+"15",scantest_user1@whizzyapps.onmicrosoft.com,ScanTest User 1,"",Read,"","","",Direct,"0",""
+"11",samuel.gross@whizzyapps.com,Samuel Gross,samuel.gross@whizzyapps.com,Edit,AiSearchTest01 Members,"5",SharePointGroup,Group,"1",""
+"16",scantest_user2@whizzyapps.onmicrosoft.com,ScanTest User 2,"",Edit,AiSearchTest01 Members,"5",SharePointGroup,Group,"1",""
+"6",karsten.held@whizzyapps.com,Karsten Held,karsten.held@whizzyapps.com,Full Control,AiSearchTest01 Owners,"3",SharePointGroup,Group,"1",""
+"",scantest_user6@whizzyapps.onmicrosoft.com,ScanTest User 6,"",Full Control,ScanTest Custom Group,"12",SharePointGroup,Group,"2",ScanTest Custom Group
+"",scantest_user3@whizzyapps.onmicrosoft.com,ScanTest User 3,"",Full Control,ScanTest Custom Group,"12",SharePointGroup,Group,"2",ScanTest Custom Group
+"",scantest_user4@whizzyapps.onmicrosoft.com,ScanTest User 4,"",Full Control,ScanTest Custom Group,"12",SharePointGroup,Group,"2",ScanTest Custom Group
+"",scantest_user5@whizzyapps.onmicrosoft.com,ScanTest User 5,"",Full Control,ScanTest Custom Group,"12",SharePointGroup,Group,"2",ScanTest Custom Group

@@ -1,0 +1,172 @@
+event: start_json
+data: {"job_id": "jb_45", "state": "running", "source_url": "http://127.0.0.1:8000/v2/sites/security_scan?site_id=AiSearchTest01&format=stream", "monitor_url": "/v2/jobs/monitor?job_id=jb_45&format=stream", "started_utc": "2026-02-21T14:55:54.833776Z", "finished_utc": null, "result": null}
+
+event: log
+data: [2026-02-21 15:55:55] Starting security scan for site 'AiSearchTest01'...
+
+event: log
+data: [2026-02-21 15:55:55]   Site URL: https://whizzyapps.sharepoint.com/sites/AiSearchTest01
+
+event: log
+data: [2026-02-21 15:55:55]   Scope: all
+
+event: log
+data: [2026-02-21 15:55:55]   Include subsites: False
+
+event: log
+data: [2026-02-21 15:55:55]   Delete caches: False
+
+event: log
+data: [2026-02-21 15:55:55] Loaded scanner settings from path='e:\dev\SharePoint-GPT-Middleware\.localstorage\AzureOpenAiProject\sites\security_scan_settings.json'
+
+event: log
+data: [2026-02-21 15:55:55] Created temp folder path='e:\dev\SharePoint-GPT-Middleware\.localstorage\AzureOpenAiProject\_temp\security_scan_AiSearchTest01_pb4fftjp'
+
+event: log
+data: [2026-02-21 15:55:55] [ 1 / 6 ] Connecting to SharePoint site_url='https://whizzyapps.sharepoint.com/sites/AiSearchTest01'...
+
+event: log
+data: [2026-02-21 15:55:56]   OK. Connected to site_title='AiSearchTest01'
+
+event: log
+data: [2026-02-21 15:55:56] [ 2 / 6 ] Initializing Microsoft Graph client...
+
+event: log
+data: [2026-02-21 15:55:57]   OK. Graph client ready.
+
+event: log
+data: [2026-02-21 15:55:57] [ 3 / 6 ] Scanning site contents...
+
+event: log
+data: [2026-02-21 15:55:58]   12 lists/libraries found.
+
+event: log
+data: [2026-02-21 15:55:58] [ 4 / 6 ] Scanning site groups (graph_client_available=True)...
+
+event: log
+data: [2026-02-21 15:55:58]   5 role assignments found.
+
+event: log
+data: [2026-02-21 15:55:58]     ( 1 / 5 ) SharePointGroup: 'AiSearchTest01 Owners' -> Full Control
+
+event: log
+data: [2026-02-21 15:55:58]     ( 2 / 5 ) SharePointGroup: 'AiSearchTest01 Visitors' -> Read
+
+event: log
+data: [2026-02-21 15:55:58]     ( 3 / 5 ) SharePointGroup: 'AiSearchTest01 Members' -> Edit
+
+event: log
+data: [2026-02-21 15:55:58]     ( 4 / 5 ) SharePointGroup: 'ScanTest Custom Group' -> Full Control
+
+event: log
+data: [2026-02-21 15:55:58]     ( 5 / 5 ) User: 'ScanTest User 1' -> Read
+
+event: log
+data: [2026-02-21 15:55:59]   4 SharePoint groups to resolve, 1 direct assignment.
+
+event: log
+data: [2026-02-21 15:55:59]     ( 1 / 4 ) SharePointGroup: group_title='AiSearchTest01 Members'...
+
+event: log
+data: [2026-02-21 15:55:59]     ( 2 / 4 ) SharePointGroup: group_title='AiSearchTest01 Owners'...
+
+event: log
+data: [2026-02-21 15:56:00]     ( 3 / 4 ) SharePointGroup: group_title='AiSearchTest01 Visitors'...
+
+event: log
+data: [2026-02-21 15:56:00]     ( 4 / 4 ) SharePointGroup: group_title='ScanTest Custom Group'...
+
+event: log
+data: [2026-02-21 15:56:01]   4 groups, 8 users found.
+
+event: log
+data: [2026-02-21 15:56:01] [ 5 / 6 ] Scanning items with broken inheritance...
+
+event: log
+data: [2026-02-21 15:56:01]   DEBUG: Found 28 total lists, filtering...
+
+event: log
+data: [2026-02-21 15:56:01]   DEBUG: SKIPPED 'Form Templates' template=101 hidden=False in_ignore=True
+
+event: log
+data: [2026-02-21 15:56:01]   DEBUG: SKIPPED 'Site Assets' template=101 hidden=False in_ignore=True
+
+event: log
+data: [2026-02-21 15:56:01]   DEBUG: SKIPPED 'Style Library' template=101 hidden=False in_ignore=True
+
+event: log
+data: [2026-02-21 15:56:01]   DEBUG: SKIPPED 'TaxonomyHiddenList' template=100 hidden=True in_ignore=True
+
+event: log
+data: [2026-02-21 15:56:01]   9 lists/libraries to scan.
+
+event: log
+data: [2026-02-21 15:56:01]     ( 1 / 9 ) List: list_title='Acronyms'...
+
+event: log
+data: [2026-02-21 15:56:06]       Found 0 items with broken permissions
+
+event: log
+data: [2026-02-21 15:56:06]     ( 2 / 9 ) Library: list_title='DocumentLibrary01'...
+
+event: log
+data: [2026-02-21 15:56:07]       Found 0 items with broken permissions
+
+event: log
+data: [2026-02-21 15:56:07]     ( 3 / 9 ) Library: list_title='DocumentLibrary02'...
+
+event: log
+data: [2026-02-21 15:56:07]       Found 0 items with broken permissions
+
+event: log
+data: [2026-02-21 15:56:07]     ( 4 / 9 ) Library: list_title='Documents'...
+
+event: log
+data: [2026-02-21 15:56:08]       Found 0 items with broken permissions
+
+event: log
+data: [2026-02-21 15:56:08]     ( 5 / 9 ) Library: list_title='POC_PermissionTest_50'...
+
+event: log
+data: [2026-02-21 15:56:08]       Found 10 items with broken permissions
+
+event: log
+data: [2026-02-21 15:56:14]     ( 6 / 9 ) Library: list_title='POC_PermissionTest_6000'...
+
+event: log
+data: [2026-02-21 15:56:14]   WARN: List view threshold exceeded on 'POC_PermissionTest_6000' - this library has >5000 items and requires indexed column queries
+
+event: log
+data: [2026-02-21 15:56:14]     ( 7 / 9 ) List: list_title='ScanTestList'...
+
+event: log
+data: [2026-02-21 15:56:15]       Found 1 items with broken permissions
+
+event: log
+data: [2026-02-21 15:56:15]     ( 8 / 9 ) List: list_title='Security training catalog'...
+
+event: log
+data: [2026-02-21 15:56:16]       Found 0 items with broken permissions
+
+event: log
+data: [2026-02-21 15:56:16]     ( 9 / 9 ) SitePages: list_title='Site Pages'...
+
+event: log
+data: [2026-02-21 15:56:16]       Found 0 items with broken permissions
+
+event: log
+data: [2026-02-21 15:56:16]   1903 items scanned, 11 with broken inheritance.
+
+event: log
+data: [2026-02-21 15:56:16] [ 6 / 6 ] Creating report archive...
+
+event: log
+data: [2026-02-21 15:56:16]   OK. Report created report_path='site_scans/2026-02-21_14-56-16_[security_scan]_[AiSearchTest01]'
+
+event: log
+data: [2026-02-21 15:56:17] Scan complete. 4 groups, 8 users, 11 items with broken inheritance.
+
+event: end_json
+data: {"job_id": "jb_45", "state": "completed", "source_url": "http://127.0.0.1:8000/v2/sites/security_scan?site_id=AiSearchTest01&format=stream", "monitor_url": "/v2/jobs/monitor?job_id=jb_45&format=stream", "started_utc": "2026-02-21T14:55:54.833776Z", "finished_utc": "2026-02-21T14:56:17.003085Z", "result": {"ok": true, "error": "", "data": {"report_path": "site_scans/2026-02-21_14-56-16_[security_scan]_[AiSearchTest01]", "stats": {"lists_scanned": 12, "groups_found": 4, "users_found": 8, "external_users_found": 0, "items_scanned": 1903, "items_with_individual_permissions": 11, "items_shared_with_everyone": 0, "subsites_scanned": 0}}}}
+
+

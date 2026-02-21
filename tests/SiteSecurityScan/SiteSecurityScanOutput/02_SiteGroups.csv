@@ -1,0 +1,5 @@
+Id,Role,Title,PermissionLevel,Owner
+"5",SiteMembers,AiSearchTest01 Members,Edit,AiSearchTest01 Owners
+"3",SiteOwners,AiSearchTest01 Owners,Full Control,AiSearchTest01 Owners
+"4",SiteVisitors,AiSearchTest01 Visitors,Read,AiSearchTest01 Owners
+"12",Custom,ScanTest Custom Group,Full Control,Karsten Held
