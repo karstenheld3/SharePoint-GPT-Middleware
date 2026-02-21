@@ -2,6 +2,38 @@
 
 Compares output from PowerShell SharePointPermissionScanner with V2 Middleware security_scan API.
 
+## Prerequisites
+
+### PowerShell 7+ Required
+
+The PowerShell scanner requires **PowerShell 7+** (pwsh), not Windows PowerShell 5.1.
+
+**Why?** The PnP.PowerShell module is installed in PowerShell 7's module path (`C:\Users\<user>\Documents\PowerShell\Modules\`), which is separate from Windows PowerShell 5.1's path (`C:\Users\<user>\Documents\WindowsPowerShell\Modules\`).
+
+**Symptom if using wrong version:**
+```
+ERROR: The term 'Connect-PnPOnline' is not recognized as the name of a cmdlet...
+```
+
+**Correct invocation:**
+```powershell
+# Use pwsh (PowerShell 7+), NOT powershell.exe
+pwsh -ExecutionPolicy Bypass -File "03_RunPowerShellScanner.ps1"
+```
+
+**Check your version:**
+```powershell
+$PSVersionTable.PSVersion  # Should show Major = 7 or higher
+```
+
+### PnP.PowerShell Module
+
+Install if not present:
+```powershell
+# Run in PowerShell 7 (pwsh)
+Install-Module -Name PnP.PowerShell -Scope CurrentUser
+```
+
 ## Folder Structure
 
 ```
