@@ -652,7 +652,7 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
     if($groups -eq $null) { $groups = @() } elseif($groups.GetType().toString() -ne "System.Object[]") { $groups = @($groups) }
     if ($groups.Count -gt 3){ Write-Host "  $($groups.Count) groups found in site collection." }
     # add to cache so we can later get a group by its id
-    $groups | ForEach-Object { $global:sharePointGroupCache[$_.Id] = $:_ }
+    $groups | ForEach-Object { $global:sharePointGroupCache[$_.Id] = $_ }
 
     $jobSiteOwnerGroup = Get-PnPGroup -AssociatedOwnerGroup; $jobSiteMemberGroup = Get-PnPGroup -AssociatedMemberGroup; $jobSiteVisitorGroup = Get-PnPGroup -AssociatedVisitorGroup
     
@@ -688,7 +688,7 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
             # and there is a role assignment in the site or subsite that uses this group
             if ( $siteRoleAssignmentsCache.ContainsKey($group.Id) ) {
                 addGroupAndGroupMembersToOutputLines -group $group -role "Custom" -roleAssignments $roleAssignments -groupOutputLines $outputLines2SiteGroups -userOutputLines $outputLines3SiteUsers -recurse
-                break
+                $sitePrincipalIdsThatHaveBeenWrittenToFile[$group.Id] = ""
             }
         }
     }
