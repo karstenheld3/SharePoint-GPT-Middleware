@@ -960,13 +960,15 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
                 if  ($i -eq ($allItems.Count-1)) {
                     $debug = "End of items"
                 }
-                # if we are at last item or line count reaches defined number, append to output files and reset output lines
-                if ( ($i -eq ($allItems.Count-1)) -or ($outputLines1SiteContents.Count -ge $writeEveryXLines) ) { appendToFile -file $outputFile1SiteContents -lines $outputLines1SiteContents; $outputLines1SiteContents = [System.Collections.ArrayList]@() }
-                if ( ($i -eq ($allItems.Count-1)) -or ($outputLines2SiteGroups.Count -ge $writeEveryXLines) ) { appendToFile -file $outputFile2SiteGroups -lines $outputLines2SiteGroups; $outputLines2SiteGroups = [System.Collections.ArrayList]@() }
-                if ( ($i -eq ($allItems.Count-1)) -or ($outputLines3SiteUsers.Count -ge $writeEveryXLines) ) { appendToFile -file $outputFile3SiteUsers -lines $outputLines3SiteUsers; $outputLines3SiteUsers = [System.Collections.ArrayList]@() }
-                if ( ($i -eq ($allItems.Count-1)) -or ($outputLines4IndividualPermissionItems.Count -ge $writeEveryXLines) ) { appendToFile -file $outputFile4IndividualPermissionItems -lines $outputLines4IndividualPermissionItems; $outputLines4IndividualPermissionItems = [System.Collections.ArrayList]@() }
-                if ( ($i -eq ($allItems.Count-1)) -or ($outputLines5IndividualPermissionItemAccess.Count -ge $writeEveryXLines) ) { appendToFile -file $outputFile5IndividualPermissionItemAccess -lines $outputLines5IndividualPermissionItemAccess; $outputLines5IndividualPermissionItemAccess = [System.Collections.ArrayList]@() }
             } # loop over list items
+            
+            # Flush remaining output lines after processing all items in this list
+            # (moved outside the item loop to ensure flush happens even when items are skipped)
+            if ($outputLines1SiteContents.Count -gt 0) { appendToFile -file $outputFile1SiteContents -lines $outputLines1SiteContents; $outputLines1SiteContents = [System.Collections.ArrayList]@() }
+            if ($outputLines2SiteGroups.Count -gt 0) { appendToFile -file $outputFile2SiteGroups -lines $outputLines2SiteGroups; $outputLines2SiteGroups = [System.Collections.ArrayList]@() }
+            if ($outputLines3SiteUsers.Count -gt 0) { appendToFile -file $outputFile3SiteUsers -lines $outputLines3SiteUsers; $outputLines3SiteUsers = [System.Collections.ArrayList]@() }
+            if ($outputLines4IndividualPermissionItems.Count -gt 0) { appendToFile -file $outputFile4IndividualPermissionItems -lines $outputLines4IndividualPermissionItems; $outputLines4IndividualPermissionItems = [System.Collections.ArrayList]@() }
+            if ($outputLines5IndividualPermissionItemAccess.Count -gt 0) { appendToFile -file $outputFile5IndividualPermissionItemAccess -lines $outputLines5IndividualPermissionItemAccess; $outputLines5IndividualPermissionItemAccess = [System.Collections.ArrayList]@() }
 
 
         } # loop over lists
