@@ -1,5 +1,13 @@
 # 03_RunPowerShellScanner.ps1
 # Runs SharePointPermissionScanner - output stays in SharePointPermissionScanner folder
+# REQUIRES: PowerShell 7+ (pwsh) - PnP.PowerShell module is installed there
+
+# Check if running in PowerShell 7+
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    Write-Host "ERROR: This script requires PowerShell 7+ (pwsh). Current version: $($PSVersionTable.PSVersion)" -ForegroundColor Red
+    Write-Host "Run with: pwsh -ExecutionPolicy Bypass -File `"$($MyInvocation.MyCommand.Path)`"" -ForegroundColor Yellow
+    exit 1
+}
 
 $ErrorActionPreference = "Stop"
 $scriptDir = $PSScriptRoot
