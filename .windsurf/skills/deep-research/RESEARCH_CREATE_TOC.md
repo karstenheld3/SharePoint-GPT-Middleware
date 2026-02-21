@@ -4,9 +4,9 @@ Global workflow for creating Table of Contents in deep research. Used by all res
 
 ## Prerequisites
 
-- `__[TOPIC]_SOURCES.md` exists with all sources collected and IDs assigned
-- [TOPIC] identifier defined (2-6 uppercase chars)
-- [SUBJECT] full name defined
+- `__[SUBJECT]_SOURCES.md` exists with all sources collected and IDs assigned
+- [SUBJECT] identifier defined (2-6 uppercase chars, e.g., `MSGRAPH`, `OAIAPI`)
+- Full subject name defined (e.g., "Microsoft Graph API")
 
 ## Workflow
 
@@ -16,17 +16,20 @@ Global workflow for creating Table of Contents in deep research. Used by all res
    - `[SUBJECT]` → full name (e.g., `OpenAI API`)
    - `[VERSION]` → version or documentation date
 3. **Create categories**: Group topics logically from sources
-4. **List topic files**: One entry per topic with link and brief description
-5. **Count total**: Add `**Total topics: XX**` at start of Topic Files section
+4. **List topic files**: One entry per topic with clickable link, Doc ID, and brief description
+   - Format: `[\`_INFO_[TOPIC]-IN[XX]_[SUBTOPIC].md\`](./_INFO_[TOPIC]-IN[XX]_[SUBTOPIC].md) [TOPIC-IN[XX]]`
+   - XX = sequential number (01, 02, 03...) - files sort alphabetically in TOC order
+5. **Add Topic Count section**: Summary of total and per-category counts
 6. **Write Topic Details**: For each topic add Scope, Contents, Sources
 7. **Add Related**: List related/competing technologies with URLs
 8. **Write Summary**: 5-15 sentences covering all key facts
 9. **Delete template instructions**: Remove the HTML comment block
-10. **Run verification**: `/verify` > `/critique` > `/reconcile /implement` > `/verify`
+10. **Run quality pipeline**: verify → critique → reconcile → implement → verify
 
 ## File Naming
 
-Output: `__[TOPIC]_TOC.md` (double underscore = master document)
+Output: `__[SUBJECT]_TOC.md` (double underscore = master document)
+Doc ID: `[SUBJECT]-TOC` (not numbered)
 
 ## Structure Rules
 
@@ -38,9 +41,11 @@ Output: `__[TOPIC]_TOC.md` (double underscore = master document)
 ## Quality Gates
 
 **Done when**:
-- All sources from `__[TOPIC]_SOURCES.md` covered
+- All sources from `__[SUBJECT]_SOURCES.md` covered
+- Doc ID is `[SUBJECT]-TOC` (not numbered)
 - Summary is 5-15 sentences
-- All topic links follow format: `[_INFO_[TOPIC]_[SUBTOPIC].md](#topic-subtopic)`
+- All topic links follow format: `[\`_INFO_[TOPIC]-IN[XX]_[SUBTOPIC].md\`](./_INFO_[TOPIC]-IN[XX]_[SUBTOPIC].md) [TOPIC-IN[XX]]`
+- Topic Count section present with per-category breakdown
 - Related technologies section complete
 - `/verify` passes
 

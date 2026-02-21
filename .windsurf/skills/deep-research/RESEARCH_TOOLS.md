@@ -52,9 +52,13 @@ Fail? → Escalate to Playwright
 - No authentication needed
 - No cookie/consent dialogs blocking content
 
-### Fallback: Playwright MCP (Escalation)
+### Browser Tools: ms-playwright-mcp (Default) and playwriter (Authenticated)
 
-**Escalate to Playwright when built-in tools fail:**
+**ms-playwright-mcp** is the DEFAULT browser tool for research. It assumes all content is publicly accessible without the user being logged in.
+
+**playwriter MCP** is the EXCEPTION. Use ONLY when a browser session with user credentials or MFA login is required (e.g., authenticated portals, subscription content behind login).
+
+**Escalate to browser tools when built-in tools fail:**
 
 #### Scenario 1: Unreadable or Unscrapable Sites
 

@@ -94,7 +94,10 @@ Estimated credits: [pending]
 - For each topic file from TASKS:
   1. Research using official source URLs first
   2. Cross-reference with community sources for limitations, bugs, quirks
-  3. Create `_INFO_[TOPIC]_[SUBTOPIC].md` using template
+  3. Create `_INFO_[TOPIC]-IN[XX]_[SUBTOPIC].md` using template
+     - XX = sequential Doc ID number (01, 02, 03...)
+     - Files sort alphabetically in TOC order
+     - Example: `_INFO_OASDKP-IN01_INTRODUCTION.md`
   4. Include "Limitations and Known Issues" section with community source citations
   5. Run `/verify` then `/critique` then `/reconcile /implement` findings then `/verify` again
   6. Update TASKS progress
@@ -115,12 +118,25 @@ Estimated credits: [pending]
 - Run final `/verify` with context: RESEARCH_STRATEGY_TECH_MCPI
 - **Done when**: All strategy requirements met, links work, summaries synced, metadata added
 
+**Phase 6.5: Completeness Verification**
+- Re-read official documentation structure (main navigation/sidebar)
+- Compare against TOC - identify any missed topics
+- For each gap:
+  1. Assess priority (High: core feature, Medium: useful, Low: niche)
+  2. Create INFO files for High/Medium priority gaps
+  3. Update TOC with new topics
+- Document coverage percentage in TOC header
+- **Done when**: All High/Medium priority topics documented, gaps acknowledged
+
 **Rollback**: If any phase reveals fundamental error in earlier phase, document in PROBLEMS.md and consult user before rollback.
 
 **File Naming Conventions:**
-- `__` prefix (double underscore): Master/index documents (SOURCES, TOC, TEMPLATE)
-- `_` prefix (single underscore): Topic content files (INFO documents)
+- `__[SUBJECT]_TOC.md`: Table of Contents (Doc ID: `[SUBJECT]-TOC`)
+- `__[SUBJECT]_SOURCES.md`: Source list (Doc ID: `[SUBJECT]-SOURCES`)
+- `_INFO_[SUBJECT]-IN[XX]_[TOPIC].md`: Content files (Doc ID: `[SUBJECT]-IN01`, `IN02`, etc.)
 - No prefix: Tracking files (TASKS, NOTES, PROBLEMS, PROGRESS)
+
+**Doc ID Exceptions:** TOC and SOURCES use `-TOC` and `-SOURCES` suffixes (not numbered). Content starts at `-IN01`.
 
 **Verification Labels:**
 - `[VERIFIED]` - Confirmed from official documentation
@@ -142,6 +158,9 @@ Estimated credits: [pending]
 - Non-clickable references in TOC
 - Ignoring community sources for known issues
 - Treating community reports as verified without citation
+- Non-sequential file numbering (files should sort in TOC order)
+- Plain text file references in TOC (use markdown links)
+- Skipping completeness verification against source docs
 
 **Quality Gates:**
 - Every topic file verified against source URLs

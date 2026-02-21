@@ -1,12 +1,12 @@
 # [SUBJECT] - Table of Contents
 
-**Doc ID**: [TOPIC]-TOC01
+**Doc ID**: [SUBJECT]-TOC
 **Goal**: Master index for all [SUBJECT] documentation files
 **Version scope**: [VERSION or Documentation date YYYY-MM-DD]
 **Research stats**: [pending - added in final phase]
 
 **Depends on:**
-- `__[TOPIC]_SOURCES.md [[TOPIC]-IN01]` for source references
+- `__[SUBJECT]_SOURCES.md [[SUBJECT]-SOURCES]` for source references
 
 ## Summary
 
@@ -14,17 +14,34 @@
 
 ## Topic Files
 
-**Total topics: XX**
+### [Category 1] (X files)
 
-### [Category 1]
-- [_INFO_[TOPIC]_[SUBTOPIC1].md](#topic-subtopic1) - Brief description
-- [_INFO_[TOPIC]_[SUBTOPIC2].md](#topic-subtopic2) - Brief description
+- [`_INFO_[TOPIC]-IN01_[SUBTOPIC1].md`](./_INFO_[TOPIC]-IN01_[SUBTOPIC1].md) [TOPIC-IN01]
+  - Brief description of contents
+  - Sources: [TOPIC]-SC-[SOURCE]-[DOCNAME]
 
-### [Category 2]
-- [_INFO_[TOPIC]_[SUBTOPIC3].md](#topic-subtopic3) - Brief description
+- [`_INFO_[TOPIC]-IN02_[SUBTOPIC2].md`](./_INFO_[TOPIC]-IN02_[SUBTOPIC2].md) [TOPIC-IN02]
+  - Brief description of contents
+  - Sources: [TOPIC]-SC-[SOURCE]-[DOCNAME]
 
-### [Category N]
-- [_INFO_[TOPIC]_[SUBTOPICN].md](#topic-subtopicn) - Brief description
+### [Category 2] (X files)
+
+- [`_INFO_[TOPIC]-IN03_[SUBTOPIC3].md`](./_INFO_[TOPIC]-IN03_[SUBTOPIC3].md) [TOPIC-IN03]
+  - Brief description of contents
+  - Sources: [TOPIC]-SC-[SOURCE]-[DOCNAME]
+
+### [Category N] (X files)
+
+- [`_INFO_[TOPIC]-IN[XX]_[SUBTOPICN].md`](./_INFO_[TOPIC]-IN[XX]_[SUBTOPICN].md) [TOPIC-IN[XX]]
+  - Brief description of contents
+  - Sources: [TOPIC]-SC-[SOURCE]-[DOCNAME]
+
+## Topic Count
+
+- **Total Topics**: XX
+- **[Category 1]**: X
+- **[Category 2]**: X
+- **[Category N]**: X
 
 ## Topic Details
 
@@ -62,8 +79,10 @@
 2. [TOPIC] = 2-6 char uppercase identifier (e.g., OAIAPI, GRPH, AUTH)
 3. [SUBJECT] = Full name (e.g., "OpenAI API", "Microsoft Graph API")
 4. Categories should group related topics logically
-5. Each topic file link format: [_INFO_[TOPIC]_[SUBTOPIC].md](#topic-subtopic)
-6. Topic Details provide scope, contents preview, and source IDs
-7. Research stats added in final phase from STRUT
-8. NO Progress Tracking section - that goes in STRUT/TASKS
+5. Each topic file link format: [`_INFO_[TOPIC]-IN[XX]_[SUBTOPIC].md`](./_INFO_[TOPIC]-IN[XX]_[SUBTOPIC].md) [TOPIC-IN[XX]]
+6. XX = sequential number (01, 02, 03...) - files sort alphabetically in TOC order
+7. Topic Details provide scope, contents preview, and source IDs
+8. Research stats added in final phase from STRUT
+9. NO Progress Tracking section - that goes in STRUT/TASKS
+10. Topic Count section summarizes coverage by category
 -->
