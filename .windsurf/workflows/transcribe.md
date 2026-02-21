@@ -55,7 +55,7 @@ if ($hasSkill -and $hasKeys) {
 
 ### For Local PDF
 ```powershell
-python .windsurf/skills/pdf-tools/convert-pdf-to-jpg.py "path/to/document.pdf" --dpi 300  # 300 DPI (Dots Per Inch)
+python .windsurf/skills/pdf-tools/convert-pdf-to-jpg.py "path/to/document.pdf" --dpi 150  # 150 DPI - optimal for transcription
 ```
 
 ### For URL to PDF
@@ -65,7 +65,7 @@ $filename = [System.IO.Path]::GetFileName($url)
 # Download to: [SESSION_FOLDER] > [WORKSPACE_FOLDER]
 Invoke-WebRequest -Uri $url -OutFile "[SESSION_FOLDER]/$filename"
 # Then convert to JPG
-python .windsurf/skills/pdf-tools/convert-pdf-to-jpg.py "[SESSION_FOLDER]/$filename" --dpi 300
+python .windsurf/skills/pdf-tools/convert-pdf-to-jpg.py "[SESSION_FOLDER]/$filename" --dpi 150
 ```
 
 ### For Web Page
@@ -459,7 +459,7 @@ After transcription, run `/verify` to:
 1. **4 pages max per call** - Prevents context overflow and ensures quality
 2. **Write immediately** - Append to file after each chunk
 3. **Track progress** - Use progress markers for resumability
-4. **300 DPI for PDFs** - Higher quality for accurate transcription
+4. **150 DPI for PDFs** - Optimal balance of quality and processing speed for transcription
 5. **Keep source images** - Required for `/verify`
 6. **No omissions** - Every piece of content must be transcribed
 7. **ASCII + XML for figures** - Every figure requires both ASCII art and `<transcription_notes>` XML block
