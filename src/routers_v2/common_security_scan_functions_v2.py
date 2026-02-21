@@ -2,7 +2,7 @@
 # Implements permission scanning per _V2_SPEC_SITES_SECURITY_SCAN.md [SITE-SP03]
 # V2 version using MiddlewareLogger and Office365-REST-Python-Client
 
-import asyncio, datetime, json, os, re, tempfile
+import asyncio, datetime, json, os, re, requests, tempfile
 from typing import Any, AsyncGenerator, Optional
 from azure.identity import CertificateCredential
 from msgraph import GraphServiceClient
@@ -14,7 +14,7 @@ from routers_v2.common_sharepoint_functions_v2 import connect_to_site_using_clie
 # ----------------------------------------- START: Constants ------------------------------------------------------------------
 
 MAX_NESTING_LEVEL = 5
-BATCH_SIZE = 5000
+BATCH_SIZE = 2000  # Reduced from 5000 to avoid SharePoint list view threshold errors
 PROGRESS_INTERVAL_SECONDS = 5
 
 # Built-in list templates to include (Generic List, Document Library, Site Pages)
@@ -155,6 +155,19 @@ def reset_graph_client() -> None:
 
 
 # ----------------------------------------- START: Group Resolution -----------------------------------------------------------
+
+def normalize_login_name(login_name: str) -> str:
+  """Normalize login name to email format (strip claims prefix to match PowerShell scanner)."""
+  if not login_name: return ""
+  # Strip common claims prefixes: i:0#.f|membership|user@domain.com -> user@domain.com
+  if login_name.startswith("i:0#.f|membership|"):
+    return login_name[18:]  # len("i:0#.f|membership|") = 18
+  # Strip other common prefixes
+  if "|" in login_name and login_name.startswith("i:"):
+    parts = login_name.split("|")
+    if len(parts) >= 2:
+      return parts[-1]
+  return login_name
 
 def is_entra_id_group(login_name: str) -> bool:
   """Check if login name represents an Entra ID (Azure AD) group."""
@@ -298,7 +311,7 @@ async def resolve_sharepoint_group_members(ctx: ClientContext, group, storage_pa
     else:
       members.append({
         "Id": str(user.id) if user.id else "",
-        "LoginName": login_name,
+        "LoginName": normalize_login_name(login_name),
         "DisplayName": user.title or "",
         "Email": user.email or "",
         "NestingLevel": nesting_level,
@@ -316,10 +329,14 @@ async def resolve_sharepoint_group_members(ctx: ClientContext, group, storage_pa
 
 # ----------------------------------------- START: Scanning Functions ---------------------------------------------------------
 
-async def scan_site_contents(ctx: ClientContext, output_folder: str, writer, logger: MiddlewareLogger, current_step: int, total_steps: int) -> AsyncGenerator[str, None]:
+async def scan_site_contents(ctx: ClientContext, output_folder: str, writer, logger: MiddlewareLogger, current_step: int, total_steps: int, settings: dict = None) -> AsyncGenerator[str, None]:
   """Scan lists/libraries and write 01_SiteContents.csv. Yields SSE events. Sets writer._step_result with stats."""
   stats = {"lists_scanned": 0}
   contents_file = os.path.join(output_folder, "01_SiteContents.csv")
+  
+  # Extract ignore_lists from settings
+  if settings is None: settings = {}
+  ignore_lists = set(settings.get("ignore_lists", []))
   
   # Only write header when called from main scan (step > 0), not from subsite scanning
   if current_step > 0:
@@ -334,6 +351,7 @@ async def scan_site_contents(ctx: ClientContext, output_folder: str, writer, log
   for lst in lists:
     if lst.base_template not in INCLUDED_TEMPLATES: continue
     if lst.properties.get("Hidden", False): continue
+    if lst.title in ignore_lists: continue
     
     stats["lists_scanned"] += 1
     
@@ -422,7 +440,7 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
         if any(ignored in login_name for ignored in ignore_accounts): continue
         direct_user_rows.append({
           "Id": str(member.id) if member.id else "",
-          "LoginName": login_name,
+          "LoginName": normalize_login_name(login_name),
           "DisplayName": member.title or "",
           "Email": member.email or "" if hasattr(member, 'email') else "",
           "PermissionLevel": perm_name,
@@ -439,7 +457,7 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
         if any(ignored in login_name for ignored in ignore_accounts): continue
         direct_user_rows.append({
           "Id": "",
-          "LoginName": login_name,
+          "LoginName": normalize_login_name(login_name),
           "DisplayName": member.title or "",
           "Email": "",
           "PermissionLevel": perm_name,
@@ -526,7 +544,20 @@ async def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, o
   if current_step > 0:
     yield writer.emit_log(f"[{ts}] [ {current_step} / {total_steps} ] Scanning items with broken inheritance...")
   
-  all_lists = ctx.web.lists.get().execute_query()
+  all_lists = ctx.web.lists.get().select(["Id", "Title", "BaseTemplate", "Hidden", "DefaultViewUrl"]).execute_query()
+  
+  # Debug: log all lists and why they pass/fail filtering
+  ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  yield writer.emit_log(f"[{ts}]   DEBUG: Found {len(all_lists)} total lists, filtering...")
+  for lst in all_lists:
+    template = lst.base_template
+    hidden = lst.properties.get("Hidden", False)
+    title = lst.title
+    in_ignore = title in ignore_lists
+    passes = template in INCLUDED_TEMPLATES and not hidden and not in_ignore
+    if not passes and template in INCLUDED_TEMPLATES:
+      yield writer.emit_log(f"[{ts}]   DEBUG: SKIPPED '{title}' template={template} hidden={hidden} in_ignore={in_ignore}")
+  
   # Filter to relevant lists: skip hidden and lists in ignore_lists
   lists_to_scan = [lst for lst in all_lists if lst.base_template in INCLUDED_TEMPLATES and not lst.properties.get("Hidden", False) and lst.title not in ignore_lists]
   total_lists = len(lists_to_scan)
@@ -546,93 +577,185 @@ async def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, o
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     yield writer.emit_log(f"[{ts}]     ( {list_idx} / {total_lists} ) {list_type}: list_title='{lst.title}'...")
     
-    # Paginate through items
+    # Try SDK first, fall back to REST API for large libraries (>5000 items)
     last_id = 0
     batch_num = 0
+    list_items_with_perms = []  # Items with broken permissions (as dicts)
+    use_rest_api = False
+    
     while True:
       try:
         items = lst.items.filter(f"ID gt {last_id}").select(
           ["ID", "FileRef", "FileLeafRef", "FSObjType", "HasUniqueRoleAssignments"]
         ).top(BATCH_SIZE).get().execute_query()
+        
+        if len(items) == 0: break
+        
+        batch_num += 1
+        for item in items:
+          stats["items_scanned"] += 1
+          if item.properties.get("HasUniqueRoleAssignments"):
+            list_items_with_perms.append({
+              "ID": item.properties.get("ID"),
+              "FileRef": item.properties.get("FileRef", ""),
+              "FileLeafRef": item.properties.get("FileLeafRef", ""),
+              "FSObjType": item.properties.get("FSObjType", 0),
+              "sdk_item": item  # Keep SDK item reference for role assignments
+            })
+          last_id = item.properties.get("ID", 0)
+        
+        if batch_num % 2 == 0:
+          ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+          yield writer.emit_log(f"[{ts}]       Scanned {stats['items_scanned']} items, {len(list_items_with_perms)} with broken permissions...")
+        
+        if len(items) < BATCH_SIZE: break
+        
+      except Exception as e:
+        error_str = str(e)
+        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if "SPQueryThrottledException" in error_str or "list view threshold" in error_str.lower():
+          yield writer.emit_log(f"[{ts}]       SDK throttled - switching to REST API for large library...")
+          use_rest_api = True
+        else:
+          yield writer.emit_log(f"[{ts}]   ERROR: Failed to get items from '{lst.title}' -> {e}")
+        break
+    
+    # If SDK was throttled, use REST API with odata.nextLink pagination via SDK's request mechanism
+    if use_rest_api:
+      from office365.runtime.http.request_options import RequestOptions
+      list_items_with_perms = []  # Reset
+      stats["items_scanned"] -= batch_num * BATCH_SIZE  # Adjust count
+      batch_num = 0
+      
+      site_url = ctx.web.url
+      list_id = lst.id
+      next_url = f"{site_url}/_api/web/lists(guid'{list_id}')/items?$select=ID,FileRef,FileLeafRef,FSObjType,HasUniqueRoleAssignments&$top=5000"
+      
+      while next_url:
+        try:
+          # Use SDK's authenticated request mechanism
+          request = RequestOptions(next_url)
+          request.set_header("Accept", "application/json;odata=verbose")
+          response = ctx.pending_request().execute_request_direct(request)
+          
+          if response.status_code != 200:
+            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            yield writer.emit_log(f"[{ts}]   ERROR: REST API returned {response.status_code}")
+            break
+          
+          data = response.json()
+          items_data = data.get("d", {}).get("results", [])
+          
+          for item_data in items_data:
+            stats["items_scanned"] += 1
+            if item_data.get("HasUniqueRoleAssignments"):
+              list_items_with_perms.append({
+                "ID": item_data.get("ID"),
+                "FileRef": item_data.get("FileRef", ""),
+                "FileLeafRef": item_data.get("FileLeafRef", ""),
+                "FSObjType": item_data.get("FSObjType", 0),
+                "sdk_item": None  # Will fetch SDK item when needed
+              })
+          
+          batch_num += 1
+          if batch_num % 2 == 0:
+            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            yield writer.emit_log(f"[{ts}]       REST: Fetched {stats['items_scanned']} items, {len(list_items_with_perms)} with broken permissions...")
+          
+          # Handle pagination
+          next_link = data.get("d", {}).get("__next", "")
+          next_url = next_link if next_link else None
+          
+        except Exception as e:
+          ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+          yield writer.emit_log(f"[{ts}]   ERROR: REST API failed -> {e}")
+          break
+      
+      ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+      yield writer.emit_log(f"[{ts}]       REST API complete: {len(list_items_with_perms)} items with broken permissions")
+    
+    if len(list_items_with_perms) == 0:
+      continue  # Skip to next list
+    
+    # Process items with broken permissions
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    yield writer.emit_log(f"[{ts}]       Found {len(list_items_with_perms)} items with broken permissions")
+    
+    for item_data in list_items_with_perms:
+      stats["items_with_individual_permissions"] += 1
+      item_id = item_data.get("ID", 0)
+      file_ref = item_data.get("FileRef", "")
+      file_name = item_data.get("FileLeafRef", "")
+      fs_obj_type = item_data.get("FSObjType", 0)
+      sdk_item = item_data.get("sdk_item")  # May be None for REST API items
+      
+      # Match PowerShell scanner Type values: File, Folder, Item
+      if fs_obj_type == 1:
+        item_type = "Folder"
+      elif lst.base_template == 101:  # Document Library
+        item_type = "File"
+      else:
+        item_type = "Item"
+      
+      # Build full URL - PowerShell uses different formats for lists vs libraries
+      site_url = ctx.web.url
+      tenant_url = f"https://{site_url.split('//')[1].split('/')[0]}"
+      if lst.base_template == 100:  # List - use DefaultViewUrl with filter
+        default_view_url = lst.properties.get("DefaultViewUrl", "") or ""
+        if not default_view_url:
+          default_view_url = file_ref  # Fallback to FileRef
+        full_url = f"{tenant_url}{default_view_url}?FilterField1=ID&FilterValue1={item_id}"
+      else:  # Library/SitePages - use FileRef
+        full_url = f"{tenant_url}{file_ref}" if file_ref.startswith("/") else file_ref
+      
+      item_rows.append({
+        "Id": str(item_id),
+        "Type": item_type,
+        "Title": file_name,
+        "Url": full_url
+      })
+      
+      # Get role assignments for this item
+      try:
+        # For REST API items, fetch SDK item first
+        if sdk_item is None:
+          sdk_item = lst.items.get_by_id(item_id)
+        role_assignments = sdk_item.role_assignments.get()
+        role_assignments.expand(["Member", "RoleDefinitionBindings"]).execute_query()
+        ra_list = list(role_assignments)
+        
+        for ra in ra_list:
+          member = ra.member
+          bindings_list = list(ra.role_definition_bindings) if ra.role_definition_bindings else []
+          for binding in bindings_list:
+            perm_name = binding.properties.get('Name', '')
+            if perm_name == "Limited Access": continue
+            
+            member_title = member.title or ""
+            if "Everyone except external users" in member_title:
+              items_shared_with_everyone_items.add(item_id)
+            
+            access_rows.append({
+              "Id": str(item_id),
+              "Type": item_type,
+              "Url": full_url,
+              "LoginName": normalize_login_name(member.login_name or ""),
+              "DisplayName": member_title,
+              "Email": member.email or "" if hasattr(member, 'email') else "",
+              "PermissionLevel": perm_name,
+              "SharedDateTime": "",
+              "SharedByDisplayName": "",
+              "SharedByLoginName": "",
+              "ViaGroup": "",
+              "ViaGroupId": "",
+              "ViaGroupType": "",
+              "AssignmentType": "User" if member.principal_type == 1 else "Group",
+              "NestingLevel": 0,
+              "ParentGroup": ""
+            })
       except Exception as e:
         ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        yield writer.emit_log(f"[{ts}]   ERROR: Failed to get items from list_title='{lst.title}' -> {e}")
-        break
-      
-      if len(items) == 0: break
-      
-      # Progress indicator after fetching each batch
-      batch_num += 1
-      items_with_perms = sum(1 for i in items if i.properties.get("HasUniqueRoleAssignments"))
-      if items_with_perms > 0:  # Show progress when there are items to check
-        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        yield writer.emit_log(f"[{ts}]       Fetched {len(items)} items ({items_with_perms} with unique permissions)...")
-      
-      for item in items:
-        stats["items_scanned"] += 1
-        item_id = item.properties.get("ID", 0)
-        
-        if item.properties.get("HasUniqueRoleAssignments"):
-          stats["items_with_individual_permissions"] += 1
-          
-          file_ref = item.properties.get("FileRef", "")
-          file_name = item.properties.get("FileLeafRef", "")
-          fs_obj_type = item.properties.get("FSObjType", 0)
-          item_type = "FOLDER" if fs_obj_type == 1 else "ITEM"
-          
-          item_rows.append({
-            "Id": str(item_id),
-            "Type": item_type,
-            "Title": file_name,
-            "Url": file_ref
-          })
-          
-          # Get role assignments for this item
-          try:
-            role_assignments = item.role_assignments.get()
-            role_assignments.expand(["Member", "RoleDefinitionBindings"]).execute_query()
-            ra_list = list(role_assignments)  # Convert to list once to avoid consuming iterator
-            # Debug logging removed - too verbose for SSE
-            
-            for ra in ra_list:
-              member = ra.member
-              bindings_list = list(ra.role_definition_bindings) if ra.role_definition_bindings else []
-              # Debug logging removed - too verbose for SSE
-              for binding in bindings_list:
-                perm_name = binding.properties.get('Name', '')
-                # Debug logging removed - too verbose for SSE
-                if perm_name == "Limited Access": continue
-                
-                # Track items shared with "Everyone except external users"
-                member_title = member.title or ""
-                if "Everyone except external users" in member_title:
-                  items_shared_with_everyone_items.add(item_id)
-                
-                access_rows.append({
-                  "Id": str(item_id),
-                  "Type": item_type,
-                  "Url": file_ref,
-                  "LoginName": member.login_name or "",
-                  "DisplayName": member_title,
-                  "Email": member.email or "" if hasattr(member, 'email') else "",
-                  "PermissionLevel": perm_name,
-                  "SharedDateTime": "",
-                  "SharedByDisplayName": "",
-                  "SharedByLoginName": "",
-                  "ViaGroup": "",
-                  "ViaGroupId": "",
-                  "ViaGroupType": "",
-                  "AssignmentType": "User" if member.principal_type == 1 else "Group",
-                  "NestingLevel": 0,
-                  "ParentGroup": ""
-                })
-          except Exception as e:
-            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            yield writer.emit_log(f"[{ts}]     ERROR: Failed to get permissions for item_id={item_id} -> {e}")
-        
-        last_id = item_id
-      
-      if len(items) < BATCH_SIZE: break
+        yield writer.emit_log(f"[{ts}]     ERROR: Failed to get permissions for item_id={item_id} -> {e}")
   
   append_csv_rows(items_file, item_rows, CSV_COLUMNS_INDIVIDUAL_ITEMS)
   append_csv_rows(access_file, access_rows, CSV_COLUMNS_INDIVIDUAL_ACCESS)
@@ -730,8 +853,8 @@ async def scan_subsites(
       writer.emit_log(f"[{ts}]     Connected to subsite")
       
       # Scan subsite site contents (lists/libraries) - append to same CSV
-      contents_stats = scan_site_contents(sub_ctx, output_folder, writer, logger, 0, 0)
-      for sse in writer.drain_sse_queue(): pass
+      async for sse in scan_site_contents(sub_ctx, output_folder, writer, logger, 0, 0, settings):
+        pass  # Execute generator but don't yield SSE events for subsite scanning
       
       # Scan subsite groups
       group_stats = await scan_site_groups(sub_ctx, storage_path, output_folder, graph_client, writer, logger, 0, 0, settings)
@@ -743,9 +866,9 @@ async def scan_subsites(
       # Scan subsite broken inheritance items
       ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
       writer.emit_log(f"[{ts}]     Scanning subsite items with broken inheritance...")
-      loop = asyncio.get_event_loop()
-      item_stats = scan_broken_inheritance_items(sub_ctx, storage_path, output_folder, graph_client, writer, logger, loop, 0, 0, settings)
-      for sse in writer.drain_sse_queue(): pass
+      async for sse in scan_broken_inheritance_items(sub_ctx, storage_path, output_folder, graph_client, writer, logger, 0, 0, settings):
+        pass  # Execute generator but don't yield SSE events for subsite scanning
+      item_stats = writer._step_result or {"items_scanned": 0, "items_with_individual_permissions": 0}
       ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
       writer.emit_log(f"[{ts}]     {item_stats['items_scanned']} items scanned, {item_stats['items_with_individual_permissions']} with broken inheritance.")
       stats["items_scanned"] += item_stats["items_scanned"]
@@ -881,7 +1004,7 @@ async def run_security_scan(
     # Scan based on scope - all scan functions are now async generators that yield SSE events
     if scope in ["all", "site", "lists"]:
       current_step += 1
-      async for sse in scan_site_contents(ctx, output_folder, writer, logger, current_step, total_steps):
+      async for sse in scan_site_contents(ctx, output_folder, writer, logger, current_step, total_steps, settings):
         yield sse
       content_stats = writer._step_result or {}
       stats["lists_scanned"] = content_stats.get("lists_scanned", 0)
