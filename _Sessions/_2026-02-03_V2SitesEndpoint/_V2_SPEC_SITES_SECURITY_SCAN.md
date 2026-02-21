@@ -133,41 +133,60 @@ A **ScanResult** is stored as a report archive following `_V2_SPEC_REPORTS.md`.
 
 ### CSV Output Schemas
 
+**CRITICAL FORMAT REQUIREMENTS (must match PowerShell scanner exactly):**
+- All CSVs start with columns: `Job,SiteUrl` (Job=1, SiteUrl=site URL)
+- No quoting of numeric IDs (write `1` not `"1"`)
+- Use mixed case for Type values: `List`, `Library`, `File`, `Folder`, `Item`, `Subsite`, `SitePages`
+- Use full URLs (not relative paths)
+- AssignmentType: Use `User` for direct user assignments (not `Direct`)
+- Empty values: Use empty string, not quoted empty `""`
+
 **01_SiteContents.csv:**
-- `Id` - SharePoint object ID
-- `Type` - Web, List, Library
+- `Job` - Always 1
+- `SiteUrl` - Full site URL
+- `Id` - SharePoint object GUID
+- `Type` - `List`, `Library`, `SitePages`, `Subsite` (mixed case)
 - `Title` - Display name
 - `Url` - Full URL
 
 **02_SiteGroups.csv:**
-- `Id` - SharePoint group ID
-- `Role` - Owners, Members, Visitors, (custom)
+- `Job` - Always 1
+- `SiteUrl` - Full site URL
+- `Id` - SharePoint group ID (integer, no quotes)
+- `Role` - `SiteOwners`, `SiteMembers`, `SiteVisitors`, `Custom`
 - `Title` - Group display name
 - `PermissionLevel` - Full Control, Edit, Read, etc.
-- `Owner` - Group owner
+- `Owner` - Group owner (may be empty)
 
 **03_SiteUsers.csv:**
-- `Id` - SharePoint user ID (empty for nested group members)
+- `Job` - Always 1
+- `SiteUrl` - Full site URL
+- `Id` - SharePoint user ID (empty for nested group members, no quotes)
 - `LoginName` - User principal name
 - `DisplayName` - Display name
 - `Email` - Email address
 - `PermissionLevel` - Permission level(s), comma-separated
+- `IsGuest` - `true` or `false`
 - `ViaGroup` - Group name if access is via group
 - `ViaGroupId` - Group ID (SharePoint ID or Entra ID GUID)
 - `ViaGroupType` - SharePointGroup, SecurityGroup, M365Group
-- `AssignmentType` - User, Group, SharingLink, Direct
-- `NestingLevel` - 0=direct, 1=via group, 2+=nested group
+- `AssignmentType` - `User`, `Group`, `SharingLink` (use `User` for direct, not `Direct`)
+- `NestingLevel` - 0=direct, 1=via group, 2+=nested group (integer, no quotes)
 - `ParentGroup` - Parent group if nested
 
 **04_IndividualPermissionItems.csv:**
-- `Id` - Item ID
-- `Type` - ITEM, FILE, FOLDER
+- `Job` - Always 1
+- `SiteUrl` - Full site URL
+- `Id` - Item ID (integer or GUID for subsites, no quotes)
+- `Type` - `Item`, `File`, `Folder`, `Subsite` (mixed case)
 - `Title` - Item title or filename
 - `Url` - Full URL to item
 
 **05_IndividualPermissionItemAccess.csv:**
-- `Id` - Item ID
-- `Type` - ITEM, FILE, FOLDER
+- `Job` - Always 1
+- `SiteUrl` - Full site URL
+- `Id` - Item ID (integer or GUID, no quotes)
+- `Type` - `Item`, `File`, `Folder`, `Subsite` (mixed case)
 - `Url` - Full URL to item
 - `LoginName` - User principal name
 - `DisplayName` - Display name

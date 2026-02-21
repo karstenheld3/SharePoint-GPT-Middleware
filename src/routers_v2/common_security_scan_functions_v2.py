@@ -20,31 +20,46 @@ PROGRESS_INTERVAL_SECONDS = 5
 # Built-in list templates to include (Generic List, Document Library, Site Pages)
 INCLUDED_TEMPLATES = [100, 101, 119]
 
-# CSV Column Definitions (EXACT order from SPEC Section 14 - must match PowerShell scanner)
-CSV_COLUMNS_SITE_CONTENTS = ["Id", "Type", "Title", "Url"]
-CSV_COLUMNS_SITE_GROUPS = ["Id", "Role", "Title", "PermissionLevel", "Owner"]
-CSV_COLUMNS_SITE_USERS = ["Id", "LoginName", "DisplayName", "Email", "PermissionLevel", "ViaGroup", "ViaGroupId", "ViaGroupType", "AssignmentType", "NestingLevel", "ParentGroup"]
-CSV_COLUMNS_INDIVIDUAL_ITEMS = ["Id", "Type", "Title", "Url"]
-CSV_COLUMNS_INDIVIDUAL_ACCESS = ["Id", "Type", "Url", "LoginName", "DisplayName", "Email", "PermissionLevel", "SharedDateTime", "SharedByDisplayName", "SharedByLoginName", "ViaGroup", "ViaGroupId", "ViaGroupType", "AssignmentType", "NestingLevel", "ParentGroup"]
+# CSV Column Definitions (EXACT order - must match PowerShell scanner)
+# All CSVs start with Job,SiteUrl prefix
+CSV_COLUMNS_SITE_CONTENTS = ["Job", "SiteUrl", "Id", "Type", "Title", "Url"]
+CSV_COLUMNS_SITE_GROUPS = ["Job", "SiteUrl", "Id", "Role", "Title", "PermissionLevel", "Owner"]
+CSV_COLUMNS_SITE_USERS = ["Job", "SiteUrl", "Id", "LoginName", "DisplayName", "Email", "PermissionLevel", "IsGuest", "ViaGroup", "ViaGroupId", "ViaGroupType", "AssignmentType", "NestingLevel", "ParentGroup"]
+CSV_COLUMNS_INDIVIDUAL_ITEMS = ["Job", "SiteUrl", "Id", "Type", "Title", "Url"]
+CSV_COLUMNS_INDIVIDUAL_ACCESS = ["Job", "SiteUrl", "Id", "Type", "Url", "LoginName", "DisplayName", "Email", "PermissionLevel", "IsGuest", "SharedDateTime", "SharedByDisplayName", "SharedByLoginName", "ViaGroup", "ViaGroupId", "ViaGroupType", "AssignmentType", "NestingLevel", "ParentGroup"]
 
 # ----------------------------------------- END: Constants --------------------------------------------------------------------
 
 
 # ----------------------------------------- START: CSV Functions --------------------------------------------------------------
 
-def csv_escape(value) -> str:
-  """Escape value for CSV output, matching PowerShell scanner format (SPEC Section 9)."""
+def csv_escape(value, is_numeric: bool = False) -> str:
+  """Escape value for CSV output, matching PowerShell scanner format.
+  
+  Args:
+    value: The value to escape
+    is_numeric: If True, don't quote even if empty (PowerShell doesn't quote numeric IDs)
+  """
   if value is None: return ''
   value = str(value)
-  if not value: return '""'
-  # Match SPEC regex exactly: formula chars, date/number patterns, or special chars
-  if re.match(r'^([+\-=\/]*[\.\d\s\/\:]*|.*[\,\"\n].*|[\n]*)$', value):
+  if not value:
+    return '' if is_numeric else '""'
+  # Quote only if contains special chars (comma, quote, newline)
+  if ',' in value or '"' in value or '\n' in value:
     return '"' + value.replace('"', '""') + '"'
   return value
 
+# Columns that should not be quoted (numeric/boolean values)
+NUMERIC_COLUMNS = {"Job", "Id", "NestingLevel", "IsGuest"}
+
 def csv_row(row: dict, columns: list) -> str:
   """Convert dict to CSV row string with proper escaping."""
-  return ','.join(csv_escape(row.get(col, '')) for col in columns)
+  parts = []
+  for col in columns:
+    val = row.get(col, '')
+    is_numeric = col in NUMERIC_COLUMNS
+    parts.append(csv_escape(val, is_numeric=is_numeric))
+  return ','.join(parts)
 
 def write_csv_header(file_path: str, columns: list) -> None:
   """Write CSV header row to file (UTF-8 without BOM)."""
@@ -282,6 +297,7 @@ async def resolve_sharepoint_group_members(ctx: ClientContext, group, storage_pa
           "LoginName": login_name,
           "DisplayName": group_display_name,
           "Email": "",
+          "IsGuest": "false",
           "NestingLevel": nesting_level,
           "ParentGroup": parent_group,
           "ViaGroup": group.title,
@@ -309,11 +325,13 @@ async def resolve_sharepoint_group_members(ctx: ClientContext, group, storage_pa
       elif not graph_client:
         writer.emit_log(f"[{ts}]           WARNING: No Graph client, cannot resolve Entra group")
     else:
+      is_guest = "true" if "#ext#" in login_name.lower() else "false"
       members.append({
         "Id": str(user.id) if user.id else "",
         "LoginName": normalize_login_name(login_name),
         "DisplayName": user.title or "",
         "Email": user.email or "",
+        "IsGuest": is_guest,
         "NestingLevel": nesting_level,
         "ParentGroup": parent_group,
         "ViaGroup": group.title,
@@ -329,14 +347,15 @@ async def resolve_sharepoint_group_members(ctx: ClientContext, group, storage_pa
 
 # ----------------------------------------- START: Scanning Functions ---------------------------------------------------------
 
-async def scan_site_contents(ctx: ClientContext, output_folder: str, writer, logger: MiddlewareLogger, current_step: int, total_steps: int, settings: dict = None) -> AsyncGenerator[str, None]:
+async def scan_site_contents(ctx: ClientContext, output_folder: str, writer, logger: MiddlewareLogger, current_step: int, total_steps: int, settings: dict = None, site_url: str = "") -> AsyncGenerator[str, None]:
   """Scan lists/libraries and write 01_SiteContents.csv. Yields SSE events. Sets writer._step_result with stats."""
   stats = {"lists_scanned": 0}
   contents_file = os.path.join(output_folder, "01_SiteContents.csv")
   
-  # Extract ignore_lists from settings
+  # Extract ignore_lists from settings and tenant URL
   if settings is None: settings = {}
   ignore_lists = set(settings.get("ignore_lists", []))
+  tenant_url = site_url.split("/sites/")[0] if "/sites/" in site_url else site_url.rsplit("/", 1)[0]
   
   # Only write header when called from main scan (step > 0), not from subsite scanning
   if current_step > 0:
@@ -355,16 +374,20 @@ async def scan_site_contents(ctx: ClientContext, output_folder: str, writer, log
     
     stats["lists_scanned"] += 1
     
-    list_type = "LIST" if lst.base_template == 100 else "LIBRARY"
-    if lst.base_template == 119: list_type = "SITEPAGES"
+    # Type casing: List, Library, SitePages (match PowerShell)
+    list_type = "List" if lst.base_template == 100 else "Library"
+    if lst.base_template == 119: list_type = "SitePages"
     
-    # Get root folder URL from expanded property
+    # Get root folder URL from expanded property - use full URL
     try:
-      url = lst.root_folder.properties.get("ServerRelativeUrl", "") if lst.root_folder else ""
+      server_rel_url = lst.root_folder.properties.get("ServerRelativeUrl", "") if lst.root_folder else ""
+      url = f"{tenant_url}{server_rel_url}" if server_rel_url else ""
     except:
       url = ""
     
     rows.append({
+      "Job": 1,
+      "SiteUrl": site_url,
       "Id": str(lst.id),
       "Type": list_type,
       "Title": lst.title,
@@ -376,7 +399,7 @@ async def scan_site_contents(ctx: ClientContext, output_folder: str, writer, log
   yield writer.emit_log(f"[{ts}]   {stats['lists_scanned']} list(s)/libraries found.".replace("(s)", "s" if stats['lists_scanned'] != 1 else ""))
   writer._step_result = stats
 
-async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder: str, graph_client: Optional[GraphServiceClient], writer, logger: MiddlewareLogger, current_step: int, total_steps: int, settings: dict = None) -> AsyncGenerator[str, None]:
+async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder: str, graph_client: Optional[GraphServiceClient], writer, logger: MiddlewareLogger, current_step: int, total_steps: int, settings: dict = None, site_url: str = "") -> AsyncGenerator[str, None]:
   """Scan site groups and write 02_SiteGroups.csv and 03_SiteUsers.csv. Yields SSE events. Sets writer._step_result with stats."""
   stats = {"groups_found": 0, "users_found": 0, "external_users_found": 0}
   if settings is None: settings = {}
@@ -438,16 +461,20 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
         login_name = member.login_name or ""
         # Skip ignored accounts from settings
         if any(ignored in login_name for ignored in ignore_accounts): continue
+        is_guest = "true" if "#ext#" in login_name.lower() else "false"
         direct_user_rows.append({
+          "Job": 1,
+          "SiteUrl": site_url,
           "Id": str(member.id) if member.id else "",
           "LoginName": normalize_login_name(login_name),
           "DisplayName": member.title or "",
           "Email": member.email or "" if hasattr(member, 'email') else "",
           "PermissionLevel": perm_name,
+          "IsGuest": is_guest,
           "ViaGroup": "",
           "ViaGroupId": "",
           "ViaGroupType": "",
-          "AssignmentType": "Direct",
+          "AssignmentType": "User",
           "NestingLevel": 0,
           "ParentGroup": ""
         })
@@ -456,11 +483,14 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
         # Skip ignored accounts from settings
         if any(ignored in login_name for ignored in ignore_accounts): continue
         direct_user_rows.append({
+          "Job": 1,
+          "SiteUrl": site_url,
           "Id": "",
           "LoginName": normalize_login_name(login_name),
           "DisplayName": member.title or "",
           "Email": "",
           "PermissionLevel": perm_name,
+          "IsGuest": "false",
           "ViaGroup": "",
           "ViaGroupId": "",
           "ViaGroupType": "",
@@ -494,6 +524,8 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
     elif "visitor" in title_lower: role = "SiteVisitors"
     
     group_rows.append({
+      "Job": 1,
+      "SiteUrl": site_url,
       "Id": str(group.id),
       "Role": role,
       "Title": group.title,
@@ -507,6 +539,8 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
     # Resolve members
     members = await resolve_sharepoint_group_members(ctx, group, storage_path, graph_client, writer, 1, "", logger, settings)
     for member in members:
+      member["Job"] = 1
+      member["SiteUrl"] = site_url
       member["PermissionLevel"] = perm_level
       stats["users_found"] += 1
       # Track external users (contain #ext# in login)
@@ -521,11 +555,12 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
   yield writer.emit_log(f"[{ts}]   {stats['groups_found']} group(s), {stats['users_found']} user(s) found.".replace("(s)", "s" if stats['groups_found'] != 1 else "", 1).replace("(s)", "s" if stats['users_found'] != 1 else "", 1))
   writer._step_result = stats
 
-async def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, output_folder: str, graph_client: Optional[GraphServiceClient], writer, logger: MiddlewareLogger, current_step: int, total_steps: int, settings: dict = None) -> AsyncGenerator[str, None]:
+async def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, output_folder: str, graph_client: Optional[GraphServiceClient], writer, logger: MiddlewareLogger, current_step: int, total_steps: int, settings: dict = None, site_url: str = "") -> AsyncGenerator[str, None]:
   """Scan items with broken inheritance and write 04/05 CSVs. Yields SSE events. Sets writer._step_result with stats."""
   stats = {"items_scanned": 0, "items_with_individual_permissions": 0, "items_shared_with_everyone": 0}
   items_shared_with_everyone_items = set()  # Track unique items shared with everyone
   if settings is None: settings = {}
+  tenant_url = site_url.split("/sites/")[0] if "/sites/" in site_url else site_url.rsplit("/", 1)[0]
   
   # Extract settings
   ignore_lists = set(settings.get("ignore_lists", []))
@@ -698,8 +733,6 @@ async def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, o
         item_type = "Item"
       
       # Build full URL - PowerShell uses different formats for lists vs libraries
-      site_url = ctx.web.url
-      tenant_url = f"https://{site_url.split('//')[1].split('/')[0]}"
       if lst.base_template == 100:  # List - use DefaultViewUrl with filter
         default_view_url = lst.properties.get("DefaultViewUrl", "") or ""
         if not default_view_url:
@@ -709,6 +742,8 @@ async def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, o
         full_url = f"{tenant_url}{file_ref}" if file_ref.startswith("/") else file_ref
       
       item_rows.append({
+        "Job": 1,
+        "SiteUrl": site_url,
         "Id": str(item_id),
         "Type": item_type,
         "Title": file_name,
@@ -735,14 +770,19 @@ async def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, o
             if "Everyone except external users" in member_title:
               items_shared_with_everyone_items.add(item_id)
             
+            login_name = member.login_name or ""
+            is_guest = "true" if "#ext#" in login_name.lower() else "false"
             access_rows.append({
+              "Job": 1,
+              "SiteUrl": site_url,
               "Id": str(item_id),
               "Type": item_type,
               "Url": full_url,
-              "LoginName": normalize_login_name(member.login_name or ""),
+              "LoginName": normalize_login_name(login_name),
               "DisplayName": member_title,
               "Email": member.email or "" if hasattr(member, 'email') else "",
               "PermissionLevel": perm_name,
+              "IsGuest": is_guest,
               "SharedDateTime": "",
               "SharedByDisplayName": "",
               "SharedByLoginName": "",
@@ -821,10 +861,15 @@ async def scan_subsites(
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     writer.emit_log(f"[{ts}]   ( {idx} / {len(subsites)} ) SUBSITE: '{subsite_title}' url='{subsite_url}'")
     
+    # Get parent site URL for Job/SiteUrl columns
+    parent_site_url = parent_ctx.web.url
+    
     # Add subsite to 01_SiteContents.csv
     append_csv_rows(contents_file, [{
+      "Job": 1,
+      "SiteUrl": parent_site_url,
       "Id": str(subsite_id),
-      "Type": "SUBSITE",
+      "Type": "Subsite",
       "Title": subsite_title,
       "Url": subsite_url
     }], CSV_COLUMNS_SITE_CONTENTS)
@@ -834,8 +879,10 @@ async def scan_subsites(
     if has_unique:
       items_file = os.path.join(output_folder, "04_IndividualPermissionItems.csv")
       append_csv_rows(items_file, [{
+        "Job": 1,
+        "SiteUrl": parent_site_url,
         "Id": str(subsite_id),
-        "Type": "SUBSITE",
+        "Type": "Subsite",
         "Title": subsite_title,
         "Url": subsite_url
       }], CSV_COLUMNS_INDIVIDUAL_ITEMS)
@@ -853,11 +900,11 @@ async def scan_subsites(
       writer.emit_log(f"[{ts}]     Connected to subsite")
       
       # Scan subsite site contents (lists/libraries) - append to same CSV
-      async for sse in scan_site_contents(sub_ctx, output_folder, writer, logger, 0, 0, settings):
+      async for sse in scan_site_contents(sub_ctx, output_folder, writer, logger, 0, 0, settings, site_url=parent_site_url):
         pass  # Execute generator but don't yield SSE events for subsite scanning
       
       # Scan subsite groups
-      async for sse in scan_site_groups(sub_ctx, storage_path, output_folder, graph_client, writer, logger, 0, 0, settings):
+      async for sse in scan_site_groups(sub_ctx, storage_path, output_folder, graph_client, writer, logger, 0, 0, settings, site_url=parent_site_url):
         pass  # Execute generator but don't yield SSE events for subsite scanning
       group_stats = writer._step_result or {"groups_found": 0, "users_found": 0, "external_users_found": 0}
       stats["groups_found"] += group_stats["groups_found"]
@@ -867,7 +914,7 @@ async def scan_subsites(
       # Scan subsite broken inheritance items
       ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
       writer.emit_log(f"[{ts}]     Scanning subsite items with broken inheritance...")
-      async for sse in scan_broken_inheritance_items(sub_ctx, storage_path, output_folder, graph_client, writer, logger, 0, 0, settings):
+      async for sse in scan_broken_inheritance_items(sub_ctx, storage_path, output_folder, graph_client, writer, logger, 0, 0, settings, site_url=parent_site_url):
         pass  # Execute generator but don't yield SSE events for subsite scanning
       item_stats = writer._step_result or {"items_scanned": 0, "items_with_individual_permissions": 0}
       ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1005,14 +1052,14 @@ async def run_security_scan(
     # Scan based on scope - all scan functions are now async generators that yield SSE events
     if scope in ["all", "site", "lists"]:
       current_step += 1
-      async for sse in scan_site_contents(ctx, output_folder, writer, logger, current_step, total_steps, settings):
+      async for sse in scan_site_contents(ctx, output_folder, writer, logger, current_step, total_steps, settings, site_url=site_url):
         yield sse
       content_stats = writer._step_result or {}
       stats["lists_scanned"] = content_stats.get("lists_scanned", 0)
     
     if scope in ["all", "site"]:
       current_step += 1
-      async for sse in scan_site_groups(ctx, storage_path, output_folder, graph_client, writer, logger, current_step, total_steps, settings):
+      async for sse in scan_site_groups(ctx, storage_path, output_folder, graph_client, writer, logger, current_step, total_steps, settings, site_url=site_url):
         yield sse
       group_stats = writer._step_result or {}
       stats["groups_found"] = group_stats.get("groups_found", 0)
@@ -1021,7 +1068,7 @@ async def run_security_scan(
     
     if scope in ["all", "items"]:
       current_step += 1
-      async for sse in scan_broken_inheritance_items(ctx, storage_path, output_folder, graph_client, writer, logger, current_step, total_steps, settings):
+      async for sse in scan_broken_inheritance_items(ctx, storage_path, output_folder, graph_client, writer, logger, current_step, total_steps, settings, site_url=site_url):
         yield sse
       item_stats = writer._step_result or {}
       stats["items_scanned"] = item_stats.get("items_scanned", 0)
