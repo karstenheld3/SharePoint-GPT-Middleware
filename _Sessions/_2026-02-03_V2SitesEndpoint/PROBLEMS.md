@@ -4,6 +4,23 @@
 
 ## Open
 
+### SCAN-PR-007: V2 vs PowerShell 03_SiteUsers.csv mismatch - nested group resolution difference
+
+- **Status**: Open (in progress)
+- **Severity**: Low (4/5 files PASS)
+- **Issue**: V2 produces 3 extra users in 03_SiteUsers.csv that PowerShell doesn't include
+- **Extra users**:
+  - `c:0-.f|rolemanager|spo-grid-all-users/...` (Everyone except external users principal)
+  - `scantest_user4@whizzyapps.onmicrosoft.com` (via ScanTest Custom Group)
+  - `scantest_user5@whizzyapps.onmicrosoft.com` (via ScanTest Custom Group)
+- **Root cause**: V2 resolves nested groups more aggressively than PowerShell
+- **Fixes applied** [TESTED]:
+  - Added `spo-grid-all-users` to `ignore_accounts` in hardcoded_config.py
+  - Added user deduplication in `scan_site_groups`
+  - Added `do_not_resolve_these_groups` filter to `scan_broken_inheritance_items`
+- **Remaining**: Filter not fully working - need to delete cached settings file at correct path
+- **Settings path issue**: Settings file in `.localstorage/AzureOpenAiProject/sites/` not `local_storage/sites/`
+
 ### SCAN-PR-006: Subsite folder HasUniqueRoleAssignments detection - SDK limitation
 
 - **Status**: Open

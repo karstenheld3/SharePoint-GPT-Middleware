@@ -27,6 +27,35 @@
 
 ## In Progress
 
+Task 5: V2 vs PowerShell Output Alignment (2026-02-21)
+
+**Objective**: Make V2 scanner output EXACTLY match PowerShell scanner output
+
+**Completed** [TESTED]:
+- [x] PowerShell: Fixed flush bug (flush inside skipped item block)
+- [x] PowerShell: Fixed `break` after first custom group
+- [x] PowerShell: Fixed typo `$:_` -> `$_`
+- [x] PowerShell: Changed `$omitSharePointGroupsInBrokenPermissionsFile` to `$false`
+- [x] PowerShell: Added null loginName check
+- [x] PowerShell: Added PowerShell 7 version check to runner script
+- [x] V2: Added `do_not_resolve_these_groups` filter to scan_broken_inheritance_items
+- [x] V2: Added user deduplication in scan_site_groups
+- [x] V2: Added `spo-grid-all-users` to ignore_accounts
+- [x] Docs: Documented PowerShell 7 requirement in README
+
+**Comparison Results** (last run):
+- 01_SiteContents.csv: PASS (12 vs 12)
+- 02_SiteGroups.csv: PASS (7 vs 7)
+- 04_IndividualPermissionItems.csv: PASS (43 vs 43)
+- 05_IndividualPermissionItemAccess.csv: PASS (128 vs 130)
+- 03_SiteUsers.csv: WARN (7 vs 10) - 3 extra users in V2
+
+**Remaining**:
+- [ ] Fix spo-grid-all-users filter (settings file path issue)
+- [ ] Investigate user4/user5 nested group resolution difference
+
+---
+
 Task 3: Security Scanner Refinement - SSE streaming fix applied, pending full E2E test
 
 ### Task 4: Permission Scanner Optimization (NEW)

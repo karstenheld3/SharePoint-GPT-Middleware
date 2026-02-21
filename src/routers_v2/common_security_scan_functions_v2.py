@@ -511,6 +511,12 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
   user_rows = direct_user_rows.copy()  # Start with direct assignments
   stats["users_found"] = len(direct_user_rows)  # Count direct assignments
   
+  # Track seen users to avoid duplicates (match PowerShell behavior)
+  seen_users = set()
+  for row in direct_user_rows:
+    login = row.get("LoginName", "")
+    if login: seen_users.add(login)
+  
   for idx, group in enumerate(groups_to_process, 1):
     perm_level = group_permissions.get(group.id, "")
     
@@ -539,12 +545,18 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
     # Resolve members
     members = await resolve_sharepoint_group_members(ctx, group, storage_path, graph_client, writer, 1, "", logger, settings)
     for member in members:
+      login_name = member.get("LoginName", "")
+      # Skip duplicates (match PowerShell behavior)
+      if login_name in seen_users:
+        continue
+      if login_name:
+        seen_users.add(login_name)
       member["Job"] = 1
       member["SiteUrl"] = site_url
       member["PermissionLevel"] = perm_level
       stats["users_found"] += 1
       # Track external users (contain #ext# in login)
-      if "#ext#" in member.get("LoginName", "").lower():
+      if "#ext#" in login_name.lower():
         stats["external_users_found"] += 1
       user_rows.append(member)
   
@@ -566,6 +578,7 @@ async def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, o
   ignore_lists = set(settings.get("ignore_lists", []))
   ignore_permission_levels = set(settings.get("ignore_permission_levels", ["Limited Access"]))
   ignore_accounts = set(settings.get("ignore_accounts", []))
+  do_not_resolve_these_groups = set(settings.get("do_not_resolve_these_groups", []))
   
   items_file = os.path.join(output_folder, "04_IndividualPermissionItems.csv")
   access_file = os.path.join(output_folder, "05_IndividualPermissionItemAccess.csv")
@@ -769,6 +782,10 @@ async def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, o
             member_title = member.title or ""
             if "Everyone except external users" in member_title:
               items_shared_with_everyone_items.add(item_id)
+            
+            # Skip groups that should not be resolved (match PowerShell behavior)
+            if member_title in do_not_resolve_these_groups:
+              continue
             
             login_name = member.login_name or ""
             is_guest = "true" if "#ext#" in login_name.lower() else "false"

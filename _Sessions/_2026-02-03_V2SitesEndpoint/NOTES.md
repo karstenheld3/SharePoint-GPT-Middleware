@@ -12,7 +12,7 @@
 **Phase**: REFINE
 **Workflow**: BUILD
 **Assessment**: COMPLEXITY-MEDIUM (multiple files, new router, follows existing patterns)
-**Last Activity**: 2026-02-04 00:29 - Fixed realtime SSE streaming in browser UI
+**Last Activity**: 2026-02-21 18:45 - V2 vs PowerShell output alignment (4/5 files PASS)
 
 ## IMPORTANT: Cascade Agent Instructions
 
@@ -127,6 +127,22 @@ Then /write-tasks-plan for incremental improvements.
 - **Conclusion**: GET batching returns empty/incorrect data - cannot use for optimization
 
 **Impact**: Phase 3 of Permission Scanner optimization skipped. Use per-item Load-CSOMProperties.
+
+### Scanner Settings File Location [TESTED 2026-02-21]
+
+**Finding**: Scanner settings file is stored at `.localstorage/AzureOpenAiProject/sites/security_scan_settings.json`, NOT `local_storage/sites/`.
+
+**Impact**: When updating `DEFAULT_SECURITY_SCAN_SETTINGS` in hardcoded_config.py, must delete the correct cached settings file.
+
+### PowerShell Version Requirement [TESTED 2026-02-21]
+
+**Finding**: PowerShell scanner requires **PowerShell 7+** (pwsh), not Windows PowerShell 5.1.
+- PnP.PowerShell module installed in PS7 path: `C:\Users\<user>\Documents\PowerShell\Modules\`
+- Windows PS5.1 path: `C:\Users\<user>\Documents\WindowsPowerShell\Modules\`
+
+**Symptom**: `The term 'Connect-PnPOnline' is not recognized...`
+
+**Fix**: Use `pwsh -ExecutionPolicy Bypass -File ...` instead of `powershell.exe`
 
 ### SSE Streaming Pattern [TESTED]
 
