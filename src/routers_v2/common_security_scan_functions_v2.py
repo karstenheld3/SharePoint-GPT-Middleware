@@ -857,8 +857,9 @@ async def scan_subsites(
         pass  # Execute generator but don't yield SSE events for subsite scanning
       
       # Scan subsite groups
-      group_stats = await scan_site_groups(sub_ctx, storage_path, output_folder, graph_client, writer, logger, 0, 0, settings)
-      for sse in writer.drain_sse_queue(): pass  # Drain queue but don't yield here
+      async for sse in scan_site_groups(sub_ctx, storage_path, output_folder, graph_client, writer, logger, 0, 0, settings):
+        pass  # Execute generator but don't yield SSE events for subsite scanning
+      group_stats = writer._step_result or {"groups_found": 0, "users_found": 0, "external_users_found": 0}
       stats["groups_found"] += group_stats["groups_found"]
       stats["users_found"] += group_stats["users_found"]
       stats["external_users_found"] += group_stats.get("external_users_found", 0)
@@ -1037,7 +1038,7 @@ async def run_security_scan(
       ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
       yield writer.emit_log(f"[{ts}]   {subsite_stats['subsites_scanned']} subsite(s) scanned.".replace("(s)", "s" if subsite_stats['subsites_scanned'] != 1 else ""))
       # Add subsite stats to totals
-      stats["subsites_scanned"] += subsite_stats["subsites_scanned"] + 1  # +1 for this subsite level
+      stats["subsites_scanned"] += subsite_stats["subsites_scanned"]
       stats["groups_found"] += subsite_stats["groups_found"]
       stats["users_found"] += subsite_stats["users_found"]
       stats["external_users_found"] += subsite_stats.get("external_users_found", 0)
