@@ -4,6 +4,17 @@
 
 ## Open
 
+### SCAN-PR-006: Subsite folder HasUniqueRoleAssignments detection - SDK limitation
+
+- **Status**: Open
+- **Severity**: Low (98% parity achieved)
+- **Issue**: SDK `select(["HasUniqueRoleAssignments"])` does not detect folders with broken inheritance in subsite document libraries
+- **Example**: Folder `ArilenaDrovik` in `Subsite01/Shared Documents` not detected by V2 scanner, but detected by PowerShell PnP cmdlet
+- **Impact**: V2 achieves 42/43 items (98% parity), outputs 63x more access entries than PowerShell (126 vs 2)
+- **Root cause**: SDK may not correctly load HasUniqueRoleAssignments for subsite items when using subsite-scoped ClientContext
+- **Related**: SCAN-KL-01 in SPEC, IS-15 in IMPL (pending fix)
+- **Workaround options**: REST API for subsites, ensure_property() per item, two-pass scan
+
 ### SCAN-PR-005: Browser SSE buffering with async generators - root cause not fully understood
 
 - **Status**: Open (workaround applied)
