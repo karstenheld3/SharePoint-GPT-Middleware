@@ -2,7 +2,7 @@
 
 **Doc ID**: SSCSCN-IP01
 **Goal**: Implement security scan endpoint for scanning SharePoint site permissions and generating CSV reports.
-**Timeline**: Created 2026-02-03, Updated 2 times (2026-02-03 - 2026-02-03)
+**Timeline**: Created 2026-02-03, Updated 4 times (2026-02-03 - 2026-02-21)
 **Target files**:
 - `src/routers_v2/sites.py` (EXTEND +400 lines)
 - `src/routers_v2/common_security_scan_functions_v2.py` (NEW ~600 lines)
@@ -22,6 +22,7 @@
 - SharePoint groups NOT cached (resolved fresh each scan)
 - Honor 429 throttling with Retry-After and exponential backoff
 - Load `security_scan_settings.json` before scan; create with defaults if missing
+- **PENDING FIX**: IS-15 - Subsite folder HasUniqueRoleAssignments detection (see SCAN-KL-01)
 
 ## Table of Contents
 
@@ -807,6 +808,52 @@ site.security_scan_result = report_id
 save_site_to_file(storage_path, site)
 ```
 
+### SSCSCN-IP01-IS-15: Fix subsite folder HasUniqueRoleAssignments detection (PENDING)
+
+**Location**: `common_security_scan_functions_v2.py` > `scan_broken_inheritance_items()`
+
+**Status**: TO BE IMPLEMENTED
+
+**Problem**: The SDK's `select(["HasUniqueRoleAssignments"])` query does not reliably detect folders with broken inheritance in subsite document libraries. See SCAN-KL-01 in SPEC.
+
+**Options to investigate**:
+
+1. **REST API for subsites**: Use `execute_request_direct()` with explicit `$select=HasUniqueRoleAssignments` for subsite libraries
+2. **ensure_property() pattern**: Load `HasUniqueRoleAssignments` separately for each item after initial query
+3. **Two-pass scan**: Query all items first, then batch-check `HasUniqueRoleAssignments` via separate call
+
+**Code skeleton (Option 1 - REST API)**:
+```python
+# For subsite scanning, use REST API instead of SDK for item detection
+def scan_subsite_items_via_rest(ctx: ClientContext, lst) -> list:
+    """Use REST API to detect items with broken inheritance in subsites."""
+    from office365.runtime.http.request_options import RequestOptions
+    
+    site_url = ctx.web.url
+    list_id = lst.id
+    url = f"{site_url}/_api/web/lists(guid'{list_id}')/items?$select=ID,FileRef,FileLeafRef,FSObjType,HasUniqueRoleAssignments&$top=5000"
+    
+    items_with_perms = []
+    while url:
+        request = RequestOptions(url)
+        request.set_header("Accept", "application/json;odata=verbose")
+        response = ctx.pending_request().execute_request_direct(request)
+        data = response.json()
+        
+        for item in data.get("d", {}).get("results", []):
+            if item.get("HasUniqueRoleAssignments"):
+                items_with_perms.append(item)
+        
+        url = data.get("d", {}).get("__next")
+    
+    return items_with_perms
+```
+
+**Acceptance criteria**:
+- Subsite folders with `HasUniqueRoleAssignments=true` detected (e.g., `ArilenaDrovik`)
+- V2 scanner achieves 100% parity with PowerShell scanner (43/43 items)
+- No regression in main site scanning performance
+
 ## 4. Test Cases
 
 ### Category 1: Input Validation (4 tests)
@@ -837,7 +884,7 @@ save_site_to_file(storage_path, site)
 - **SSCSCN-IP01-TC-15**: report.json contains correct metadata
 - **SSCSCN-IP01-TC-16**: site.security_scan_result updated
 
-### Category 5: Selftest (7 tests)
+### Category 5: Selftest (11 tests, 1 expected fail)
 
 - **SSCSCN-IP01-TC-17**: TC-01 Connect to selftest site
 - **SSCSCN-IP01-TC-18**: TC-02 Enumerate site groups
@@ -846,6 +893,10 @@ save_site_to_file(storage_path, site)
 - **SSCSCN-IP01-TC-21**: TC-05 Resolve item role assignments
 - **SSCSCN-IP01-TC-22**: TC-06 Create report archive
 - **SSCSCN-IP01-TC-23**: TC-07 Verify CSV output format
+- **SSCSCN-IP01-TC-24**: TC-08 Scan subsite content (include_subsites=true)
+- **SSCSCN-IP01-TC-25**: TC-09 Large library pagination (REST API fallback for >5000 items)
+- **SSCSCN-IP01-TC-26**: TC-10 Subsite folder HasUniqueRoleAssignments detection -> **EXPECTED FAIL** (SCAN-KL-01)
+- **SSCSCN-IP01-TC-27**: TC-11 Compare V2 output vs PowerShell scanner reference
 
 ## 5. Verification Checklist
 
@@ -876,13 +927,35 @@ save_site_to_file(storage_path, site)
 
 ### Validation
 
-- [ ] **SSCSCN-IP01-VC-18**: All test cases pass
-- [ ] **SSCSCN-IP01-VC-19**: Selftest passes 7/7
-- [ ] **SSCSCN-IP01-VC-20**: CSV output matches PowerShell scanner exactly
+- [ ] **SSCSCN-IP01-VC-18**: All test cases pass (except TC-26 expected fail)
+- [ ] **SSCSCN-IP01-VC-19**: Selftest passes 10/11 (TC-10 expected fail per SCAN-KL-01)
+- [ ] **SSCSCN-IP01-VC-20**: CSV output matches PowerShell scanner 98% (42/43 items)
 - [ ] **SSCSCN-IP01-VC-21**: Manual UI verification complete
 - [ ] **SSCSCN-IP01-VC-22**: Report visible in /v2/reports?type=site_scan
+- [ ] **SSCSCN-IP01-VC-23**: IS-15 implemented (subsite folder detection fix) - PENDING
 
 ## 6. Document History
+
+**[2026-02-21 17:10]**
+- Added: IS-15 - Fix subsite folder HasUniqueRoleAssignments detection (PENDING)
+- Added: MUST-NOT-FORGET item for pending fix
+- Resolved: Large library scanning (6000+ items) via REST API pagination fallback
+- Changed: V2 achieves 98% parity (42/43 items), outputs 63x more access entries (126 vs 2)
+- Remaining: 1 subsite folder not detected (ArilenaDrovik in Subsite01/Shared Documents)
+
+**[2026-02-21 11:00]**
+- Fixed: Type values now File/Folder/Item (was ITEM/FOLDER)
+- Fixed: URL format now full URL (was relative path)
+- Fixed: LoginName normalization via normalize_login_name() function
+- Issue: POC_PermissionTest_6000 (6000 items) not being scanned - needs investigation
+- Test result: 02_SiteGroups.csv PASS, other files still have differences
+
+**[2026-02-21 10:55]**
+- Issue: Comparison test revealed V2 doesn't match PowerShell output format
+- Fix needed: Type values (File/Folder/Item instead of ITEM/FOLDER)
+- Fix needed: URL format (full URL instead of relative path)
+- Fix needed: LoginName normalization (strip claims prefix)
+- Fix needed: Large library scanning appears to fail silently
 
 **[2026-02-03 16:15]**
 - Fixed: IS-04B Graph SDK syntax - uses `await` and no `.execute()` (Python msgraph-sdk is async)

@@ -3,7 +3,7 @@
 **Doc ID**: SSCSCN-TP01
 **Feature**: SECURITY_SCAN
 **Goal**: Verify security scan endpoint correctly captures all permission assignment paths and outputs CSV matching PowerShell scanner format.
-**Timeline**: Created 2026-02-03, Updated 0 times
+**Timeline**: Created 2026-02-03, Updated 3 times (2026-02-03 - 2026-02-21)
 **Target file**: `src/routers_v2/common_security_scan_functions_v2.py`
 
 **Depends on:**
@@ -17,6 +17,7 @@
 - NestingLevel values: 0=direct, 1=via group, 2+=nested
 - Filter out "Limited Access" permission level
 - Empty Id field for nested Entra ID group members
+- **TC-59 to TC-61 EXPECTED TO FAIL** until IS-15 is implemented (SCAN-KL-01: subsite folder detection)
 
 ## Table of Contents
 
@@ -336,6 +337,14 @@ Disconnect-PnPOnline
 - **SSCSCN-TC-53**: Subsite with broken inheritance itself -> ok=true, subsite appears in 04 CSV if HasUniqueRoleAssignments=true
 - **SSCSCN-TC-54**: Recursive subsite scanning -> ok=true, sub-subsites scanned when include_subsites=true
 
+### Category 7D: Subsite Folder Detection - KNOWN FAILING (3 tests)
+
+**Note**: These tests are expected to FAIL until IS-15 is implemented. See SCAN-KL-01 in SPEC.
+
+- **SSCSCN-TC-59**: Subsite document library folder with broken inheritance detected -> **EXPECTED FAIL**, folder `ArilenaDrovik` in `Subsite01/Shared Documents` not detected by SDK `HasUniqueRoleAssignments` query
+- **SSCSCN-TC-60**: Subsite folder appears in 04_IndividualPermissionItems.csv -> **EXPECTED FAIL**, folder missing from output (42/43 items vs PowerShell)
+- **SSCSCN-TC-61**: Subsite folder permissions in 05_IndividualPermissionItemAccess.csv -> **EXPECTED FAIL**, folder access entries missing
+
 ### Category 7C: Group Resolution Edge Cases (4 tests)
 
 - **SSCSCN-TC-55**: M365 group with _o suffix -> ok=true, group ID correctly extracted, Graph API call succeeds
@@ -463,6 +472,7 @@ Artifacts to remove after testing:
 - [ ] **SSCSCN-TP01-VC-17**: Report output tests pass (TC-43 to TC-45)
 - [ ] **SSCSCN-TP01-VC-21**: Subsite scanning tests pass (TC-49 to TC-54)
 - [ ] **SSCSCN-TP01-VC-22**: Group resolution edge case tests pass (TC-55 to TC-58)
+- [ ] **SSCSCN-TP01-VC-23**: Subsite folder detection tests EXPECTED FAIL (TC-59 to TC-61) - blocked by SCAN-KL-01
 
 ### Cleanup Verification
 - [ ] **SSCSCN-TP01-VC-18**: SharePoint test objects removed
@@ -470,6 +480,13 @@ Artifacts to remove after testing:
 - [ ] **SSCSCN-TP01-VC-20**: No orphaned test data
 
 ## 11. Document History
+
+**[2026-02-21 17:10]**
+- Added: Category 7D - Subsite Folder Detection tests (TC-59 to TC-61) - KNOWN FAILING
+- Added: VC-23 verification checklist item for expected failing tests
+- Changed: Test count from 58 to 61
+- Note: TC-59 to TC-61 expected to fail until IS-15 (SCAN-KL-01) is implemented
+- Context: V2 achieves 98% parity (42/43 items), ArilenaDrovik folder in subsite not detected
 
 **[2026-02-03 22:40]**
 - Added: TC-49 to TC-54 (subsite scanning - 6 tests)

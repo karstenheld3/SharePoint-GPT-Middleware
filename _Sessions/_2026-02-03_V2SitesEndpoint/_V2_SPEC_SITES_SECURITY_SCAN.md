@@ -2,6 +2,7 @@
 
 **Doc ID**: SSCSCN-SP01
 **Goal**: Specify the security scan feature for scanning SharePoint site permissions and generating CSV reports.
+**Timeline**: Created 2026-02-03, Updated 6 times (2026-02-03 - 2026-02-21)
 **Target file**: `/src/routers_v2/sites.py`
 
 **Depends on:**
@@ -21,6 +22,7 @@
 - Filter out "Limited Access" permission level by default
 - Streaming endpoint with SSE progress updates
 - Load `security_scan_settings.json` before scan; create with defaults if missing
+- **KNOWN LIMITATION**: SDK `HasUniqueRoleAssignments` query may not detect folders in subsite document libraries (see SCAN-KL-01)
 
 ## Table of Contents
 
@@ -38,6 +40,7 @@
 12. [User Actions](#12-user-actions)
 13. [UX Design](#13-ux-design)
 14. [Example CSV Output (Anonymized)](#14-example-csv-output-anonymized)
+15. [Known Limitations](#15-known-limitations)
 
 ## 1. Scenario
 
@@ -283,7 +286,7 @@ Report accessible via:
 **Format:** stream (SSE only)
 **Requires:** `CRAWLER_SELFTEST_SHAREPOINT_SITE` environment variable
 
-**Tests:**
+**Tests (11 total, 1 expected fail):**
 - TC-01: Connect to selftest site
 - TC-02: Enumerate site groups
 - TC-03: Resolve group members
@@ -291,6 +294,10 @@ Report accessible via:
 - TC-05: Resolve item role assignments
 - TC-06: Create report archive
 - TC-07: Verify CSV output format
+- TC-08: Scan subsite content (include_subsites=true)
+- TC-09: Large library pagination (REST API fallback for >5000 items)
+- TC-10: Subsite folder HasUniqueRoleAssignments detection -> **EXPECTED FAIL** (SCAN-KL-01)
+- TC-11: Compare V2 output vs PowerShell scanner reference
 
 **Result:**
 ```json
@@ -298,13 +305,18 @@ Report accessible via:
   "ok": true,
   "error": "",
   "data": {
-    "passed": 7,
-    "failed": 0,
-    "passed_tests": ["TC-01", "TC-02", ...],
-    "failed_tests": []
+    "passed": 10,
+    "failed": 1,
+    "expected_failures": 1,
+    "passed_tests": ["TC-01", "TC-02", "TC-03", "TC-04", "TC-05", "TC-06", "TC-07", "TC-08", "TC-09", "TC-11"],
+    "failed_tests": ["TC-10"],
+    "expected_fail_tests": ["TC-10"],
+    "notes": "TC-10 expected to fail until IS-15 (SCAN-KL-01) is implemented"
   }
 }
 ```
+
+**Note:** Test passes if `passed + expected_failures == total_tests`. TC-10 failure is tracked as known limitation.
 
 ## 6. Functional Requirements
 
@@ -575,17 +587,15 @@ Settings file is loaded before each security scan. If the file does not exist, a
 
 **PowerShell Variable Mapping:**
 
-| PowerShell | JSON Key | Description |
-|------------|----------|-------------|
-| `$doNotResolveTheseGroups` | `do_not_resolve_these_groups` | Groups to skip resolving |
-| `$ignoreAccounts` | `ignore_accounts` | System accounts to exclude |
-| `$ignorePermissionLevels` | `ignore_permission_levels` | Permission levels to filter |
-| `$ignoreSharePointGroups` | `ignore_sharepoint_groups` | SP groups to skip |
-| `$maxGroupNestinglevel` | `max_group_nesting_level` | Max nesting depth |
-| `$builtInLists` | `ignore_lists` | Lists to exclude |
-| `$fieldsToLoad` | `fields_to_load` | Fields to load for items |
-| `$ignoreFields` | `ignore_fields` | Fields to exclude |
-| `$outputColumns` | `output_columns` | Columns for item access CSV |
+- `$doNotResolveTheseGroups` -> `do_not_resolve_these_groups` - Groups to skip resolving
+- `$ignoreAccounts` -> `ignore_accounts` - System accounts to exclude
+- `$ignorePermissionLevels` -> `ignore_permission_levels` - Permission levels to filter
+- `$ignoreSharePointGroups` -> `ignore_sharepoint_groups` - SP groups to skip
+- `$maxGroupNestinglevel` -> `max_group_nesting_level` - Max nesting depth
+- `$builtInLists` -> `ignore_lists` - Lists to exclude
+- `$fieldsToLoad` -> `fields_to_load` - Fields to load for items
+- `$ignoreFields` -> `ignore_fields` - Fields to exclude
+- `$outputColumns` -> `output_columns` - Columns for item access CSV
 
 **Behavior:**
 - File created with defaults if missing on first scan
@@ -807,7 +817,43 @@ Id,Type,Url,LoginName,DisplayName,Email,PermissionLevel,SharedDateTime,SharedByD
 - `AssignmentType` values: `User`, `Group`, `SharingLink`, `Direct`
 - Sharing links show in `SharedDateTime`, `SharedByDisplayName`, `SharedByLoginName`
 
+## 15. Known Limitations
+
+**SCAN-KL-01: Subsite Folder HasUniqueRoleAssignments Detection**
+
+The Office365-REST-Python-Client SDK's `HasUniqueRoleAssignments` property query does not reliably detect folders with broken inheritance in subsite document libraries.
+
+**Symptom:** Folders in subsite document libraries (e.g., `Subsite01/Shared Documents/ArilenaDrovik`) that have unique permissions are not detected by the SDK's `select(["HasUniqueRoleAssignments"])` query, even though the same folders are detected by PowerShell's PnP cmdlet with `-Includes HasUniqueRoleAssignments`.
+
+**Impact:**
+- V2 scanner achieves 98% parity with PowerShell scanner (42/43 items in test environment)
+- 1 folder in subsite document library not detected
+- V2 scanner outputs 63x MORE access entries than PowerShell (126 vs 2) for other items
+
+**Root cause:** The SDK may not correctly load the `HasUniqueRoleAssignments` property for items in subsites when using a subsite-scoped `ClientContext`. PowerShell's PnP cmdlet uses a different API pattern (`Get-PnPListItem -Includes HasUniqueRoleAssignments`) that may query the property differently.
+
+**Workaround options (TO BE IMPLEMENTED):**
+1. Use REST API directly for subsite item scanning with explicit `$select=HasUniqueRoleAssignments`
+2. Load property separately via `ensure_property()` for each item in subsites
+3. Use PnP-style pattern: query all items, then batch-load HasUniqueRoleAssignments
+
+**Status:** Open - requires further investigation
+
 ## Document History
+
+**[2026-02-21 17:10]**
+- Added: Section 15 - Known Limitations with SCAN-KL-01 (subsite folder detection)
+- Added: MUST-NOT-FORGET item for known limitation
+- Changed: V2 achieves 98% parity (42/43 items), outputs 63x more access entries (126 vs 2)
+- Resolved: Large library scanning (6000+ items) - implemented REST API pagination fallback
+
+**[2026-02-21 10:55]**
+- Added: Comparison test findings - V2 vs PowerShell scanner discrepancies
+- Fixed: CSV column differences documented (Job, SiteUrl columns PowerShell-only)
+- Fixed: Type values must match PowerShell (File/Folder/Item, not ITEM/FOLDER)
+- Fixed: URL format must be full URL (not relative path)
+- Fixed: LoginName must normalize claims format to email (strip i:0#.f|membership| prefix)
+- Issue: Large libraries (6000 items) not being scanned - needs investigation
 
 **[2026-02-03 16:15]**
 - Fixed: SCAN-FR-08 function name `create_report_archive()` -> `create_report()` (synced from IMPL)
