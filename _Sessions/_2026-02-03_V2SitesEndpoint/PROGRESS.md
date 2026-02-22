@@ -50,9 +50,10 @@ Task 5: V2 vs PowerShell Output Alignment (2026-02-21)
 - 05_IndividualPermissionItemAccess.csv: PASS (128 vs 130)
 - 03_SiteUsers.csv: WARN (7 vs 10) - 3 extra users in V2
 
-**Remaining**:
-- [ ] Fix spo-grid-all-users filter (settings file path issue)
-- [ ] Investigate user4/user5 nested group resolution difference
+**Remaining** (SDK limitation - see SCAN-PR-007):
+- [x] Fix spo-grid-all-users filter - deleted cached settings at correct path
+- [x] Fix user4/user5 - added skip_users_csv for subsites, do_not_resolve for Custom group
+- [ ] SDK doesn't return M365/Security groups as SP group members (user3/user6 missing)
 
 ---
 

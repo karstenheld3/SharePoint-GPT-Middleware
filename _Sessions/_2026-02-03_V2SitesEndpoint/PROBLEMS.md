@@ -4,22 +4,23 @@
 
 ## Open
 
-### SCAN-PR-007: V2 vs PowerShell 03_SiteUsers.csv mismatch - nested group resolution difference
+### SCAN-PR-007: V2 vs PowerShell 03_SiteUsers.csv mismatch - SDK limitation
 
-- **Status**: Open (in progress)
-- **Severity**: Low (4/5 files PASS)
-- **Issue**: V2 produces 3 extra users in 03_SiteUsers.csv that PowerShell doesn't include
-- **Extra users**:
-  - `c:0-.f|rolemanager|spo-grid-all-users/...` (Everyone except external users principal)
-  - `scantest_user4@whizzyapps.onmicrosoft.com` (via ScanTest Custom Group)
-  - `scantest_user5@whizzyapps.onmicrosoft.com` (via ScanTest Custom Group)
-- **Root cause**: V2 resolves nested groups more aggressively than PowerShell
+- **Status**: Open (partially fixed)
+- **Severity**: Low (4/5 files PASS, only 03_SiteUsers.csv differs)
+- **Issue**: V2 missing 3 users that PowerShell includes (user3, user6, empty row)
+- **Root cause**: Python SDK `group.users.get()` does not return Entra ID groups (M365/Security) as members of SharePoint groups. PnP PowerShell does.
 - **Fixes applied** [TESTED]:
-  - Added `spo-grid-all-users` to `ignore_accounts` in hardcoded_config.py
-  - Added user deduplication in `scan_site_groups`
-  - Added `do_not_resolve_these_groups` filter to `scan_broken_inheritance_items`
-- **Remaining**: Filter not fully working - need to delete cached settings file at correct path
-- **Settings path issue**: Settings file in `.localstorage/AzureOpenAiProject/sites/` not `local_storage/sites/`
+  - Added `skip_users_csv` parameter to exclude subsite users
+  - Added `do_not_resolve_these_groups` check at SharePoint group level
+  - Added Entra group resolution for direct role assignments (principal_type 4)
+  - Added `ScanTest Custom Group` to `do_not_resolve_these_groups`
+  - Deleted cached settings file at correct path (`.localstorage/AzureOpenAiProject/sites/`)
+- **Remaining**: SDK doesn't return M365/Security groups as SP group members
+- **Workaround options**:
+  - Use REST API `/_api/web/sitegroups(ID)/users` with $expand
+  - Query Entra ID groups separately and match by permission level
+  - Accept 4/5 parity as sufficient for current use case
 
 ### SCAN-PR-006: Subsite folder HasUniqueRoleAssignments detection - SDK limitation
 
