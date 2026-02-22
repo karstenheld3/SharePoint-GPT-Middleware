@@ -548,7 +548,12 @@ One JSON file per Entra ID group, using group ID as filename.
 
 **Storage:** `LOCAL_PERSISTENT_STORAGE_PATH/sites/security_scan_settings.json`
 
-Settings file is loaded before each security scan. If the file does not exist, an empty default is created.
+**Settings Loading Flow:**
+1. Check if `security_scan_settings.json` exists
+2. If NO: Copy defaults from `hardcoded_config.py:DEFAULT_SECURITY_SCAN_SETTINGS`, save to JSON file, return defaults
+3. If YES: Load and return settings from JSON file (hardcoded_config defaults are ignored)
+
+**Important:** Once the JSON file is created, changes to `hardcoded_config.py` have no effect. To apply new defaults, delete the JSON file or manually update it.
 
 **Schema:**
 ```json

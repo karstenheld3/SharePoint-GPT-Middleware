@@ -219,6 +219,13 @@ def delete_all_entra_caches(storage_path: str) -> int:
 
 **Action**: Add settings load/save functions with defaults
 
+**Settings Loading Flow:**
+1. Check if `security_scan_settings.json` exists
+2. If NO: Copy defaults from `hardcoded_config.py:DEFAULT_SECURITY_SCAN_SETTINGS`, save to JSON, return defaults
+3. If YES: Load and return settings from JSON (hardcoded_config defaults ignored)
+
+**Important:** Once JSON file exists, `hardcoded_config.py` changes have no effect. Delete JSON to apply new defaults.
+
 **Code**:
 ```python
 SCANNER_SETTINGS_FILENAME = "security_scan_settings.json"
