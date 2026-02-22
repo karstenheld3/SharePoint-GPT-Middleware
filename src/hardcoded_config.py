@@ -64,7 +64,7 @@ CRAWLER_HARDCODED_CONFIG = CrawlerHardcodedConfig(
   ,APPEND_TO_MAP_FILES_EVERY_X_LINES=10
   ,SECURITY_SCAN_SETTINGS_FILENAME="security_scan_settings.json"
   ,DEFAULT_SECURITY_SCAN_SETTINGS={
-    "do_not_resolve_these_groups": ["Everyone except external users", "ScanTest Custom Group"],
+    "do_not_resolve_these_groups": ["Everyone except external users"],
     "ignore_accounts": ["SHAREPOINT\\system", "app@sharepoint", "c:0!.s|windows", "spo-grid-all-users"],
     "ignore_permission_levels": ["Limited Access"],
     "ignore_sharepoint_groups": [],

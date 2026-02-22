@@ -483,10 +483,26 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
         # Skip ignored accounts from settings
         if any(ignored in login_name for ignored in ignore_accounts): continue
         group_display_name = member.title or ""
-        # Check if group should not be resolved
+        # Check if group should not be resolved - add group entry but don't resolve members
         if group_display_name in do_not_resolve_these_groups:
           ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-          yield writer.emit_log(f"[{ts}]       SKIPPED Entra group resolution: '{group_display_name}' in do_not_resolve_these_groups")
+          yield writer.emit_log(f"[{ts}]       NOT resolving Entra group: '{group_display_name}' in do_not_resolve_these_groups (adding group entry)")
+          direct_user_rows.append({
+            "Job": 1,
+            "SiteUrl": site_url,
+            "Id": "",
+            "LoginName": normalize_login_name(login_name),
+            "DisplayName": group_display_name,
+            "Email": "",
+            "PermissionLevel": perm_name,
+            "IsGuest": "false",
+            "ViaGroup": "",
+            "ViaGroupId": "",
+            "ViaGroupType": "",
+            "AssignmentType": "Group",
+            "NestingLevel": 0,
+            "ParentGroup": ""
+          })
           continue
         # Resolve Entra ID group members if Graph client available
         if is_entra_id_group(login_name) and graph_client:
@@ -567,10 +583,28 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     yield writer.emit_log(f"[{ts}]     ( {idx} / {total_groups} ) SharePointGroup: group_title='{group.title}'...")
     
-    # Skip resolving groups in do_not_resolve_these_groups for 03_SiteUsers.csv
+    # Groups in do_not_resolve_these_groups: add group entry but don't resolve members
     if group.title in do_not_resolve_these_groups:
       ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-      yield writer.emit_log(f"[{ts}]       SKIPPED member resolution: Group in do_not_resolve_these_groups")
+      yield writer.emit_log(f"[{ts}]       NOT resolving members: Group in do_not_resolve_these_groups (adding group entry)")
+      # Add the group itself as an entry (not resolved to individual members)
+      user_rows.append({
+        "Job": 1,
+        "SiteUrl": site_url,
+        "Id": "",
+        "LoginName": group.title,  # Use group title as LoginName
+        "DisplayName": group.title,
+        "Email": "",
+        "PermissionLevel": perm_level,
+        "IsGuest": "false",
+        "ViaGroup": "",
+        "ViaGroupId": "",
+        "ViaGroupType": "",
+        "AssignmentType": "Group",
+        "NestingLevel": 0,
+        "ParentGroup": ""
+      })
+      stats["users_found"] += 1
       continue
     
     # Resolve members
