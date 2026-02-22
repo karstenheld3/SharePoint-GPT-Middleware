@@ -399,7 +399,7 @@ async def scan_site_contents(ctx: ClientContext, output_folder: str, writer, log
   yield writer.emit_log(f"[{ts}]   {stats['lists_scanned']} list(s)/libraries found.".replace("(s)", "s" if stats['lists_scanned'] != 1 else ""))
   writer._step_result = stats
 
-async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder: str, graph_client: Optional[GraphServiceClient], writer, logger: MiddlewareLogger, current_step: int, total_steps: int, settings: dict = None, site_url: str = "") -> AsyncGenerator[str, None]:
+async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder: str, graph_client: Optional[GraphServiceClient], writer, logger: MiddlewareLogger, current_step: int, total_steps: int, settings: dict = None, site_url: str = "", skip_users_csv: bool = False) -> AsyncGenerator[str, None]:
   """Scan site groups and write 02_SiteGroups.csv and 03_SiteUsers.csv. Yields SSE events. Sets writer._step_result with stats."""
   stats = {"groups_found": 0, "users_found": 0, "external_users_found": 0}
   if settings is None: settings = {}
@@ -478,26 +478,51 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
           "NestingLevel": 0,
           "ParentGroup": ""
         })
-      elif member.principal_type == 4:  # Direct Security Group assignment
+      elif member.principal_type == 4:  # Direct Security Group (Entra ID group) assignment
         login_name = member.login_name or ""
         # Skip ignored accounts from settings
         if any(ignored in login_name for ignored in ignore_accounts): continue
-        direct_user_rows.append({
-          "Job": 1,
-          "SiteUrl": site_url,
-          "Id": "",
-          "LoginName": normalize_login_name(login_name),
-          "DisplayName": member.title or "",
-          "Email": "",
-          "PermissionLevel": perm_name,
-          "IsGuest": "false",
-          "ViaGroup": "",
-          "ViaGroupId": "",
-          "ViaGroupType": "",
-          "AssignmentType": "SecurityGroup",
-          "NestingLevel": 0,
-          "ParentGroup": ""
-        })
+        group_display_name = member.title or ""
+        # Check if group should not be resolved
+        if group_display_name in do_not_resolve_these_groups:
+          ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+          yield writer.emit_log(f"[{ts}]       SKIPPED Entra group resolution: '{group_display_name}' in do_not_resolve_these_groups")
+          continue
+        # Resolve Entra ID group members if Graph client available
+        if is_entra_id_group(login_name) and graph_client:
+          group_id = extract_group_id_from_login(login_name)
+          if group_id:
+            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            yield writer.emit_log(f"[{ts}]       Resolving Entra group '{group_display_name}' via Graph API...")
+            nested_members = await resolve_entra_group_members(storage_path, graph_client, group_id, group_display_name, 1, "", writer, logger)
+            for nm in nested_members:
+              nm["Job"] = 1
+              nm["SiteUrl"] = site_url
+              nm["PermissionLevel"] = perm_name
+              nm["ViaGroup"] = group_display_name
+              nm["ViaGroupId"] = group_id
+              nm["ViaGroupType"] = "EntraGroup"
+              direct_user_rows.append(nm)
+            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            yield writer.emit_log(f"[{ts}]       OK. {len(nested_members)} member(s) resolved from '{group_display_name}'".replace("(s)", "s" if len(nested_members) != 1 else ""))
+        else:
+          # Can't resolve, add as-is
+          direct_user_rows.append({
+            "Job": 1,
+            "SiteUrl": site_url,
+            "Id": "",
+            "LoginName": normalize_login_name(login_name),
+            "DisplayName": group_display_name,
+            "Email": "",
+            "PermissionLevel": perm_name,
+            "IsGuest": "false",
+            "ViaGroup": "",
+            "ViaGroupId": "",
+            "ViaGroupType": "",
+            "AssignmentType": "SecurityGroup",
+            "NestingLevel": 0,
+            "ParentGroup": ""
+          })
   
   # Load all site groups and filter to those with permissions (skip ignored SP groups)
   all_groups = ctx.web.site_groups.get().execute_query()
@@ -542,6 +567,12 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     yield writer.emit_log(f"[{ts}]     ( {idx} / {total_groups} ) SharePointGroup: group_title='{group.title}'...")
     
+    # Skip resolving groups in do_not_resolve_these_groups for 03_SiteUsers.csv
+    if group.title in do_not_resolve_these_groups:
+      ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+      yield writer.emit_log(f"[{ts}]       SKIPPED member resolution: Group in do_not_resolve_these_groups")
+      continue
+    
     # Resolve members
     members = await resolve_sharepoint_group_members(ctx, group, storage_path, graph_client, writer, 1, "", logger, settings)
     for member in members:
@@ -561,7 +592,8 @@ async def scan_site_groups(ctx: ClientContext, storage_path: str, output_folder:
       user_rows.append(member)
   
   append_csv_rows(groups_file, group_rows, CSV_COLUMNS_SITE_GROUPS)
-  append_csv_rows(users_file, user_rows, CSV_COLUMNS_SITE_USERS)
+  if not skip_users_csv:
+    append_csv_rows(users_file, user_rows, CSV_COLUMNS_SITE_USERS)
   
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
   yield writer.emit_log(f"[{ts}]   {stats['groups_found']} group(s), {stats['users_found']} user(s) found.".replace("(s)", "s" if stats['groups_found'] != 1 else "", 1).replace("(s)", "s" if stats['users_found'] != 1 else "", 1))
@@ -920,8 +952,8 @@ async def scan_subsites(
       async for sse in scan_site_contents(sub_ctx, output_folder, writer, logger, 0, 0, settings, site_url=parent_site_url):
         pass  # Execute generator but don't yield SSE events for subsite scanning
       
-      # Scan subsite groups
-      async for sse in scan_site_groups(sub_ctx, storage_path, output_folder, graph_client, writer, logger, 0, 0, settings, site_url=parent_site_url):
+      # Scan subsite groups (skip_users_csv=True to match PowerShell - only main site users in 03_SiteUsers.csv)
+      async for sse in scan_site_groups(sub_ctx, storage_path, output_folder, graph_client, writer, logger, 0, 0, settings, site_url=parent_site_url, skip_users_csv=True):
         pass  # Execute generator but don't yield SSE events for subsite scanning
       group_stats = writer._step_result or {"groups_found": 0, "users_found": 0, "external_users_found": 0}
       stats["groups_found"] += group_stats["groups_found"]
