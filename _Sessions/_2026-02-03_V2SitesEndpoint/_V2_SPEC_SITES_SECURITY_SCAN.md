@@ -399,7 +399,8 @@ Report accessible via:
 - Apply settings: filter accounts, permission levels, groups per configuration
 - Use `max_group_nesting_level` from settings (default: 5)
 - Skip lists matching `ignore_lists` array
-- Skip groups matching `do_not_resolve_these_groups` or `ignore_sharepoint_groups`
+- For groups in `do_not_resolve_these_groups`: add group entry to output but skip member resolution
+- For groups in `ignore_sharepoint_groups`: skip entirely (no output)
 
 ## 7. Design Decisions
 
