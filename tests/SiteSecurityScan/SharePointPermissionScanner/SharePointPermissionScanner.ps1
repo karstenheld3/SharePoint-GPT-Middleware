@@ -975,6 +975,13 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
 
 } # loop over rows in input csv
 
+# Final flush of any remaining buffered output lines
+appendToFile -file $outputFile1SiteContents -lines $outputLines1SiteContents
+appendToFile -file $outputFile2SiteGroups -lines $outputLines2SiteGroups
+appendToFile -file $outputFile3SiteUsers -lines $outputLines3SiteUsers
+appendToFile -file $outputFile4IndividualPermissionItems -lines $outputLines4IndividualPermissionItems
+appendToFile -file $outputFile5IndividualPermissionItemAccess -lines $outputLines5IndividualPermissionItemAccess
+
 # ------------------ END: Step 5 - Run over (site or subsite) and contained subsites and write output files ------------------
 
 
