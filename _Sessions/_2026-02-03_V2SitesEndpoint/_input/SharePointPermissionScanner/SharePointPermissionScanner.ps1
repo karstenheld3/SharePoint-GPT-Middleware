@@ -45,7 +45,7 @@ $scanIndividualItems=$true
 $doNotResolveTheseGroups = @("Everyone except external users","all VF users","all VF externals","all VF internals","Limited Access System Group")
 $ignoreAccounts = @("SHAREPOINT\system","app@sharepoint","c:0!.s|windows")
 $ignorePermissionLevels = @("Limited Access")
-$omitSharePointGroupsInBrokenPermissionsFile = $true # if $true, will omit users who have access via SharePoint groups (owners, members, visitors, custom group members).
+$omitSharePointGroupsInBrokenPermissionsFile = $false # if $true, will omit users who have access via SharePoint groups (owners, members, visitors, custom group members).
 $loadSubsites = $true
 $maxGroupNestinglevel = 5
 $siteUrlsWithManySubsites = @()
@@ -939,6 +939,7 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
                                 $groupMembers | ForEach-Object { if( ([string]$_["AssignmentType"]) -eq "" ) { $_["AssignmentType"] = "Group" } }
                                 foreach ($m in $groupMembers){
                                     $loginName = $m["LoginName"]
+                                    if ([string]::IsNullOrEmpty($loginName)) { continue }
                                     $isGuest = isGuestAccount -loginName $loginName
                                     # if user has not yet been written to site users, add user to site user output lines
                                     if (!$sitePrincipalIdsThatHaveBeenWrittenToFile.ContainsKey($loginName)){
