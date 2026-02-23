@@ -225,11 +225,14 @@ async def resolve_entra_group_members(storage_path: str, graph_client: GraphServ
     
     for member in members_response.value:
       if hasattr(member, 'odata_type') and member.odata_type == "#microsoft.graph.user":
+        upn = member.user_principal_name or ""
+        is_guest = "true" if "#ext#" in upn.lower() else "false"
         members.append({
           "Id": "",  # Empty for nested Entra ID members per SPEC
-          "LoginName": member.user_principal_name or "",
+          "LoginName": upn,
           "DisplayName": member.display_name or "",
           "Email": member.mail or "",
+          "IsGuest": is_guest,
           "NestingLevel": nesting_level,
           "ParentGroup": parent_group,
           "ViaGroup": group_name,
@@ -318,11 +321,8 @@ async def resolve_sharepoint_group_members(ctx: ClientContext, group, storage_pa
         )
         ts2 = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         writer.emit_log(f"[{ts2}]           OK. {len(nested)} nested member(s) resolved.".replace("(s)", "s" if len(nested) != 1 else ""))
-        # Update ViaGroup to point to SP group
-        for m in nested:
-          m["ViaGroup"] = group.title
-          m["ViaGroupId"] = str(group.id)
-          m["ViaGroupType"] = "SharePointGroup"
+        # Keep ViaGroup as the Entra group (already set correctly by resolve_entra_group_members)
+        # Do NOT overwrite to SP group - this matches PowerShell behavior
         members.extend(nested)
       elif not graph_client:
         writer.emit_log(f"[{ts}]           WARNING: No Graph client, cannot resolve Entra group")
@@ -647,6 +647,7 @@ async def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, o
   ignore_permission_levels = set(settings.get("ignore_permission_levels", ["Limited Access"]))
   ignore_accounts = set(settings.get("ignore_accounts", []))
   do_not_resolve_these_groups = set(settings.get("do_not_resolve_these_groups", []))
+  omit_sp_groups = settings.get("omit_sharepoint_groups_in_broken_permissions_file", False)
   
   items_file = os.path.join(output_folder, "04_IndividualPermissionItems.csv")
   access_file = os.path.join(output_folder, "05_IndividualPermissionItemAccess.csv")
@@ -855,6 +856,11 @@ async def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, o
             if member_title in do_not_resolve_these_groups:
               continue
             
+            # Skip SharePoint groups if omit_sharepoint_groups_in_broken_permissions_file is true
+            # member.principal_type: 1=User, 4=SecurityGroup, 8=SharePointGroup
+            if omit_sp_groups and member.principal_type == 8:
+              continue
+            
             login_name = member.login_name or ""
             is_guest = "true" if "#ext#" in login_name.lower() else "false"
             access_rows.append({
@@ -985,7 +991,8 @@ async def scan_subsites(
       writer.emit_log(f"[{ts}]     Connected to subsite")
       
       # Scan subsite site contents (lists/libraries) - append to same CSV
-      async for sse in scan_site_contents(sub_ctx, output_folder, writer, logger, 0, 0, settings, site_url=parent_site_url):
+      # Use subsite_url for SiteUrl column to match PowerShell behavior
+      async for sse in scan_site_contents(sub_ctx, output_folder, writer, logger, 0, 0, settings, site_url=subsite_url):
         pass  # Execute generator but don't yield SSE events for subsite scanning
       
       # Scan subsite groups (skip_users_csv=True to match PowerShell - only main site users in 03_SiteUsers.csv)
