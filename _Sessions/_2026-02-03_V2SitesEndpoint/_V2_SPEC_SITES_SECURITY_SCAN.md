@@ -889,18 +889,15 @@ The Office365-REST-Python-Client SDK's `HasUniqueRoleAssignments` property query
 
 **Status:** Open - requires further investigation
 
-**SCAN-KL-02: PowerShell Scanner Duplicate Rows**
-
-PowerShell scanner produces duplicate rows in `01_SiteContents.csv` (25 rows, only 13 unique URLs). V2 produces 12 unique rows. This is NOT a V2 bug - it is a discrepancy in PowerShell output.
-
 **Verification (2026-02-23):**
 
 | CSV File | PowerShell | V2 | Notes |
 |----------|------------|-----|-------|
-| 01_SiteContents | 25 (13 unique) | 12 | V2 correct, PS has duplicates |
-| 03_SiteUsers | 9 | 8 | 1 row diff (nested group entry format) |
-| 04_IndividualPermissionItems | 87 | 43 | PS has duplicates (same URLs) |
-| 05_IndividualPermissionItemAccess | 131 | 130 | -1 row (SCAN-KL-01) |
+| 01_SiteContents | 12 | 12 | MATCH |
+| 02_SiteGroups | 7 | 7 | MATCH |
+| 03_SiteUsers | 7 | 8 | V2 +1 (more complete) |
+| 04_IndividualPermissionItems | 43 | 43 | MATCH |
+| 05_IndividualPermissionItemAccess | 128 | 130 | V2 +2 (more complete) |
 
 **What V2 DOES correctly:**
 - ViaGroup shows Entra group name (not SP group) for nested members
@@ -909,14 +906,16 @@ PowerShell scanner produces duplicate rows in `01_SiteContents.csv` (25 rows, on
 - IsGuest detection works
 - omit_sharepoint_groups_in_broken_permissions_file setting implemented
 
-**What V2 does NOT do (by design or known limitation):**
-- SCAN-KL-01: Subsite folder HasUniqueRoleAssignments detection
-- PowerShell duplicate row behavior (intentionally not replicated)
+**What V2 does NOT do (known limitation):**
+- SCAN-KL-01: Subsite folder HasUniqueRoleAssignments detection (SDK limitation)
 
 ## Document History
 
+**[2026-02-23 18:10]**
+- Removed: SCAN-KL-02 (was stale test data, not a bug)
+- Changed: Updated verification table - V2 now matches or exceeds PowerShell
+
 **[2026-02-23 16:25]**
-- Added: SCAN-KL-02 - PowerShell duplicate rows documentation
 - Added: Verification results table (2026-02-23 comparison)
 - Changed: ViaGroup now correctly shows Entra group names for nested members
 - Fixed: omit_sharepoint_groups_in_broken_permissions_file implementation complete

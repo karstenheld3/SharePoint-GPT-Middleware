@@ -6,5 +6,3 @@ Job,SiteUrl,Id,LoginName,DisplayName,Email,PermissionLevel,IsGuest,ViaGroup,ViaG
 1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,,,ScanTest Security Group 02,,Full Control,false,ScanTest Security Group 01,c2bfa136-9719-4a20-b386-8591802896ad,SecurityGroup,Group,2,ScanTest Custom Group
 1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,,scantest_user3@whizzyapps.onmicrosoft.com,ScanTest User 3,scantest_user3@whizzyapps.onmicrosoft.com,Full Control,false,ScanTest Security Group 01,c2bfa136-9719-4a20-b386-8591802896ad,SecurityGroup,Group,2,ScanTest Custom Group
 1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,15,scantest_user1@whizzyapps.onmicrosoft.com,ScanTest User 1,,Read,false,"",,,User,0,""
-Job,SiteUrl,Id,LoginName,DisplayName,Email,PermissionLevel,IsGuest,ViaGroup,ViaGroupId,ViaGroupType,AssignmentType,NestingLevel,ParentGroup
-1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,15,scantest_user1@whizzyapps.onmicrosoft.com,ScanTest User 1,,Read,false,"",,,User,0,""

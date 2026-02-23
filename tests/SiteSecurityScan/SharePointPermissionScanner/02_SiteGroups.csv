@@ -6,8 +6,3 @@ Job,SiteUrl,Id,Role,Title,PermissionLevel,Owner
 1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,18,,AiSearchTest01 Subsite01 Members,[Individual items],
 1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,17,,AiSearchTest01 Subsite01 Owners,[Individual items],
 1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,20,,AiSearchTest01 Subsite01 Visitors,[Individual items],
-Job,SiteUrl,Id,Role,Title,PermissionLevel,Owner
-1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,3,SiteOwners,AiSearchTest01 Owners,Full Control,
-1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,5,SiteMembers,AiSearchTest01 Members,Edit,
-1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,4,SiteVisitors,AiSearchTest01 Visitors,Read,
-1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,12,Custom,ScanTest Custom Group,Full Control,

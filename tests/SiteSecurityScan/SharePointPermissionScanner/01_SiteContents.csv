@@ -11,16 +11,3 @@ Job,SiteUrl,Id,Type,Title,Url
 1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,3d1d9fb5-f478-4c51-88bc-1c0ba2686237,Subsite,Subsite01,https://whizzyapps.sharepoint.com/sites/AiSearchTest01/Subsite01
 1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,c91b6be7-4b8c-4975-b335-7730f1f750b1,Library,Documents,https://whizzyapps.sharepoint.com/sites/AiSearchTest01/Subsite01/Shared Documents
 1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,1527517f-6fd2-47ec-a4e8-18e1159c4ae0,SitePages,Site Pages,https://whizzyapps.sharepoint.com/sites/AiSearchTest01/Subsite01/SitePages
-Job,SiteUrl,Id,Type,Title,Url
-1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,b669b03a-3425-4ea9-ab42-2345e8c405af,List,Acronyms,https://whizzyapps.sharepoint.com/sites/AiSearchTest01/Lists/Acronyms
-1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,a8b0c5a6-a6d0-4c14-915c-f194ab93cc6a,Library,DocumentLibrary01,https://whizzyapps.sharepoint.com/sites/AiSearchTest01/DocumentLibrary01
-1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,8dfccbb0-f447-4435-939e-09697003e10a,Library,DocumentLibrary02,https://whizzyapps.sharepoint.com/sites/AiSearchTest01/DocumentLibrary02
-1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,045229b3-57de-49ce-b36a-00c3ec0f4fd4,Library,Documents,https://whizzyapps.sharepoint.com/sites/AiSearchTest01/Shared Documents
-1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,cdb3b4d3-56b6-44be-9105-b42bea10ae35,Library,POC_PermissionTest_50,https://whizzyapps.sharepoint.com/sites/AiSearchTest01/POC_PermissionTest_50
-1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,d0fd0358-5c8e-4e4e-870e-bd95cf1db138,Library,POC_PermissionTest_6000,https://whizzyapps.sharepoint.com/sites/AiSearchTest01/POC_PermissionTest_6000
-1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,93e5f3bc-4082-45bd-b3d4-965e7ae45b18,List,ScanTestList,https://whizzyapps.sharepoint.com/sites/AiSearchTest01/Lists/ScanTestList
-1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,c4c8e81f-c8dd-43c8-8351-3de524aff743,List,Security training catalog,https://whizzyapps.sharepoint.com/sites/AiSearchTest01/Lists/Security training catalog
-1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,a2e96c6a-66f5-44ea-9e43-4aa493f62833,SitePages,Site Pages,https://whizzyapps.sharepoint.com/sites/AiSearchTest01/SitePages
-1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,3d1d9fb5-f478-4c51-88bc-1c0ba2686237,Subsite,Subsite01,https://whizzyapps.sharepoint.com/sites/AiSearchTest01/Subsite01
-1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,c91b6be7-4b8c-4975-b335-7730f1f750b1,Library,Documents,https://whizzyapps.sharepoint.com/sites/AiSearchTest01/Subsite01/Shared Documents
-1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,1527517f-6fd2-47ec-a4e8-18e1159c4ae0,SitePages,Site Pages,https://whizzyapps.sharepoint.com/sites/AiSearchTest01/Subsite01/SitePages
