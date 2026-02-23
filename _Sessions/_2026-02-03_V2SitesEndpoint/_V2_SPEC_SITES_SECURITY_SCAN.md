@@ -563,6 +563,7 @@ One JSON file per Entra ID group, using group ID as filename.
   "ignore_permission_levels": ["Limited Access"],
   "ignore_sharepoint_groups": [],
   "max_group_nesting_level": 5,
+  "omit_sharepoint_groups_in_broken_permissions_file": false,
   "ignore_lists": [
     "Access Requests", "App Packages", "appdata", "appfiles", "Apps in Testing",
     "AuditLogs", "Cache Profiles", "Composed Looks", "Content and Structure Reports",
@@ -605,6 +606,7 @@ One JSON file per Entra ID group, using group ID as filename.
 - `ignore_permission_levels` - Permission levels to filter out (default: "Limited Access")
 - `ignore_sharepoint_groups` - SharePoint group names to skip entirely
 - `max_group_nesting_level` - Maximum depth for nested group resolution (default: 5)
+- `omit_sharepoint_groups_in_broken_permissions_file` - If true, omit users who have access via SharePoint groups (owners, members, visitors, custom group members) from 05_IndividualPermissionItemAccess.csv (default: false)
 - `ignore_lists` - List titles to exclude from scanning (48 system lists)
 - `fields_to_load` - SharePoint list fields to include when scanning items with broken inheritance
 - `ignore_fields` - SharePoint list fields to exclude (inverse of fields_to_load)
@@ -617,6 +619,7 @@ One JSON file per Entra ID group, using group ID as filename.
 - `$ignorePermissionLevels` -> `ignore_permission_levels` - Permission levels to filter
 - `$ignoreSharePointGroups` -> `ignore_sharepoint_groups` - SP groups to skip
 - `$maxGroupNestinglevel` -> `max_group_nesting_level` - Max nesting depth
+- `$omitSharePointGroupsInBrokenPermissionsFile` -> `omit_sharepoint_groups_in_broken_permissions_file` - Omit SP group users from item access
 - `$builtInLists` -> `ignore_lists` - Lists to exclude
 - `$fieldsToLoad` -> `fields_to_load` - Fields to load for items
 - `$ignoreFields` -> `ignore_fields` - Fields to exclude
@@ -627,6 +630,28 @@ One JSON file per Entra ID group, using group ID as filename.
 - Loaded at scan start; changes take effect on next scan
 - Invalid JSON logs warning and uses defaults
 - Empty arrays mean "skip nothing" for filter settings
+
+**omit_sharepoint_groups_in_broken_permissions_file Behavior:**
+
+This setting controls whether SharePoint group members appear in `05_IndividualPermissionItemAccess.csv` (items with broken inheritance).
+
+When `false` (default):
+- SharePoint groups (Owners, Members, Visitors, custom groups) assigned to items with broken permissions ARE processed
+- All resolved members of those groups appear in `05_IndividualPermissionItemAccess.csv`
+- `ViaGroupType` = "SharePointGroup" for these entries
+
+When `true`:
+- SharePoint groups assigned to items with broken permissions are SKIPPED entirely
+- Only direct user assignments and Entra ID groups (Security/M365) appear in output
+- Use case: Focus on direct shares and external/Entra group access without SP group noise
+
+Scope - this setting ONLY affects `05_IndividualPermissionItemAccess.csv`. It does NOT affect:
+- `02_SiteGroups.csv` - SharePoint groups always listed
+- `03_SiteUsers.csv` - Site-level group members always included
+
+Example - item shared with "Site Members" group containing 3 users:
+- `false`: 3 rows in 05_IndividualPermissionItemAccess.csv (one per user, ViaGroup="Site Members")
+- `true`: 0 rows (SharePoint group skipped entirely)
 
 ## 10. Action Flow
 
@@ -798,14 +823,14 @@ Id,Role,Title,PermissionLevel,Owner
 ### 03_SiteUsers.csv
 
 ```csv
-Id,LoginName,DisplayName,Email,PermissionLevel,ViaGroup,ViaGroupId,ViaGroupType,AssignmentType,NestingLevel,ParentGroup
-6,user1@contoso.com,User One,user1@contoso.com,Full Control,TestSite Owners,3,SharePointGroup,Group,1,""
-10,user2@contoso.com,User Two,user2@contoso.com,Full Control,TestSite Owners,3,SharePointGroup,Group,1,""
-,member1@contoso.com,Member One,,Full Control,NestedSecurityGroup01,3b7af3f4-c9d6-4118-bfe5-52a4b08e7c6b,SecurityGroup,Group,2,TestSite Owners
-,user2@contoso.com,User Two,user2@contoso.com,Full Control,SecurityGroup01,22208125-d314-4e34-93f7-8979ecf6fc1f,SecurityGroup,Group,3,NestedSecurityGroup01
-11,user3@contoso.com,User Three,user3@contoso.com,Read,TestSite Visitors,4,SharePointGroup,Group,1,""
-,user3@contoso.com,User Three,user3@contoso.com,Full Control,M365Group01,d70680c7-4a6c-47a1-a751-da63b5df6093,SecurityGroup,Group,2,Custom Group
-11,user3@contoso.com,User Three,user3@contoso.com,"","",,,User,0,""
+Id,LoginName,DisplayName,Email,PermissionLevel,IsGuest,ViaGroup,ViaGroupId,ViaGroupType,AssignmentType,NestingLevel,ParentGroup
+6,user1@contoso.com,User One,user1@contoso.com,Full Control,false,TestSite Owners,3,SharePointGroup,Group,1,""
+10,user2@contoso.com,User Two,user2@contoso.com,Full Control,false,TestSite Owners,3,SharePointGroup,Group,1,""
+,member1@contoso.com,Member One,,Full Control,false,NestedSecurityGroup01,3b7af3f4-c9d6-4118-bfe5-52a4b08e7c6b,SecurityGroup,Group,2,TestSite Owners
+,user2@contoso.com,User Two,user2@contoso.com,Full Control,false,SecurityGroup01,22208125-d314-4e34-93f7-8979ecf6fc1f,SecurityGroup,Group,3,NestedSecurityGroup01
+11,user3@contoso.com,User Three,user3@contoso.com,Read,false,TestSite Visitors,4,SharePointGroup,Group,1,""
+,user3@contoso.com,User Three,user3@contoso.com,Full Control,false,M365Group01,d70680c7-4a6c-47a1-a751-da63b5df6093,SecurityGroup,Group,2,Custom Group
+11,user3@contoso.com,User Three,user3@contoso.com,"",false,"",,,User,0,""
 ```
 
 ### 04_IndividualPermissionItems.csv

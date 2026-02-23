@@ -111,9 +111,9 @@ PROGRESS_INTERVAL_SECONDS = 5
 # CSV Column Definitions (EXACT order from SPEC Section 14 - must match PowerShell)
 CSV_COLUMNS_SITE_CONTENTS = ["Id", "Type", "Title", "Url"]
 CSV_COLUMNS_SITE_GROUPS = ["Id", "Role", "Title", "PermissionLevel", "Owner"]
-CSV_COLUMNS_SITE_USERS = ["Id", "LoginName", "DisplayName", "Email", "PermissionLevel", "ViaGroup", "ViaGroupId", "ViaGroupType", "AssignmentType", "NestingLevel", "ParentGroup"]
+CSV_COLUMNS_SITE_USERS = ["Id", "LoginName", "DisplayName", "Email", "PermissionLevel", "IsGuest", "ViaGroup", "ViaGroupId", "ViaGroupType", "AssignmentType", "NestingLevel", "ParentGroup"]
 CSV_COLUMNS_INDIVIDUAL_ITEMS = ["Id", "Type", "Title", "Url"]
-CSV_COLUMNS_INDIVIDUAL_ACCESS = ["Id", "Type", "Url", "LoginName", "DisplayName", "Email", "PermissionLevel", "SharedDateTime", "SharedByDisplayName", "SharedByLoginName", "ViaGroup", "ViaGroupId", "ViaGroupType", "AssignmentType", "NestingLevel", "ParentGroup"]
+CSV_COLUMNS_INDIVIDUAL_ACCESS = ["Id", "Type", "Url", "LoginName", "DisplayName", "Email", "PermissionLevel", "IsGuest", "SharedDateTime", "SharedByDisplayName", "SharedByLoginName", "ViaGroup", "ViaGroupId", "ViaGroupType", "AssignmentType", "NestingLevel", "ParentGroup"]
 
 # Settings Functions
 def get_default_scanner_settings() -> dict: ...
@@ -239,6 +239,7 @@ def get_default_scanner_settings() -> dict:
         "ignore_permission_levels": ["Limited Access"],
         "ignore_sharepoint_groups": [],
         "max_group_nesting_level": 5,
+        "omit_sharepoint_groups_in_broken_permissions_file": False,  # Omit SP group users from item access
         "ignore_lists": [...],  # System lists to skip - see SPEC
         "fields_to_load": ["SharedWithUsers", "SharedWithDetails"],
         "ignore_fields": [...],  # 47 system fields - see SPEC
@@ -559,6 +560,24 @@ async def scan_site_contents(ctx, output_folder, writer) -> dict:
 **Location**: `common_security_scan_functions_v2.py` > `scan_broken_inheritance_items()`
 
 **Action**: Add function to find and scan items with broken inheritance
+
+**omit_sharepoint_groups_in_broken_permissions_file handling:**
+```python
+# When processing role assignments for items with broken inheritance:
+omit_sp_groups = settings.get("omit_sharepoint_groups_in_broken_permissions_file", False)
+
+for ra in role_assignments:
+    principal_type = get_principal_type(ra.member)
+    
+    if principal_type == "SharePointGroup":
+        if omit_sp_groups:
+            continue  # Skip SharePoint groups entirely when true
+        # Process SP group members...
+    elif principal_type == "SecurityGroup":
+        # Always process Entra ID groups
+    elif principal_type == "User":
+        # Always process direct users
+```
 
 **Code**:
 ```python

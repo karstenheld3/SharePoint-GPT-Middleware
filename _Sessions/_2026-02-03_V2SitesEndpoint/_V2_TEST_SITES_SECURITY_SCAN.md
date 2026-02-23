@@ -242,14 +242,14 @@ Id,Role,Title,PermissionLevel,Owner
 ### 03_SiteUsers.csv (Expected 7+ rows + header)
 
 ```csv
-Id,LoginName,DisplayName,Email,PermissionLevel,ViaGroup,ViaGroupId,ViaGroupType,AssignmentType,NestingLevel,ParentGroup
-{id},i:0#.f|membership|existing_owner@...,Existing site owner,existing_owner@...,Full Control,AiSearchTest01 Owners,3,SharePointGroup,Group,1,
-{id},i:0#.f|membership|existing_member@...,Existing site member,existing_member@...,Edit,AiSearchTest01 Members,4,SharePointGroup,Group,1,
-{id},i:0#.f|membership|scantest_user2@...,ScanTest User 2,scantest_user2@...,Edit,AiSearchTest01 Members,4,SharePointGroup,Group,1,
-,scantest_user6@...,ScanTest User 6,scantest_user6@...,Full Control,ScanTest Custom Group,{gid},SharePointGroup,Group,2,ScanTest M365 Group 01
-,scantest_user3@...,ScanTest User 3,scantest_user3@...,Full Control,ScanTest Custom Group,{gid},SharePointGroup,Group,2,ScanTest Security Group 01
-,scantest_user4@...,ScanTest User 4,scantest_user4@...,Full Control,ScanTest Custom Group,{gid},SharePointGroup,Group,3,ScanTest Security Group 02
-,scantest_user5@...,ScanTest User 5,scantest_user5@...,Full Control,ScanTest Custom Group,{gid},SharePointGroup,Group,4,ScanTest Security Group 03
+Id,LoginName,DisplayName,Email,PermissionLevel,IsGuest,ViaGroup,ViaGroupId,ViaGroupType,AssignmentType,NestingLevel,ParentGroup
+{id},i:0#.f|membership|existing_owner@...,Existing site owner,existing_owner@...,Full Control,false,AiSearchTest01 Owners,3,SharePointGroup,Group,1,
+{id},i:0#.f|membership|existing_member@...,Existing site member,existing_member@...,Edit,false,AiSearchTest01 Members,4,SharePointGroup,Group,1,
+{id},i:0#.f|membership|scantest_user2@...,ScanTest User 2,scantest_user2@...,Edit,false,AiSearchTest01 Members,4,SharePointGroup,Group,1,
+,scantest_user6@...,ScanTest User 6,scantest_user6@...,Full Control,false,ScanTest Custom Group,{gid},SharePointGroup,Group,2,ScanTest M365 Group 01
+,scantest_user3@...,ScanTest User 3,scantest_user3@...,Full Control,false,ScanTest Custom Group,{gid},SharePointGroup,Group,2,ScanTest Security Group 01
+,scantest_user4@...,ScanTest User 4,scantest_user4@...,Full Control,false,ScanTest Custom Group,{gid},SharePointGroup,Group,3,ScanTest Security Group 02
+,scantest_user5@...,ScanTest User 5,scantest_user5@...,Full Control,false,ScanTest Custom Group,{gid},SharePointGroup,Group,4,ScanTest Security Group 03
 ```
 
 **Key observations:**
@@ -351,6 +351,39 @@ Disconnect-PnPOnline
 - **SSCSCN-TC-56**: do_not_resolve_these_groups adds entry -> ok=true, "Everyone except external users" appears in 03_SiteUsers.csv
 - **SSCSCN-TC-57**: do_not_resolve_these_groups skips resolution -> ok=true, no nested members for skipped groups
 - **SSCSCN-TC-58**: Special claim c:0-.f format detected -> ok=true, "Everyone except external users" identified as group
+
+### Category 7E: omit_sharepoint_groups_in_broken_permissions_file (3 tests)
+
+Tests for the `omit_sharepoint_groups_in_broken_permissions_file` setting which controls whether SharePoint group members appear in `05_IndividualPermissionItemAccess.csv`.
+
+**Test Setup:**
+Uses existing test data - no additional setup required:
+- `TestFolder_GroupShare` - Already has broken inheritance with `ScanTest Custom Group` assigned
+- Modify `security_scan_settings.json` to toggle setting between runs
+
+**Test Cases:**
+
+- **SSCSCN-TC-62**: omit_sharepoint_groups_in_broken_permissions_file=false (default)
+  - **Precondition**: Setting is false in security_scan_settings.json
+  - **Action**: Run security scan
+  - **Expected**: 05_IndividualPermissionItemAccess.csv contains rows for `TestFolder_GroupShare`:
+    - SP group members resolved (ViaGroupType="SharePointGroup", ViaGroup="ScanTest Custom Group")
+    - Nested Entra group members (user3-user6 via ScanTest Custom Group)
+  - **Verify**: Rows with ViaGroupType="SharePointGroup" ARE present
+
+- **SSCSCN-TC-63**: omit_sharepoint_groups_in_broken_permissions_file=true skips SP groups
+  - **Precondition**: Setting is true in security_scan_settings.json
+  - **Action**: Run security scan
+  - **Expected**: 05_IndividualPermissionItemAccess.csv for `TestFolder_GroupShare`:
+    - NO rows for this folder (SharePoint group skipped entirely)
+  - **Verify**: NO rows with ViaGroupType="SharePointGroup" for any item
+  - **Note**: Direct users on other folders (e.g., `TestFolder_DirectShare`) still appear
+
+- **SSCSCN-TC-64**: omit_sharepoint_groups_in_broken_permissions_file does NOT affect 03_SiteUsers.csv
+  - **Precondition**: Setting is true in security_scan_settings.json
+  - **Action**: Run security scan
+  - **Expected**: 03_SiteUsers.csv still contains all SP group members
+  - **Verify**: Site-level users unaffected by this setting
 
 ### Category 8: Caching (4 tests)
 
@@ -473,6 +506,7 @@ Artifacts to remove after testing:
 - [ ] **SSCSCN-TP01-VC-21**: Subsite scanning tests pass (TC-49 to TC-54)
 - [ ] **SSCSCN-TP01-VC-22**: Group resolution edge case tests pass (TC-55 to TC-58)
 - [ ] **SSCSCN-TP01-VC-23**: Subsite folder detection tests EXPECTED FAIL (TC-59 to TC-61) - blocked by SCAN-KL-01
+- [ ] **SSCSCN-TP01-VC-24**: omit_sharepoint_groups_in_broken_permissions_file tests pass (TC-62 to TC-64)
 
 ### Cleanup Verification
 - [ ] **SSCSCN-TP01-VC-18**: SharePoint test objects removed
@@ -480,6 +514,15 @@ Artifacts to remove after testing:
 - [ ] **SSCSCN-TP01-VC-20**: No orphaned test data
 
 ## 11. Document History
+
+**[2026-02-23 16:05]**
+- Fixed: Expected CSV in Section 5.2 missing IsGuest column (now matches PowerShell)
+- Fixed: TC-62/TC-63 test setup to use existing TestFolder_GroupShare
+
+**[2026-02-23 16:02]**
+- Added: Category 7E - omit_sharepoint_groups_in_broken_permissions_file tests (TC-62 to TC-64)
+- Added: VC-24 verification checklist item
+- Changed: Test count from 61 to 64
 
 **[2026-02-21 17:10]**
 - Added: Category 7D - Subsite Folder Detection tests (TC-59 to TC-61) - KNOWN FAILING

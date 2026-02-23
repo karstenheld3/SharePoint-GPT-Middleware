@@ -63,6 +63,17 @@ async for event in run_security_scan(...):
 
 ## Resolved Issues
 
+### 2026-02-23 - Variable Name Conversion
+
+#### [RESOLVED] `GLOB-FL-002` Truncated snake_case conversion changes meaning
+
+- **Original severity**: [MEDIUM]
+- **Resolved**: 2026-02-23 14:21
+- **Solution**: Renamed `omit_sharepoint_groups_in_broken_permissions` to `omit_sharepoint_groups_in_broken_permissions_file` in SPEC and IMPL documents
+- **Link**: `_V2_SPEC_SITES_SECURITY_SCAN.md` lines 566, 609, 622 and `_V2_IMPL_SITES_SECURITY_SCAN.md` line 242
+
+**Prevention rule**: When converting camelCase/PascalCase to snake_case, verify word count matches before and after conversion.
+
 ### 2026-02-04 - SSE Streaming Architecture
 
 #### [RESOLVED] `SCAN-FL-004` Sync functions cannot yield SSE events - pattern repeatedly implemented wrong
