@@ -265,6 +265,8 @@ async def resolve_sharepoint_group_members(ctx: ClientContext, group, storage_pa
   
   members = []
   try:
+    # Use group.users.get() to get direct members, then resolve Entra groups via Graph
+    # This preserves the nested group structure (ViaGroup = Entra group name)
     users = group.users.get().execute_query()
   except Exception as e:
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -281,7 +283,7 @@ async def resolve_sharepoint_group_members(ctx: ClientContext, group, storage_pa
     if any(ignored in login_name for ignored in ignore_accounts): continue
     
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    writer.emit_log(f"[{ts}]         Member: display_name='{user.title}' login='{login_name[:50]}...'")
+    writer.emit_log(f"[{ts}]         Member: type={user.principal_type} display_name='{user.title}' login='{login_name[:50]}...'")
     
     if is_entra_id_group(login_name):
       group_id = extract_group_id_from_login(login_name)

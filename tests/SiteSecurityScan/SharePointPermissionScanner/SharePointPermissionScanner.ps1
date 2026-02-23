@@ -250,11 +250,9 @@ function getSharePointGroupMembers(){
     try {
         $members = Get-PnPGroupMember -Group $group -ErrorAction Stop
         if($members -eq $null) { $members = @() } elseif($members.GetType().toString() -ne "System.Object[]") { $members = @($members) }
-    } catch { Write-Host "ERROR: Get-PnPGroupMember -Group $viaGroup" -f  white -b red; Write-Host $_}
-    # sort members by 'Title' (group or account display name)
-    if($members.Count -gt 1) { $members = $members | Sort-Object -Property "Title" }
-    foreach($member in $members){
-        if ($ignoreAccounts.Contains($member.LoginName)){ continue }
+    } catch {
+        Write-Host "ERROR: Get-PnPGroupMember -Group $viaGroup" -f  white -b red
+        Write-Host $_
         switch ($member.PrincipalType){
             "User" {
                 $loginName = $member.LoginName.Split("|")[-1]
