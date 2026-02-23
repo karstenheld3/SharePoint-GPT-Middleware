@@ -909,7 +909,19 @@ The Office365-REST-Python-Client SDK's `HasUniqueRoleAssignments` property query
 **What V2 does NOT do (known limitation):**
 - SCAN-KL-01: Subsite folder HasUniqueRoleAssignments detection (SDK limitation)
 
+**What PowerShell does NOT do (known limitation):**
+- PS-KL-01: Deeply nested Entra security groups may not be fully resolved (PnP module limitation)
+- Example: ScanTest Security Group 01 -> ScanTest Security Group 02 -> user4, user5 (not resolved)
+
 ## Document History
+
+**[2026-02-23 19:52]**
+- Fixed: Multiple PowerShell scanner bugs (commits c6b988a, d54c120, 08f33e0, 69bd6be)
+- Fixed: Missing final flush for SiteContents buffer
+- Fixed: Null loginName causing ContainsKey error
+- Fixed: TrimEnd("_o") removing all trailing chars
+- Added: PS-KL-01 - PowerShell nested group resolution limitation
+- Changed: Comparison now shows 3 PASS, 2 WARN (was 0 PASS, 5 WARN)
 
 **[2026-02-23 18:10]**
 - Removed: SCAN-KL-02 (was stale test data, not a bug)
