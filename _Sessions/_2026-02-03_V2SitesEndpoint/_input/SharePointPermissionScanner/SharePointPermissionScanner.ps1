@@ -388,10 +388,15 @@ function getAzureGroupMembers(){
                     $displayName = $groupMember.DisplayName; $email=""; $objectType=""; $objectId=""; $loginName=""
                     # keep it compatible with AAD and PnP PowerShell module (AAD = group.ObjectType; PnP = group.Type)
                     if ($groupMember.ObjectType -ne $null) { $objectType = $groupMember.ObjectType } else { $objectType = $groupMember.Type }
-                    if ($groupMember.ObjectId -ne $null) { $objectId = $groupMember.ObjectId } else { $objectId = $groupMember.UserPrincipalName }
+                    # PnP uses Id for groups, AAD uses ObjectId
+                    if ($groupMember.ObjectId -ne $null) { $objectId = $groupMember.ObjectId } 
+                    elseif ($groupMember.Id -ne $null) { $objectId = $groupMember.Id }
+                    else { $objectId = $groupMember.UserPrincipalName }
                     if ($groupMember.Mail -ne $null) { $email = [string]$groupMember.Mail } else { $email = $groupMember.UserPrincipalName }
 
-                    if ( ($objectType -eq "Group") ) {
+                    # PnP returns "Group" or "SecurityGroup", AAD returns "Group"
+                    $isGroup = ($objectType -eq "Group") -or ($objectType -eq "SecurityGroup") -or ($objectType -like "*Group*")
+                    if ($isGroup) {
                         if ($recurse) {
                             # if recurse, add group to group stack
                             $groupsToBeAddedToGroupStack += @{"GroupId" = $objectId; "DisplayName" = $displayName; "GroupType" = "SecurityGroup"; "NestingLevel" = $groupNestingLevel+1; "ParentGroup" = $currentGroup }
@@ -399,6 +404,9 @@ function getAzureGroupMembers(){
                             # otherwise add group to members
                             $groupMembers.Add( @{"LoginName" = ""; "DisplayName" = $displayName; "Email" = $email; "ViaGroup" = $viaGroup; "ViaGroupId" = $viaGroupId; "ViaGroupType" = $groupType; "NestingLevel" = $groupNestingLevel+1; "ParentGroup" = $parentGroupName} ) | Out-Null                        
                         }
+                    } elseif ([string]::IsNullOrEmpty($groupMember.UserPrincipalName)) {
+                        # Skip entries without UserPrincipalName (likely unresolved groups)
+                        continue
                     } else {
                         # add user to group to members
                         $loginName = $groupMember.UserPrincipalName
