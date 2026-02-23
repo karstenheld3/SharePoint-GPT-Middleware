@@ -1,5 +1,8 @@
-Id,Role,Title,PermissionLevel,Owner
-"5",SiteMembers,AiSearchTest01 Members,Edit,AiSearchTest01 Owners
-"3",SiteOwners,AiSearchTest01 Owners,Full Control,AiSearchTest01 Owners
-"4",SiteVisitors,AiSearchTest01 Visitors,Read,AiSearchTest01 Owners
-"12",Custom,ScanTest Custom Group,Full Control,Karsten Held
+Job,SiteUrl,Id,Role,Title,PermissionLevel,Owner
+1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,5,SiteMembers,AiSearchTest01 Members,Edit,AiSearchTest01 Owners
+1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,3,SiteOwners,AiSearchTest01 Owners,Full Control,AiSearchTest01 Owners
+1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,4,SiteVisitors,AiSearchTest01 Visitors,Read,AiSearchTest01 Owners
+1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,12,Custom,ScanTest Custom Group,Full Control,Karsten Held
+1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,18,SiteMembers,AiSearchTest01 Subsite01 Members,Edit,AiSearchTest01 Subsite01 Owners
+1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,17,SiteOwners,AiSearchTest01 Subsite01 Owners,Full Control,AiSearchTest01 Subsite01 Owners
+1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,20,SiteVisitors,AiSearchTest01 Subsite01 Visitors,Read,AiSearchTest01 Subsite01 Owners

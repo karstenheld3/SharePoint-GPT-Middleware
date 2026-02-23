@@ -9,53 +9,53 @@
   "include_subsites": true,
   "stats": {
     "lists_scanned": 9,
-    "groups_found": 4,
-    "users_found": 8,
+    "groups_found": 7,
+    "users_found": 10,
     "external_users_found": 0,
-    "items_scanned": 7903,
-    "items_with_individual_permissions": 42,
+    "items_scanned": 7927,
+    "items_with_individual_permissions": 43,
     "items_shared_with_everyone": 0,
-    "subsites_scanned": 2
+    "subsites_scanned": 1
   },
-  "scanned_utc": "2026-02-21T15:28:34.713524+00:00Z",
-  "report_id": "site_scans/2026-02-21_15-28-34_[security_scan]_[AiSearchTest01]",
-  "created_utc": "2026-02-21T15:28:34.715058Z",
+  "scanned_utc": "2026-02-23T15:11:14.569769+00:00Z",
+  "report_id": "site_scans/2026-02-23_15-11-14_[security_scan]_[AiSearchTest01]",
+  "created_utc": "2026-02-23T15:11:14.570800Z",
   "files": [
     {
       "filename": "report.json",
       "file_path": "report.json",
-      "file_size": 1804,
-      "last_modified_utc": "2026-02-21T15:28:34.715058Z"
+      "file_size": 1805,
+      "last_modified_utc": "2026-02-23T15:11:14.570800Z"
     },
     {
       "filename": "01_SiteContents.csv",
       "file_path": "01_SiteContents.csv",
-      "file_size": 1264,
-      "last_modified_utc": "2026-02-21T15:28:34.715058Z"
+      "file_size": 2323,
+      "last_modified_utc": "2026-02-23T15:11:14.570800Z"
     },
     {
       "filename": "02_SiteGroups.csv",
       "file_path": "02_SiteGroups.csv",
-      "file_size": 302,
-      "last_modified_utc": "2026-02-21T15:28:34.715058Z"
+      "file_size": 968,
+      "last_modified_utc": "2026-02-23T15:11:14.570800Z"
     },
     {
       "filename": "03_SiteUsers.csv",
       "file_path": "03_SiteUsers.csv",
-      "file_size": 1225,
-      "last_modified_utc": "2026-02-21T15:28:34.715058Z"
+      "file_size": 1681,
+      "last_modified_utc": "2026-02-23T15:11:14.570800Z"
     },
     {
       "filename": "04_IndividualPermissionItems.csv",
       "file_path": "04_IndividualPermissionItems.csv",
-      "file_size": 4955,
-      "last_modified_utc": "2026-02-21T15:28:34.715058Z"
+      "file_size": 7455,
+      "last_modified_utc": "2026-02-23T15:11:14.570800Z"
     },
     {
       "filename": "05_IndividualPermissionItemAccess.csv",
       "file_path": "05_IndividualPermissionItemAccess.csv",
-      "file_size": 24328,
-      "last_modified_utc": "2026-02-21T15:28:34.715058Z"
+      "file_size": 32873,
+      "last_modified_utc": "2026-02-23T15:11:14.570800Z"
     }
   ]
 }
