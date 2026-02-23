@@ -273,7 +273,7 @@ function getSharePointGroupMembers(){
                 }                
                 # identify group type and strip trailing '_o' from groupId for M365 groups
                 # TODO: find better way to identify M365 groups as sometimes the '_o' suffix is missing when group is M365 group
-                if ($groupId.EndsWith("_o")){ $groupType = "M365Group"; $groupId = $groupId.TrimEnd("_o")}
+                if ($groupId.EndsWith("_o")){ $groupType = "M365Group"; $groupId = $groupId.Substring(0, $groupId.Length - 2)}
                 else { $groupType = "SecurityGroup"}
 
                 if ($recurse) {
@@ -286,11 +286,11 @@ function getSharePointGroupMembers(){
                         if ($useAzureActiveDirectoryPowerShellModule){ $azureGroup = Get-AzureADGroup -ObjectId $groupId }
                         else { $azureGroup = Get-PnPAzureADGroup -Identity  $groupId }
                         # keep it compatible with AAD and PnP PowerShell module (AAD = group.Mail; PnP = group.UserPrincipalName)
-                        if ($azureGroup.Mail -ne $null) { $email = [string]$azureGroup.Mail } else { $mail = $azureGroup.UserPrincipalName }
+                        if ($null -ne $azureGroup.Mail) { $email = [string]$azureGroup.Mail } else { $email = $azureGroup.UserPrincipalName }
                         $groupMembers.Add( @{"Id"=$member.Id; "LoginName"=$groupId; "DisplayName"=$azureGroup.DisplayName; "Email"=$email; "ViaGroup" = ""; "ViaGroupId" = ""; "ViaGroupType"=$groupType; "NestingLevel"=1; "ParentGroup"=$group.Title} ) | out-null
                     } catch {
                         if ($useAzureActiveDirectoryPowerShellModule) {
-                            Write-Host "ERROR: Get-AzureADGroup -ObjectId $groupId" -f white -b red; Write-Host $
+                            Write-Host "ERROR: Get-AzureADGroup -ObjectId $groupId" -f white -b red; Write-Host $_
                         }
                         else { Write-Host "ERROR: Get-PnPAzureADGroup -Identity $groupId" -f white -b red; Write-Host $_ }                        
                         $groupMembers.Add( @{"Id"=$member.Id; "LoginName"=$groupId; "DisplayName"=$member.Title; "Email"=$member.Email; "ViaGroup" = ""; "ViaGroupId" = ""; "ViaGroupType"=$groupType; "NestingLevel"=1; "ParentGroup"=$group.Title} ) | out-null
@@ -652,7 +652,7 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
     if($groups -eq $null) { $groups = @() } elseif($groups.GetType().toString() -ne "System.Object[]") { $groups = @($groups) }
     if ($groups.Count -gt 3){ Write-Host "  $($groups.Count) groups found in site collection." }
     # add to cache so we can later get a group by its id
-    $groups | ForEach-Object { $global:sharePointGroupCache[$_.Id] = $:_ }
+    $groups | ForEach-Object { $global:sharePointGroupCache[$_.Id] = $_ }
 
     $jobSiteOwnerGroup = Get-PnPGroup -AssociatedOwnerGroup; $jobSiteMemberGroup = Get-PnPGroup -AssociatedMemberGroup; $jobSiteVisitorGroup = Get-PnPGroup -AssociatedVisitorGroup
     
@@ -688,7 +688,7 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
             # and there is a role assignment in the site or subsite that uses this group
             if ( $siteRoleAssignmentsCache.ContainsKey($group.Id) ) {
                 addGroupAndGroupMembersToOutputLines -group $group -role "Custom" -roleAssignments $roleAssignments -groupOutputLines $outputLines2SiteGroups -userOutputLines $outputLines3SiteUsers -recurse
-                break
+                $sitePrincipalIdsThatHaveBeenWrittenToFile[$group.Id] = ""
             }
         }
     }
@@ -733,7 +733,7 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
 
         # make sure current site is connected
         $result = ensureSharePointSiteIsConnected -siteUrl $currentSiteUrl -credentials $spoCredentials
-        if ($result = $false){ Write-Host "    ERROR: Could not connect to site '$currentSiteUrl'." -f White -b Red}
+        if ($result -eq $false){ Write-Host "    ERROR: Could not connect to site '$currentSiteUrl'." -f White -b Red}
         
         if ($isSubSite -eq $true){
             $web = $subSites[$siteIndex-1]
@@ -924,19 +924,16 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
                                         $email = [string]($roleAssignment.Member.Email)
                                         if ($sharedWithDetailsHashmap.ContainsKey($loginName)){ $details = $sharedWithDetailsHashmap[$loginName] } else { $details = @{} }
                                         $isGuest = isGuestAccount -loginName $loginName
-                                        # add group to individual permission item access file
-                                        $outputLines5IndividualPermissionItemAccess.Add( (newIndividualPermissionItemAccessRow -job ($jobIndex+1) -siteUrl $siteUrl -id $item.Id -type $itemType -url $itemUrl -loginName $loginName -displayName $displayName -email $email -permissionLevel $permissionLevel -isGuest $isGuest -sharedDateTime $details.SharedDateTime -sharedByDisplayName $details.SharedByDisplayName -sharedByLoginName $details.SharedByLoginName -viaGroup "" -viaGroupId "" -viaGroupType $principalType -assignmentType "Group" -nestingLevel 0 -parentGroup "" ) ) | Out-Null
-                                        continue
+                                        # if user has not yet been written to site users, add user to site user output lines
+                                        if (!$sitePrincipalIdsThatHaveBeenWrittenToFile.ContainsKey($loginName)){
+                                            $outputLines3SiteUsers.Add( (newSiteUserRow -job ($jobIndex+1) -siteUrl $siteUrl -id $m["Id"] -loginName $m["LoginName"] -displayName $m["DisplayName"] -email $m["Email"] -permissionLevel "[Individual items]" -isGuest $isGuest -viaGroup "" -viaGroupId "" -viaGroupType "" -assignmentType "" -nestingLevel "" -parentGroup "") ) | Out-Null
+                                            $sitePrincipalIdsThatHaveBeenWrittenToFile[$loginName] = ""
+                                        }
+                                        if ($sharedWithDetailsHashmap.ContainsKey($loginName)){ $details = $sharedWithDetailsHashmap[$loginName] } else { $details = @{} }
+                                        # add group members to individual permission item access file
+                                        $outputLines5IndividualPermissionItemAccess.Add( (newIndividualPermissionItemAccessRow -job ($jobIndex+1) -siteUrl $siteUrl -id $item.Id -type $itemType -url $itemUrl -loginName $loginName -displayName $m["DisplayName"] -email $m["Email"] -permissionLevel $permissionLevel -isGuest $isGuest -sharedDateTime $details.SharedDateTime -sharedByDisplayName $details.SharedByDisplayName -sharedByLoginName $details.SharedByLoginName -viaGroup $m["ViaGroup"] -viaGroupId $m["ViaGroupId"] -viaGroupType $m["ViaGroupType"] -assignmentType $m["AssignmentType"] -nestingLevel $m["NestingLevel"] -parentGroup $m["ParentGroup"] ) ) | Out-Null
                                     }
-                                    # identify group type and strip trailing '_o' from groupId for M365 groups
-                                    # TODO: find better way to identify M365 groups as sometimes the '_o' suffix is missing when group is M365 group
-                                    if ($groupId.EndsWith("_o")){ $groupType = "M365Group"; $groupId = $groupId.TrimEnd("_o")}
-                                    else { $groupType = "SecurityGroup"}
-                                    $groupMembers = getAzureGroupMembers -groupId $groupId -groupType $groupType -nestingLevel 0 -parentGroup "" -recurse
-                                    # make sure all return types create valid array: $null, single item, array of items
-                                    if($groupMembers -eq $null) { $groupMembers = @() } elseif($groupMembers.GetType().toString() -ne "System.Object[]") { $groupMembers = @($groupMembers) }
                                 }
-                                $groupDisplayName = [string]($roleAssignment.Member.Title)
                                 $email = [string]($roleAssignment.Member.Email)
                                 # set assignment type to "Group" where no assignment type is set
                                 $groupMembers | ForEach-Object { if( ([string]$_["AssignmentType"]) -eq "" ) { $_["AssignmentType"] = "Group" } }
