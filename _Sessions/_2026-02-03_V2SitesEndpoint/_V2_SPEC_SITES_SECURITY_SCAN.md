@@ -889,7 +889,37 @@ The Office365-REST-Python-Client SDK's `HasUniqueRoleAssignments` property query
 
 **Status:** Open - requires further investigation
 
+**SCAN-KL-02: PowerShell Scanner Duplicate Rows**
+
+PowerShell scanner produces duplicate rows in `01_SiteContents.csv` (25 rows, only 13 unique URLs). V2 produces 12 unique rows. This is NOT a V2 bug - it is a discrepancy in PowerShell output.
+
+**Verification (2026-02-23):**
+
+| CSV File | PowerShell | V2 | Notes |
+|----------|------------|-----|-------|
+| 01_SiteContents | 25 (13 unique) | 12 | V2 correct, PS has duplicates |
+| 03_SiteUsers | 9 | 8 | 1 row diff (nested group entry format) |
+| 04_IndividualPermissionItems | 87 | 43 | PS has duplicates (same URLs) |
+| 05_IndividualPermissionItemAccess | 131 | 130 | -1 row (SCAN-KL-01) |
+
+**What V2 DOES correctly:**
+- ViaGroup shows Entra group name (not SP group) for nested members
+- ViaGroupId is Entra GUID for security/M365 groups
+- ViaGroupType is "SecurityGroup" for Entra groups
+- IsGuest detection works
+- omit_sharepoint_groups_in_broken_permissions_file setting implemented
+
+**What V2 does NOT do (by design or known limitation):**
+- SCAN-KL-01: Subsite folder HasUniqueRoleAssignments detection
+- PowerShell duplicate row behavior (intentionally not replicated)
+
 ## Document History
+
+**[2026-02-23 16:25]**
+- Added: SCAN-KL-02 - PowerShell duplicate rows documentation
+- Added: Verification results table (2026-02-23 comparison)
+- Changed: ViaGroup now correctly shows Entra group names for nested members
+- Fixed: omit_sharepoint_groups_in_broken_permissions_file implementation complete
 
 **[2026-02-21 17:10]**
 - Added: Section 15 - Known Limitations with SCAN-KL-01 (subsite folder detection)
