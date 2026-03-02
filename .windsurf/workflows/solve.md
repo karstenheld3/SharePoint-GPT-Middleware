@@ -13,6 +13,12 @@ Entry point for SOLVE workflow - research, analysis, evaluation, decisions.
 - @session-management for session setup
 - @write-documents for document templates
 
+## MUST-NOT-FORGET
+
+- Run `/session-new` at workflow start
+- Run `/session-finalize` when done
+- Follow @edird-phase-planning gates between phases
+
 ## Usage
 
 ```

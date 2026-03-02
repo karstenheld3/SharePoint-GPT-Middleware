@@ -12,6 +12,10 @@ Create test plans from specifications.
 Invoke these skills before proceeding:
 - @write-documents for document structure and formatting rules
 
+## MUST-NOT-FORGET
+
+- Run `/verify` after plan complete
+
 ## Prerequisites
 
 - Specification exists (`_SPEC_[COMPONENT].md`)

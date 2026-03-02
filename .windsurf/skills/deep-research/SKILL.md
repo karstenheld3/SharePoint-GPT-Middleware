@@ -5,335 +5,196 @@ description: Apply when conducting deep research on technologies, APIs, framewor
 
 # Deep Research Skill
 
-Systematic research patterns for in-depth investigation using the MCPI (Most Complete Point of Information) approach.
-
-## Table of Contents
-
-**Core**
-- [When to Use](#when-to-use)
-- [MUST-NOT-FORGET](#must-not-forget)
-- [Quality Pipeline](#quality-pipeline) - Mandatory verify → critique → reconcile → implement → verify
-- [Output Format](#output-format)
-
-**Patterns**
-- [MEPI vs MCPI](#mepi-vs-mcpi) - When to use quick vs exhaustive research
-- [Source Hierarchy](#source-hierarchy) - Priority order for sources
-- [Verification Labels](#verification-labels) - How to mark claims
-- [Inline Citations](#inline-citations) - Mandatory for critical conclusions
-
-**Strategy**
-- [MCPI Research Strategy](RESEARCH_STRATEGY_MCPI.md) - 6-phase exhaustive documentation
-
-**Domain Profiles**
-- [Domain Profiles](#domain-profiles) - Modular extensions per research domain
-- [DOMAIN_SOFTWARE.md](DOMAIN_SOFTWARE.md) - Software API, framework, library
-- [DOMAIN_MARKET_INTEL.md](DOMAIN_MARKET_INTEL.md) - Companies, financial reports, press releases
-- [DOMAIN_DOCUMENT_INTEL.md](DOMAIN_DOCUMENT_INTEL.md) - Table/data extraction from documents
-- [DOMAIN_LEGAL.md](DOMAIN_LEGAL.md) - Legislation, case law, regulatory
-
-**Templates**
-- [TOC Template](RESEARCH_TOC_TEMPLATE.md) - Table of Contents structure
-- [Create TOC Workflow](RESEARCH_CREATE_TOC.md) - How to create TOC files
-
-**Planning & Tracking**
-- [Planning Structure](#planning-structure) - STRUT vs TASKS
-- [Time Tracking](#time-tracking) - Net research time calculation
-
-**Reference**
-- [Tool Reference](RESEARCH_TOOLS.md) - Source collection, PDF processing, transcription
-- [Source Processing Pipeline](#source-processing-pipeline) - Mandatory PDF/image transcription
-- [Source ID Format](#source-id-format) - How to cite sources
-- [File Naming Conventions](#file-naming-conventions) - Prefix rules for documents
-- [Configuration](#configuration) - deep-research-config.json settings
+Systematic research using MCPI (Most Complete Point of Information) or MEPI (Most Executable Point of Information) approaches.
 
 ## When to Use
 
-**Deep research (this skill):**
-- "Should we use X or Y for our project?"
-- "How does X work internally?"
-- "What are the production considerations for X?"
-- Multi-source synthesis required
-- Exhaustive documentation needed
+**Use this skill** when the user's intent requires:
+- Making an informed decision between alternatives
+- Understanding something deeply before acting
+- Preparing for a complex undertaking
+- Evaluating risks, trade-offs, or consequences
+- Gathering exhaustive knowledge on a topic
 
-**Quick lookup (not this skill):**
-- "What's the syntax for X?"
-- "How do I install Y?"
-- Single-source answers
+## Quick Start
+
+1. Read this SKILL.md for core principles
+2. Read the appropriate strategy file (MCPI or MEPI)
+3. Follow Phases 1-4 systematically
+4. Output findings as INFO document
+
+## Phase Model (Global)
+
+All research (MCPI and MEPI) follows these 4 phases:
+
+**Phase 1 - Preflight**: Decompose prompt, document assumptions, collect sources, verify/correct assumptions, create STRUT with QA pipelines, run first VCRIV
+
+**Phase 2 - Planning**: Create TOC, topic template, TASKS plan, run second VCRIV
+
+**Phase 3 - Research**: Topic-by-topic file-by-file research per TASKS/STRUT, run VCRIV per granularity rules
+
+**Phase 4 - Final Verification and Sync**: Dimension coverage, completeness check, metadata, final VCRIV
+
+Strategy files (MCPI/MEPI) define the details for each phase.
+
+## Prompt Decomposition (Phase 1, Step 1)
+
+Answer these 7 questions before any source collection:
+
+1. **Q1 - Goal**: What is the user's intent? (1-2 sentences)
+2. **Q2 - Scope**: NARROW (1 dim), FOCUSED (2-4 dim), or EXPLORATORY (5-9 dim)?
+3. **Q3 - Dimensions**: Which apply? (legal, financial, administrative, practical, technical, professional, medical, psychological, personal, organizational, strategic, security, cultural, educational, historical, or custom)
+4. **Q4 - Topics**: 3-5 topics per dimension
+5. **Q5 - Strategy**: MCPI (exhaustive) or MEPI (curated)?
+6. **Q6 - Domain**: Which profile? (SOFTWARE, MARKET_INTEL, DOCUMENT_INTEL, LEGAL, or DEFAULT)
+7. **Q7 - Discovery Platforms**: What databases/platforms index this entity type? Test each, classify access level.
+
+Store PromptDecomposition in STRUT plan. Do NOT proceed to source collection until all 7 questions are answered.
+
+### PromptDecomposition Schema
+
+```json
+{
+  "goal": "string (1-2 sentences)",
+  "scope": "NARROW | FOCUSED | EXPLORATORY",
+  "dimensions": ["list of dimension names"],
+  "topics_per_dimension": { "dimension": ["topics"] },
+  "strategy": "MCPI | MEPI",
+  "strategy_rationale": "string (WHY this strategy fits the prompt)",
+  "domain": "DEFAULT | SOFTWARE | MARKET_INTEL | DOCUMENT_INTEL | LEGAL",
+  "domain_rationale": "string (WHY this domain profile applies)",
+  "effort_estimate": "N hours minimum",
+  "discovery_platforms": {
+    "identified": ["list of platforms that index this entity type"],
+    "tested": { "platform_name": "FREE | PAID | PARTIAL" },
+    "selected": ["platforms to use (FREE or PARTIAL only)"]
+  }
+}
+```
+
+### Scope Examples
+
+- NARROW: "What are the rate limits for the Microsoft Graph API?" -> 1 dimension (technical)
+- FOCUSED: "Should we use PostgreSQL or MongoDB for our event sourcing system?" -> 3 dimensions (technical, operational, financial)
+- EXPLORATORY: "How should our startup approach SOC 2 compliance?" -> 6 dimensions (legal, technical, organizational, financial, operational, educational)
 
 ## MUST-NOT-FORGET
 
-- Start with assumptions check - write down what you think you know before researching
-- Primary sources > secondary sources > community opinions
-- Document all sources with URLs and access dates
-- Flag information age (APIs change rapidly)
-- Distinguish facts from opinions from assumptions
-- Version-match community sources to subject version
-- Create INFO document for findings
-- **Always create STRUT** for research session orchestration
+- **STRUT required** for all research sessions (include pipeline steps and time log)
+- **Assumptions check first** - write down what you think you know before researching
+- **Discovery platforms tested** - identify, test, classify (FREE/PAID/PARTIAL) before source collection
+- **Primary sources > secondary > community** - verify tier 1-3 before accepting tier 6-8
+- **Access dates required**: `Accessed: YYYY-MM-DD` on all sources
 - **Track time** - log task start/end for net research time calculation
-- **Quality pipeline runs 3 times** (not optional): TOC+template, each topic doc, complete set (ex-post)
-- **Source completeness**: Process all PDFs through transcription pipeline, read fully (not selected chunks)
-- **Mandatory inline citations** on critical conclusions: `[LABEL] (SOURCE_ID | URL or filename)`
-- **Identify domain** during Preflight and read corresponding DOMAIN_*.md profile
-- **Autonomous after Preflight** - No user interaction until delivery of final verified research set (except [CONSULT] from termination criteria)
+- **Quality pipeline 3x** (not optional): TOC+template, each topic, complete set
+- **Source completeness**: Full PDF transcription via pipeline, no agent-selected chunks
+- **Download and store** all sources in session folder (web content changes)
+- **Inline citations** on critical conclusions: `[LABEL] (SOURCE_ID | URL or filename)`
+- **Identify domain** during Preflight, read corresponding DOMAIN_*.md profile
+- **Document strategy choice** - OUTPUT document must include strategy (MEPI/MCPI) + domain + rationale for both in header block
+- **Distinguish** facts from opinions from assumptions
+- **Autonomous after Phase 1** - no user interaction until delivery (except [CONSULT])
 
-## Global Patterns
+## Strategy Selection
 
-### MEPI vs MCPI
+**MEPI** (Default) - curated options, deeply researched, compare and recommend
+- Use for: User intent is specific, danger of analysis-paralysis and introducing irrelevant options
+- Strategy file: [RESEARCH_STRATEGY_MEPI.md](RESEARCH_STRATEGY_MEPI.md)
 
-**MEPI** (Most Executable Point of Information) - Default
-- Present 2-3 curated options
-- Filter and recommend
-- Use for: reversible decisions, time-constrained, action-oriented
+**MCPI** (Exception) - exhaustive coverage, document everything
+- Use for: User intent is broad, wants to see the whole picture
+- Strategy file: [RESEARCH_STRATEGY_MCPI.md](RESEARCH_STRATEGY_MCPI.md)
 
-**MCPI** (Most Complete Point of Information) - Exception
-- Present exhaustive options
-- Document everything
-- Use for: irreversible decisions, high-stakes, archival reference
+## Source Hierarchy
 
-### Source Hierarchy
+1. Official PDFs/papers (legislation, specs, whitepapers)
+2. Official documentation
+3. Official blog/changelog
+4. GitHub repo
+5. Conference talks by maintainers
+6. Reputable tech blogs
+7. Stack Overflow
+8. Community forums/Discord
 
-1. **Official PDFs/papers** - Legislation, specs, whitepapers, academic papers (often not available as web)
-2. **Official documentation** - Authoritative, version-specific
-3. **Official blog/changelog** - Announcements, rationale
-4. **GitHub repo** - Source code, issues, PRs, discussions
-5. **Conference talks by maintainers** - Design decisions, roadmap
-6. **Reputable tech blogs** - Analysis, comparisons
-7. **Stack Overflow** - Specific problems (verify currency)
-8. **Community forums/Discord** - Anecdotes, edge cases
+**Enforcement** (legal/financial/medical): MUST cite tier 1-3 for critical claims. Label tier 6-8 as `[COMMUNITY]`. Violation triggers `[CONSULT]` to user.
 
-**Source Persistence**: Download and store all sources in session folder for later reference. Web content changes - PDFs and local copies ensure reproducibility.
+## Verification Labels
 
-### Verification Labels
+- `[VERIFIED]` - Confirmed from official docs
+- `[ASSUMED]` - Inferred, not explicit
+- `[TESTED]` - Manually tested
+- `[PROVEN]` - Multiple independent sources
+- `[COMMUNITY]` - Community sources (cite ID)
 
-- `[VERIFIED]` - Confirmed from official documentation
-- `[ASSUMED]` - Inferred but not explicitly stated
-- `[TESTED]` - Manually tested by running code
-- `[PROVEN]` - Confirmed from multiple independent sources
-- `[COMMUNITY]` - Reported by community sources (cite source ID)
-
-### Source ID Format
-
-```
-[SUBJECT]-SC-[SOURCE]-[DOCNAME]
-```
-
-Examples:
-- `MSGRAPH-SC-MSFT-APIOVERVIEW` - Microsoft Graph official docs
-- `MSGRAPH-SC-SO-RATELIMIT` - Stack Overflow rate limit discussion
-- `MSGRAPH-SC-GH-ISSUE1234` - GitHub issue #1234
-
-### File Naming Conventions
-
-- `__[SUBJECT]_TOC.md`: Table of Contents (Doc ID: `[SUBJECT]-TOC`)
-- `__[SUBJECT]_SOURCES.md`: Source list (Doc ID: `[SUBJECT]-SOURCES`)
-- `_INFO_[SUBJECT]-IN[XX]_[TOPIC].md`: Content files with sequential Doc ID
-  - XX = two-digit number starting at 01 (01, 02, 03...)
-  - Ensures files sort in TOC order when listed alphabetically
-  - Example: `_INFO_MSGRAPH-IN05_SITES_LISTS.md`
-- No prefix: Tracking files (TASKS, NOTES, PROBLEMS, PROGRESS)
-
-**Doc ID Exceptions:**
-- TOC files use `[SUBJECT]-TOC` (not numbered)
-- SOURCES files use `[SUBJECT]-SOURCES` (not numbered)
-- Content files start at `[SUBJECT]-IN01`
-
-### Information Currency
-
-- Note version numbers for all API/library info
-- Check last updated date on documentation
-- Cross-reference with changelog for breaking changes
-- Mark stale info with `[STALE: YYYY]` tag
-
-## Quality Pipeline
-
-Mandatory pipeline for all research output documents. Runs 3 times (not optional):
+## Quality Pipeline (VCRIV)
 
 ```
 verify → critique → reconcile → implement → verify
 ```
 
-- **verify** - Formal and rule-based correctness check (`/verify` workflow)
-- **critique** - Find missing pieces, reasoning flaws; mandatory web research; produces `*_REVIEW.md` (`/critique` workflow)
-- **reconcile** - Pragmatic prioritization of critique findings (`/reconcile` workflow)
-- **implement** - Apply prioritized findings to research document; delete `*_REVIEW.md` after success (`/implement` workflow)
-- **verify** (final) - Confirm corrections are complete (`/verify` workflow)
+- **V** - Verify: Formal correctness check (`/verify` workflow)
+- **C** - Critique: Find gaps, reasoning flaws; produces `*_REVIEW.md` (`/critique` workflow)
+- **R** - Reconcile: Prioritize findings (`/reconcile` workflow)
+- **I** - Implement: Apply findings, delete `*_REVIEW.md` (`/implement` workflow)
+- **V** - Verify (final): Confirm corrections complete
 
-The STRUT plan MUST include these pipeline steps explicitly so the agent always has the workflow available in context.
+**Four mandatory checkpoints:**
+1. Preflight deliverables (STRUT, SOURCES, PromptDecomposition)
+2. Planning deliverables (TOC, template, TASKS)
+3. Each research output (per VCRIV granularity rules)
+4. Complete research set ex-post (after all topics complete)
 
-**Three mandatory checkpoints:**
-1. **Checkpoint 1**: TOC and topic template documents (before topic research begins)
-2. **Checkpoint 2**: Each topic research output document (before moving to next topic)
-3. **Checkpoint 3**: Complete research set ex-post (after all topics complete)
+**Granularity** (scope-based):
+- NARROW: VCRIV per topic file
+- FOCUSED/EXPLORATORY: VCRIV per dimension
+- Final VCRIV on synthesis document
 
-**Termination criteria**: Max 2 cycles per checkpoint. If issues persist after 2 cycles, escalate to [ACTOR] via [CONSULT].
+**Termination**: Max 2 cycles per checkpoint, then [CONSULT].
 
 ## Inline Citations
 
-Critical conclusions (key findings, limitations, design constraints, numerical claims) MUST include inline citations with both source ID and human-readable locator.
+Critical conclusions MUST have: `[VERIFICATION_LABEL] (SOURCE_ID | URL or filename)`
 
-**Citation format**: `[VERIFICATION_LABEL] (SOURCE_ID | URL or filename)`
+Examples:
+- `[VERIFIED] (GRPH-SC-MSFT-RATELMT | https://learn.microsoft.com/graph/throttling)`
+- `[VERIFIED] (ANTH-SC-ANTH-MDLCRD | _SOURCES/anthropic-model-card-2025.pdf)`
 
-- URL: `[VERIFIED] (GRPH-SC-MSFT-RATELMT | https://learn.microsoft.com/graph/throttling)`
-- File: `[VERIFIED] (ANTH-SC-ANTH-MDLCRD | _SOURCES/anthropic-model-card-2025.pdf)`
-
-Referenced files MUST exist in `_SOURCES/` subfolder. Non-critical statements (background context, widely known facts) may use source ID only.
+Referenced files MUST exist in `_SOURCES/` subfolder.
 
 ## Domain Profiles
 
-Modular extensions that inject domain-specific rules into the generic MCPI process. Each domain gets its own `DOMAIN_*.md` file. Agent reads at most one domain profile per research session (identified during Preflight).
-
-**Profile schema** (each `DOMAIN_*.md` follows this structure):
-- **When to Use** - Trigger conditions for domain identification
-- **Source Tiers** - What counts as tier 1/2/3 for this domain
-- **Document Handling** - Rules for processing large/structured documents
-- **Template Additions** - Domain-specific sections added to the output template
-- **Quality Criteria** - Domain-specific checks added to quality pipeline checkpoints
-
-**Extension points** in the MCPI process:
-1. **Source collection** (Phase 1) - Domain profile defines source types and tiers
-2. **Document processing** (Phase 4) - Domain profile defines handling rules per document type
-3. **Template structure** (Phase 3) - Domain profile adds domain-specific sections
-4. **Quality checks** (Checkpoints 1-3) - Domain profile adds domain-specific quality criteria
-
-**Available profiles:**
-- `DOMAIN_SOFTWARE.md` - Software API, framework, library research
-- `DOMAIN_MARKET_INTEL.md` - Companies, financial reports, tabular data, press releases
-- `DOMAIN_DOCUMENT_INTEL.md` - Table/data extraction from transcribed documents
-- `DOMAIN_LEGAL.md` - Legislation, case law, regulatory research
-
-If no matching domain profile exists, agent uses generic defaults and documents this in the STRUT plan.
-
-## Research Strategy
-
-- **MCPI Research** - [RESEARCH_STRATEGY_MCPI.md](RESEARCH_STRATEGY_MCPI.md) - 6-phase exhaustive documentation
-
-## Tool Reference
-
-See [RESEARCH_TOOLS.md](RESEARCH_TOOLS.md) for:
-- Source collection tools (search_web, read_url_content, Playwright)
-- Document processing tools (pdf-tools)
-- Transcription tools (llm-transcription)
-- Tool selection flowchart
-- Common workflows
-
-## Planning Structure
-
-**STRUT** (high-level orchestration) - REQUIRED for all research:
-- Tracks phases, objectives, deliverables, transitions
-- Contains time log for net research time
-- Created at research start, updated at phase transitions
-- File: `STRUT_[TOPIC].md` in session folder
-
-**TASKS** (low-level execution) - Created in Phase 4:
-- Flat list of individual research tasks with durations
-- Each task: file to create, sources to use, done-when criteria
-- Tracks task timing: `[HH:MM-HH:MM]` per task
-- File: `TASKS.md` in session folder
-
-## Time Tracking
-
-**Net research time** = active work time, excluding pauses.
-
-**STRUT time log format:**
-```
-## Time Log
-Started: 2026-01-30 09:00
-Ended: 2026-01-30 14:30
-
-Active intervals:
-- 09:00-10:30 (Phase 1-3)
-- 11:00-12:15 (Phase 4-5)
-- 13:00-14:30 (Phase 5-6)
-
-Net research time: 4h 15m
-```
-
-**TASKS timing format:**
-```
-- [x] TK-01: Research auth [10:00-10:45] 45m
-- [x] TK-02: Research limits [10:15-11:00] 45m (parallel)
-```
-
-**Rules:**
-- Pause detection: Gap > 30min in file timestamps = pause (don't count)
-- Parallel tasks: Overlapping intervals count once, not doubled
-- Log start time when beginning task, end time when completing
-
-## Source Processing Pipeline
-
-All PDF and image sources MUST be processed through the full transcription pipeline to ensure maximum source completeness. Reading only agent-selected chunks is NOT permitted.
-
-**Before first source processing**: Read `deep-research-config.json` for settings and read `@llm-transcription` SKILL.md + `/transcribe` workflow to understand available options.
-
-**Pipeline steps:**
-1. **PDF to JPG** - `@pdf-tools` skill (`convert-pdf-to-jpg.py`)
-2. **JPG to Markdown** - `@llm-transcription` skill (`transcribe-image-to-markdown.py`, batch mode)
-3. **Stitch pages** - Per `/transcribe` workflow Step 7
-4. **Extract structured data** - Grep `<transcription_json>` tags from transcribed markdown
-
-The transcription prompt produces `<transcription_json>` tags for every table and chart - these provide machine-parseable structured data without additional LLM calls.
-
-**Result per document in `_SOURCES/`:**
-```
-_SOURCES/
-├── report.pdf                  # Original source
-├── report.md                   # Full markdown transcription
-├── report_data.jsonl           # Extracted structured data (tables, charts)
-└── report_transcribed/         # Individual page transcriptions
-```
-
-**Reading strategy:**
-- **Narrative content**: Read relevant sections of `[name].md` (use `<!-- Page NNN -->` markers for navigation)
-- **Tabular/numerical data**: Parse `[name]_data.jsonl` for structured access
-- **Full completeness**: The transcription covers every page. No content is skipped.
-
-**Mandatory skill usage:**
-- PDF sources: `@pdf-tools` (conversion) + `@llm-transcription` (transcription)
-- Web sources: `@ms-playwright-mcp` (default, public content) or `@playwriter` (authenticated sessions only)
-- **Model selection for transcription**: Use `gpt-5-mini` for legal, regulatory, financial documents. Use `gpt-5-nano` for informal content.
-
-**Multi-document parallel processing**: See `deep-research-config.json` for `concurrent_documents` and `workers_per_document` settings.
-
-## Configuration
-
-Global settings in `deep-research-config.json`:
-
-```json
-{
-  "transcription": {
-    "workers_per_document": 12,
-    "concurrent_documents": 3,
-    "default_model": "gpt-5-mini",
-    "default_model_informal": "gpt-5-nano",
-    "default_dpi": 150,
-    "keys_file": "[WORKSPACE_FOLDER]\\..\\.tools\\.api-keys.txt"
-  },
-  "rate_limits": {
-    "max_total_workers": 36,
-    "delay_between_documents_ms": 2000
-  }
-}
-```
-
-Agent reads this config once before first source processing and uses values throughout the research session.
+Read one profile per session based on Q6:
+- [DOMAIN_SOFTWARE.md](DOMAIN_SOFTWARE.md) - APIs, frameworks, libraries
+- [DOMAIN_MARKET_INTEL.md](DOMAIN_MARKET_INTEL.md) - Companies, financials
+- [DOMAIN_DOCUMENT_INTEL.md](DOMAIN_DOCUMENT_INTEL.md) - Table extraction
+- [DOMAIN_LEGAL.md](DOMAIN_LEGAL.md) - Legislation, case law
+- [DOMAIN_DEFAULT.md](DOMAIN_DEFAULT.md) - Generic (use when none match)
 
 ## Output Format
 
-Deep research outputs an INFO document. Key sections:
+INFO document with:
+1. Research Question
+2. **Strategy & Domain** (MEPI/MCPI + domain profile + rationale for each choice)
+3. Key Findings (curated for MEPI, exhaustive for MCPI)
+4. Detailed Analysis
+5. Limitations and Known Issues
+6. Sources (with verification labels)
+7. Recommendations
 
-1. **Research Question** - What we're investigating
-2. **Key Findings** - MEPI-style summary (2-3 main points) or MCPI exhaustive list
-3. **Detailed Analysis** - Full investigation results
-4. **Limitations and Known Issues** - From community sources
-5. **Sources** - All references with quality indicators
-6. **Recommendations** - Actionable conclusions
+MEPI uses its own output format (see RESEARCH_STRATEGY_MEPI.md) with Comparison and Recommendation sections.
 
-## Usage
+## Planning Structure
 
-1. Determine research type (MEPI quick vs MCPI exhaustive)
-2. Read this SKILL.md for core principles
-3. Read the appropriate strategy file
-4. Read RESEARCH_TOOLS.md for tool guidance
-5. Follow the strategy's phases systematically
-6. Output findings as INFO document
+**STRUT** (high-level, REQUIRED): Phases, objectives, deliverables, transitions, time log. File: `STRUT_[TOPIC].md`
+
+**TASKS** (low-level, Phase 2): Flat task list with durations and done-when criteria. File: `TASKS.md`
+
+## Reference Files
+
+- [RESEARCH_TOOLS.md](RESEARCH_TOOLS.md) - Tools, source processing, configuration
+- [RESEARCH_TOC_TEMPLATE.md](RESEARCH_TOC_TEMPLATE.md) - TOC structure
+- [RESEARCH_CREATE_TOC.md](RESEARCH_CREATE_TOC.md) - TOC creation workflow
+
+**File naming**: `__[SUBJECT]_TOC.md`, `__[SUBJECT]_SOURCES.md`, `_INFO_[SUBJECT]-IN[XX]_[TOPIC].md`
+
+**Source ID format**: `[SUBJECT]-SC-[SOURCE]-[DOCNAME]`

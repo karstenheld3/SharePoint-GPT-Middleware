@@ -265,6 +265,15 @@ Execution follows these rules:
 
 ## Agent Instructions
 
+### [ACTOR] Confirmation Rule
+
+**Planning to Implementation Transition**: Agent MUST NOT transition from planning documents (SPEC, IMPL, TASKS, TEST) to implementation or output artifact creation without [ACTOR] confirmation.
+
+**Exceptions**:
+- Autonomous mode (`/go` workflow)
+- Explicit user instruction to proceed
+- [IMPLEMENT] targeting planning documents themselves (e.g., applying critique findings)
+
 ### Before Starting Work
 
 1. Run `/prime` to load context
@@ -277,10 +286,11 @@ Execution follows these rules:
 
 1. Start with [ASSESS] in EXPLORE to determine workflow type and complexity
 2. Execute verbs in phase order, check gates before transitions
-3. Use small cycles: [IMPLEMENT]→[TEST]→[FIX]→green→next
-4. Track progress in PROGRESS.md, problems in PROBLEMS.md
-5. Update NOTES.md with current phase on transitions
-6. Run `/verify` after significant changes
+3. **Wait for [ACTOR] confirmation before DESIGN→IMPLEMENT transition** (see rule above)
+4. Use small cycles: [IMPLEMENT]→[TEST]→[FIX]→green→next
+5. Track progress in PROGRESS.md, problems in PROBLEMS.md
+6. Update NOTES.md with current phase on transitions
+7. Run `/verify` after significant changes
 
 ### Before Ending Session
 

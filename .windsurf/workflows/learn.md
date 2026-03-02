@@ -11,6 +11,11 @@ Run after a problem is marked resolved in PROBLEMS.md to extract transferable le
 
 - @write-documents for LEARNINGS_TEMPLATE.md structure
 
+## MUST-NOT-FORGET
+
+- Run `/fail` first in discovery mode (no args)
+- Session entries sync to workspace on `/session-finalize`
+
 ## Trigger
 
 - Problem marked as resolved in PROBLEMS.md

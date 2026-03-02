@@ -7,6 +7,12 @@ auto_execution_mode: 1
 
 Forward-looking execution of next steps in a plan.
 
+## MUST-NOT-FORGET
+
+- Execute queued workflows in sequence
+- Session lifecycle workflows (`/session-finalize`, `/session-archive`) require user confirmation
+- Remove workflows from sequence after completion
+
 ## Step 1: Build Execution Sequence
 
 Construct an ordered list of next actions by analyzing multiple sources:

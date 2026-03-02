@@ -12,6 +12,10 @@ Create technical specifications from requirements.
 Invoke these skills before proceeding:
 - @write-documents for document structure and formatting rules
 
+## MUST-NOT-FORGET
+
+- Run `/verify` after spec complete
+
 ## Prerequisites
 
 - User has described the problem or feature

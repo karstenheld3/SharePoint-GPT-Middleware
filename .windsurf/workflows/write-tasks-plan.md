@@ -11,6 +11,10 @@ Create partitioned task documents from IMPL plans. Combines `/partition` workflo
 
 - @write-documents for TASKS template and document structure
 
+## MUST-NOT-FORGET
+
+- Run `/partition` to split IMPL into tasks
+
 ## Prerequisites
 
 - IMPL plan exists (`_IMPL_[TOPIC].md`)

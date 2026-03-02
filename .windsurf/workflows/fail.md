@@ -11,6 +11,11 @@ Record failures to prevent repetition. Can be triggered explicitly or run analys
 
 - @write-documents for FAILS_TEMPLATE.md structure
 
+## MUST-NOT-FORGET
+
+- Suggest `/learn` after problem is resolved
+- Session entries sync to workspace on `/session-finalize`
+
 ## Trigger
 
 - [ACTOR] reports a failure: `/fail [description]`

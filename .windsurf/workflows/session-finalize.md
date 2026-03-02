@@ -10,6 +10,11 @@ auto_execution_mode: 1
 - @session-management for session lifecycle
 - @git-conventions for final commit
 
+## MUST-NOT-FORGET
+
+- Sync session PROBLEMS.md to project
+- Suggest `/session-archive` when ready (do NOT auto-run)
+
 Use this workflow when a session is complete. Prepares for archiving but does NOT archive.
 
 ## Steps

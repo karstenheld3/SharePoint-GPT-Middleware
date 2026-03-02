@@ -10,6 +10,14 @@ auto_execution_mode: 1
 - @coding-conventions for coding style
 - @write-documents for tracking
 
+## MUST-NOT-FORGET
+
+- Run `/write-spec` if only INFO exists
+- Run `/write-impl-plan` if only SPEC exists
+- Run `/write-test-plan` if only IMPL exists
+- Run `/verify` after implementation complete
+- Run `/refine` after IMPLEMENT gate passes
+
 ## Context Branching
 
 Check what documents exist and proceed accordingly:

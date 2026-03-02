@@ -25,6 +25,13 @@ Universal formatting and writing conventions for all documents.
 - One empty line between sections
 - Most recent changes at top in changelog sections
 
+## Agent Behavior
+
+- Sacrifice grammar for clarity. ASANAP Principle: As short as possible, as precise as possible.
+- "Propose", "suggest", "draft", "outline" = talk ABOUT the object, don't modify it.
+- "Implement", "fix", "change", "update" = modify the object.
+- Question and verify training assumptions. They may be outdated or biased towards "what people usually do" vs. "what really solves the problem at hand".
+
 ## Header Block
 
 All documents start with:
