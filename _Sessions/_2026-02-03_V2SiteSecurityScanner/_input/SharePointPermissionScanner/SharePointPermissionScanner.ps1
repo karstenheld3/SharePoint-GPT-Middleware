@@ -1,7 +1,51 @@
 ﻿Add-Type -AssemblyName System.Web
+
+# Check PnP.PowerShell module and PowerShell version compatibility
+$pnpModule = Get-Module -ListAvailable -Name "PnP.PowerShell" | Sort-Object Version -Descending | Select-Object -First 1
+if (-not $pnpModule) {
+    Write-Host "ERROR: PnP.PowerShell module is required." -ForegroundColor Red
+    Write-Host "  For PowerShell 7.4+: Install-Module PnP.PowerShell -Scope CurrentUser" -ForegroundColor Yellow
+    Write-Host "  For PowerShell 5.1:  Install-Module PnP.PowerShell -RequiredVersion 1.12.0 -Scope CurrentUser" -ForegroundColor Yellow
+    exit 1
+}
+$pnpVersion = $pnpModule.Version
+$psVersion = $PSVersionTable.PSVersion
+Write-Host "PowerShell: $psVersion | PnP.PowerShell: $pnpVersion" -ForegroundColor Gray
+
+# PnP.PowerShell 2.x+ requires PS 7.2+, PnP.PowerShell 3.x requires PS 7.4+
+if ($pnpVersion.Major -ge 3 -and ($psVersion.Major -lt 7 -or ($psVersion.Major -eq 7 -and $psVersion.Minor -lt 4))) {
+    Write-Host "ERROR: PnP.PowerShell $pnpVersion requires PowerShell 7.4 or later. Current: $psVersion" -ForegroundColor Red
+    Write-Host "  Either upgrade PowerShell or install: Install-Module PnP.PowerShell -RequiredVersion 1.12.0 -Force" -ForegroundColor Yellow
+    exit 1
+}
+if ($pnpVersion.Major -eq 2 -and $psVersion.Major -lt 7) {
+    Write-Host "ERROR: PnP.PowerShell $pnpVersion requires PowerShell 7.x. Current: $psVersion" -ForegroundColor Red
+    Write-Host "  Either upgrade PowerShell or install: Install-Module PnP.PowerShell -RequiredVersion 1.12.0 -Force" -ForegroundColor Yellow
+    exit 1
+}
+
 #################### START: LOAD INCLUDE AND GET CREDENTIALS ####################
+# Run with PowerShell 7: pwsh -ExecutionPolicy Bypass -File "SharePointPermissionScanner.ps1"
 # if you set $global:dontClearScreen = $true outside of this script it will not clear the screen (intended for appending to previous outputs)
-if ($global:dontClearScreen -eq $null) {cls}; Remove-Variable * -ErrorAction SilentlyContinue;[system.gc]::Collect()
+# Get script root reliably across PS5/PS7, console, and IDE (VS Code F5/F8)
+if (-not [string]::IsNullOrEmpty($PSScriptRoot)) { $script:ScriptRoot = $PSScriptRoot }
+elseif (-not [string]::IsNullOrEmpty($PSCommandPath)) { $script:ScriptRoot = Split-Path -Parent $PSCommandPath }
+elseif ($MyInvocation.MyCommand.Path) { $script:ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path }
+elseif ($MyInvocation.MyCommand.Definition -and $MyInvocation.MyCommand.Definition -ne '' -and (Test-Path $MyInvocation.MyCommand.Definition -ErrorAction SilentlyContinue)) { 
+    $script:ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition 
+}
+elseif ($psEditor) { 
+    # VS Code with PowerShell extension (F8 run selection)
+    $script:ScriptRoot = Split-Path -Parent $psEditor.GetEditorContext().CurrentFile.Path 
+}
+else { $script:ScriptRoot = (Get-Location).Path }
+if ([string]::IsNullOrEmpty($script:ScriptRoot)) {
+    Write-Host "ERROR: Could not determine script directory." -ForegroundColor Red
+    Write-Host "  Use F5 to run entire script, or run from console: pwsh -File 'script.ps1'" -ForegroundColor Yellow
+    exit 1
+}
+if ($null -eq $global:dontClearScreen) {Clear-Host}
+[System.GC]::Collect()
 # returns the full path of a file to be found; first searches in given path and then in any parent path up to the root; returns "" if not found
 function SearchFileInFolderOrAnyParentFolder([string]$path, [string]$filename) {
     $testfilename = (Join-Path $path $filename)
@@ -10,7 +54,7 @@ function SearchFileInFolderOrAnyParentFolder([string]$path, [string]$filename) {
     if($found) { return $testfilename } else { return "" }
 }
 # load include file
-$includeFile1 = (SearchFileInFolderOrAnyParentFolder -path $PSScriptRoot -filename "_includes.ps1")
+$includeFile1 = (SearchFileInFolderOrAnyParentFolder -path $script:ScriptRoot -filename "_includes.ps1")
 if ($includeFile1 -eq ""){Write-Host "ERROR: Include file not found! Put '_includes.ps1' in script or parent folder" -ForegroundColor Red; exit}
 . $includeFile1
 # Using browser authentication ($useInteractiveLogin = $true)
@@ -54,6 +98,7 @@ $loadBuiltInListIfNameMatches = @("Documents","Site Pages")
 $loadListIfTemplateMatches = @{100 = "List"; 101 = "Library"; 119 = "SitePages"}
 $useAzureActiveDirectoryPowerShellModule = $false
 $useInteractiveLogin = $true
+# $pnpClientId = "1b1f528e-1f33-4f14-b7b0-8e31cf987588" # PnP Management Shell or your own registered app client id
 $pnpClientId = "95fb77ad-0605-4eed-ae6c-3707006603ab" # PnP Management Shell or your own registered app client id
 $dateFormat = "yyyy-MM-ddTHH:mm:ss"
 ######################### END: VARIABLES TO BE CHANGED BY USER ###########################
@@ -63,9 +108,9 @@ $permissionLevelSeparator = ", "
 $builtInLists = @("ImportedCars1","ListWithOver5000Items","Access Requests", "App Packages", "appdata", "appfiles", "Apps in Testing", "AuditLogs", "Cache Profiles", "Composed Looks", "Content and Structure Reports", "Content type publishing error log", "Converted Forms", "Device Channels", "Documents", "Form Templates", "fpdatasources", "Get started with Apps for Office and SharePoint", "List Template Gallery", "Long Running Operation Status", "Maintenance Log Library", "Master Docs", "Master Page Gallery", "MicroFeed", "NintexFormXml", "Notification List", "Project Policy Item List", "Quick Deploy Items", "Relationships List", "Reporting Metadata", "Reporting Templates", "Reusable Content", "Search Config List", "Site Assets", "Site Collection Documents", "Site Collection Images", "Site Pages", "Solution Gallery", "Style Library", "Suggested Content Browser Locations", "TaxonomyHiddenList", "Theme Gallery", "Translation Packages", "Translation Status", "User Information List", "Variation Labels", "Web Part Gallery", "wfpub", "wfsvc", "Workflow History", "Workflow Tasks")
 
 $inputFile = (Get-Item $MyInvocation.MyCommand.Definition).Basename + "-In.csv" # file with same name as this script, just with '-In.csv' at the end
-$inputFile = Join-Path $PSScriptRoot "$($inputFile)" # append path where this script is located
+$inputFile = Join-Path $script:ScriptRoot "$($inputFile)" # append path where this script is located
 
-$outputFolderTemplate = Join-Path $PSScriptRoot "[JOB_NUMBER] [SITE_URL_PART]"
+$outputFolderTemplate = Join-Path $script:ScriptRoot "[JOB_NUMBER] [SITE_URL_PART]"
 
 $outputFilename1SiteContents = "01_SiteContents.csv"
 $outputColumns1SiteContents = @("Id","Type","Title","Url")
@@ -102,7 +147,7 @@ $outputColumns5IndividualPermissionItemAccess = @("Id","Type","Url","LoginName",
 function newIndividualPermissionItemAccessRow($job,$siteUrl,$id,$type,$url,$loginName,$displayName,$email,$permissionLevel,$isGuest,$sharedDateTime,$sharedByDisplayName,$sharedByLoginName,$viaGroup,$viaGroupId,$viaGroupType,$assignmentType,$nestingLevel,$parentGroup){
     $start = if($saveAllJobResultsIntoSingleOutputFiles){"$job,$(CSV-Escape-Text -value $siteUrl),"} else {""}
     if ($isGuest) { $isGuestText="true" } else { $isGuestText="false" }
-    if ($sharedDateTime -eq $null){ $sharedDateTimeString = "" }
+    if ($null -eq $sharedDateTime){ $sharedDateTimeString = "" }
     elseif ($sharedDateTime.GetType().Name -eq "DateTime") {
         $localDate = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId($sharedDateTime, (Get-TimeZone).Id)
         $sharedDateTimeString = $localDate.ToString($dateFormat)
@@ -112,7 +157,10 @@ function newIndividualPermissionItemAccessRow($job,$siteUrl,$id,$type,$url,$logi
 
 if ($saveAllJobResultsIntoSingleOutputFiles) {
     # delete all previous output files
-    Remove-Item -Path "$PSScriptRoot\??_*.csv"
+    @($outputFilename1SiteContents, $outputFilename2SiteGroups, $outputFilename3SiteUsers, $outputFilename4IndividualPermissionItems, $outputFilename5IndividualPermissionItemAccess) | ForEach-Object {
+        $filePath = Join-Path $script:ScriptRoot $_
+        if (Test-Path $filePath) { [System.IO.File]::Delete($filePath) }
+    }
     $additionalColumns = @("Job","SiteUrl")
     $outputColumns1SiteContents = $additionalColumns + $outputColumns1SiteContents
     $outputColumns2SiteGroups = $additionalColumns + $outputColumns2SiteGroups
@@ -123,7 +171,7 @@ if ($saveAllJobResultsIntoSingleOutputFiles) {
 }
 
 $summaryFile = (Get-Item $MyInvocation.MyCommand.Definition).Basename + "-Summary.csv" # file with same name as this script, just with '-Summary.csv' at the end
-$summaryFile = Join-Path $PSScriptRoot "$($summaryFile)" # append path where this script is located
+$summaryFile = Join-Path $script:ScriptRoot "$($summaryFile)" # append path where this script is located
 $summaryFileColumns = @("Job","LastLib","LastItem","Type","ScannedItems","BrokenPermissions","Url")
 ######################### END: VARIABLES TO BE CHANGED BY DEVELOPER ######################
 
@@ -170,7 +218,7 @@ function Get-ItemsWithUniquePermissions {
 function ensureSharePointSiteIsConnected ([string]$siteUrl, $credentials) {
     # make sure site is connected: connect if context is $null or urls do not match
     try { $ctx = Get-PnPContext -ErrorAction SilentlyContinue } catch {}
-    if ( ($ctx -eq $null) -or ($ctx.Url.ToLower() -ne $siteUrl.ToLower()) ) {
+    if ( ($null -eq $ctx) -or ($ctx.Url.ToLower() -ne $siteUrl.ToLower()) ) {
         if ($useInteractiveLogin){
             Connect-PnPOnline -Url $siteUrl -Interactive -ClientId $pnpClientId
         } else {
@@ -178,7 +226,7 @@ function ensureSharePointSiteIsConnected ([string]$siteUrl, $credentials) {
         }
     }
     try { $ctx = Get-PnPContext -ErrorAction SilentlyContinue } catch {}
-    if ( ($ctx -eq $null) -or ($ctx.Url.ToLower() -ne $siteUrl.ToLower()) ) { return $false }
+    if ( ($null -eq $ctx) -or ($ctx.Url.ToLower() -ne $siteUrl.ToLower()) ) { return $false }
     if ($siteUrl -eq "") { return $false } else { return $true }
 }
 
@@ -218,7 +266,7 @@ function addGroupAndGroupMembersToOutputLines() {
     if ($recurse){ $groupMembers = getSharePointGroupMembers -group $group -recurse }
     else {$groupMembers = getSharePointGroupMembers -group $group }
     # make sure all return types create valid array: $null, single item, array of items
-    if($groupMembers -eq $null) { $groupMembers = @() } elseif($groupMembers.GetType().toString() -ne "System.Object[]") { $groupMembers = @($groupMembers) }
+    if($null -eq $groupMembers) { $groupMembers = @() } elseif($groupMembers.GetType().toString() -ne "System.Object[]") { $groupMembers = @($groupMembers) }
 
     foreach($m in $groupMembers){
         $id = [string]($m["Id"])
@@ -249,7 +297,7 @@ function getSharePointGroupMembers(){
 
     try {
         $members = Get-PnPGroupMember -Group $group -ErrorAction Stop
-        if($members -eq $null) { $members = @() } elseif($members.GetType().toString() -ne "System.Object[]") { $members = @($members) }
+        if($null -eq $members) { $members = @() } elseif($members.GetType().toString() -ne "System.Object[]") { $members = @($members) }
     } catch { Write-Host "ERROR: Get-PnPGroupMember -Group $viaGroup" -f  white -b red; Write-Host $_}
     # sort members by 'Title' (group or account display name)
     if($members.Count -gt 1) { $members = $members | Sort-Object -Property "Title" }
@@ -278,7 +326,7 @@ function getSharePointGroupMembers(){
 
                 if ($recurse) {
                     $azureGroupMembers = (getAzureGroupMembers -groupId $groupId -groupType $groupType -nestingLevel 1 -parentGroup $group.Title -recurse)
-                    if($azureGroupMembers -eq $null) { $azureGroupMembers = @() } elseif($azureGroupMembers.GetType().toString() -ne "System.Object[]") { $azureGroupMembers = @($azureGroupMembers) }
+                    if($null -eq $azureGroupMembers) { $azureGroupMembers = @() } elseif($azureGroupMembers.GetType().toString() -ne "System.Object[]") { $azureGroupMembers = @($azureGroupMembers) }
                     if ($azureGroupMembers.count -gt 0) { $groupMembers.AddRange($azureGroupMembers) | Out-Null }
                 } else {
                     # load group properties from azure to avoid outdated group names (SharePoint keeps old group name if group is being renamed)
@@ -325,11 +373,11 @@ function getAzureGroupMembers(){
     if ( $useAzureActiveDirectoryPowerShellModule){
         try { $azureGroup = Get-AzureADGroup -ObjectId $groupId }
         catch {
-            Write-Host "ERROR: Get-AzureADGroup -ObjectId $groupId" -f white -b red; Write-Host $_; return $groupMembers
+            Write-Host "ERROR: Get-AzureADGroup -ObjectId $groupId" -f white -b red; Write-Host $_
         }
     } else {
         try { $azureGroup = Get-PnPAzureADGroup -Identity $groupId }
-        catch { Write-Host "ERROR: Get-PnPAzureADGroup -Identity $groupId" -f white -b red; Write-Host $_; return $groupMembers }
+        catch { Write-Host "ERROR: Get-PnPAzureADGroup -Identity $groupId" -f white -b red; Write-Host $_ }
     }
 
 
@@ -358,7 +406,7 @@ function getAzureGroupMembers(){
             if ($viaGroup -eq ""){
                 $debug = "EMPTY GROUP"
             }
-            if ($currentGroup.ParentGroup -eq $null) { $parentGroupName = $parentGroup }
+            if ($null -eq $currentGroup.ParentGroup) { $parentGroupName = $parentGroup }
             elseif ($currentGroup.ParentGroup.GetType().Name -eq "String") { $parentGroupName = $currentGroup.ParentGroup }
             else { $parentGroupName = $currentGroup.ParentGroup.DisplayName }
             $groupType = "SecurityGroup"
@@ -380,16 +428,16 @@ function getAzureGroupMembers(){
                     try { $members = Get-PnPAzureADGroupMember -Identity $viaGroupId }
                     catch { Write-Host "ERROR: Get-PnPAzureADGroupMember -Identity $viaGroupId" -f white -b red; Write-Host $_ }
                 }
-                if($members -eq $null) { $members = @() } elseif($members.GetType().toString() -ne "System.Object[]") { $members = @($members) }
+                if($null -eq $members) { $members = @() } elseif($members.GetType().toString() -ne "System.Object[]") { $members = @($members) }
                 # sort members by 'DisplayName' (group or account)
                 if($members.Count -gt 1) { $members = $members | Sort-Object -Property "DisplayName" }                
                 $groupsToBeAddedToGroupStack = @()
                 foreach($groupMember in $members) {
                     $displayName = $groupMember.DisplayName; $email=""; $objectType=""; $objectId=""; $loginName=""
                     # keep it compatible with AAD and PnP PowerShell module (AAD = group.ObjectType; PnP = group.Type)
-                    if ($groupMember.ObjectType -ne $null) { $objectType = $groupMember.ObjectType } else { $objectType = $groupMember.Type }
-                    if ($groupMember.ObjectId -ne $null) { $objectId = $groupMember.ObjectId } else { $objectId = $groupMember.UserPrincipalName }
-                    if ($groupMember.Mail -ne $null) { $email = [string]$groupMember.Mail } else { $email = $groupMember.UserPrincipalName }
+                    if ($null -ne $groupMember.ObjectType) { $objectType = $groupMember.ObjectType } else { $objectType = $groupMember.Type }
+                    if ($null -ne $groupMember.ObjectId) { $objectId = $groupMember.ObjectId } else { $objectId = $groupMember.UserPrincipalName }
+                    if ($null -ne $groupMember.Mail) { $email = [string]$groupMember.Mail } else { $email = $groupMember.UserPrincipalName }
 
                     if ( ($objectType -eq "Group") ) {
                         if ($recurse) {
@@ -439,7 +487,7 @@ if (!(Test-Path $inputFile)) {Write-Host "The input file does not exist: '$input
 
 $inputCsv = Import-CSV $inputFile -Encoding UTF8
 # make sure all return types create valid array: $null, single item, array of items
-if($inputCsv -eq $null) { $inputCsv = @() } elseif($inputCsv.GetType().toString() -ne "System.Object[]") { $inputCsv = @($inputCsv) }
+if($null -eq $inputCsv) { $inputCsv = @() } elseif($inputCsv.GetType().toString() -ne "System.Object[]") { $inputCsv = @($inputCsv) }
 $jobCount = $inputCsv.Count
 
 Write-Host "$($jobCount) jobs found."
@@ -497,7 +545,7 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
     # create output folder if necessary
     $outputJobNumber = ([string]($jobIndex+1)).PadLeft(4,"0")
     if ($saveAllJobResultsIntoSingleOutputFiles){
-        $outputFolder = $PSScriptRoot
+        $outputFolder = $script:ScriptRoot
     } else {
         $outputFolder = $outputFolderTemplate.Replace("[JOB_NUMBER]",$outputJobNumber).Replace("[SITE_URL_PART]",$outputFolderSiteUrlPart)
     }
@@ -565,12 +613,10 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
             if (!$isKnownSubSiteUrl){
                 $subSites = Get-PnPSubWeb -Includes HasUniqueRoleAssignments,RoleAssignments -Recurse
                 # make sure all return types create valid array: $null, single item, array of items
-                if($subSites -eq $null) { $subSites = @() } elseif($subSites.GetType().toString() -ne "System.Object[]") { $subSites = @($subSites) }
-                $subSite = $subSites | Where-Object { $_.ServerRelativeUrl.ToLower() -eq $folderRelativeUrl.ToLower() }
-            } else {
-                $subsite = $true
-            }
-            if($subSite -ne $null){
+                if($null -eq $subSites) { $subSites = @() } elseif($subSites.GetType().toString() -ne "System.Object[]") { $subSites = @($subSites) }        
+                if ($subSites.Count -gt 0) { Write-Host "  $($subSites.Count) subsites found." }
+            } else { $subsite = $true }
+            if($null -ne $subSite){
                 $urlType  = "Subsite"
                 $siteUrl = $tenantUrl + $folderRelativeUrl
             } else {
@@ -585,7 +631,7 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
                     $library = (Get-PnPList -ErrorAction Stop | Where-Object {($_.BaseTemplate -eq 101) -and ($_.Hidden -eq $false) -and `
                         ($_.DefaultViewUrl.Substring(0, $_.DefaultViewUrl.IndexOf("/Forms")).ToLower() -eq $folderRelativeUrl.ToLower()) })
                 } catch {$library = $null }
-                if ($library -ne $null){
+                if ($null -ne $library){
                     $urlType  = "Library"
                     $libraryName = $folderRelativeUrl.Split("/")[-1]
                     # reconstruct site or subsite url from $lastServerRelativeUrl by leaving out last split item
@@ -607,7 +653,7 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
         Write-Host "  Loading subsites..."
         $subSites = Get-PnPSubWeb -Includes HasUniqueRoleAssignments,RoleAssignments -Recurse
         # make sure all return types create valid array: $null, single item, array of items
-        if($subSites -eq $null) { $subSites = @() } elseif($subSites.GetType().toString() -ne "System.Object[]") { $subSites = @($subSites) }        
+        if($null -eq $subSites) { $subSites = @() } elseif($subSites.GetType().toString() -ne "System.Object[]") { $subSites = @($subSites) }        
         if ($subSites.Count -gt 0) { Write-Host "  $($subSites.Count) subsites found." }
     } else { $subSites = @() }
     $web = Get-PnPWeb -Includes HasUniqueRoleAssignments,RoleAssignments
@@ -649,7 +695,7 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
     # 2) "current site: the site being currently processed, can be either the job site itself or a subsuite of the job site
     $groups = Get-PnPGroup # collection sorted by group title
     # make sure all return types create valid array: $null, single item, array of items
-    if($groups -eq $null) { $groups = @() } elseif($groups.GetType().toString() -ne "System.Object[]") { $groups = @($groups) }
+    if($null -eq $groups) { $groups = @() } elseif($groups.GetType().toString() -ne "System.Object[]") { $groups = @($groups) }
     if ($groups.Count -gt 3){ Write-Host "  $($groups.Count) groups found in site collection." }
     # add to cache so we can later get a group by its id
     $groups | ForEach-Object { $global:sharePointGroupCache[$_.Id] = $_ }
@@ -661,21 +707,21 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
     Load-CSOMProperties -parentObject $web -collectionObject $web.RoleAssignments -propertyNames @("RoleDefinitionBindings", "Member","PrincipalId") -parentPropertyName "RoleAssignments" -executeQuery
     $roleAssignments = $web.RoleAssignments | Sort-Object -Property { $_.Member.Title }
     # make sure all return types create valid array: $null, single item, array of items
-    if($roleAssignments -eq $null) { $roleAssignments = @() } elseif($roleAssignments.GetType().toString() -ne "System.Object[]") { $roleAssignments = @($roleAssignments) }
+    if($null -eq $roleAssignments) { $roleAssignments = @() } elseif($roleAssignments.GetType().toString() -ne "System.Object[]") { $roleAssignments = @($roleAssignments) }
     
     # add all role assignments to cache; key: principal id (number), value = role assignment object
     $siteRoleAssignmentsCache = @{}; $roleAssignments | ForEach-Object { $siteRoleAssignmentsCache[$_.PrincipalId] = $_ }
 
     # write members of site owners, members, visitors groups at top of file
-    if ($jobSiteOwnerGroup -ne $null) {
+    if ($null -ne $jobSiteOwnerGroup) {
         addGroupAndGroupMembersToOutputLines -group $jobSiteOwnerGroup -role "SiteOwners" -roleAssignments $roleAssignments -groupOutputLines $outputLines2SiteGroups -userOutputLines $outputLines3SiteUsers -recurse
         $sitePrincipalIdsThatHaveBeenWrittenToFile[$jobSiteOwnerGroup.Id] = ""
     }
-    if ($jobSiteMemberGroup -ne $null) {
+    if ($null -ne $jobSiteMemberGroup) {
         addGroupAndGroupMembersToOutputLines -group $jobSiteMemberGroup -role "SiteMembers" -roleAssignments $roleAssignments -groupOutputLines $outputLines2SiteGroups -userOutputLines $outputLines3SiteUsers -recurse
         $sitePrincipalIdsThatHaveBeenWrittenToFile[$jobSiteMemberGroup.Id] = ""
     }
-    if ($jobSiteVisitorGroup -ne $null) {
+    if ($null -ne $jobSiteVisitorGroup) {
         addGroupAndGroupMembersToOutputLines -group $jobSiteVisitorGroup "SiteVisitors" -roleAssignments $roleAssignments -groupOutputLines $outputLines2SiteGroups -userOutputLines $outputLines3SiteUsers -recurse
         $sitePrincipalIdsThatHaveBeenWrittenToFile[$jobSiteVisitorGroup.Id] = ""
     }
@@ -751,7 +797,7 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
         # do not load built-in lists except those in $loadBuiltInListIfNameMatches
         $lists = (Get-PnPList -Includes HasUniqueRoleAssignments,DefaultViewUrl | Where-Object {($loadListIfTemplateMatches.ContainsKey($_.BaseTemplate)) -and ($_.Hidden -eq $false) -and ($loadBuiltInListIfNameMatches.Contains($_.Title) -or !$builtInLists.Contains($_.Title)) })
         # make sure all return types create valid array: $null, single item, array of items
-        if($lists -eq $null) { $lists = @() } elseif($lists.GetType().toString() -ne "System.Object[]") { $lists = @($lists) }
+        if($null -eq $lists) { $lists = @() } elseif($lists.GetType().toString() -ne "System.Object[]") { $lists = @($lists) }
 
         if ($lists.Count -gt 0 ) { Write-Host "    $($lists.Count) lists found." }
         foreach ($list in $lists) {
@@ -789,7 +835,7 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
                 # Only load CSOM items if there are broken permissions to process
                 if ($bulkItemData.BrokenCount -gt 0) {
                     $items = Get-PnPListItem -List $list.Title -PageSize 4995 | Sort-Object -Property @{Expression = {$_["FileRef"]}; Descending = $False}
-                    if($items -eq $null) { $items = @() } elseif($items.GetType().toString() -ne "System.Object[]") { $items = @($items) }
+                    if($null -eq $items) { $items = @() } elseif($items.GetType().toString() -ne "System.Object[]") { $items = @($items) }
                     if ($urlType -eq "Folder"){
                         $allItems = [System.Collections.ArrayList]@()
                         # add files to be scanned
@@ -814,7 +860,7 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
                 if (-not $brokenItemIds.ContainsKey([string]$item.Id)) { continue }
                 
                 $processedBroken++
-                if( ($processedBroken % $logEveryXItems -eq 0) -or ($processedBroken -eq $bulkItemData.BrokenCount) ){ 
+                if  ($processedBroken % $logEveryXItems -eq 0) { 
                     $bucket++
                     Write-Host "      Processing broken items [ $processedBroken / $($bulkItemData.BrokenCount) ]..." 
                 }
@@ -844,7 +890,7 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
                     $sharedWithUsersArray = $item.FieldValues["SharedWithUsers"]
                     # get details of sharing
                     $sharedWithDetailsHashmap = @{}
-                    if ( ($item.FieldValues["SharedWithDetails"] -ne $null) -and (([string]$item.FieldValues["SharedWithDetails"]).Length -gt 0) ){
+                    if ( ($null -ne $item.FieldValues["SharedWithDetails"]) -and (([string]$item.FieldValues["SharedWithDetails"]).Length -gt 0) ){
                         $sharedWithDetailsObject = ConvertFrom-Json -InputObject $item.FieldValues["SharedWithDetails"]
                         $sharedWithDetailsObject.PSObject.Properties | ForEach-Object {
                             $loginName = [string]$_.Name
@@ -868,7 +914,7 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
                     # sort role assignments by display name (group or account)
                     $roleAssignments = $item.RoleAssignments
                     # make sure all return types create valid array: $null, single item, array of items
-                    if($roleAssignments -eq $null) { $roleAssignments = @() } elseif($roleAssignments.GetType().toString() -ne "System.Object[]") { $roleAssignments = @($roleAssignments) }
+                    if($null -eq $roleAssignments) { $roleAssignments = @() } elseif($roleAssignments.GetType().toString() -ne "System.Object[]") { $roleAssignments = @($roleAssignments) }
                     $roleAssignments = $roleAssignments | Sort-Object -Property { $_.Member.Title }
                     foreach ( $roleAssignment in $roleAssignments ) {                
                         $loginName = ""; $permissionLevel = ""; $viaGroup = ""; $viaGroupId = ""
@@ -891,7 +937,7 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
                                 if ($sharedWithDetailsHashmap.ContainsKey($loginName)){ $details = $sharedWithDetailsHashmap[$loginName] } else { $details = @{} }
                                 $isGuest = isGuestAccount -loginName $loginName
                                 # add user to individual permission item access file
-                                $outputLines5IndividualPermissionItemAccess.Add( (newIndividualPermissionItemAccessRow -job ($jobIndex+1) -siteUrl $siteUrl -id $item.Id -type $itemType -url $itemUrl -loginName $loginName -displayName $displayName -email $email -permissionLevel $permissionLevel -isGuest $isGuest -sharedDateTime $details.SharedDateTime -sharedByDisplayName $details.SharedByDisplayName -sharedByLoginName $details.SharedByLoginName -viaGroup "" -viaGroupId "" -viaGroupType "" -assignmentType "User" -nestingLevel 0 -parentGroup "" ) ) | Out-Null
+                                $outputLines5IndividualPermissionItemAccess.Add( (newIndividualPermissionItemAccessRow -job ($jobIndex+1) -siteUrl $siteUrl -id $item.Id -type $itemType -url $itemUrl -loginName $loginName -displayName $displayName -email $email -permissionLevel $permissionLevel -isGuest $isGuest -sharedDateTime $details.SharedDateTime -sharedByDisplayName $details.SharedByDisplayName -sharedByLoginName $details.SharedByLoginName -viaGroup "" -viaGroupId "" -viaGroupType "" -assignmentType "User" -nestingLevel 0 -parentGroup "") ) | Out-Null
                             }
                             # if group is SharePoint or Azure Security Group
                             { $_ -in "SharePointGroup", "SecurityGroup" } {
@@ -903,7 +949,7 @@ for ($jobIndex=0; $jobIndex -lt $jobCount; $jobIndex++) {
                                     $groupType = $principalType
                                     $groupMembers = getSharePointGroupMembers -group $group -recurse
                                     # make sure all return types create valid array: $null, single item, array of items
-                                    if($groupMembers -eq $null) { $groupMembers = @() } elseif($groupMembers.GetType().toString() -ne "System.Object[]") { $groupMembers = @($groupMembers) }
+                                    if($null -eq $groupMembers) { $groupMembers = @() } elseif($groupMembers.GetType().toString() -ne "System.Object[]") { $groupMembers = @($groupMembers) }
                                     # if SharePoint group is sharing link, change assignment type to "SharingLink"
                                     if ( $roleAssignment.Member.Title.StartsWith("SharingLinks.") -and ($groupMembers.Count -gt 0) ) {
                                         $groupMembers | ForEach-Object { $_["AssignmentType"] = "SharingLink" }
