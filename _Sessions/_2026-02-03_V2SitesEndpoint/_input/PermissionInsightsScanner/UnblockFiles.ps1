@@ -1,1 +1,0 @@
-﻿Get-ChildItem -file *.* -Path "$PSScriptRoot\.." -Recurse | foreach { Write-Host $_; Unblock-File -Path $_.FullName  }

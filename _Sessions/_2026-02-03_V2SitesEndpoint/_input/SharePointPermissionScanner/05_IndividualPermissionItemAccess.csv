@@ -1,2 +1,0 @@
-Job,SiteUrl,Id,Type,Url,LoginName,DisplayName,Email,PermissionLevel,IsGuest,SharedDateTime,SharedByDisplayName,SharedByLoginName,ViaGroup,ViaGroupId,ViaGroupType,AssignmentType,NestingLevel,ParentGroup
-1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,1,Item,https://whizzyapps.sharepoint.com/sites/AiSearchTest01/Lists/ScanTestList/AllItems.aspx?FilterField1=ID&FilterValue1=1,scantest_user1@whizzyapps.onmicrosoft.com,ScanTest User 1,,"Contribute, Read",false,,"",,"",,,User,0,""
