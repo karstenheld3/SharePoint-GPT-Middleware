@@ -133,10 +133,10 @@ Modal (Edit Site):
 | [https://contoso.sharepoint.com/sites/Marketing__________]    |
 | (Trailing slash will be removed automatically)                |
 |                                                               |
-| File Scan Result (read-only)                                  |
+| Security Scan Result (read-only)                              |
 | [____________________________________________________________]|
 |                                                               |
-| Security Scan Result (read-only)                              |
+| File Scan Result (read-only)                                  |
 | [____________________________________________________________]|
 |                                                               |
 |                                         [OK] [Cancel]         |
@@ -386,12 +386,12 @@ Follows the same pattern as domains.py per DD-E014:
   </div>
   <!-- ... other fields ... -->
   <div class="form-group">
-    <label>File Scan Result (read-only)</label>
-    <input type="text" name="file_scan_result" value="${site.file_scan_result}" readonly disabled>
-  </div>
-  <div class="form-group">
     <label>Security Scan Result (read-only)</label>
     <input type="text" name="security_scan_result" value="${site.security_scan_result}" readonly disabled>
+  </div>
+  <div class="form-group">
+    <label>File Scan Result (read-only)</label>
+    <input type="text" name="file_scan_result" value="${site.file_scan_result}" readonly disabled>
   </div>
 </form>
 ```
@@ -410,6 +410,9 @@ Follows the same pattern as domains.py per DD-E014:
 *File Scan not yet implemented
 
 ## Document History
+
+**[2026-03-02 13:29]**
+- Fixed: Edit dialog field order (Security before File) to match table columns
 
 **[2026-03-02 13:26]**
 - Added: FR-06 Security Scan Endpoint (row action)
