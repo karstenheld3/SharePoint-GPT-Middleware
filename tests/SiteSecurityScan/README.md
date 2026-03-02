@@ -115,7 +115,12 @@ Or override with parameter:
 
 ## Known Differences
 
-- **Column structure**: PowerShell scanner includes Job/SiteUrl columns, V2 does not
-- **URL format**: PowerShell uses full URLs, V2 uses relative paths
-- **Type values**: PowerShell uses "File/Folder/Item", V2 uses "ITEM"
-- **Subsites**: PowerShell scans subsites by default, V2 depends on `include_subsites` parameter
+- **Subsites**: PowerShell scans subsites by default, V2 requires `include_subsites=true` parameter
+
+## Resolved Differences (as of 2026-03-02)
+
+The following differences have been fixed and V2 now matches PowerShell output:
+
+- **Column structure**: V2 now includes `Job,SiteUrl` prefix columns
+- **URL format**: V2 now uses full URLs
+- **Type values**: V2 now uses mixed case (`File/Folder/Item/List/Library/Subsite`)

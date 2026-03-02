@@ -43,3 +43,4 @@ Set-Content -Path $inputCsvPath -Value $csvContent -Encoding UTF8
 
 Write-Host "  Created: $inputCsvPath" -ForegroundColor Green
 Write-Host "=== Setup Complete ===" -ForegroundColor Cyan
+exit 0
