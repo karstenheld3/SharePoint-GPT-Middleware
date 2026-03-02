@@ -568,7 +568,8 @@ async def sites_root(request: Request):
       {"path": "/update", "desc": "Update site (PUT)", "formats": ["json", "html"]},
       {"path": "/delete", "desc": "Delete site (DELETE/GET)", "formats": ["json", "html"]},
       {"path": "/selftest", "desc": "Self-test", "formats": ["stream"]},
-      {"path": "/security_scan", "desc": "Security scan", "formats": ["stream"]}
+      {"path": "/security_scan", "desc": "Security scan", "formats": ["stream"]},
+      {"path": "/security_scan/selftest", "desc": "Security scan selftest", "formats": ["stream"]}
     ]
     return HTMLResponse(generate_router_docs_page(
       title="Sites",

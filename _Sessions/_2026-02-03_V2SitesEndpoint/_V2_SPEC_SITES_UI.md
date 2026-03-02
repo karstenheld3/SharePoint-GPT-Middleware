@@ -213,7 +213,7 @@ Modal (Edit Site):
 
 **SITE-UI-FR-11: Security Scan Selftest**
 - [Security Scan Selftest] button in toolbar
-- Connects to `/v2/sites/security_scan_selftest?format=stream`
+- Connects to `/v2/sites/security_scan/selftest?format=stream`
 - Shows console panel with streaming output during execution
 - On completion: shows result in modal dialog (same pattern as Crawler UI selftest)
 - Modal displays OK/FAIL status and full test output
@@ -328,7 +328,7 @@ toolbar_buttons = [
   },
   {
     "text": "Security Scan Selftest",
-    "data_url": "/v2/sites/security_scan_selftest?format=stream",
+    "data_url": "/v2/sites/security_scan/selftest?format=stream",
     "data_format": "stream",
     "data_show_result": "modal",
     "data_reload_on_finish": "true",

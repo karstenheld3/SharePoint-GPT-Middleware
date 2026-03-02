@@ -52,13 +52,13 @@ Structure (following domains.py pattern):
 4. Router-specific JavaScript
 5. Endpoints:
    - `GET /sites` - List/UI/docs
-   - `GET /sites/get` - Get single site
-   - `POST /sites/create` - Create site
-   - `PUT /sites/update` - Update site
-   - `DELETE /sites/delete` - Delete site
+   - `GET /sites/{site_id}` - Get single site
+   - `POST /sites` - Create site
+   - `PUT /sites/{site_id}` - Update site
+   - `DELETE /sites/{site_id}` - Delete site
    - `GET /sites/selftest` - Run selftest
    - `GET /sites/security_scan` - Run security scan on site (stream)
-   - `GET /sites/security_scan_selftest` - Run security scan selftest
+   - `GET /sites/security_scan/selftest` - Run security scan selftest
 
 ### SITE-IP01-IS-03: Implement Site dataclass and helper functions
 
