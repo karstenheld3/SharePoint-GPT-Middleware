@@ -12,6 +12,15 @@
 **Does not depend on:**
 - Domains router UI (parallel implementation)
 
+## MUST-NOT-FORGET
+
+- Security column shows 3 links: Results (dialog), Report (new tab), Zip (download)
+- Security Scan button is fully functional (not placeholder)
+- File Scan button shows "not implemented" toast
+- FR-06 is security_scan endpoint (row action), FR-11 is security_scan_selftest (toolbar)
+- FR-10 and FR-11 are selftest endpoints with modal result display
+- Column order: Security before Files
+
 ## Table of Contents
 
 1. Scenario
@@ -38,7 +47,6 @@
 **What we don't want:**
 - Complex state management (use simple JavaScript)
 - Memory caching of site data
-- Active scan functionality (placeholders only for now)
 
 ## Site Object Model
 
@@ -63,6 +71,7 @@
 4. **Edit site** - Click [Edit] on row to open modal form with current values, submit to update
 5. **Delete site** - Click [Delete] on row with confirmation dialog
 6. **Run selftest** - Click [Run Selftest] to test all CRUD operations
+7. **Run security scan selftest** - Click [Security Scan Selftest] to test security scan functionality, shows results in modal
 
 ## UX Design
 
@@ -72,15 +81,16 @@ main page: /v2/sites?format=ui
 | Sites (3)  [Reload]                                                                                                                   |
 | Back to Main Page | Domains | Crawler | Jobs | Reports                                                                                |
 |                                                                                                                                       |
-| [New Site] [Run Selftest]                                                                                                             |
+| [New Site] [Run Selftest] [Security Scan Selftest]                                                                                       |
 |                                                                                                                                       |
-| +----------+----------------+----------------------------------------+----------+-------+---------------------------------------------+
-| | Site ID  | Name           | Site URL                               | Security | Files | Actions                                     |
-| +----------+----------------+----------------------------------------+----------+-------+---------------------------------------------+
-| | site01   | Marketing Site | https://contoso.sharepoint.com/...     | -        | -     | [Edit] [Delete] [Security Scan] [File Scan] |
-| | site02   | HR Portal      | https://contoso.sharepoint.com/...     | -        | -     | [Edit] [Delete] [Security Scan] [File Scan] |
-| | site03   | Engineering    | https://contoso.sharepoint.com/...     | -        | -     | [Edit] [Delete] [Security Scan] [File Scan] |
-| +----------+----------------+----------------------------------------+----------+-------+---------------------------------------------+
+| +----------+----------------+----------------------------------------+---------------------------------------------+-------+---------------------------------------------+
+| | Site ID  | Name           | Site URL                               | Security                                    | Files | Actions                                     |
+| +----------+----------------+----------------------------------------+---------------------------------------------+-------+---------------------------------------------+
+| | site01   | Marketing Site | https://contoso.sharepoint.com/...     | 4 groups, 8 users, 41 individual perms      | -     | [Edit] [Delete] [Security Scan] [File Scan] |
+| |          |                |                                        | 2026-03-02 13:12 - Results | Report | Zip  |       |                                             |
+| | site02   | HR Portal      | https://contoso.sharepoint.com/...     | -                                           | -     | [Edit] [Delete] [Security Scan] [File Scan] |
+| | site03   | Engineering    | https://contoso.sharepoint.com/...     | -                                           | -     | [Edit] [Delete] [Security Scan] [File Scan] |
+| +----------+----------------+----------------------------------------+---------------------------------------------+-------+---------------------------------------------+
 |                                                                                                                                       |
 +---------------------------------------------------------------------------------------------------------------------------------------+
 
@@ -168,16 +178,24 @@ Modal (Edit Site):
 - Error: show error toast
 
 **SITE-UI-FR-05: Scan Buttons**
-- [File Scan] button - grey/disabled appearance, shows toast "File Scan not yet implemented"
-- [Security Scan] button - opens security scan dialog with scope and options
+- [File Scan] button - outlined style, shows toast "File Scan not yet implemented"
+- [Security Scan] button - outlined style, opens security scan dialog with scope and options (fully implemented)
+
+**SITE-UI-FR-06: Security Scan Endpoint**
+- Endpoint: `GET /v2/sites/security_scan?site_id={id}&format=stream`
+- Triggered by [Security Scan] button on site row
+- Opens pre-scan dialog with scope options (all, content, security)
+- On start: streams SSE progress events to console panel
+- On completion: updates site's security_scan_result, reloads site list
 
 **SITE-UI-FR-07: Security Column Display**
 - If no security scan performed: shows "-"
 - If security scan performed, Security column displays:
-  - Line 1: Summary stats (e.g., "7 groups, 10 users, 2 subsites, 13 individual permissions")
-  - Line 2: `YYYY-MM-DD HH:MM - View Results | Download Zip`
-- "View Results" link opens modal with full report.json content (via `/v2/reports/get?format=json`)
-- "Download Zip" link downloads the report archive (via `/v2/reports/download`)
+  - Line 1: Summary stats (e.g., "4 groups, 8 users, 41 individual permissions")
+  - Line 2: `YYYY-MM-DD HH:MM - Results | Report | Zip`
+- **Results** link opens modal dialog with report.json content (via `/v2/reports/get?format=json`)
+- **Report** link opens Report viewer UI in new browser tab (`target="_blank"`) (via `/v2/reports/get?format=html`)
+- **Zip** link downloads the report archive (via `/v2/reports/download`)
 - Date format: UTC timestamp in "YYYY-MM-DD HH:MM" format
 
 **SITE-UI-FR-08: View Results Modal**
@@ -187,11 +205,18 @@ Modal (Edit Site):
 - Modal body: formatted JSON of full report.json content
 - Modal footer: OK button to close
 
-**SITE-UI-FR-06: Selftest**
+**SITE-UI-FR-10: Selftest**
 - [Run Selftest] button in toolbar
 - Connects to `/v2/sites/selftest?format=stream`
 - Shows console panel with streaming output
-- On completion: shows result in modal or toast
+- On completion: shows result in modal
+
+**SITE-UI-FR-11: Security Scan Selftest**
+- [Security Scan Selftest] button in toolbar
+- Connects to `/v2/sites/security_scan_selftest?format=stream`
+- Shows console panel with streaming output during execution
+- On completion: shows result in modal dialog (same pattern as Crawler UI selftest)
+- Modal displays OK/FAIL status and full test output
 
 ## Implementation Guarantees
 
@@ -266,8 +291,8 @@ columns = [
   {"field": "site_id", "header": "Site ID"},
   {"field": "name", "header": "Name", "default": "-"},
   {"field": "site_url", "header": "Site URL", "default": "-"},
-  {"field": "file_scan_result", "header": "Files", "default": "-"},
   {"field": "security_scan_result", "header": "Security", "default": "-"},
+  {"field": "file_scan_result", "header": "Files", "default": "-"},
   {
     "field": "actions",
     "header": "Actions",
@@ -281,8 +306,8 @@ columns = [
         "confirm_message": "Delete site '{itemId}'?",
         "class": "btn-small btn-delete"
       },
-      {"text": "File Scan", "onclick": "showNotImplemented('File Scan')", "class": "btn-small btn-disabled"},
-      {"text": "Security Scan", "onclick": "showNotImplemented('Security Scan')", "class": "btn-small btn-disabled"}
+      {"text": "Security Scan", "onclick": "showSecurityScanDialog('{itemId}')", "class": "btn-small btn-outline"},
+      {"text": "File Scan", "onclick": "showNotImplemented('File Scan')", "class": "btn-small btn-outline"}
     ]
   }
 ]
@@ -296,6 +321,14 @@ toolbar_buttons = [
   {
     "text": "Run Selftest",
     "data_url": "/v2/sites/selftest?format=stream",
+    "data_format": "stream",
+    "data_show_result": "modal",
+    "data_reload_on_finish": "true",
+    "class": "btn-primary"
+  },
+  {
+    "text": "Security Scan Selftest",
+    "data_url": "/v2/sites/security_scan_selftest?format=stream",
     "data_format": "stream",
     "data_show_result": "modal",
     "data_reload_on_finish": "true",
@@ -365,20 +398,39 @@ Follows the same pattern as domains.py per DD-E014:
 
 ## Differences from Domains Router
 
-| Aspect | Domains | Sites |
-|--------|---------|-------|
-| Table columns | Domain ID, Name, VS Name, VS ID | Site ID, Name, Site URL, Files, Security |
-| Primary key | domain_id | site_id |
-| Storage | domains/{domain_id}/domain.json | sites/{site_id}/site.json |
-| Action buttons | Crawl, Edit, Delete | Edit, Delete, File Scan*, Security Scan* |
-| Toolbar buttons | New Domain, Run Selftest | New Site, Run Selftest |
-| Form complexity | Complex (sources JSON) | Simple (3 editable fields) |
-| Read-only fields | None | file_scan_result, security_scan_result |
-| Modal width | 900px | 600px |
+- **Table columns**: Domains: Domain ID, Name, VS Name, VS ID | Sites: Site ID, Name, Site URL, Security, Files
+- **Primary key**: Domains: domain_id | Sites: site_id
+- **Storage**: Domains: `domains/{domain_id}/domain.json` | Sites: `sites/{site_id}/site.json`
+- **Action buttons**: Domains: Crawl, Edit, Delete | Sites: Edit, Delete, Security Scan, File Scan*
+- **Toolbar buttons**: Domains: New Domain, Run Selftest | Sites: New Site, Run Selftest, Security Scan Selftest
+- **Form complexity**: Domains: Complex (sources JSON) | Sites: Simple (3 editable fields)
+- **Read-only fields**: Domains: None | Sites: file_scan_result, security_scan_result
+- **Modal width**: Domains: 900px | Sites: 600px
 
-*Placeholder buttons - not yet implemented
+*File Scan not yet implemented
 
 ## Document History
+
+**[2026-03-02 13:26]**
+- Added: FR-06 Security Scan Endpoint (row action)
+- Updated: MNF to clarify FR-06 vs FR-11
+
+**[2026-03-02 13:25]**
+- Fixed: FR numbering (old FR-06/FR-09 renumbered to FR-10/FR-11 for sequence)
+
+**[2026-03-02 13:20]**
+- Added: FR-11 Security Scan Selftest button in toolbar
+- Added: User Action 7 for security scan selftest
+- Updated: Toolbar buttons config with Security Scan Selftest
+
+**[2026-03-02 13:17]**
+- Updated: FR-07 Security column links: Results (dialog) | Report (viewer UI) | Zip (download)
+
+**[2026-03-02 13:15]**
+- Updated: Security Scan now fully implemented (removed placeholder note)
+- Updated: Column order in table config (Security before Files)
+- Updated: Action buttons order and classes (btn-outline style)
+- Updated: Security column UX shows scan results with links
 
 **[2026-02-03 09:20]**
 - Initial UI specification created

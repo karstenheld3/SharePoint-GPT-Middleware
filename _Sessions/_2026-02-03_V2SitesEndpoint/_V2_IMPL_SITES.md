@@ -57,6 +57,8 @@ Structure (following domains.py pattern):
    - `PUT /sites/update` - Update site
    - `DELETE /sites/delete` - Delete site
    - `GET /sites/selftest` - Run selftest
+   - `GET /sites/security_scan` - Run security scan on site (stream)
+   - `GET /sites/security_scan_selftest` - Run security scan selftest
 
 ### SITE-IP01-IS-03: Implement Site dataclass and helper functions
 
@@ -121,7 +123,8 @@ Table columns:
 
 Toolbar buttons:
 - [New Site] - onclick: showNewSiteForm()
-- [Run Selftest] - streaming endpoint
+- [Run Selftest] - streaming endpoint with modal result
+- [Security Scan Selftest] - streaming endpoint with modal result
 
 ### SITE-IP01-IS-06: Implement Get endpoint (GET /sites/get)
 
@@ -158,6 +161,25 @@ Toolbar buttons:
 - Create StreamingJobWriter
 - Test create, get, update, rename, delete, verify deleted
 - Return SSE stream with results
+- Result schema: `{ok, error, data: {passed, failed, passed_tests, failed_tests}}`
+
+### SITE-IP01-IS-12: Implement Security Scan endpoint (GET /sites/security_scan)
+
+- Query params: `site_id` (required), `scope` (optional: all, content, security), `format=stream`
+- Validate site exists
+- Create StreamingJobWriter
+- Execute security scan via `common_security_scan_functions_v2.py`
+- Stream SSE progress events
+- On completion: update site's `security_scan_result`, create report archive
+- Per SITE-UI-FR-06
+
+### SITE-IP01-IS-13: Implement Security Scan Selftest endpoint (GET /sites/security_scan_selftest)
+
+- Create StreamingJobWriter
+- Run security scan on test site (uses existing AiSearchTest01 or configured test site)
+- Test security scan execution, CSV generation, report creation
+- Return SSE stream with results
+- On completion: results displayed in modal dialog (per SITE-UI-FR-11)
 - Result schema: `{ok, error, data: {passed, failed, passed_tests, failed_tests}}`
 
 ### SITE-IP01-IS-11: Register router in app.py
@@ -252,7 +274,9 @@ async def sites_selftest(request: Request):
 - [ ] SITE-IP01-VC-04: Delete returns deleted site data
 - [ ] SITE-IP01-VC-05: Selftest completes without errors
 - [ ] SITE-IP01-VC-06: UI displays all columns correctly
-- [ ] SITE-IP01-VC-07: Scan buttons show "not implemented" toast
+- [ ] SITE-IP01-VC-07: File Scan button shows "not implemented" toast
+- [ ] SITE-IP01-VC-11: Security Scan Selftest completes and shows results in modal
+- [ ] SITE-IP01-VC-12: Security Scan endpoint streams progress and creates report
 - [ ] SITE-IP01-VC-08: Trailing slash stripped from site_url
 - [ ] SITE-IP01-VC-09: Create/Update/Delete support format=html
 - [ ] SITE-IP01-VC-10: Selftest returns correct result schema
@@ -294,6 +318,19 @@ async def sites_selftest(request: Request):
 - **Atomic folder rename** - Same behavior as domains.py, acceptable
 
 ## Document History
+
+**[2026-03-02 13:26]**
+- Added: IS-12 Security Scan endpoint (row action)
+- Added: VC-12 for security scan verification
+
+**[2026-03-02 13:25]**
+- Fixed: IS-13 FR reference updated to FR-11 (per SPEC renumbering)
+
+**[2026-03-02 13:22]**
+- Added: IS-13 Security Scan Selftest endpoint
+- Updated: IS-05 toolbar buttons (added Security Scan Selftest)
+- Updated: VC-07 clarified for File Scan only
+- Added: VC-11 Security Scan Selftest verification
 
 **[2026-02-03 09:45]**
 - Added EC-05: Race condition on delete
