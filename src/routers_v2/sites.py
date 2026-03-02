@@ -351,12 +351,12 @@ async function showEditSiteForm(siteId) {{
             <small style="color: #666;">Trailing slash will be removed automatically</small>
           </div>
           <div class="form-group">
-            <label>File Scan Result (read-only)</label>
-            <input type="text" name="file_scan_result" value="${{escapeHtml(site.file_scan_result || '')}}" readonly disabled style="background: #f5f5f5;">
-          </div>
-          <div class="form-group">
             <label>Security Scan Result (read-only)</label>
             <input type="text" name="security_scan_result" value="${{escapeHtml(site.security_scan_result || '')}}" readonly disabled style="background: #f5f5f5;">
+          </div>
+          <div class="form-group">
+            <label>File Scan Result (read-only)</label>
+            <input type="text" name="file_scan_result" value="${{escapeHtml(site.file_scan_result || '')}}" readonly disabled style="background: #f5f5f5;">
           </div>
         </form>
       </div>
