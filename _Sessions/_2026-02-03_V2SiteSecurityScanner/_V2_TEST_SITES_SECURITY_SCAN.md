@@ -3,7 +3,7 @@
 **Doc ID**: SSCSCN-TP01
 **Feature**: SECURITY_SCAN
 **Goal**: Verify security scan endpoint correctly captures all permission assignment paths and outputs CSV matching PowerShell scanner format.
-**Timeline**: Created 2026-02-03, Updated 3 times (2026-02-03 - 2026-02-21)
+**Timeline**: Created 2026-02-03, Updated 4 times (2026-02-03 - 2026-03-02)
 **Target file**: `src/routers_v2/common_security_scan_functions_v2.py`
 
 **Depends on:**
@@ -309,8 +309,8 @@ Disconnect-PnPOnline
 ### Category 5: Broken Inheritance (5 tests)
 
 - **SSCSCN-TC-22**: Item with unique permissions in 04 CSV -> ok=true, HasUniqueRoleAssignments=true items listed
-- **SSCSCN-TC-23**: Folder with unique permissions -> ok=true, Type=FOLDER
-- **SSCSCN-TC-24**: List item with unique permissions -> ok=true, Type=ITEM
+- **SSCSCN-TC-23**: Folder with unique permissions -> ok=true, Type=Folder
+- **SSCSCN-TC-24**: List item with unique permissions -> ok=true, Type=Item
 - **SSCSCN-TC-25**: All accessors in 05 CSV -> ok=true, every user with access listed
 - **SSCSCN-TC-26**: Sharing link info captured -> ok=true, SharedDateTime, SharedByDisplayName populated
 
@@ -326,7 +326,7 @@ Disconnect-PnPOnline
 - **SSCSCN-TC-31**: scope=all scans everything -> ok=true, all 5 CSVs populated
 - **SSCSCN-TC-32**: scope=site skips items -> ok=true, only 02/03 CSVs
 - **SSCSCN-TC-33**: scope=lists includes structure -> ok=true, 01/02/03 CSVs
-- **SSCSCN-TC-34**: include_subsites=true -> ok=true, subsite in 01 CSV with Type=SUBSITE
+- **SSCSCN-TC-34**: include_subsites=true -> ok=true, subsite in 01 CSV with Type=Subsite
 
 ### Category 7B: Subsite Scanning (6 tests)
 
@@ -514,6 +514,11 @@ Artifacts to remove after testing:
 - [ ] **SSCSCN-TP01-VC-20**: No orphaned test data
 
 ## 11. Document History
+
+**[2026-03-02 11:10]**
+- Fixed: TC-23 Type=FOLDER to Type=Folder (mixed case per SPEC)
+- Fixed: TC-24 Type=ITEM to Type=Item (mixed case per SPEC)
+- Fixed: TC-34 Type=SUBSITE to Type=Subsite (mixed case per SPEC)
 
 **[2026-02-23 16:05]**
 - Fixed: Expected CSV in Section 5.2 missing IsGuest column (now matches PowerShell)

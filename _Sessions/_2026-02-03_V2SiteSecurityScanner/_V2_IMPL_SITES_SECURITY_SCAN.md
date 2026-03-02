@@ -2,10 +2,10 @@
 
 **Doc ID**: SSCSCN-IP01
 **Goal**: Implement security scan endpoint for scanning SharePoint site permissions and generating CSV reports.
-**Timeline**: Created 2026-02-03, Updated 4 times (2026-02-03 - 2026-02-21)
+**Timeline**: Created 2026-02-03, Updated 5 times (2026-02-03 - 2026-03-02)
 **Target files**:
 - `src/routers_v2/sites.py` (EXTEND +400 lines)
-- `src/routers_v2/common_security_scan_functions_v2.py` (NEW ~600 lines)
+- `src/routers_v2/common_security_scan_functions_v2.py` (NEW ~1250 lines)
 
 **Depends on:**
 - `_V2_SPEC_SITES_SECURITY_SCAN.md [SSCSCN-SP01]` for functional requirements
@@ -108,12 +108,13 @@ MAX_NESTING_LEVEL = 5
 BATCH_SIZE = 5000
 PROGRESS_INTERVAL_SECONDS = 5
 
-# CSV Column Definitions (EXACT order from SPEC Section 14 - must match PowerShell)
-CSV_COLUMNS_SITE_CONTENTS = ["Id", "Type", "Title", "Url"]
-CSV_COLUMNS_SITE_GROUPS = ["Id", "Role", "Title", "PermissionLevel", "Owner"]
-CSV_COLUMNS_SITE_USERS = ["Id", "LoginName", "DisplayName", "Email", "PermissionLevel", "IsGuest", "ViaGroup", "ViaGroupId", "ViaGroupType", "AssignmentType", "NestingLevel", "ParentGroup"]
-CSV_COLUMNS_INDIVIDUAL_ITEMS = ["Id", "Type", "Title", "Url"]
-CSV_COLUMNS_INDIVIDUAL_ACCESS = ["Id", "Type", "Url", "LoginName", "DisplayName", "Email", "PermissionLevel", "IsGuest", "SharedDateTime", "SharedByDisplayName", "SharedByLoginName", "ViaGroup", "ViaGroupId", "ViaGroupType", "AssignmentType", "NestingLevel", "ParentGroup"]
+# CSV Column Definitions (EXACT order - must match PowerShell scanner)
+# All CSVs start with Job,SiteUrl prefix per SPEC Section 3
+CSV_COLUMNS_SITE_CONTENTS = ["Job", "SiteUrl", "Id", "Type", "Title", "Url"]
+CSV_COLUMNS_SITE_GROUPS = ["Job", "SiteUrl", "Id", "Role", "Title", "PermissionLevel", "Owner"]
+CSV_COLUMNS_SITE_USERS = ["Job", "SiteUrl", "Id", "LoginName", "DisplayName", "Email", "PermissionLevel", "IsGuest", "ViaGroup", "ViaGroupId", "ViaGroupType", "AssignmentType", "NestingLevel", "ParentGroup"]
+CSV_COLUMNS_INDIVIDUAL_ITEMS = ["Job", "SiteUrl", "Id", "Type", "Title", "Url"]
+CSV_COLUMNS_INDIVIDUAL_ACCESS = ["Job", "SiteUrl", "Id", "Type", "Url", "LoginName", "DisplayName", "Email", "PermissionLevel", "IsGuest", "SharedDateTime", "SharedByDisplayName", "SharedByLoginName", "ViaGroup", "ViaGroupId", "ViaGroupType", "AssignmentType", "NestingLevel", "ParentGroup"]
 
 # Settings Functions
 def get_default_scanner_settings() -> dict: ...
@@ -299,17 +300,20 @@ def connect_to_sharepoint(site_url: str, client_id: str, client_secret: str, ten
 
 **Code**:
 ```python
-from azure.identity import ClientSecretCredential
+from azure.identity import CertificateCredential
 from msgraph import GraphServiceClient
 
 _graph_client = None
+_graph_credentials = None
 
-def get_graph_client(tenant_id: str, client_id: str, client_secret: str) -> GraphServiceClient:
-    """Get or create Graph client for Entra ID group resolution."""
-    global _graph_client
-    if _graph_client is None:
-        credential = ClientSecretCredential(tenant_id, client_id, client_secret)
+def get_graph_client(tenant_id: str, client_id: str, cert_path: str, cert_password: str) -> GraphServiceClient:
+    """Get or create Graph client for Entra ID group resolution using certificate auth."""
+    global _graph_client, _graph_credentials
+    cred_key = (tenant_id, client_id, cert_path)
+    if _graph_client is None or _graph_credentials != cred_key:
+        credential = CertificateCredential(tenant_id, client_id, certificate_path=cert_path, password=cert_password)
         _graph_client = GraphServiceClient(credential)
+        _graph_credentials = cred_key
     return _graph_client
 
 def resolve_entra_group_members(storage_path: str, group_id: str, nesting_level: int, parent_group: str) -> list:
@@ -540,9 +544,9 @@ async def scan_site_contents(ctx, output_folder, writer) -> dict:
         
         stats["lists_scanned"] += 1
         
-        list_type = "LIST" if lst.base_template == 100 else "LIBRARY"
+        list_type = "List" if lst.base_template == 100 else "Library"
         if lst.base_template == 119:
-            list_type = "SITEPAGES"
+            list_type = "SitePages"
         
         rows.append({
             "Id": lst.id,
@@ -649,7 +653,7 @@ async def scan_subsites(ctx, storage_path, output_folder, writer, depth=0) -> di
         # Add to 01_SiteContents.csv
         append_csv_rows(os.path.join(output_folder, "01_SiteContents.csv"), [{
             "Id": subweb.id,
-            "Type": "SUBSITE",
+            "Type": "Subsite",
             "Title": subweb.title,
             "Url": subweb.url
         }], CSV_COLUMNS_SITE_CONTENTS)
@@ -961,6 +965,13 @@ def scan_subsite_items_via_rest(ctx: ClientContext, lst) -> list:
 - [ ] **SSCSCN-IP01-VC-23**: IS-15 implemented (subsite folder detection fix) - PENDING
 
 ## 6. Document History
+
+**[2026-03-02 11:00]**
+- Fixed: IS-01 CSV column definitions now include Job,SiteUrl prefix
+- Fixed: IS-04B uses CertificateCredential instead of ClientSecretCredential
+- Fixed: IS-07 type values use mixed case (List/Library/SitePages)
+- Fixed: IS-08B subsite type uses mixed case (Subsite)
+- Changed: File size estimate from ~600 to ~1250 lines
 
 **[2026-02-21 17:10]**
 - Added: IS-15 - Fix subsite folder HasUniqueRoleAssignments detection (PENDING)
