@@ -1,0 +1,8 @@
+Job,SiteUrl,Id,LoginName,DisplayName,Email,PermissionLevel,IsGuest,ViaGroup,ViaGroupId,ViaGroupType,AssignmentType,NestingLevel,ParentGroup
+1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,6,karsten.held@whizzyapps.com,Karsten Held,karsten.held@whizzyapps.com,Full Control,false,AiSearchTest01 Owners,3,SharePointGroup,Group,1,""
+1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,11,samuel.gross@whizzyapps.com,Samuel Gross,samuel.gross@whizzyapps.com,Edit,false,AiSearchTest01 Members,5,SharePointGroup,Group,1,""
+1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,16,scantest_user2@whizzyapps.onmicrosoft.com,ScanTest User 2,,Edit,false,AiSearchTest01 Members,5,SharePointGroup,Group,1,""
+1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,,scantest_user6@whizzyapps.onmicrosoft.com,ScanTest User 6,scantest_user6@whizzyapps.onmicrosoft.com,Full Control,false,ScanTest M365 Group 01,60ac7968-89f9-490e-9500-aeecc62200d7,SecurityGroup,Group,2,ScanTest Custom Group
+1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,,,ScanTest Security Group 02,,Full Control,false,ScanTest Security Group 01,c2bfa136-9719-4a20-b386-8591802896ad,SecurityGroup,Group,2,ScanTest Custom Group
+1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,,scantest_user3@whizzyapps.onmicrosoft.com,ScanTest User 3,scantest_user3@whizzyapps.onmicrosoft.com,Full Control,false,ScanTest Security Group 01,c2bfa136-9719-4a20-b386-8591802896ad,SecurityGroup,Group,2,ScanTest Custom Group
+1,https://whizzyapps.sharepoint.com/sites/AiSearchTest01,15,scantest_user1@whizzyapps.onmicrosoft.com,ScanTest User 1,,Read,false,"",,,User,0,""
