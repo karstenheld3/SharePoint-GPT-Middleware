@@ -16,17 +16,42 @@
 
 - **Severity**: [MEDIUM]
 - **When**: 2026-03-03 08:37
-- **Where**: `src/routers_v2/sites.py` - `run_selftest()` in `security_scan_selftest` endpoint
+- **Where**: `src/routers_v2/sites.py` - `security_scan_selftest` endpoint
 - **What**: Browser UI doesn't receive SSE events in realtime - all output appears at once after completion
 
-**Root cause**: Known issue (SCAN-FL-005, SCAN-LN-002). Async generators with blocking sync I/O (SharePoint `execute_query()`) don't give event loop opportunities to flush HTTP response chunks to browser.
+**Root cause analysis**:
 
-**Fix applied**: Added `await asyncio.sleep(0)` after every `yield` statement in the `security_scan_selftest` function (~40 yields).
+| Sites SELFTEST (works) | Security Scan SELFTEST (broken) |
+|------------------------|--------------------------------|
+| `await client.post()` | `ctx.web.get().execute_query()` |
+| TRUE async (httpx) | SYNCHRONOUS blocking (Office365 SDK) |
+| Event loop stays responsive | Event loop blocked during `execute_query()` |
+
+Adding `asyncio.sleep(0)` INSIDE the generator after yields does NOT help because:
+1. Blocking `execute_query()` runs and holds event loop
+2. Returns result
+3. Yield SSE event
+4. `await asyncio.sleep(0)` - but event loop was already blocked BEFORE the yield
+
+**Wrong fix (first attempt)**: Added `await asyncio.sleep(0)` after each yield inside `run_selftest()` - did not work.
+
+**Correct fix**: Wrap generator in endpoint-level async iterator that adds sleep AFTER each yielded event:
+```python
+async def stream_with_flush():
+  async for event in run_selftest():
+    yield event
+    await asyncio.sleep(0)  # Force flush to browser
+return StreamingResponse(stream_with_flush(), ...)
+```
+
+This matches the working `security_scan` endpoint pattern.
+
+**Additional fix required**: Added `import asyncio` to module imports.
 
 **Resolution**:
-- **Resolved**: 2026-03-03 08:40
+- **Resolved**: 2026-03-03 09:29
 - **Verified**: Browser now shows SSE output in realtime
-- **Prevention**: Always add `await asyncio.sleep(0)` after yields in async generators with blocking I/O
+- **Prevention**: For endpoints with blocking sync I/O, use endpoint-level wrapper pattern, not inline sleeps
 
 **Related**: `SCAN-FL-005`, `SCAN-LN-002`, `SCAN-PR-005`
 

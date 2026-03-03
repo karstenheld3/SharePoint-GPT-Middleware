@@ -2,7 +2,7 @@
 # Spec: L(jhu)C(jh)G(jh)U(jh)D(jh): /v2/sites
 # Uses common_ui_functions_v2.py
 
-import datetime, json, os, re, shutil, textwrap, uuid
+import asyncio, datetime, json, os, re, shutil, textwrap, uuid
 import httpx
 from dataclasses import dataclass, field
 from fastapi import APIRouter, Request
@@ -1850,7 +1850,13 @@ async def sites_security_scan_selftest(request: Request):
         pass
       writer.finalize()
   
-  return StreamingResponse(run_selftest(), media_type="text/event-stream")
+  async def stream_with_flush():
+    """Wrapper that forces event loop flush after each SSE event (per SCAN-LN-002)."""
+    async for event in run_selftest():
+      yield event
+      await asyncio.sleep(0)  # Force flush to browser - required for blocking I/O
+  
+  return StreamingResponse(stream_with_flush(), media_type="text/event-stream")
 
 # ----------------------------------------- END: Security Scan Selftest -------------------------------------------------------
 
