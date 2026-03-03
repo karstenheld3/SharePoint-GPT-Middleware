@@ -634,6 +634,14 @@ async def sites_root(request: Request):
         "data_show_result": "modal",
         "data_reload_on_finish": "true",
         "class": "btn-primary"
+      },
+      {
+        "text": "Security Scan Selftest",
+        "data_url": f"{router_prefix}/{router_name}/security_scan/selftest?format=stream",
+        "data_format": "stream",
+        "data_show_result": "modal",
+        "data_reload_on_finish": "true",
+        "class": "btn-primary"
       }
     ]
     
