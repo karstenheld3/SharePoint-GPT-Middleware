@@ -1476,37 +1476,45 @@ async def sites_security_scan_selftest(request: Request):
     
     try:
       yield writer.emit_start()
+      await asyncio.sleep(0)  # Force flush to browser
       
       # TC-01: Connect to selftest site
       sse = next_test(f"TC-01: Connecting to selftest site '{selftest_site_url}'...")
       if sse: yield sse
+      await asyncio.sleep(0)  # Force flush to browser
       
       try:
         ctx = connect_to_site_using_client_id_and_certificate(selftest_site_url, client_id, tenant_id, cert_path, cert_password)
         ctx.web.get().execute_query()
         sse = check(True, f"TC-01: Connect to site '{ctx.web.title}'", "")
         if sse: yield sse
+        await asyncio.sleep(0)
       except Exception as e:
         sse = check(False, "", f"TC-01: Connection failed - {e}")
         if sse: yield sse
+        await asyncio.sleep(0)
         raise  # Cannot continue without connection
       
       # TC-02: Enumerate site groups
       sse = next_test("TC-02: Enumerating site groups...")
       if sse: yield sse
+      await asyncio.sleep(0)
       
       try:
         groups = ctx.web.site_groups.get().execute_query()
         group_count = len(groups)
         sse = check(group_count > 0, f"TC-02: Found {group_count} site groups", f"TC-02: No groups found")
         if sse: yield sse
+        await asyncio.sleep(0)
       except Exception as e:
         sse = check(False, "", f"TC-02: Group enumeration failed - {e}")
         if sse: yield sse
+        await asyncio.sleep(0)
       
       # TC-03: Resolve group members
       sse = next_test("TC-03: Resolving group members...")
       if sse: yield sse
+      await asyncio.sleep(0)
       
       try:
         total_members = 0
@@ -1515,13 +1523,16 @@ async def sites_security_scan_selftest(request: Request):
           total_members += len(users)
         sse = check(total_members >= 0, f"TC-03: Resolved {total_members} total members", f"TC-03: Failed to resolve members")
         if sse: yield sse
+        await asyncio.sleep(0)
       except Exception as e:
         sse = check(False, "", f"TC-03: Member resolution failed - {e}")
         if sse: yield sse
+        await asyncio.sleep(0)
       
       # TC-04: Query lists with HasUniqueRoleAssignments
       sse = next_test("TC-04: Querying lists with HasUniqueRoleAssignments...")
       if sse: yield sse
+      await asyncio.sleep(0)
       
       try:
         lists = ctx.web.lists.get().select(["Id", "Title", "BaseTemplate", "Hidden"]).execute_query()
@@ -1539,13 +1550,16 @@ async def sites_security_scan_selftest(request: Request):
         
         sse = check(True, f"TC-04: Queried {len(valid_lists)} lists, found {items_with_perms} items with unique permissions", "")
         if sse: yield sse
+        await asyncio.sleep(0)
       except Exception as e:
         sse = check(False, "", f"TC-04: List query failed - {e}")
         if sse: yield sse
+        await asyncio.sleep(0)
       
       # TC-05: Resolve item role assignments
       sse = next_test("TC-05: Resolving item role assignments...")
       if sse: yield sse
+      await asyncio.sleep(0)
       
       try:
         role_assignment_count = 0
@@ -1565,13 +1579,16 @@ async def sites_security_scan_selftest(request: Request):
         
         sse = check(True, f"TC-05: Resolved {role_assignment_count} role assignments", "")
         if sse: yield sse
+        await asyncio.sleep(0)
       except Exception as e:
         sse = check(False, "", f"TC-05: Role assignment resolution failed - {e}")
         if sse: yield sse
+        await asyncio.sleep(0)
       
       # TC-06: Create report archive (test report creation)
       sse = next_test("TC-06: Testing report archive creation...")
       if sse: yield sse
+      await asyncio.sleep(0)
       
       try:
         from routers_v2.common_report_functions_v2 import create_report
@@ -1592,14 +1609,17 @@ async def sites_security_scan_selftest(request: Request):
         
         sse = check(report_id is not None and len(report_id) > 0, f"TC-06: Report created: {report_id}", f"TC-06: Report creation failed")
         if sse: yield sse
+        await asyncio.sleep(0)
         test_artifacts.append(("report", report_id))
       except Exception as e:
         sse = check(False, "", f"TC-06: Report creation failed - {e}")
         if sse: yield sse
+        await asyncio.sleep(0)
       
       # TC-07: Verify CSV output format
       sse = next_test("TC-07: Verifying CSV column definitions...")
       if sse: yield sse
+      await asyncio.sleep(0)
       
       try:
         expected_columns = {
@@ -1612,13 +1632,16 @@ async def sites_security_scan_selftest(request: Request):
         all_defined = all(len(cols) > 0 for cols in expected_columns.values())
         sse = check(all_defined, f"TC-07: All 5 CSV column definitions present", f"TC-07: Missing column definitions")
         if sse: yield sse
+        await asyncio.sleep(0)
       except Exception as e:
         sse = check(False, "", f"TC-07: Column verification failed - {e}")
         if sse: yield sse
+        await asyncio.sleep(0)
       
       # TC-08: Scan subsite content (if subsite exists)
       sse = next_test("TC-08: Checking for subsites to scan...")
       if sse: yield sse
+      await asyncio.sleep(0)
       
       try:
         subsites = ctx.web.webs.get().execute_query()
@@ -1630,6 +1653,7 @@ async def sites_security_scan_selftest(request: Request):
           subsite_url = first_subsite.url
           sse = log(f"       Found {subsite_count} subsite(s), using '{first_subsite.title}' for testing...")
           if sse: yield sse
+          await asyncio.sleep(0)
           
           # Connect to subsite
           subsite_ctx = connect_to_site_using_client_id_and_certificate(subsite_url, client_id, tenant_id, cert_path, cert_password)
@@ -1653,27 +1677,35 @@ async def sites_security_scan_selftest(request: Request):
               
               sse = log(f"       Created test folder '{test_folder_name}' with broken inheritance")
               if sse: yield sse
+              await asyncio.sleep(0)
               
               sse = check(True, f"TC-08: Subsite scanning setup complete ({subsite_count} subsites found)", "")
               if sse: yield sse
+              await asyncio.sleep(0)
             else:
               sse = check(True, f"TC-08: Subsite found but no Documents library - skipping artifact creation", "")
               if sse: yield sse
+              await asyncio.sleep(0)
           except Exception as e:
             sse = log(f"       Could not create test artifact: {e}")
             if sse: yield sse
+            await asyncio.sleep(0)
             sse = check(True, f"TC-08: Subsite exists but artifact creation failed (read-only?) - {subsite_count} subsites found", "")
             if sse: yield sse
+            await asyncio.sleep(0)
         else:
           sse = check(True, f"TC-08: No subsites found - skipping subsite tests", "")
           if sse: yield sse
+          await asyncio.sleep(0)
       except Exception as e:
         sse = check(False, "", f"TC-08: Subsite check failed - {e}")
         if sse: yield sse
+        await asyncio.sleep(0)
       
       # TC-09: Large library pagination check
       sse = next_test("TC-09: Checking large library pagination capability...")
       if sse: yield sse
+      await asyncio.sleep(0)
       
       try:
         # Verify REST API pagination is available by checking SDK has execute_request_direct
@@ -1690,13 +1722,16 @@ async def sites_security_scan_selftest(request: Request):
         
         sse = check(has_pagination, f"TC-09: REST API pagination available (status={response.status_code})", f"TC-09: REST API not accessible")
         if sse: yield sse
+        await asyncio.sleep(0)
       except Exception as e:
         sse = check(False, "", f"TC-09: Pagination check failed - {e}")
         if sse: yield sse
+        await asyncio.sleep(0)
       
       # TC-10: Subsite folder HasUniqueRoleAssignments detection (EXPECTED FAIL)
       sse = next_test("TC-10: Testing subsite folder HasUniqueRoleAssignments detection...")
       if sse: yield sse
+      await asyncio.sleep(0)
       
       try:
         if subsite_ctx and test_folder_name:
@@ -1720,19 +1755,24 @@ async def sites_security_scan_selftest(request: Request):
             # This is EXPECTED TO FAIL per SCAN-KL-01
             sse = check(test_folder_detected, f"TC-10: Subsite folder detected with HasUniqueRoleAssignments=true", f"TC-10: Subsite folder not detected by SDK query (SCAN-KL-01)", expected_fail=True)
             if sse: yield sse
+            await asyncio.sleep(0)
           else:
             sse = check(True, f"TC-10: No Documents library in subsite - skipping", "")
             if sse: yield sse
+            await asyncio.sleep(0)
         else:
           sse = check(True, f"TC-10: No subsite available - skipping", "")
           if sse: yield sse
+          await asyncio.sleep(0)
       except Exception as e:
         sse = check(False, "", f"TC-10: Detection test failed - {e}", expected_fail=True)
         if sse: yield sse
+        await asyncio.sleep(0)
       
       # TC-11: Verify scan statistics
       sse = next_test("TC-11: Verifying scan statistics structure...")
       if sse: yield sse
+      await asyncio.sleep(0)
       
       try:
         expected_stat_keys = ["lists_scanned", "groups_found", "users_found", "items_scanned", "items_with_individual_permissions", "subsites_scanned"]
@@ -1748,21 +1788,27 @@ async def sites_security_scan_selftest(request: Request):
         all_keys_present = all(key in stats_template for key in expected_stat_keys)
         sse = check(all_keys_present, f"TC-11: Statistics structure valid ({len(expected_stat_keys)} keys)", f"TC-11: Missing stat keys")
         if sse: yield sse
+        await asyncio.sleep(0)
       except Exception as e:
         sse = check(False, "", f"TC-11: Statistics verification failed - {e}")
         if sse: yield sse
+        await asyncio.sleep(0)
       
       # Summary
       sse = log(f"")
       if sse: yield sse
+      await asyncio.sleep(0)
       sse = log(f"===== SECURITY SCAN SELFTEST COMPLETE =====")
       if sse: yield sse
+      await asyncio.sleep(0)
       sse = log(f"PASSED: {ok_count}, FAILED: {fail_count}, EXPECTED FAIL: {expected_fail_count}")
       if sse: yield sse
+      await asyncio.sleep(0)
       
       if expected_fail_count > 0:
         sse = log(f"Note: {expected_fail_count} expected failure(s) due to SCAN-KL-01 (subsite folder detection)")
         if sse: yield sse
+        await asyncio.sleep(0)
       
       stream_logger.log_function_footer()
       
@@ -1785,6 +1831,7 @@ async def sites_security_scan_selftest(request: Request):
     except Exception as e:
       sse = log(f"ERROR: Self-test failed -> {type(e).__name__}: {str(e)}")
       if sse: yield sse
+      await asyncio.sleep(0)
       stream_logger.log_function_footer()
       yield writer.emit_end(ok=False, error=str(e), data={"passed": ok_count, "failed": fail_count, "expected_failures": expected_fail_count})
     finally:

@@ -10,7 +10,25 @@
 
 ## Active Issues
 
-(None - session complete)
+### 2026-03-03 - SSE Streaming Not Realtime
+
+#### [RESOLVED] `SITE-FL-002` Security Scan Selftest SSE output not streaming in realtime
+
+- **Severity**: [MEDIUM]
+- **When**: 2026-03-03 08:37
+- **Where**: `src/routers_v2/sites.py` - `run_selftest()` in `security_scan_selftest` endpoint
+- **What**: Browser UI doesn't receive SSE events in realtime - all output appears at once after completion
+
+**Root cause**: Known issue (SCAN-FL-005, SCAN-LN-002). Async generators with blocking sync I/O (SharePoint `execute_query()`) don't give event loop opportunities to flush HTTP response chunks to browser.
+
+**Fix applied**: Added `await asyncio.sleep(0)` after every `yield` statement in the `security_scan_selftest` function (~40 yields).
+
+**Resolution**:
+- **Resolved**: 2026-03-03 08:40
+- **Verified**: Browser now shows SSE output in realtime
+- **Prevention**: Always add `await asyncio.sleep(0)` after yields in async generators with blocking I/O
+
+**Related**: `SCAN-FL-005`, `SCAN-LN-002`, `SCAN-PR-005`
 
 ## Resolved Issues
 
