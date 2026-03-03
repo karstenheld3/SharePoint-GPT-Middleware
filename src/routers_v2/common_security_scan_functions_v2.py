@@ -856,34 +856,92 @@ async def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, o
             if member_title in do_not_resolve_these_groups:
               continue
             
-            # Skip SharePoint groups if omit_sharepoint_groups_in_broken_permissions_file is true
-            # member.principal_type: 1=User, 4=SecurityGroup, 8=SharePointGroup
-            if omit_sp_groups and member.principal_type == 8:
-              continue
-            
             login_name = member.login_name or ""
-            is_guest = "true" if "#ext#" in login_name.lower() else "false"
-            access_rows.append({
-              "Job": 1,
-              "SiteUrl": site_url,
-              "Id": str(item_id),
-              "Type": item_type,
-              "Url": full_url,
-              "LoginName": normalize_login_name(login_name),
-              "DisplayName": member_title,
-              "Email": member.email or "" if hasattr(member, 'email') else "",
-              "PermissionLevel": perm_name,
-              "IsGuest": is_guest,
-              "SharedDateTime": "",
-              "SharedByDisplayName": "",
-              "SharedByLoginName": "",
-              "ViaGroup": "",
-              "ViaGroupId": "",
-              "ViaGroupType": "",
-              "AssignmentType": "User" if member.principal_type == 1 else "Group",
-              "NestingLevel": 0,
-              "ParentGroup": ""
-            })
+            
+            # member.principal_type: 1=User, 4=SecurityGroup, 8=SharePointGroup
+            if member.principal_type == 8:  # SharePoint Group
+              # Skip SharePoint groups if omit_sharepoint_groups_in_broken_permissions_file is true
+              if omit_sp_groups:
+                continue
+              # Resolve SharePoint group to individual members
+              sp_group = ctx.web.site_groups.get_by_id(member.id)
+              sp_group.get().execute_query()
+              resolved_members = await resolve_sharepoint_group_members(
+                ctx, sp_group, storage_path, graph_client, writer, 1, "", logger, settings
+              )
+              for resolved in resolved_members:
+                access_rows.append({
+                  "Job": 1,
+                  "SiteUrl": site_url,
+                  "Id": str(item_id),
+                  "Type": item_type,
+                  "Url": full_url,
+                  "LoginName": resolved.get("LoginName", ""),
+                  "DisplayName": resolved.get("DisplayName", ""),
+                  "Email": resolved.get("Email", ""),
+                  "PermissionLevel": perm_name,
+                  "IsGuest": resolved.get("IsGuest", "false"),
+                  "SharedDateTime": "",
+                  "SharedByDisplayName": "",
+                  "SharedByLoginName": "",
+                  "ViaGroup": member_title,
+                  "ViaGroupId": str(member.id),
+                  "ViaGroupType": "SharePointGroup",
+                  "AssignmentType": "Group",
+                  "NestingLevel": resolved.get("NestingLevel", 1),
+                  "ParentGroup": resolved.get("ParentGroup", "")
+                })
+            elif member.principal_type == 4 and is_entra_id_group(login_name):  # Entra ID Security/M365 Group
+              group_id = extract_group_id_from_login(login_name)
+              if group_id and graph_client:
+                resolved_members = await resolve_entra_group_members(
+                  storage_path, graph_client, group_id, member_title, 1, "", writer, logger
+                )
+                for resolved in resolved_members:
+                  access_rows.append({
+                    "Job": 1,
+                    "SiteUrl": site_url,
+                    "Id": str(item_id),
+                    "Type": item_type,
+                    "Url": full_url,
+                    "LoginName": resolved.get("LoginName", ""),
+                    "DisplayName": resolved.get("DisplayName", ""),
+                    "Email": resolved.get("Email", ""),
+                    "PermissionLevel": perm_name,
+                    "IsGuest": resolved.get("IsGuest", "false"),
+                    "SharedDateTime": "",
+                    "SharedByDisplayName": "",
+                    "SharedByLoginName": "",
+                    "ViaGroup": member_title,
+                    "ViaGroupId": group_id,
+                    "ViaGroupType": "SecurityGroup",
+                    "AssignmentType": "Group",
+                    "NestingLevel": resolved.get("NestingLevel", 1),
+                    "ParentGroup": resolved.get("ParentGroup", "")
+                  })
+            else:  # Direct user (principal_type == 1) or unresolvable
+              is_guest = "true" if "#ext#" in login_name.lower() else "false"
+              access_rows.append({
+                "Job": 1,
+                "SiteUrl": site_url,
+                "Id": str(item_id),
+                "Type": item_type,
+                "Url": full_url,
+                "LoginName": normalize_login_name(login_name),
+                "DisplayName": member_title,
+                "Email": member.email or "" if hasattr(member, 'email') else "",
+                "PermissionLevel": perm_name,
+                "IsGuest": is_guest,
+                "SharedDateTime": "",
+                "SharedByDisplayName": "",
+                "SharedByLoginName": "",
+                "ViaGroup": "",
+                "ViaGroupId": "",
+                "ViaGroupType": "",
+                "AssignmentType": "User" if member.principal_type == 1 else "Group",
+                "NestingLevel": 0,
+                "ParentGroup": ""
+              })
       except Exception as e:
         ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         yield writer.emit_log(f"[{ts}]     ERROR: Failed to get permissions for item_id={item_id} -> {e}")
