@@ -97,6 +97,12 @@ We test TWO independent failure points:
   - Has file I/O and async operations
   - UI button available at `/v2/jobs?format=ui`
 
+- **`/v2/sites/security_scan/selftest`** - sites.py
+  - Testability: **EASY**, Effort: Low
+  - Uses blocking SharePoint I/O (the original buffering problem)
+  - UI button available at `/v2/sites?format=ui`
+  - **Best test for SSE streaming** - has 1-3 second gaps between events
+
 ### SHOULD TEST (Important Workflows)
 
 - **`/v2/demorouter1/create_demo_items`** - demorouter1.py
@@ -110,7 +116,6 @@ We test TWO independent failure points:
 
 ### DROP (Not Worth Testing in Automation)
 
-- **`/v2/sites/security_scan/selftest`** - Reason: Requires SharePoint credentials
 - **`/v2/crawler/selftest`** - Reason: Requires SharePoint credentials, long runtime
 - **`/v2/crawler/crawl`** - Reason: Requires configured domain and SharePoint access
 
@@ -146,7 +151,7 @@ async def teardown_browser(playwright, browser):
 
 ## 6. Test Cases
 
-### Category 1: Real-Time Event Delivery (5 tests)
+### Category 1: Real-Time Event Delivery (6 tests)
 
 - **STRM-TP01-TC-01**: `/v2/sites/selftest` streams events incrementally
   - Trigger via UI button click
@@ -161,35 +166,40 @@ async def teardown_browser(playwright, browser):
   - Trigger via UI button click
   - -> ok=true, events arrive incrementally
 
-- **STRM-TP01-TC-04**: `/v2/demorouter1/create_demo_items` streams events during long operation
+- **STRM-TP01-TC-04**: `/v2/sites/security_scan/selftest` streams with visible time gaps
+  - Trigger via "Security Scan Selftest" UI button
+  - Uses blocking SharePoint I/O - **primary test for SSE streaming fix**
+  - -> ok=true, events arrive with 1-3 second gaps, total span > 10s
+
+- **STRM-TP01-TC-05**: `/v2/demorouter1/create_demo_items` streams events during long operation
   - Trigger via UI form submission
   - -> ok=true, progress events arrive before completion
 
-- **STRM-TP01-TC-05**: `/v2/reports/create_demo_reports` streams events incrementally
+- **STRM-TP01-TC-06**: `/v2/reports/create_demo_reports` streams events incrementally
   - Trigger via UI
   - -> ok=true, events arrive incrementally
 
 ### Category 2: Event Structure Verification (3 tests)
 
-- **STRM-TP01-TC-06**: SSE events contain valid JSON
+- **STRM-TP01-TC-07**: SSE events contain valid JSON
   - Parse each captured event as JSON
   - -> ok=true, all events parse successfully
 
-- **STRM-TP01-TC-07**: First event is `start_json`, last is `end_json`
+- **STRM-TP01-TC-08**: First event is `start_json`, last is `end_json`
   - Check event types in order
   - -> ok=true, proper event sequence
 
-- **STRM-TP01-TC-08**: `end_json` contains `ok: true` for successful selftests
+- **STRM-TP01-TC-09**: `end_json` contains `ok: true` for successful selftests
   - Parse final event
   - -> ok=true, selftest completed successfully
 
 ### Category 3: Edge Cases (2 tests)
 
-- **STRM-TP01-TC-09**: Cancelled stream stops event delivery
+- **STRM-TP01-TC-10**: Cancelled stream stops event delivery
   - Click button, then navigate away mid-stream
   - -> ok=true, no errors, clean cancellation [ASSUMED]
 
-- **STRM-TP01-TC-10**: Multiple concurrent streams don't interfere
+- **STRM-TP01-TC-11**: Multiple concurrent streams don't interfere
   - Open two browser tabs, trigger selftests simultaneously
   - -> ok=true, both complete independently [ASSUMED]
 
@@ -197,20 +207,20 @@ async def teardown_browser(playwright, browser):
 
 Tests SSE streaming at protocol level, independent of UI console integration.
 
-- **STRM-TP01-TC-11**: `/v2/sites/selftest` SSE events arrive incrementally via EventSource
+- **STRM-TP01-TC-12**: `/v2/sites/selftest` SSE events arrive incrementally via EventSource
   - Use `page.evaluate()` to create EventSource directly (bypass UI)
   - Capture event timestamps in page context
   - -> ok=true, events arrive with time gaps > 100ms [ASSUMED]
 
-- **STRM-TP01-TC-12**: `/v2/domains/selftest` SSE events arrive incrementally via EventSource
-  - Same approach as TC-11
+- **STRM-TP01-TC-13**: `/v2/domains/selftest` SSE events arrive incrementally via EventSource
+  - Same approach as TC-12
   - -> ok=true, events arrive incrementally [ASSUMED]
 
-- **STRM-TP01-TC-13**: `/v2/jobs/selftest` SSE events arrive incrementally via EventSource
-  - Same approach as TC-11
+- **STRM-TP01-TC-14**: `/v2/jobs/selftest` SSE events arrive incrementally via EventSource
+  - Same approach as TC-12
   - -> ok=true, events arrive incrementally [ASSUMED]
 
-**Layer comparison**: If TC-01 to TC-03 (console) fail but TC-11 to TC-13 (EventSource) pass, the bug is in UI code, not SSE streaming.
+**Layer comparison**: If TC-01 to TC-04 (console) fail but TC-12 to TC-14 (EventSource) pass, the bug is in UI code, not SSE streaming.
 
 ## 7. Test Phases
 
@@ -218,11 +228,11 @@ Ordered execution sequence:
 
 1. **Phase 1: Server Health** - Verify server is running and responsive
 2. **Phase 2: UI Navigation** - Navigate to each router UI page
-3. **Phase 3: Selftest Streaming** - Run TC-01 through TC-03 (critical)
-4. **Phase 4: Long-Running Streams** - Run TC-04, TC-05
-5. **Phase 5: Event Validation** - Run TC-06 through TC-08
-6. **Phase 6: Edge Cases** - Run TC-09, TC-10
-7. **Phase 7: Direct SSE Protocol** - Run TC-11 through TC-13
+3. **Phase 3: Selftest Streaming** - Run TC-01 through TC-04 (critical, includes security_scan)
+4. **Phase 4: Long-Running Streams** - Run TC-05, TC-06
+5. **Phase 5: Event Validation** - Run TC-07 through TC-09
+6. **Phase 6: Edge Cases** - Run TC-10, TC-11
+7. **Phase 7: Direct SSE Protocol** - Run TC-12 through TC-14
 8. **Phase 8: Cleanup** - Close browsers, report results
 
 ## 8. Helper Functions
@@ -523,23 +533,30 @@ def _diagnose_layers(layer1: dict, layer2: dict) -> str:
 - [ ] **STRM-TP01-VC-05**: TC-01 (sites/selftest console) implemented and passes
 - [ ] **STRM-TP01-VC-06**: TC-02 (domains/selftest console) implemented and passes
 - [ ] **STRM-TP01-VC-07**: TC-03 (jobs/selftest console) implemented and passes
-- [ ] **STRM-TP01-VC-08**: TC-04 (demorouter1/create_demo_items) implemented and passes
-- [ ] **STRM-TP01-VC-09**: TC-05 (reports/create_demo_reports) implemented and passes
-- [ ] **STRM-TP01-VC-10**: TC-06 through TC-08 (event validation) implemented
-- [ ] **STRM-TP01-VC-11**: TC-09, TC-10 (edge cases) implemented
+- [ ] **STRM-TP01-VC-08**: TC-04 (security_scan/selftest console) implemented and passes
+- [ ] **STRM-TP01-VC-09**: TC-05 (demorouter1/create_demo_items) implemented and passes
+- [ ] **STRM-TP01-VC-10**: TC-06 (reports/create_demo_reports) implemented and passes
+- [ ] **STRM-TP01-VC-11**: TC-07 through TC-09 (event validation) implemented
+- [ ] **STRM-TP01-VC-12**: TC-10, TC-11 (edge cases) implemented
 
 ### Test Coverage - Layer 1 (Direct SSE)
-- [ ] **STRM-TP01-VC-12**: TC-11 (sites/selftest EventSource) implemented and passes
-- [ ] **STRM-TP01-VC-13**: TC-12 (domains/selftest EventSource) implemented and passes
-- [ ] **STRM-TP01-VC-14**: TC-13 (jobs/selftest EventSource) implemented and passes
+- [ ] **STRM-TP01-VC-13**: TC-12 (sites/selftest EventSource) implemented and passes
+- [ ] **STRM-TP01-VC-14**: TC-13 (domains/selftest EventSource) implemented and passes
+- [ ] **STRM-TP01-VC-15**: TC-14 (jobs/selftest EventSource) implemented and passes
 
 ### Final Verification
-- [ ] **STRM-TP01-VC-15**: All tests pass with `pytest tests/test_sse_streaming.py`
-- [ ] **STRM-TP01-VC-16**: Tests prove incremental delivery (not batched)
-- [ ] **STRM-TP01-VC-17**: No flaky tests (run 3x to confirm stability)
-- [ ] **STRM-TP01-VC-18**: Layer comparison diagnoses correctly (UI_BUG vs SSE_BROKEN)
+- [ ] **STRM-TP01-VC-16**: All tests pass with `pytest tests/test_sse_streaming.py`
+- [ ] **STRM-TP01-VC-17**: Tests prove incremental delivery (not batched)
+- [ ] **STRM-TP01-VC-18**: No flaky tests (run 3x to confirm stability)
+- [ ] **STRM-TP01-VC-19**: Layer comparison diagnoses correctly (UI_BUG vs SSE_BROKEN)
 
 ## 11. Document History
+
+**[2026-03-03 22:29]**
+- Moved: `/v2/sites/security_scan/selftest` from DROP to MUST TEST (TC-04)
+- Added: TC-04 for security_scan/selftest (primary SSE streaming test)
+- Changed: Total test cases now 14 across 4 categories
+- Fixed: Renumbered all test cases and verification checklist items
 
 **[2026-03-03 22:27]**
 - Removed: Dependencies section (made self-consistent)
