@@ -1,3 +1,5 @@
+<DevSystem MarkdownTablesAllowed=true />
+
 # Failure Log
 
 **Goal**: Document failures, mistakes, and lessons learned to prevent repetition
@@ -81,6 +83,9 @@ This matches the working `security_scan` endpoint pattern.
 - Security scanner failures moved to: `_2026-02-03_V2SiteSecurityScanner`
 
 ## Document History
+
+**[2026-03-03 09:29]**
+- Added SITE-FL-002: SSE streaming fix with root cause analysis (resolved)
 
 **[2026-03-02 10:45]**
 - Split from original session - kept SITE-FL-* entries only

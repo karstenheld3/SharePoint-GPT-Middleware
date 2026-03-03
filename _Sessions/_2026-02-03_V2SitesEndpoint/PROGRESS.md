@@ -8,7 +8,7 @@
 - [x] **DESIGN** - completed
 - [x] **IMPLEMENT** - completed
 - [x] **REFINE** - completed
-- [x] **DELIVER** - completed (split from security scanner on 2026-03-02)
+- [x] **DELIVER** - completed (2026-03-03 - final SSE fix)
 
 ## To Do
 
@@ -19,6 +19,12 @@
 (None - session complete)
 
 ## Done
+
+### Task 2: Security Scan Selftest & SSE Fix (Completed 2026-03-03)
+- [x] Added Security Scan Selftest button to toolbar (SITE-UI-FR-11)
+- [x] Fixed SSE streaming for blocking I/O (SITE-FL-002)
+- [x] Created INFO document on streaming patterns (STRM-IN01)
+- [x] Committed and pushed
 
 ### Task 1: V2 Sites Endpoint (Completed)
 - [x] Created _V2_SPEC_SITES.md, _V2_SPEC_SITES_UI.md
