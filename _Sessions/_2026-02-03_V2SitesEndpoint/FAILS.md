@@ -12,6 +12,34 @@
 
 ## Active Issues
 
+### 2026-03-03 - Agent Attention Failures
+
+#### `GLOB-FL-001` Agent ignored user's multi-line selection
+
+- **Severity**: [MEDIUM]
+- **When**: 2026-03-03 22:29
+- **Where**: Conversation context - user selected lines 113-116
+- **What**: User selected 3 lines in DROP section but agent only addressed 1 of them
+
+**Evidence**:
+User selected:
+```
+- **`/v2/sites/security_scan/selftest`** - Reason: Requires SharePoint credentials
+- **`/v2/crawler/selftest`** - Reason: Requires SharePoint credentials, long runtime
+- **`/v2/crawler/crawl`** - Reason: Requires configured domain and SharePoint access
+```
+
+User said: "dont drop must test"
+
+Agent interpreted: Only move `security_scan/selftest` to MUST TEST
+User intended: Move ALL 3 endpoints from DROP
+
+**Root cause**: Agent did not carefully read the full selection context. Assumed user was referring to only the first item.
+
+**Fix**: When user references a multi-line selection, address ALL lines in the selection, not just the first one.
+
+**Status**: Open - need user clarification on whether crawler endpoints should also move to MUST TEST
+
 ### 2026-03-03 - SSE Streaming Not Realtime
 
 #### [RESOLVED] `SITE-FL-002` Security Scan Selftest SSE output not streaming in realtime
@@ -83,6 +111,9 @@ This matches the working `security_scan` endpoint pattern.
 - Security scanner failures moved to: `_2026-02-03_V2SiteSecurityScanner`
 
 ## Document History
+
+**[2026-03-03 22:32]**
+- Added GLOB-FL-001: Agent ignored multi-line selection (open)
 
 **[2026-03-03 09:29]**
 - Added SITE-FL-002: SSE streaming fix with root cause analysis (resolved)

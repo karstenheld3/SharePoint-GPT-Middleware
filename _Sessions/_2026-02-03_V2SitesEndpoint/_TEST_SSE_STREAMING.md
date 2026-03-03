@@ -5,7 +5,7 @@
 **Goal**: Verify SSE events arrive in browser in real-time (not buffered) using Playwright UI automation
 **Timeline**: Created 2026-03-03
 
-**Target file**: `tests/test_sse_streaming.py`
+**Target file**: `tests/UIRealtimeStreaming/test_sse_streaming.py`
 
 ## MUST-NOT-FORGET
 
