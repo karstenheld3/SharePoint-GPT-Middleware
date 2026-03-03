@@ -144,7 +144,158 @@ $fileCompareConfig = @{
     "01_SiteContents.csv" = "Url"
     "02_SiteGroups.csv" = "Title"
     "03_SiteUsers.csv" = "LoginName"
-    "05_IndividualPermissionItemAccess.csv" = "Url"
+}
+
+# Special detailed comparison for 05_IndividualPermissionItemAccess.csv
+Write-Host ""
+Write-Host "Comparing 05_IndividualPermissionItemAccess.csv (DETAILED)..." -ForegroundColor White
+
+$psFile05 = Join-Path $psOutputDir "05_IndividualPermissionItemAccess.csv"
+$v2File05 = Join-Path $v2OutputDir "05_IndividualPermissionItemAccess.csv"
+
+if ((Test-Path $psFile05) -and (Test-Path $v2File05)) {
+    $psCsv05 = Import-Csv -Path $psFile05
+    $v2Csv05 = Import-Csv -Path $v2File05
+    
+    Write-Host "  PowerShell rows: $($psCsv05.Count)" -ForegroundColor Gray
+    Write-Host "  V2 rows: $($v2Csv05.Count)" -ForegroundColor Gray
+    
+    # Analyze structure differences
+    Write-Host ""
+    Write-Host "  === Structure Analysis ===" -ForegroundColor Cyan
+    
+    # Check LoginName patterns - are they user emails or group names?
+    $psLoginNames = $psCsv05 | ForEach-Object { $_.LoginName } | Sort-Object -Unique
+    $v2LoginNames = $v2Csv05 | ForEach-Object { $_.LoginName } | Sort-Object -Unique
+    
+    $psUserEmails = $psLoginNames | Where-Object { $_ -match "@" }
+    $psGroupNames = $psLoginNames | Where-Object { $_ -notmatch "@" -and $_ -ne "" }
+    $v2UserEmails = $v2LoginNames | Where-Object { $_ -match "@" }
+    $v2GroupNames = $v2LoginNames | Where-Object { $_ -notmatch "@" -and $_ -ne "" }
+    
+    Write-Host "  PowerShell LoginName patterns:" -ForegroundColor White
+    Write-Host "    User emails (@): $($psUserEmails.Count)" -ForegroundColor Gray
+    Write-Host "    Group names:     $($psGroupNames.Count)" -ForegroundColor Gray
+    if ($psUserEmails.Count -gt 0) {
+        Write-Host "    Sample emails:   $($psUserEmails | Select-Object -First 3 | Join-String -Separator ', ')" -ForegroundColor Gray
+    }
+    if ($psGroupNames.Count -gt 0) {
+        Write-Host "    Sample groups:   $($psGroupNames | Select-Object -First 3 | Join-String -Separator ', ')" -ForegroundColor Gray
+    }
+    
+    Write-Host "  V2 LoginName patterns:" -ForegroundColor White
+    Write-Host "    User emails (@): $($v2UserEmails.Count)" -ForegroundColor Gray
+    Write-Host "    Group names:     $($v2GroupNames.Count)" -ForegroundColor Gray
+    if ($v2UserEmails.Count -gt 0) {
+        Write-Host "    Sample emails:   $($v2UserEmails | Select-Object -First 3 | Join-String -Separator ', ')" -ForegroundColor Gray
+    }
+    if ($v2GroupNames.Count -gt 0) {
+        Write-Host "    Sample groups:   $($v2GroupNames | Select-Object -First 3 | Join-String -Separator ', ')" -ForegroundColor Gray
+    }
+    
+    # Check NestingLevel distribution
+    Write-Host ""
+    Write-Host "  NestingLevel distribution:" -ForegroundColor White
+    $psNesting = $psCsv05 | Group-Object -Property NestingLevel | Sort-Object { [int]$_.Name }
+    $v2Nesting = $v2Csv05 | Group-Object -Property NestingLevel | Sort-Object { [int]$_.Name }
+    
+    Write-Host "    PowerShell: $($psNesting | ForEach-Object { "Level$($_.Name)=$($_.Count)" } | Join-String -Separator ', ')" -ForegroundColor Gray
+    Write-Host "    V2:         $($v2Nesting | ForEach-Object { "Level$($_.Name)=$($_.Count)" } | Join-String -Separator ', ')" -ForegroundColor Gray
+    
+    # Check AssignmentType distribution
+    Write-Host ""
+    Write-Host "  AssignmentType distribution:" -ForegroundColor White
+    $psAssign = $psCsv05 | Group-Object -Property AssignmentType | Sort-Object Name
+    $v2Assign = $v2Csv05 | Group-Object -Property AssignmentType | Sort-Object Name
+    
+    Write-Host "    PowerShell: $($psAssign | ForEach-Object { "$($_.Name)=$($_.Count)" } | Join-String -Separator ', ')" -ForegroundColor Gray
+    Write-Host "    V2:         $($v2Assign | ForEach-Object { "$($_.Name)=$($_.Count)" } | Join-String -Separator ', ')" -ForegroundColor Gray
+    
+    # Check ViaGroup usage
+    Write-Host ""
+    Write-Host "  ViaGroup usage:" -ForegroundColor White
+    $psViaGroupFilled = ($psCsv05 | Where-Object { $_.ViaGroup -ne "" }).Count
+    $v2ViaGroupFilled = ($v2Csv05 | Where-Object { $_.ViaGroup -ne "" }).Count
+    
+    Write-Host "    PowerShell: $psViaGroupFilled rows with ViaGroup populated" -ForegroundColor Gray
+    Write-Host "    V2:         $v2ViaGroupFilled rows with ViaGroup populated" -ForegroundColor Gray
+    
+    # Composite key comparison: Url + LoginName + PermissionLevel
+    Write-Host ""
+    Write-Host "  === Composite Key Comparison (Url+LoginName+PermissionLevel) ===" -ForegroundColor Cyan
+    
+    $psCompositeKeys = $psCsv05 | ForEach-Object { 
+        $normalizedUrl = if ($_.Url -match "sharepoint\.com(.+)$") { $matches[1] } else { $_.Url }
+        "$normalizedUrl|$($_.LoginName)|$($_.PermissionLevel)"
+    } | Sort-Object -Unique
+    
+    $v2CompositeKeys = $v2Csv05 | ForEach-Object { 
+        $normalizedUrl = if ($_.Url -match "sharepoint\.com(.+)$") { $matches[1] } else { $_.Url }
+        "$normalizedUrl|$($_.LoginName)|$($_.PermissionLevel)"
+    } | Sort-Object -Unique
+    
+    $onlyInPs05 = $psCompositeKeys | Where-Object { $_ -notin $v2CompositeKeys }
+    $onlyInV205 = $v2CompositeKeys | Where-Object { $_ -notin $psCompositeKeys }
+    $common05 = $psCompositeKeys | Where-Object { $_ -in $v2CompositeKeys }
+    
+    Write-Host "  Unique composite keys - PowerShell: $($psCompositeKeys.Count), V2: $($v2CompositeKeys.Count)" -ForegroundColor Gray
+    Write-Host "  Common entries: $($common05.Count)" -ForegroundColor Green
+    
+    if ($onlyInPs05.Count -gt 0) {
+        Write-Host "  Only in PowerShell ($($onlyInPs05.Count)):" -ForegroundColor Yellow
+        $onlyInPs05 | Select-Object -First 10 | ForEach-Object { Write-Host "    $_" -ForegroundColor Yellow }
+        if ($onlyInPs05.Count -gt 10) { Write-Host "    ... and $($onlyInPs05.Count - 10) more" -ForegroundColor Yellow }
+    }
+    
+    if ($onlyInV205.Count -gt 0) {
+        Write-Host "  Only in V2 ($($onlyInV205.Count)):" -ForegroundColor Yellow
+        $onlyInV205 | Select-Object -First 10 | ForEach-Object { Write-Host "    $_" -ForegroundColor Yellow }
+        if ($onlyInV205.Count -gt 10) { Write-Host "    ... and $($onlyInV205.Count - 10) more" -ForegroundColor Yellow }
+    }
+    
+    # Determine result based on composite key match AND structure
+    $structureMismatch = $false
+    $structureIssues = @()
+    
+    # Critical: V2 should have user emails, not just group names (for resolved access)
+    if ($v2UserEmails.Count -eq 0 -and $psUserEmails.Count -gt 0) {
+        $structureMismatch = $true
+        $structureIssues += "V2 has no user emails in LoginName (PS has $($psUserEmails.Count))"
+    }
+    
+    # Critical: ViaGroup should be populated when NestingLevel > 0
+    if ($v2ViaGroupFilled -eq 0 -and $psViaGroupFilled -gt 0) {
+        $structureMismatch = $true
+        $structureIssues += "V2 has no ViaGroup values (PS has $psViaGroupFilled)"
+    }
+    
+    # Critical: NestingLevel distribution should be similar
+    $psLevel1Count = ($psNesting | Where-Object { $_.Name -eq "1" }).Count
+    $v2Level1Count = ($v2Nesting | Where-Object { $_.Name -eq "1" }).Count
+    if ($psLevel1Count -gt 0 -and $v2Level1Count -eq 0) {
+        $structureMismatch = $true
+        $structureIssues += "V2 has no NestingLevel=1 entries (PS has $($psLevel1Count))"
+    }
+    
+    Write-Host ""
+    if ($structureMismatch) {
+        Write-Host "  FAIL: Structure mismatch detected!" -ForegroundColor Red
+        foreach ($issue in $structureIssues) {
+            Write-Host "    - $issue" -ForegroundColor Red
+        }
+        $results.Failed++
+    } elseif ($onlyInPs05.Count -gt 0 -or $onlyInV205.Count -gt 0) {
+        Write-Host "  WARN: Content differences found" -ForegroundColor Yellow
+        $results.Warnings++
+    } else {
+        Write-Host "  PASS: All entries match" -ForegroundColor Green
+        $results.Passed++
+    }
+} elseif (-not (Test-Path $psFile05) -and -not (Test-Path $v2File05)) {
+    Write-Host "  SKIP: Both files missing" -ForegroundColor Gray
+} else {
+    Write-Host "  FAIL: One file missing" -ForegroundColor Red
+    $results.Failed++
 }
 
 foreach ($fileName in $fileCompareConfig.Keys) {
