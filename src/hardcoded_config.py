@@ -69,7 +69,6 @@ CRAWLER_HARDCODED_CONFIG = CrawlerHardcodedConfig(
     "ignore_permission_levels": ["Limited Access"],
     "ignore_sharepoint_groups": [],
     "max_group_nesting_level": 5,
-    "omit_sharepoint_groups_in_broken_permissions_file": True,
     "ignore_lists": [
       "Access Requests", "App Packages", "appdata", "appfiles", "Apps in Testing",
       "AuditLogs", "Cache Profiles", "Composed Looks", "Content and Structure Reports",
