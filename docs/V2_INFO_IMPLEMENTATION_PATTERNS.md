@@ -3,6 +3,14 @@
 **Doc ID**: V2-IMPL-PATTERNS
 **Goal**: Mandatory patterns for V2 router implementation
 
+## Table of Contents
+
+1. [SSE Streaming Pattern](#sse-streaming-pattern)
+2. [Logger Pattern](#logger-pattern)
+3. [Response Pattern](#response-pattern)
+4. [Import Pattern](#import-pattern)
+5. [Endpoint Structure Pattern](#endpoint-structure-pattern)
+
 ## SSE Streaming Pattern
 
 **Intent**: Prevent browser buffering of SSE events when generators contain blocking I/O.
@@ -56,7 +64,153 @@ async def run_selftest():
 return StreamingResponse(stream_with_flush(run_selftest()), ...)
 ```
 
+## Logger Pattern
+
+**Intent**: Consistent logging across all endpoints with optional SSE streaming support.
+
+### Standard Logger
+
+```python
+from routers_v2.common_logging_functions_v2 import MiddlewareLogger, UNKNOWN
+
+@router.get("/endpoint")
+async def my_endpoint(request: Request):
+  logger = MiddlewareLogger.create()
+  logger.log_function_header("my_endpoint")
+  # ... endpoint logic ...
+  logger.log_function_footer()
+  return json_result(True, "", data)
+```
+
+### Streaming Logger
+
+For SSE endpoints, create logger with `stream_job_writer`:
+
+```python
+writer = StreamingJobWriter(job_id=job_id, ...)
+stream_logger = MiddlewareLogger.create(stream_job_writer=writer)
+```
+
+### Rules
+
+1. Call `MiddlewareLogger.create()` at start of every endpoint
+2. Use `UNKNOWN` constant for missing values (never hardcode placeholders)
+3. For streaming endpoints, pass `stream_job_writer` to logger
+
+## Response Pattern
+
+**Intent**: Consistent response format across all endpoints.
+
+### JSON Responses
+
+```python
+from routers_v2.common_ui_functions_v2 import json_result, html_result
+
+# Success
+return json_result(True, "", {"item_id": "123"})
+
+# Error
+return json_result(False, "Item not found.", {})
+```
+
+### HTML/UI Responses
+
+```python
+# Simple HTML
+return html_result("<div>Content</div>")
+
+# Full UI page
+return HTMLResponse(generate_ui_page(title, content, ...))
+```
+
+### SSE Streaming Responses
+
+```python
+return StreamingResponse(stream_with_flush(generator()), media_type="text/event-stream")
+```
+
+### Rules
+
+1. **Never** use `HTTPException` - use `json_result(False, error, {})` instead
+2. All JSON responses use `json_result()` helper
+3. All SSE responses use `stream_with_flush()` wrapper
+
+## Import Pattern
+
+**Intent**: Consistent import structure across all routers.
+
+### Standard Imports
+
+```python
+import asyncio, json, uuid
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
+
+from routers_v2.common_ui_functions_v2 import generate_ui_page, json_result, html_result
+from routers_v2.common_logging_functions_v2 import MiddlewareLogger, UNKNOWN
+from routers_v2.common_job_functions_v2 import StreamingJobWriter, stream_with_flush
+```
+
+### Rules
+
+1. Group imports: stdlib, fastapi, then `routers_v2.common_*`
+2. Import `stream_with_flush` from `common_job_functions_v2`
+3. Import `UNKNOWN` constant from `common_logging_functions_v2`
+
+## Endpoint Structure Pattern
+
+**Intent**: Consistent endpoint structure for maintainability.
+
+### Standard Endpoint
+
+```python
+@router.get(f"/{router_name}/action")
+async def router_action(request: Request):
+  logger = MiddlewareLogger.create()
+  logger.log_function_header("router_action")
+  
+  request_params = dict(request.query_params)
+  format_param = request_params.get("format", "json")
+  
+  # ... validation ...
+  # ... business logic ...
+  
+  if format_param == "ui":
+    return HTMLResponse(generate_ui_page(...))
+  
+  logger.log_function_footer()
+  return json_result(True, "", data)
+```
+
+### Streaming Endpoint
+
+```python
+@router.get(f"/{router_name}/stream_action")
+async def router_stream_action(request: Request):
+  writer = StreamingJobWriter(job_id=..., source_url=str(request.url), ...)
+  stream_logger = MiddlewareLogger.create(stream_job_writer=writer)
+  
+  async def run_stream():
+    try:
+      yield writer.emit_start()
+      # ... streaming logic with yield writer.emit_log() ...
+      yield writer.emit_end(ok=True, data={...})
+    except Exception as e:
+      yield writer.emit_end(ok=False, error=str(e), data={})
+    finally:
+      writer.finalize()
+  
+  return StreamingResponse(stream_with_flush(run_stream()), media_type="text/event-stream")
+```
+
+### Rules
+
+1. Logger creation first, then param extraction
+2. Format check (`ui`/`json`/`stream`) determines response type
+3. Streaming generators must call `writer.finalize()` in `finally` block
+
 ## Document History
 
 **[2026-03-03]**
+- Added Logger, Response, Import, and Endpoint Structure patterns
 - Initial version from STRM-IN01, STRM-IP01 analysis
