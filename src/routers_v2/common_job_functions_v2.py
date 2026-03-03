@@ -346,6 +346,32 @@ class StreamingJobWriter:
         self._job_file_path = final_path
 
 
+# ----------------------------------------- START: SSE Streaming Utility ------------------------------------------------
+
+async def stream_with_flush(generator):
+  """
+  Wrapper that forces event loop flush after each SSE event.
+  
+  IMPORTANT: Use this wrapper for ALL streaming endpoints to ensure browser
+  receives events in realtime. Required for endpoints with blocking sync I/O
+  (Office365 SDK, etc.) but safe and recommended for all endpoints.
+  
+  Background: Async generators with blocking sync I/O don't give the event loop
+  opportunities to flush HTTP response chunks to the browser. This wrapper adds
+  asyncio.sleep(0) after each yield to allow pending I/O to be processed.
+  
+  Usage:
+    return StreamingResponse(stream_with_flush(run_selftest()), media_type="text/event-stream")
+  
+  Reference: STRM-IN01, SCAN-LN-002, SITE-FL-002
+  """
+  async for event in generator:
+    yield event
+    await asyncio.sleep(0)
+
+# ----------------------------------------- END: SSE Streaming Utility --------------------------------------------------
+
+
 # ----------------------------------------- START: Standalone functions for /v2/jobs endpoints --------------------------
 
 def generate_job_id(persistent_storage_path: str) -> str:

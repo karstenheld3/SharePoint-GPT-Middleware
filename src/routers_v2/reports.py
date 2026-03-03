@@ -10,7 +10,7 @@ from routers_v2.common_report_functions_v2 import list_reports, get_report_metad
 from routers_v2.common_report_functions_v2 import set_config as set_report_functions_config
 from routers_v2.common_logging_functions_v2 import MiddlewareLogger, UNKNOWN
 from routers_v2.common_ui_functions_v2 import generate_ui_page, generate_router_docs_page, generate_endpoint_docs, json_result, html_result
-from routers_v2.common_job_functions_v2 import StreamingJobWriter, ControlAction
+from routers_v2.common_job_functions_v2 import StreamingJobWriter, ControlAction, stream_with_flush
 
 router = APIRouter()
 config = None
@@ -1179,6 +1179,6 @@ async def create_demo_reports_endpoint(request: Request):
     finally:
       writer.finalize()
   
-  return StreamingResponse(stream_create_demo_reports(), media_type="text/event-stream")
+  return StreamingResponse(stream_with_flush(stream_create_demo_reports()), media_type="text/event-stream")
 
 # ----------------------------------------- END: /reports/create_demo_reports endpoint -----------------------------------

@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Str
 
 from routers_v2.common_ui_functions_v2 import generate_router_docs_page, generate_endpoint_docs, json_result, html_result, generate_html_head, generate_toast_container, generate_modal_structure, generate_console_panel, generate_core_js, generate_console_js, generate_form_js, generate_endpoint_caller_js
 from routers_v2.common_logging_functions_v2 import MiddlewareLogger, UNKNOWN
-from routers_v2.common_job_functions_v2 import list_jobs, find_job_by_id, find_job_file, read_job_log, read_job_result, create_control_file, delete_job, force_cancel_job, JobMetadata, StreamingJobWriter, ControlAction
+from routers_v2.common_job_functions_v2 import list_jobs, find_job_by_id, find_job_file, read_job_log, read_job_result, create_control_file, delete_job, force_cancel_job, JobMetadata, StreamingJobWriter, ControlAction, stream_with_flush
 
 router = APIRouter()
 config = None
@@ -613,7 +613,7 @@ async def jobs_monitor(request: Request):
         
         await asyncio.sleep(0.5)
     
-    return StreamingResponse(stream_log(), media_type="text/event-stream")
+    return StreamingResponse(stream_with_flush(stream_log()), media_type="text/event-stream")
   
   if format_param == "json":
     job_data = _job_to_dict(job)
@@ -1409,6 +1409,6 @@ async def jobs_selftest(request: Request):
       
       writer.finalize()
   
-  return StreamingResponse(run_selftest(), media_type="text/event-stream")
+  return StreamingResponse(stream_with_flush(run_selftest()), media_type="text/event-stream")
 
 # ----------------------------------------- END: Selftest endpoint ---------------------------------------------------------

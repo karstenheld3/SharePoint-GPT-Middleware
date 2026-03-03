@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Str
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from routers_v2.common_ui_functions_v2 import generate_router_docs_page, generate_endpoint_docs, json_result, html_result, generate_ui_page
 from routers_v2.common_logging_functions_v2 import MiddlewareLogger, UNKNOWN
-from routers_v2.common_job_functions_v2 import list_jobs, StreamingJobWriter, ControlAction
+from routers_v2.common_job_functions_v2 import list_jobs, StreamingJobWriter, ControlAction, stream_with_flush
 from routers_v2.common_crawler_functions_v2 import DomainConfig, FileSource, ListSource, SitePageSource, load_domain, save_domain_to_file, delete_domain_folder, get_sources_for_scope, get_source_folder_path, get_embedded_folder_path, get_failed_folder_path, get_originals_folder_path, server_relative_url_to_local_path, get_file_relative_path, get_map_filename, cleanup_temp_map_files, is_file_embeddable, filter_embeddable_files, load_files_metadata, save_files_metadata, update_files_metadata, get_domain_path, SOURCE_TYPE_FOLDERS
 from routers_v2.common_map_file_functions_v2 import SharePointMapRow, FilesMapRow, VectorStoreMapRow, ChangeDetectionResult, MapFileWriter, read_sharepoint_map, read_files_map, read_vectorstore_map, detect_changes, is_file_changed, is_file_changed_for_embed, sharepoint_map_row_to_files_map_row, files_map_row_to_vectorstore_map_row
 from routers_v2.common_sharepoint_functions_v2 import SharePointFile, connect_to_site_using_client_id_and_certificate, try_get_document_library, get_document_library_files, download_file_from_sharepoint, get_list_items, get_list_items_as_sharepoint_files, export_list_to_csv, get_site_pages, download_site_page_html, create_document_library, add_number_field_to_list, add_text_field_to_list, upload_file_to_library, upload_file_to_folder, update_file_content, rename_file, move_file, delete_file, create_folder_in_library, delete_document_library, create_list, add_list_item, update_list_item, delete_list_item, delete_list, create_site_page, update_site_page, rename_site_page, delete_site_page, file_exists_in_library
@@ -638,7 +638,7 @@ Return (SSE stream):
   retry_batches = int(params.get("retry_batches", "2"))
   if format_param == "stream":
     openai_client = getattr(request.app.state, 'openai_client', None)
-    return StreamingResponse(_crawl_stream(get_persistent_storage_path(request), domain, mode, scope, source_id, dry_run, retry_batches, logger, openai_client, get_crawler_config(request)), media_type="text/event-stream")
+    return StreamingResponse(stream_with_flush(_crawl_stream(get_persistent_storage_path(request), domain, mode, scope, source_id, dry_run, retry_batches, logger, openai_client, get_crawler_config(request))), media_type="text/event-stream")
   logger.log_function_footer()
   return json_result(False, "Use format=stream for crawl operations.", {})
 
@@ -748,7 +748,7 @@ Return (SSE stream):
   format_param, dry_run = params.get("format", "json"), params.get("dry_run", "false").lower() == "true"
   retry_batches = int(params.get("retry_batches", "2"))
   if format_param == "stream":
-    return StreamingResponse(_download_stream(get_persistent_storage_path(request), domain, mode, scope, source_id, dry_run, retry_batches, logger, get_crawler_config(request)), media_type="text/event-stream")
+    return StreamingResponse(stream_with_flush(_download_stream(get_persistent_storage_path(request), domain, mode, scope, source_id, dry_run, retry_batches, logger, get_crawler_config(request))), media_type="text/event-stream")
   logger.log_function_footer()
   return json_result(False, "Use format=stream.", {})
 
@@ -843,7 +843,7 @@ Return (SSE stream):
   scope, source_id = params.get("scope", "all"), params.get("source_id")
   format_param, dry_run = params.get("format", "json"), params.get("dry_run", "false").lower() == "true"
   if format_param == "stream":
-    return StreamingResponse(_process_stream(get_persistent_storage_path(request), domain, scope, source_id, dry_run, logger), media_type="text/event-stream")
+    return StreamingResponse(stream_with_flush(_process_stream(get_persistent_storage_path(request), domain, scope, source_id, dry_run, logger)), media_type="text/event-stream")
   logger.log_function_footer()
   return json_result(False, "Use format=stream.", {})
 
@@ -936,7 +936,7 @@ Return (SSE stream):
   retry_batches = int(params.get("retry_batches", "2"))
   if format_param == "stream":
     openai_client = getattr(request.app.state, 'openai_client', None)
-    return StreamingResponse(_embed_stream(get_persistent_storage_path(request), domain, mode, scope, source_id, dry_run, retry_batches, logger, openai_client), media_type="text/event-stream")
+    return StreamingResponse(stream_with_flush(_embed_stream(get_persistent_storage_path(request), domain, mode, scope, source_id, dry_run, retry_batches, logger, openai_client)), media_type="text/event-stream")
   logger.log_function_footer()
   return json_result(False, "Use format=stream.", {})
 
@@ -1189,7 +1189,7 @@ async def crawler_selftest(request: Request):
     return JSONResponse({"ok": False, "error": "Selftest already running.", "data": {}}, status_code=409)
   base_url = str(request.base_url).rstrip("/")
   openai_client = getattr(request.app.state, 'openai_client', None)
-  return StreamingResponse(_selftest_stream(get_persistent_storage_path(request), skip_cleanup, max_phase, logger, openai_client, base_url, get_crawler_config(request)), media_type="text/event-stream")
+  return StreamingResponse(stream_with_flush(_selftest_stream(get_persistent_storage_path(request), skip_cleanup, max_phase, logger, openai_client, base_url, get_crawler_config(request))), media_type="text/event-stream")
 
 async def _selftest_stream(storage_path: str, skip_cleanup: bool, max_phase: int, logger: MiddlewareLogger, openai_client, base_url: str, crawler_cfg: dict):
   """Execute selftest as SSE stream."""

@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Str
 
 from routers_v2.common_ui_functions_v2 import generate_ui_page, generate_router_docs_page, generate_endpoint_docs, json_result, html_result
 from routers_v2.common_logging_functions_v2 import MiddlewareLogger, UNKNOWN
-from routers_v2.common_job_functions_v2 import StreamingJobWriter
+from routers_v2.common_job_functions_v2 import StreamingJobWriter, stream_with_flush
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 
 router = APIRouter()
@@ -1200,7 +1200,7 @@ async def sites_selftest(request: Request):
       except: pass
       writer.finalize()
   
-  return StreamingResponse(run_selftest(), media_type="text/event-stream")
+  return StreamingResponse(stream_with_flush(run_selftest()), media_type="text/event-stream")
 
 # ----------------------------------------- END: Selftest ------------------------------------------------------------------
 
@@ -1322,7 +1322,6 @@ async def sites_security_scan(request: Request):
         logger=stream_logger
       ):
         yield event
-        await asyncio.sleep(0)  # Force flush each event to browser
       
       # Get results
       result = writer._step_result or {}
@@ -1354,7 +1353,7 @@ async def sites_security_scan(request: Request):
     finally:
       writer.finalize()
   
-  return StreamingResponse(run_scan(), media_type="text/event-stream")
+  return StreamingResponse(stream_with_flush(run_scan()), media_type="text/event-stream")
 
 # ----------------------------------------- START: Security Scan Selftest -----------------------------------------------------
 
@@ -1850,13 +1849,7 @@ async def sites_security_scan_selftest(request: Request):
         pass
       writer.finalize()
   
-  async def stream_with_flush():
-    """Wrapper that forces event loop flush after each SSE event (per SCAN-LN-002)."""
-    async for event in run_selftest():
-      yield event
-      await asyncio.sleep(0)  # Force flush to browser - required for blocking I/O
-  
-  return StreamingResponse(stream_with_flush(), media_type="text/event-stream")
+  return StreamingResponse(stream_with_flush(run_selftest()), media_type="text/event-stream")
 
 # ----------------------------------------- END: Security Scan Selftest -------------------------------------------------------
 

@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Str
 
 from routers_v2.common_ui_functions_v2 import generate_ui_page, generate_router_docs_page, generate_endpoint_docs, json_result, html_result
 from routers_v2.common_logging_functions_v2 import MiddlewareLogger, UNKNOWN
-from routers_v2.common_job_functions_v2 import StreamingJobWriter
+from routers_v2.common_job_functions_v2 import StreamingJobWriter, stream_with_flush
 from routers_v2.common_crawler_functions_v2 import (
   DomainConfig, FileSource, SitePageSource, ListSource,
   load_domain, load_all_domains, save_domain_to_file, delete_domain_folder, rename_domain,
@@ -1324,6 +1324,6 @@ async def domains_selftest(request: Request):
       except: pass
       writer.finalize()
   
-  return StreamingResponse(run_selftest(), media_type="text/event-stream")
+  return StreamingResponse(stream_with_flush(run_selftest()), media_type="text/event-stream")
 
 # ----------------------------------------- END: Selftest --------------------------------------------------------------------

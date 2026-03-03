@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Str
 
 from common_utility_functions import convert_to_flat_html_table
 from routers_v2.common_logging_functions_v2 import MiddlewareLogger, UNKNOWN
-from routers_v2.common_job_functions_v2 import StreamingJobWriter, ControlAction
+from routers_v2.common_job_functions_v2 import StreamingJobWriter, ControlAction, stream_with_flush
 
 router = APIRouter()
 config = None
@@ -1082,7 +1082,7 @@ async def demorouter_create(request: Request):
         yield writer.emit_end(ok=True, data={"item_id": item_id, **item_data})
       finally:
         writer.finalize()
-    return StreamingResponse(stream_create(), media_type="text/event-stream")
+    return StreamingResponse(stream_with_flush(stream_create()), media_type="text/event-stream")
   
   # Create item
   save_demo_item(item_id, item_data)
@@ -1236,7 +1236,7 @@ async def demorouter_update(request: Request):
         yield writer.emit_end(ok=True, data={"item_id": item_id, **merged_data})
       finally:
         writer.finalize()
-    return StreamingResponse(stream_update(), media_type="text/event-stream")
+    return StreamingResponse(stream_with_flush(stream_update()), media_type="text/event-stream")
   
   # Update item
   save_demo_item(item_id, merged_data)
@@ -1334,7 +1334,7 @@ async def demorouter_delete_impl(request: Request):
         yield writer.emit_end(ok=True, data={"item_id": item_id})
       finally:
         writer.finalize()
-    return StreamingResponse(stream_delete(), media_type="text/event-stream")
+    return StreamingResponse(stream_with_flush(stream_delete()), media_type="text/event-stream")
   
   # Delete item
   deleted_data = {"item_id": item_id, **existing}
@@ -1769,7 +1769,7 @@ async def demorouter_selftest(request: Request):
         pass
       writer.finalize()
   
-  return StreamingResponse(run_selftest(), media_type="text/event-stream")
+  return StreamingResponse(stream_with_flush(run_selftest()), media_type="text/event-stream")
 
 # ----------------------------------------- END: Selftest ----------------------------------------------------------------------
 
@@ -1909,6 +1909,6 @@ async def demorouter_create_demo_items(request: Request):
     finally:
       writer.finalize()
   
-  return StreamingResponse(stream_create_demo_items(), media_type="text/event-stream")
+  return StreamingResponse(stream_with_flush(stream_create_demo_items()), media_type="text/event-stream")
 
 # ----------------------------------------- END: Create Demo Items (long-running demo) --------------------------------------
