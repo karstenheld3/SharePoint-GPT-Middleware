@@ -65,11 +65,11 @@ SSE (Server-Sent Events) streaming requires the HTTP response to flush chunks to
 
 | Endpoint | I/O Type | Pattern | Works? |
 |----------|----------|---------|--------|
-| `/crawler/crawl` | Delegated async gen | C - Delegated | Yes |
-| `/crawler/download_data` | Delegated async gen | C - Delegated | Yes |
-| `/crawler/process_data` | Delegated async gen | C - Delegated | Yes |
-| `/crawler/embed_data` | Delegated async gen | C - Delegated | Yes |
-| `/crawler/selftest` | Delegated async gen | C - Delegated | Yes |
+| `/crawler/crawl` | Mixed (async OpenAI + blocking SharePoint) | A/C hybrid - no sleep | **UNVERIFIED** |
+| `/crawler/download_data` | Blocking (SharePoint SDK) | A - Direct (no sleep) | **UNVERIFIED** |
+| `/crawler/process_data` | Local file I/O | A - Direct | Yes |
+| `/crawler/embed_data` | Async (OpenAI SDK) | A - Direct | Yes |
+| `/crawler/selftest` | Blocking (SharePoint SDK) | A - Direct (no sleep) | **UNVERIFIED** |
 
 ### 2.5 reports.py
 
@@ -212,11 +212,16 @@ Is your generator using blocking sync I/O?
 
 ## 6. Next Steps
 
-1. Audit remaining endpoints against this pattern guide
-2. Add code comments referencing this document where Pattern B/C is used
-3. Consider creating a `stream_with_flush()` utility function in `common_job_functions_v2.py`
+1. **[PRIORITY]** Test crawler endpoints in browser to verify if buffering occurs
+2. If buffering found, add `asyncio.sleep(0)` wrapper pattern to crawler streaming
+3. Add code comments referencing this document where Pattern B/C is used
+4. Consider creating a `stream_with_flush()` utility function in `common_job_functions_v2.py`
 
 ## 7. Document History
+
+**[2026-03-03 09:45]**
+- Fixed: Crawler endpoints marked UNVERIFIED - uses blocking I/O without sleep wrapper
+- Added priority action to test crawler streaming
 
 **[2026-03-03 09:35]**
 - Initial research document created
