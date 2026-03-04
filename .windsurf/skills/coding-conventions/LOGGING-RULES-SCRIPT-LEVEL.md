@@ -1,16 +1,16 @@
-# Test-Level Logging Rules
+# Script-Level Logging Rules
 
-Rules for test output used by Quality Assurance (QA) to verify correctness.
+Rules for script output used by Quality Assurance (QA) to verify correctness.
 
 ## Rule Index
 
-- [LOG-TS-01](#log-ts-01-no-timestamps): No timestamps
-- [LOG-TS-02](#log-ts-02-section-structure): Section structure
-- [LOG-TS-03](#log-ts-03-test-case-ids): Test case IDs
-- [LOG-TS-04](#log-ts-04-status-markers): Status markers
-- [LOG-TS-05](#log-ts-05-status-patterns): Status patterns
-- [LOG-TS-06](#log-ts-06-output-details): Output details
-- [LOG-TS-07](#log-ts-07-summary-and-result): Summary and result
+- [LOG-SC-01](#log-sc-01-no-timestamps): No timestamps
+- [LOG-SC-02](#log-sc-02-section-structure): Section structure
+- [LOG-SC-03](#log-sc-03-test-case-ids): Test case IDs
+- [LOG-SC-04](#log-sc-04-status-markers): Status markers
+- [LOG-SC-05](#log-sc-05-status-patterns): Status patterns
+- [LOG-SC-06](#log-sc-06-output-details): Output details
+- [LOG-SC-07](#log-sc-07-summary-and-result): Summary and result
 
 ## Philosophy
 
@@ -19,13 +19,13 @@ Rules for test output used by Quality Assurance (QA) to verify correctness.
 A QA engineer should understand what failed and why without analyzing additional files, databases, or external data sources. The log output alone must be sufficient to diagnose the problem.
 
 **This goal drives all rules in this document:**
-- No timestamps for deterministic output ([LOG-TS-01](#log-ts-01-no-timestamps))
-- Clear section structure ([LOG-TS-02](#log-ts-02-section-structure))
-- Test case IDs for traceability ([LOG-TS-03](#log-ts-03-test-case-ids))
-- Explicit status markers ([LOG-TS-04](#log-ts-04-status-markers))
-- Consistent status patterns ([LOG-TS-05](#log-ts-05-status-patterns))
-- Detailed output for debugging ([LOG-TS-06](#log-ts-06-output-details))
-- Summary with pass/fail counts ([LOG-TS-07](#log-ts-07-summary-and-result))
+- No timestamps for deterministic output ([LOG-SC-01](#log-sc-01-no-timestamps))
+- Clear section structure ([LOG-SC-02](#log-sc-02-section-structure))
+- Test case IDs for traceability ([LOG-SC-03](#log-sc-03-test-case-ids))
+- Explicit status markers ([LOG-SC-04](#log-sc-04-status-markers))
+- Consistent status patterns ([LOG-SC-05](#log-sc-05-status-patterns))
+- Detailed output for debugging ([LOG-SC-06](#log-sc-06-output-details))
+- Summary with pass/fail counts ([LOG-SC-07](#log-sc-07-summary-and-result))
 
 ## Related Documents
 
@@ -35,7 +35,7 @@ A QA engineer should understand what failed and why without analyzing additional
 
 ## Rules
 
-### LOG-TS-01: No Timestamps
+### LOG-SC-01: No Timestamps
 
 Test output must be deterministic for diff comparison. Timestamps add noise and break comparisons.
 
@@ -57,7 +57,7 @@ Test 'test_user_creation' completed.
 
 **Exception:** Selftest endpoints that stream to users may include timestamps for progress indication, but the test logic itself should not depend on them.
 
-### LOG-TS-02: Section Structure
+### LOG-SC-02: Section Structure
 
 Use visual separators to group tests. **All test output MUST use 100-char START/END headers/footers.**
 
@@ -115,7 +115,7 @@ Verifying login, logout, and session management.
 25 tests passed, 0 failed.
 ```
 
-### LOG-TS-03: Test Case IDs
+### LOG-SC-03: Test Case IDs
 
 Use prefix format for traceability: `TC-01:`, `M1:`, etc.
 
@@ -142,7 +142,7 @@ Testing session...
 [ 7 / 25 ] M7: Full crawl...
 ```
 
-### LOG-TS-04: Status Markers
+### LOG-SC-04: Status Markers
 
 Use explicit markers for comparison and assertion results.
 
@@ -164,7 +164,7 @@ Use explicit markers for comparison and assertion results.
 
 **Rationale:** Explicit markers enable grep/search for failures and make status immediately visible.
 
-### LOG-TS-05: Status Patterns
+### LOG-SC-05: Status Patterns
 
 Use consistent status keyword patterns.
 
@@ -202,7 +202,7 @@ Use consistent status keyword patterns.
 
 **Rationale:** Consistent patterns enable automated parsing and reporting.
 
-### LOG-TS-06: Output Details
+### LOG-SC-06: Output Details
 
 Provide enough detail to understand failures without additional investigation.
 
@@ -232,7 +232,7 @@ Provide enough detail to understand failures without additional investigation.
 
 **Rationale:** Self-contained details eliminate need to examine source files or databases.
 
-### LOG-TS-07: Summary and Result
+### LOG-SC-07: Summary and Result
 
 Always end with a summary showing counts and final result.
 

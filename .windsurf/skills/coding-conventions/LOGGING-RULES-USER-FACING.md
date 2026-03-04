@@ -2,25 +2,40 @@
 
 Rules for end-user visible output via console or Server-Sent Events (SSE) stream.
 
+## Rule Index
+
+- [LOG-UF-01](#log-uf-01-timestamp-format): Timestamp format
+- [LOG-UF-02](#log-uf-02-progress-indicators): Progress indicators
+- [LOG-UF-03](#log-uf-03-messages-and-results): Messages and results
+- [LOG-UF-04](#log-uf-04-feedback-timing): Feedback timing
+- [LOG-UF-05](#log-uf-05-context-display): Context display
+- [LOG-UF-06](#log-uf-06-activity-boundaries): Activity boundaries
+
 ## Philosophy
 
 **Goal: Users must always know what is happening.**
 
-Progress indication via iteration counters, running totals, and feedback every ~10 seconds for long operations. Users should never wonder if the system is stuck.
+User-facing logs are self-explanatory and explorative. By reading the logs, users understand the inner workings and workflow mechanics without documentation. Users should never wonder if the system is stuck or what it's doing.
+
+**Core requirements:**
+- Numbered steps `[ x / n ]` reveal the workflow structure
+- Progress indication via iteration counters and running totals
+- Feedback every ~10 seconds for long operations
+- Plain language that non-technical users can follow
+- **Full Disclosure:** Every log section must be self-contained. Include filenames, URLs, and identifiers so readers don't need to scroll up for context.
 
 **This goal drives all rules in this document:**
-- Simple timestamps without technical noise (LOG-UF-01)
-- Iteration progress at line start (LOG-UF-02)
-- Plain language, no jargon (LOG-UF-03)
-- Color-coded status (LOG-UF-04)
-- Feedback timing requirements (LOG-UF-05)
-- Context hierarchy display (LOG-UF-06)
+- Simple timestamps without technical noise ([LOG-UF-01](#log-uf-01-timestamp-format))
+- Iteration progress at line start ([LOG-UF-02](#log-uf-02-progress-indicators))
+- Plain language, no jargon ([LOG-UF-03](#log-uf-03-messages-and-results))
+- Feedback timing requirements ([LOG-UF-04](#log-uf-04-feedback-timing))
+- Context hierarchy display ([LOG-UF-05](#log-uf-05-context-display))
 
 ## Related Documents
 
-- `LOGGING-RULES.md` - General rules (LOG-GN-01 to LOG-GN-08)
+- `LOGGING-RULES.md` - General rules (LOG-GN-01 to LOG-GN-11)
 - `LOGGING-RULES-APP-LEVEL.md` - App-level rules (LOG-AP-01 to LOG-AP-05)
-- `LOGGING-RULES-TEST-LEVEL.md` - Test-level rules (LOG-TS-01 to LOG-TS-07)
+- `LOGGING-RULES-SCRIPT-LEVEL.md` - Script-level rules (LOG-SC-01 to LOG-SC-07)
 
 ## Rules
 
@@ -47,10 +62,9 @@ Use `[YYYY-MM-DD HH:MM:SS]` format. Always include date AND time. No process ID,
 
 **SSE Stream Format:**
 ```
-[2026-03-04 10:15:23] START: crawl_site()...
-[2026-03-04 10:15:24] Site: 'https://contoso.sharepoint.com/sites/ProjectA'
-[2026-03-04 10:15:25]   3 libraries found.
-[2026-03-04 10:15:30] END: crawl_site() (7.2 secs).
+[2026-03-04 10:15:23] Crawling site 'https://contoso.sharepoint.com/sites/ProjectA'...
+[2026-03-04 10:15:24]   3 libraries found.
+[2026-03-04 10:15:30]   OK. Crawl complete in 7.2 secs.
 ```
 
 ### LOG-UF-02: Progress Indicators
@@ -67,8 +81,8 @@ Use `[YYYY-MM-DD HH:MM:SS]` format. Always include date AND time. No process ID,
 
 *Inline:*
 ```
-Connecting to 'https://contoso.sharepoint.com/sites/ProjectA' ( 1 / 3 )...
-Connecting to 'https://contoso.sharepoint.com/sites/ProjectA' ( 2 / 3 )...
+( 1 / 3 ) Connecting to 'https://contoso.sharepoint.com/sites/ProjectA'...
+( 2 / 3 ) Connecting to 'https://contoso.sharepoint.com/sites/ProjectA'...
   OK. Connected to 'https://contoso.sharepoint.com/sites/ProjectA'.
 ```
 
@@ -80,28 +94,28 @@ Uploading file 'report.pdf'...
   ( 3 / 3 ) Upload successful.
 ```
 
-**Running count:** For long operations, show progress during retrieval.
+**Running count:** For long operations, show progress during retrieval using parentheses `( x / n )`.
 
 ```
-100 items retrieved so far...
-200 items retrieved so far...
-300 items retrieved so far...
+( 100 / 342 ) items retrieved...
+( 200 / 342 ) items retrieved...
+( 300 / 342 ) items retrieved...
 342 files retrieved.
 ```
 
 *Or with ratio:*
 ```
-Retrieved ( 100 / 342 ) items so far...
-Retrieved ( 200 / 342 ) items so far...
+( 100 / 342 ) Retrieving items...
+( 200 / 342 ) Retrieving items...
 342 files retrieved.
 ```
 
 **Waiting:** Show delay reason and attempt count.
 
 ```
-Waiting 30 seconds ( 1 / 3 ) for rate limit...
-Waiting 30 seconds ( 2 / 3 ) for rate limit...
-Resuming...
+( 1 / 3 ) Waiting 30 seconds for rate limit...
+( 2 / 3 ) Waiting 30 seconds for rate limit...
+Resuming upload...
 ```
 
 ### LOG-UF-03: Messages and Results
@@ -143,9 +157,9 @@ Access denied to resource -> (403) Forbidden
 **Skipping:** Always explain why items are skipped.
 
 ```
-Skipping 12 files because they are not embeddable.
-Skipping 1 file because it exceeds size limit (>100MB).
-Skipping: already up to date.
+SKIP: 12 files not embeddable.
+SKIP: 1 file exceeds size limit (>100MB).
+SKIP: Already up to date.
 ```
 
 **File operations:** Show what is being written.
@@ -157,12 +171,12 @@ Writing 'Summary.csv'...
   OK.
 ```
 
-**Summary:** Always end with counts.
+**Summary:** Always end with counts. Use activity-level status keywords.
 
 ```
-3 libraries processed. 56 added, 3 changed, 1 error.
-Export complete: 3 files created, 1,247 records total.
-Scan finished: 156 users, 12 groups, 3 issues found.
+OK. 3 libraries processed. 56 added, 3 changed.
+PARTIAL FAIL: 2 libraries processed, 1 failed.
+FAIL: Could not complete export -> Connection lost.
 ```
 
 **Multi-line warning:** For destructive operations, show details.
@@ -174,34 +188,7 @@ IMPORTANT: This script will permanently DELETE all versions
 Press any key to continue...
 ```
 
-### LOG-UF-04: Color Conventions
-
-Color communicates status at a glance. Use consistently.
-
-- **Green** - Success, OK, safe operations
-- **Yellow** - Warning, empty results, non-critical issues
-- **Red** - Error (recoverable)
-- **White-on-Red** - Critical error, destructive warning
-- **White-on-Blue** - Important notice, info banner
-- **Cyan** - Info, file operations, summaries
-- **Gray** - Version info, debug output
-
-**Examples:**
-
-```
-  OK: File 'Scanfile-001.csv' written                    [GREEN]
-This script will NOT delete versions (testrun).          [GREEN]
-WARNING: Cannot resume because 'Summary.csv' not found.  [YELLOW]
-    List empty.                                          [YELLOW]
-ERROR: Include file not found!                           [RED]
-ERROR: Get-PnPGroupMember -Group 'Site Members'          [WHITE on RED]
-  Writing 'Summary.csv'...                               [CYAN]
-  SUMMARY: 1250 files with 3420 versions...              [CYAN]
-PowerShell: 7.4.1 | PnP.PowerShell: 2.4.0                [GRAY]
-$performDelete is $true but options are $false.          [WHITE on BLUE]
-```
-
-### LOG-UF-05: Feedback Timing
+### LOG-UF-04: Feedback Timing
 
 **Requirement:** Emit progress at least every ~10 seconds for long operations.
 
@@ -223,7 +210,7 @@ Users should never wonder if the system is stuck. For operations that might take
 [2026-03-04 10:17:45] Download complete. 120MB in 2 mins 22 secs.
 ```
 
-### LOG-UF-06: Context Display
+### LOG-UF-05: Context Display
 
 Show hierarchy to help users understand where they are in the operation.
 
@@ -242,21 +229,59 @@ Job [ 1 / 5 ] 'https://contoso.sharepoint.com/sites/ProjectA'
   Connecting to site...
   Loading subsites...
   3 subsites found.
-    Subsite [ 1 / 3 ] 'https://contoso.sharepoint.com/sites/ProjectA/TeamB'
+    ( 1 / 3 ) Subsite 'https://contoso.sharepoint.com/sites/ProjectA/TeamB'
       4 lists found.
 ```
+
+### LOG-UF-06: Activity Boundaries
+
+**Every activity must clearly indicate start and end.**
+
+**User-Facing and Scripts: 100-char headers/footers (REQUIRED)**
+
+All user-facing output and standalone scripts MUST use 100-character START/END headers and footers.
+
+**Header width:** 100 characters.
+
+```
+============================== START: SHAREPOINT PERMISSION SCANNER ==============================
+2026-03-04 14:30:00
+
+[... script output ...]
+
+================================ END: SHAREPOINT PERMISSION SCANNER ================================
+2026-03-04 14:35:23 (5 mins 23 secs)
+```
+
+**Simple operations within scripts:** Use indentation and status keywords, no additional markers needed.
+
+```
+============================== START: SHAREPOINT CRAWLER ==============================
+2026-03-04 14:30:00
+
+Crawling site 'https://contoso.sharepoint.com/sites/ProjectA'...
+  3 libraries found.
+  OK. 342 files processed in 7.0 secs.
+
+RESULT: OK
+================================ END: SHAREPOINT CRAWLER ================================
+2026-03-04 14:30:07 (7.0 secs)
+```
+
+**Rationale:** Users must always know when something begins and when it finishes. 100-char headers/footers make script boundaries visible in long log files.
+
+**Note:** App-Level logging uses simple `START:` / `END:` markers per LOG-AP-04.
 
 ## Complete Examples
 
 ### Example 1: SharePoint Scan
 
 ```
-[2026-03-04 14:30:00] START: crawl_site()...
-[2026-03-04 14:30:00] Site: 'https://contoso.sharepoint.com/sites/ProjectA'
+[2026-03-04 14:30:00] Crawling site 'https://contoso.sharepoint.com/sites/ProjectA'...
 [2026-03-04 14:30:01]   3 libraries found.
 [2026-03-04 14:30:01] [ 1 / 3 ] Processing 'Documents'...
-[2026-03-04 14:30:02]   100 items retrieved so far...
-[2026-03-04 14:30:03]   200 items retrieved so far...
+[2026-03-04 14:30:02]   ( 100 / 342 ) items retrieved...
+[2026-03-04 14:30:03]   ( 200 / 342 ) items retrieved...
 [2026-03-04 14:30:04]   342 files retrieved.
 [2026-03-04 14:30:04]   12 added, 3 changed, 0 removed.
 [2026-03-04 14:30:04]   OK.
@@ -264,10 +289,9 @@ Job [ 1 / 5 ] 'https://contoso.sharepoint.com/sites/ProjectA'
 [2026-03-04 14:30:06]   45 files retrieved.
 [2026-03-04 14:30:06]   OK.
 [2026-03-04 14:30:07] [ 3 / 3 ] Processing 'Archive'...
-[2026-03-04 14:30:07]   Library empty.
-[2026-03-04 14:30:07]   SKIP: No files to process.
-[2026-03-04 14:30:08] 2 libraries processed. 57 added, 3 changed, 0 removed.
-[2026-03-04 14:30:08] END: crawl_site() (8.0 secs).
+[2026-03-04 14:30:07]   SKIP: Library empty.
+[2026-03-04 14:30:08] OK. 2 libraries processed. 57 added, 3 changed.
+[2026-03-04 14:30:08] Crawl complete in 8.0 secs.
 ```
 
 ### Example 2: File Upload with Retry
@@ -283,7 +307,7 @@ Job [ 1 / 5 ] 'https://contoso.sharepoint.com/sites/ProjectA'
 [2026-03-04 10:00:10] [ 3 / 5 ] Uploading 'image.png'...
 [2026-03-04 10:00:11]   OK.
 [2026-03-04 10:00:12] [ 4 / 5 ] Uploading 'archive.zip'...
-[2026-03-04 10:00:13]   ERROR: File too large (>100MB). Skipping.
+[2026-03-04 10:00:13]   SKIP: File too large (>100MB).
 [2026-03-04 10:00:14] [ 5 / 5 ] Uploading 'notes.txt'...
 [2026-03-04 10:00:15]   OK.
 [2026-03-04 10:00:15] 4 files uploaded, 1 skipped.
@@ -300,13 +324,13 @@ Job [ 1 / 5 ] 'https://contoso.sharepoint.com/sites/ProjectA'
   8 groups found in site collection.
     4 lists found.
     5420 items found, 127 with broken permissions.
-      Processing broken items [ 50 / 127 ]...
-      Processing broken items [ 100 / 127 ]...
+      ( 50 / 127 ) Processing broken items...
+      ( 100 / 127 ) Processing broken items...
     152 lines written to: '01_SiteContents.csv'
   OK: File '02_SiteGroups.csv' written.
 Job [ 2 / 5 ] 'https://contoso.sharepoint.com/sites/ProjectB'
   Connecting to 'https://contoso.sharepoint.com/sites/ProjectB'...
-  ERROR: (401) Unauthorized
+  FAIL: (401) Unauthorized
 ```
 
 ### Example 4: Data Export Summary
@@ -326,7 +350,7 @@ Job [ 2 / 5 ] 'https://contoso.sharepoint.com/sites/ProjectB'
 ### Example 5: Destructive Operation Warning
 
 ```
-================================================== START: DELETE FILE VERSIONS ==================================================
+=================================== START: DELETE FILE VERSIONS ===================================
 PowerShell: 7.4.1 | PnP.PowerShell: 2.4.0
 
 IMPORTANT: This script will permanently DELETE all versions
@@ -338,7 +362,7 @@ Job [ 1 / 3 ] 'https://contoso.sharepoint.com/sites/Archive'
   Connecting to site...
   Loading document libraries...
   2 libraries found.
-  [ 1 / 2 ] Scanning 'Documents'...
+  ( 1 / 2 ) Scanning 'Documents'...
     1250 files retrieved.
     Scanning versions...
     SUMMARY: 1250 files with 3420 versions, 892 can be deleted.

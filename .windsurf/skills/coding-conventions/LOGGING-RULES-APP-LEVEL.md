@@ -2,6 +2,14 @@
 
 Rules for system/debug logging used by technical staff for debugging and auditing.
 
+## Rule Index
+
+- [LOG-AP-01](#log-ap-01-extended-timestamp-format): Extended timestamp format
+- [LOG-AP-02](#log-ap-02-log-levels): Log levels
+- [LOG-AP-03](#log-ap-03-execution-pattern): Execution pattern
+- [LOG-AP-04](#log-ap-04-execution-boundaries): Execution boundaries
+- [LOG-AP-05](#log-ap-05-error-context): Error context
+
 ## Philosophy
 
 **Goal: Logs must be human-readable AND machine-parseable.**
@@ -9,17 +17,17 @@ Rules for system/debug logging used by technical staff for debugging and auditin
 A developer unfamiliar with the codebase should understand what happened by reading the logs. Scripts should be able to parse logs with reasonable effort.
 
 **This goal drives all rules in this document:**
-- Extended timestamps with process ID and request correlation (LOG-AP-01)
-- Standard log levels (LOG-AP-02)
-- Consistent execution pattern (LOG-AP-03)
-- START/END markers showing execution flow (LOG-AP-04)
-- Error chains preserving full context (LOG-AP-05)
+- Extended timestamps with process ID and request correlation ([LOG-AP-01](#log-ap-01-extended-timestamp-format))
+- Standard log levels ([LOG-AP-02](#log-ap-02-log-levels))
+- Consistent execution pattern ([LOG-AP-03](#log-ap-03-execution-pattern))
+- START/END markers showing execution flow ([LOG-AP-04](#log-ap-04-execution-boundaries))
+- Error chains preserving full context ([LOG-AP-05](#log-ap-05-error-context))
 
 ## Related Documents
 
-- `LOGGING-RULES.md` - General rules (LOG-GN-01 to LOG-GN-08)
+- `LOGGING-RULES.md` - General rules (LOG-GN-01 to LOG-GN-11)
 - `LOGGING-RULES-USER-FACING.md` - User-facing rules (LOG-UF-01 to LOG-UF-06)
-- `LOGGING-RULES-TEST-LEVEL.md` - Test-level rules (LOG-TS-01 to LOG-TS-07)
+- `LOGGING-RULES-SCRIPT-LEVEL.md` - Script-level rules (LOG-SC-01 to LOG-SC-07)
 
 ## Rules
 
@@ -77,9 +85,11 @@ Log the action BEFORE executing, then log the result on a 2-space indented line.
 
 **Keywords:**
 - `OK.` - Action succeeded (period, no colon)
-- `ERROR:` - Error occurred (colon, then message)
+- `OK:` - Action succeeded with details (colon, then details)
+- `ERROR:` - Item-level error (colon, then message)
 - `WARNING:` - Non-fatal issue (colon, then message)
-- `FAIL:` - Action failed (colon, then message)
+- `FAIL:` - Activity-level failure (colon, then message)
+- `PARTIAL FAIL:` - Some items succeeded, some failed (colon, then summary)
 - `SKIP:` - Action skipped (colon, then reason)
 
 *BAD*:
@@ -114,7 +124,7 @@ Processing batch...
 
 Mark function and script entry/exit with START/END markers.
 
-**Functions:** `START: function()...` / `END: function() [duration]`
+**Format:** `START: function()...` / `END: function() [duration]`
 
 ```
 START: get_document_library_files()...
@@ -124,20 +134,7 @@ START: get_document_library_files()...
 END: get_document_library_files() (1.5 secs).
 ```
 
-**Scripts:** Full boundary with timestamp on separate lines.
-
-**Header width:** 127 characters (same as PYTHON-FT-05 function grouping markers).
-
-```
-2026-03-04 14:30:00
-================================================== START: SHAREPOINT PERMISSION SCANNER ==================================================
-PowerShell: 7.4.1 | PnP.PowerShell: 2.4.0
-
-[script content here]
-
-=================================================== END: SHAREPOINT PERMISSION SCANNER ===================================================
-2026-03-04 14:35:23 (5 mins 23 secs)
-```
+**Note:** App-Level uses simple `START:` / `END:` markers. For standalone scripts with user-facing output, use 100-char headers/footers per LOG-UF-06.
 
 **Nesting:** +2 spaces per nesting level.
 
@@ -224,41 +221,26 @@ Processing file 'report.pdf'...
 [2026-03-04 14:30:08,process 12345,request 1,crawl_site()] END: crawl_site() (8.0 secs).
 ```
 
-### Example 2: PowerShell Script Execution
+### Example 2: Script with App-Level Logging
 
 ```
-2026-03-04 14:30:00
-================================================== START: SHAREPOINT PERMISSION SCANNER ==================================================
-PowerShell: 7.4.1 | PnP.PowerShell: 2.4.0
-
-Reading 'SharePointPermissionScanner-In.csv'...
-5 jobs found.
-
-Job [ 1 / 5 ] 'https://contoso.sharepoint.com/sites/ProjectA'
-  Connecting to 'https://contoso.sharepoint.com/sites/ProjectA'...
-    OK.
-  Loading subsites...
-    3 subsites found.
-  Loading site groups...
-    8 groups found in site collection.
-  Loading site contents...
-    4 lists found.
-    Scanning library '/sites/ProjectA/Documents'...
-    Loading items with bulk REST query...
-    5420 items found, 127 with broken permissions.
-      Processing broken items [ 50 / 127 ]...
-      Processing broken items [ 100 / 127 ]...
-    152 lines written to: '01_SiteContents.csv'
-    OK.
-  OK: File '02_SiteGroups.csv' written.
-
-Job [ 2 / 5 ] 'https://contoso.sharepoint.com/sites/ProjectB'
-  Connecting to 'https://contoso.sharepoint.com/sites/ProjectB'...
-    ERROR: (401) Unauthorized -> Token expired for app registration
-
-=================================================== END: SHAREPOINT PERMISSION SCANNER ===================================================
-2026-03-04 14:35:23 (5 mins 23 secs)
+2026-03-04 14:30:00 [PID:5678] START: scan_permissions()...
+2026-03-04 14:30:00 [PID:5678] Reading 'SharePointPermissionScanner-In.csv'...
+2026-03-04 14:30:00 [PID:5678]   5 jobs found.
+2026-03-04 14:30:01 [PID:5678] [ 1 / 5 ] Processing 'https://contoso.sharepoint.com/sites/ProjectA'...
+2026-03-04 14:30:01 [PID:5678]   START: process_site()...
+2026-03-04 14:30:02 [PID:5678]     3 subsites found.
+2026-03-04 14:30:03 [PID:5678]     8 groups found in site collection.
+2026-03-04 14:30:04 [PID:5678]   END: process_site() (3.2 secs).
+2026-03-04 14:30:05 [PID:5678] [ 2 / 5 ] Processing 'https://contoso.sharepoint.com/sites/ProjectB'...
+2026-03-04 14:30:05 [PID:5678]   START: process_site()...
+2026-03-04 14:30:05 [PID:5678]     ERROR: (401) Unauthorized -> Token expired for app registration
+2026-03-04 14:30:05 [PID:5678]   END: process_site() (0.1 secs).
+2026-03-04 14:35:23 [PID:5678] PARTIAL FAIL: 4 sites processed, 1 failed.
+2026-03-04 14:35:23 [PID:5678] END: scan_permissions() (5 mins 23 secs).
 ```
+
+**Note:** For scripts with user-facing console output, use 100-char headers/footers per LOG-UF-06.
 
 ### Example 3: Nested Function Calls with Errors
 
@@ -278,13 +260,13 @@ START: sync_all_data()...
   START: process_source() source='DatabaseA'...
     Loading tables...
       5 tables found.
-    [ 1 / 5 ] Processing table='users'...
+    ( 1 / 5 ) Processing table='users'...
       523 rows synced.
       OK.
-    [ 2 / 5 ] Processing table='orders'...
+    ( 2 / 5 ) Processing table='orders'...
       ERROR: Failed to sync row ID='ord_789' -> Foreign key violation -> Customer 'cust_456' not found
       1247 rows synced, 1 error.
-    [ 3 / 5 ] Processing table='products'...
+    ( 3 / 5 ) Processing table='products'...
       892 rows synced.
       OK.
     ...

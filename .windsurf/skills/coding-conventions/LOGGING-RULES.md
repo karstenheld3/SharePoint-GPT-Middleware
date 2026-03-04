@@ -2,6 +2,20 @@
 
 Language-agnostic output rules for Python, PowerShell, and future languages.
 
+## Rule Index
+
+- [LOG-GN-01](#log-gn-01-indentation): Indentation
+- [LOG-GN-02](#log-gn-02-quote-paths-names-and-ids): Quote paths, names, IDs
+- [LOG-GN-03](#log-gn-03-numbers-and-counters-first): Numbers and counters first
+- [LOG-GN-04](#log-gn-04-duration-format): Duration format
+- [LOG-GN-05](#log-gn-05-singularplural): Singular/plural
+- [LOG-GN-06](#log-gn-06-property-format): Property format
+- [LOG-GN-07](#log-gn-07-unknown-constant): UNKNOWN constant
+- [LOG-GN-08](#log-gn-08-error-formatting): Error formatting
+- [LOG-GN-09](#log-gn-09-log-before-execution): Log before execution
+- [LOG-GN-10](#log-gn-10-ellipsis-usage): Ellipsis usage
+- [LOG-GN-11](#log-gn-11-sentence-endings): Sentence endings
+
 ## Table of Contents
 
 1. [Overview](#overview)
@@ -18,11 +32,17 @@ Four logging types serve distinct audiences with specific patterns.
 - **General (GN)** - Rules applying to all output types
 - **User-Facing (UF)** - End users monitoring progress via console or Server-Sent Events (SSE) stream
 - **App-Level (AP)** - Technical staff debugging and auditing via server logs
-- **Test-Level (TS)** - Quality Assurance (QA) verifying correctness via selftest output
+- **Script-Level (SC)** - Quality Assurance (QA) verifying correctness via selftest output
 
 ## Logging Philosophy
 
 Each logging type has a specific goal that drives its rules.
+
+### ASANAPAP Principle
+
+**As short as necessary, as precise as possible.**
+
+Every log line should convey maximum information with minimum words. Avoid verbosity, filler words, and redundant phrases. Be concise but never ambiguous.
 
 ### Principle of Least Surprise
 
@@ -36,25 +56,88 @@ A developer familiar with one codebase should immediately understand logs from a
 
 Every descriptive line should read like a complete sentence. Include the subject (what), the action (verb), and the target (where/which). A reader scanning logs should not need to look at previous lines to understand the current one.
 
+### Principle of Visible Structure
+
+**Logs reveal the workflow, not just progress.**
+
+Logs should be self-explanatory and explorative. By reading the logs, any reader can understand the inner workings and workflow mechanics without documentation.
+
+Break operations into numbered steps `[ x / n ]` so readers can:
+- Assess progress and estimate completion
+- Understand the logical structure of the operation
+- Learn how the system works by observation
+
+Logging makes the developer's structured thinking visible. A non-technical user reading `[ 1 / 4 ] Connecting...`, `[ 2 / 4 ] Loading data...`, `[ 3 / 4 ] Processing...`, `[ 4 / 4 ] Saving results...` understands the entire workflow.
+
+### Principle of Announce > Track > Report
+
+**Every activity follows the same three-phase logging pattern:**
+
+1. **Announce** - State what will happen in plain English with full disclosure before starting
+2. **Track** - Log progress with intermediate results as nested lines
+3. **Report** - State final status and results with full disclosure on separate lines
+
+**Item-level status** (for individual operations within an activity):
+Each separately logged item level action finishes with either 
+- `OK.` (standalone success) or `OK: <what, details>` (success with details)
+or
+- `SKIP: <why>`
+or
+- `ERROR: <what> -> <system error>` (use ERROR for items, not FAIL)
+and can log additional
+- `WARNING: <non-breaking problem>`
+
+**Activity-level status** (for the whole activity):
+Each separately logged activity finishes with either
+- `OK.` (standalone success) or `OK: <results>` (success with details)
+or
+- `SKIP: <why>`
+or
+- `FAIL: <fail summary>` (use FAIL for activities, not ERROR)
+or 
+- `PARTIAL FAIL: <fail summary>` (can continue, but some items failed)
+and can log additional
+- `WARNING: <non-breaking problem>` (can continue, but noticed something worth noting)
+
+**Final line rule:** The last line of any activity or script must contain a status keyword (`OK.`, `FAIL:`, `PARTIAL FAIL:`, `SKIP:`) so scripts can determine success without reading the entire log.
+
+**Not used for status:** `DONE`, `FINISHED`, `INFO`, `DEBUG`, etc.
+
+```
+Connecting to 'https://contoso.sharepoint.com/sites/ProjectA'...
+  OK. Connected in 1.2 secs.
+Processing 3 libraries...
+  [ 1 / 3 ] Processing library 'Documents'...
+    342 files retrieved.
+    OK.
+  [ 2 / 3 ] Processing library 'Reports'...
+    ERROR: Access denied -> (403) Forbidden
+  [ 3 / 3 ] Processing library 'Archive'...
+    SKIP: Library empty.
+  FAIL: 2 libraries processed, 1 failed.
+```
+
 ### Principle of Two-Level Errors (User-Facing)
 
-**Error messages have two parts: defensive summary + exact system message.**
+**Format:** `<what failed> -> <system error>`
 
-1. **Defensive summary** - Non-technical, no jumping to conclusions. Describes what happened without blaming user or assuming cause.
-2. **Exact error** - The actual system error message for technical follow-up, separated by ` -> `.
+- **What failed** - Neutral description of the operation that did not complete. No blame, no assumptions about cause. Example: `Could not save user`
+- **System error** - Exact message from the system, unchanged. Enables technical follow-up. Example: `A user with this email already exists`
 
 *BAD:*
 ```
-Could not save user - a user with this email already exists.
-Could not save user. Error: A user with this email already exists.
+Error: A user with this email already exists.
+Could not save user because email is duplicate.
 ```
 
 *GOOD:*
 ```
 Could not save user -> A user with this email already exists.
 Could not connect to site -> (401) Unauthorized
-An error occurred while processing the file -> Connection reset by peer
+File upload failed -> Connection reset by peer
 ```
+
+**Why "what failed" must be neutral:** The system error reveals the cause. "Could not save user" is factual. "Could not save user because email is duplicate" assumes the cause before showing the evidence.
 
 ### Arrow Convention
 
@@ -63,9 +146,11 @@ An error occurred while processing the file -> Connection reset by peer
 - Two-level errors: `summary -> exact error`
 - Transformations: `'old_value' -> 'new_value'`
 
+Context determines meaning. `Renaming 'X' -> 'Y'` is clearly a transform, `Failed -> Connection refused` is clearly an error.
+
 Never use `-`, `:`, or other separators for these patterns.
 
-### Test-Level Goal
+### Script-Level Goal
 
 **All failure information must be in the logs.**
 
@@ -73,7 +158,8 @@ A QA engineer should understand what failed and why without analyzing additional
 
 **This goal drives:**
 - No timestamps (deterministic output for diff comparison)
-- Explicit status markers (`[ok]`, `[fail]`, `[equal]`, `[different]`)
+- Comparison markers: `[equal]`, `[different]`
+- Results on separate lines: `OK.`, `OK: <what>`, `FAIL: <what>`, `SKIP: <why>`
 - Complete error context with test case IDs
 - Summary with pass/fail counts
 
@@ -81,7 +167,7 @@ A QA engineer should understand what failed and why without analyzing additional
 
 **Logs must be human-readable AND machine-parseable.**
 
-A developer unfamiliar with the codebase should understand what happened by reading the logs. Scripts should be able to parse logs with reasonable effort.
+A developer unfamiliar with the codebase should understand what happened by reading the logs. Scripts should be able to parse logs with reasonable effort. When multiple processed are logged together, the process id must be included in a log line prefix.
 
 **This goal drives:**
 - Extended timestamps with process ID and request correlation
@@ -100,62 +186,56 @@ Progress indication via iteration counters, running totals, and feedback every ~
 - Simple timestamps without technical noise
 - Iteration progress `[ x / n ]` at line start
 - Running counts during long operations
-- Color-coded status (green=OK, red=error)
+- 100-char START/END headers/footers for scripts
 - Plain language, no jargon
 
 ## Philosophy-to-Rules Mapping
 
 Shows how each philosophy goal maps to specific rules.
 
-### Test-Level: "All failure info in logs"
+### Script-Level: "All failure info in logs"
 
-| Goal Requirement | Rule |
-|------------------|------|
-| Deterministic output | LOG-TS-01: No timestamps |
-| Clear pass/fail | LOG-TS-04: Status markers `[ok]`, `[fail]` |
-| Traceable failures | LOG-TS-03: Test case IDs (`TC-01:`, `M1:`) |
-| Self-contained results | LOG-TS-07: Summary with counts |
+- **Deterministic output** - LOG-SC-01: No timestamps
+- **Clear pass/fail** - LOG-SC-04: Status markers
+- **Traceable failures** - LOG-SC-03: Test case IDs (`TC-01:`, `M1:`)
+- **Self-contained results** - LOG-SC-07: Summary with counts
 
 ### App-Level: "Human-readable AND machine-parseable"
 
-| Goal Requirement | Rule |
-|------------------|------|
-| Trace requests | LOG-AP-01: Extended timestamp with PID, request N |
-| Understand flow | LOG-AP-04: START/END execution boundaries |
-| Parse programmatically | LOG-GN-02: `key='value'` property format |
-| Debug failures | LOG-AP-05: Error chains with full context |
+- **Trace requests** - LOG-AP-01: Extended timestamp with PID, request N
+- **Understand flow** - LOG-AP-04: START/END execution boundaries
+- **Parse programmatically** - LOG-GN-02: `key='value'` property format
+- **Debug failures** - LOG-AP-05: Error chains with full context
 
 ### User-Facing: "Users always know what is happening"
 
-| Goal Requirement | Rule |
-|------------------|------|
-| Show progress | LOG-UF-02: Iteration `[ x / n ]`, running counts |
-| Feedback timing | LOG-UF-05: Emit every ~10 seconds |
-| Clear status | LOG-UF-04: Color conventions (green/red/yellow) |
-| Plain language | LOG-UF-03: No jargon, actionable errors |
+- **Show progress** - LOG-UF-02: Iteration `[ x / n ]`, running counts
+- **Feedback timing** - LOG-UF-04: Emit every ~10 seconds
+- **Plain language** - LOG-UF-03: No jargon, actionable errors
+- **Activity boundaries** - LOG-UF-06: 100-char headers/footers
 
 ## Related Documents
 
 - `LOGGING-RULES-USER-FACING.md` - LOG-UF-01 to LOG-UF-06 (6 rules)
 - `LOGGING-RULES-APP-LEVEL.md` - LOG-AP-01 to LOG-AP-05 (5 rules)
-- `LOGGING-RULES-TEST-LEVEL.md` - LOG-TS-01 to LOG-TS-07 (7 rules)
+- `LOGGING-RULES-SCRIPT-LEVEL.md` - LOG-SC-01 to LOG-SC-07 (7 rules)
 
 ## General Rules (LOG-GN)
 
-11 rules that apply to ALL logging types. These ensure consistency across user-facing, app-level, and test-level output.
+11 rules that apply to ALL logging types. These ensure consistency across user-facing, app-level, and script-level output.
 
 **Rule Index:**
-- LOG-GN-01: Indentation (2-space per level)
-- LOG-GN-02: Quote paths, names, IDs with single quotes
-- LOG-GN-03: Numbers first in result messages
-- LOG-GN-04: Duration format (ms, secs, mins, hours)
-- LOG-GN-05: Singular/plural correctness
-- LOG-GN-06: Property format `key='value'`
-- LOG-GN-07: UNKNOWN constant for missing values
-- LOG-GN-08: Error formatting (chains, rename, parentheses)
-- LOG-GN-09: Log before execution
-- LOG-GN-10: Ellipsis usage
-- LOG-GN-11: Line endings
+- [LOG-GN-01](#log-gn-01-indentation): Indentation (2-space per level)
+- [LOG-GN-02](#log-gn-02-quote-paths-names-and-ids): Quote paths, names, IDs with single quotes
+- [LOG-GN-03](#log-gn-03-numbers-and-counters-first): Numbers and counters first in result messages
+- [LOG-GN-04](#log-gn-04-duration-format): Duration format (ms, secs, mins, hours)
+- [LOG-GN-05](#log-gn-05-singularplural): Singular/plural correctness
+- [LOG-GN-06](#log-gn-06-property-format): Property format `key='value'`
+- [LOG-GN-07](#log-gn-07-unknown-constant): UNKNOWN constant for missing values
+- [LOG-GN-08](#log-gn-08-error-formatting): Error formatting (chains, rename, parentheses)
+- [LOG-GN-09](#log-gn-09-log-before-execution): Log before execution
+- [LOG-GN-10](#log-gn-10-ellipsis-usage): Ellipsis usage
+- [LOG-GN-11](#log-gn-11-sentence-endings): Sentence endings
 
 ### LOG-GN-01: Indentation
 
@@ -169,8 +249,10 @@ INDENT = "  "
 ```
 Processing batch...
   Loading configuration...
+    OK.
   Validating inputs...
-    3 inputs valid
+    3 inputs valid.
+    OK.
   Starting work...
 ```
 
@@ -187,14 +269,16 @@ Deleting folder C:\temp\data
 
 *GOOD*:
 ```
-Processing file 'report.csv'
-User 'admin@company.com' not found
-Deleting folder 'C:\temp\data'
+Processing file 'report.csv'...
+User 'admin@company.com' not found.
+Deleting folder 'C:\temp\data'...
 ```
 
-### LOG-GN-03: Numbers First
+### LOG-GN-03: Numbers and Counters First
 
-Start result messages with the count, not the action verb.
+**Place numbers and iteration counters at line start.**
+
+**Application 1: Result messages** - Start with the count, not the action verb.
 
 *BAD*:
 ```
@@ -205,18 +289,37 @@ Found 3 errors in the file
 
 *GOOD*:
 ```
-5 records retrieved
-12 items processed successfully
-3 errors found in file
+5 records retrieved.
+12 items processed.
+3 errors found.
 ```
 
-**Exception**: Activity verbs describing ongoing actions go first.
+**Application 2: Iteration counters** - Place counters at line start.
+
+- **Top-level iterations:** `[ x / n ]` at line start
+- **Nested subitems:** `( x / n )` at line start (indented)
+
+*BAD*:
+```
+Processing item [ 1 / 5 ]...
+Processing broken items ( 50 / 127 )...
+```
+
+*GOOD*:
+```
+[ 1 / 5 ] Processing item...
+( 50 / 127 ) Processing broken items...
+```
+
+**Exception:** Activity announcements describe the action first.
 
 ```
 Processing 5 items...
 Scanning folder '/documents'...
-Uploading 12 files to server...
+Uploading 12 files to 'https://contoso.sharepoint.com'...
 ```
+
+**Rationale:** Numbers at line start enable quick visual scanning of counts and progress.
 
 ### LOG-GN-04: Duration Format
 
@@ -255,14 +358,16 @@ Handle singular and plural correctly. Never use `(s)` shortcuts.
 
 *GOOD*:
 ```
-3 files found
-1 item processed
-0 errors detected
+3 files found.
+1 item processed.
+0 errors detected.
 ```
 
 ### LOG-GN-06: Property Format
 
-Use `property_name='value'` format for key-value pairs. This makes logs parseable and values unambiguous.
+Use `key='value'` format for key-value pairs. This makes logs parseable and values unambiguous.
+
+**Inline properties:** Use `key='value'` within statements.
 
 *BAD*:
 ```
@@ -273,10 +378,23 @@ Source: SharedDocuments
 
 *GOOD*:
 ```
-Loading domain='AiSearch' from 'E:\domains\config.json'
-Site: url='https://example.com/sites/Test'
-Source: id='SharedDocuments'
+Loading domain='AiSearch' from 'E:\domains\config.json'...
+  Site: url='https://example.com/sites/Test'
+  Library: title='Shared Documents' (id='045229b3-57de')
+  OK.
 ```
+
+**Additional properties in parentheses:** Add IDs, sizes, and metadata after the primary identifier.
+
+```
+Processing library 'Documents' (id='045229b3-57de')...
+Downloading file 'report.pdf' (size=2.4MB, modified=2026-01-15)...
+Site: url='https://contoso.sharepoint.com' (template='TeamSite')
+Uploading file='data.xlsx' (size=1.2MB)...
+ERROR: Failed to process 'Documents' (site='ProjectA', id='045229b3') -> Access denied
+```
+
+**Rationale:** Parenthesized properties provide context without cluttering the main message. IDs enable tracing specific items in logs.
 
 ### LOG-GN-07: UNKNOWN Constant
 
@@ -296,10 +414,10 @@ Title: Unknown
 
 *GOOD*:
 ```
-User: '[UNKNOWN]'
-Library: '[UNKNOWN]'
-File ID: '[UNKNOWN]'
-Title: '[UNKNOWN]'
+  User: '[UNKNOWN]'
+  Library: '[UNKNOWN]'
+  File ID: '[UNKNOWN]'
+  Title: '[UNKNOWN]'
 ```
 
 ### LOG-GN-08: Error Formatting
@@ -329,8 +447,8 @@ Moving 'old_folder' -> 'archive/old_folder'...
 
 **Additional info in parentheses:**
 ```
-Library 'Documents' (ID=045229b3-57de)
-Downloading file 'report.pdf' (size=2.4MB, modified=2026-01-15)
+Processing library 'Documents' (id='045229b3-57de')...
+Downloading file 'report.pdf' (size=2.4MB, modified=2026-01-15)...
 ```
 
 ### LOG-GN-09: Log Before Execution
@@ -368,49 +486,53 @@ Processing files...
 Processing complete.
 ```
 
-### LOG-GN-11: Line Endings
+### LOG-GN-11: Sentence Endings
 
-Result lines end with period. Ongoing actions end with ellipsis.
+**Write proper English sentences.** Every log line ends with punctuation:
+- **Activity announcements** (something is starting/in progress) end with `...`
+- **Results/statements** (something completed/found/failed) end with `.`
 
-*BAD*:
+*BAD:*
 ```
 Connecting to server
 5 files retrieved...
 Processing
+User not found
 ```
 
-*GOOD*:
+*GOOD:*
 ```
 Connecting to server...
 5 files retrieved.
 Processing complete.
+User 'admin@company.com' not found.
 ```
 
 ## Complete Example
 
-Showing multiple general rules applied together:
+Showing Announce > Track > Report with proper status patterns:
 
 ```
-Connecting to 'https://sharepoint.com/sites/ProjectA'...
-  OK.
+Connecting to 'https://contoso.sharepoint.com/sites/ProjectA'...
+  OK. Connected in 1.2 secs.
 Loading libraries...
   3 libraries found.
-[ 1 / 3 ] Processing library 'Documents'...
-  Scanning files...
-  100 items retrieved so far...
-  200 items retrieved so far...
-  342 files retrieved.
-  12 added, 3 changed, 0 removed.
   OK.
-[ 2 / 3 ] Processing library 'Reports'...
-  Scanning files...
-  45 files retrieved.
-  ERROR: Failed to process file 'budget.xlsx' -> Access denied -> User lacks read permission
-  44 added, 0 changed, 1 error.
-[ 3 / 3 ] Processing library 'Archive'...
-  Library empty.
-  SKIP: No files to process.
+Processing 3 libraries...
+  [ 1 / 3 ] Processing library 'Documents'...
+    Scanning files...
+    ( 100 / 342 ) items retrieved...
+    ( 200 / 342 ) items retrieved...
+    342 files retrieved.
+    12 added, 3 changed, 0 removed.
+    OK.
+  [ 2 / 3 ] Processing library 'Reports'...
+    Scanning files...
+    45 files retrieved.
+    ERROR: Failed to process file 'budget.xlsx' -> Access denied -> User lacks read permission
+  [ 3 / 3 ] Processing library 'Archive'...
+    SKIP: Library empty.
+  PARTIAL FAIL: 2 libraries processed, 1 failed.
 Renaming 'site_backup' -> 'site_backup_2026-03-04'...
   OK.
-3 libraries processed. 56 added, 3 changed, 1 error.
 ```
