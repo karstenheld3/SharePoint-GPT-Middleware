@@ -30,10 +30,10 @@ Do NOT use `GLOB` for **document IDs** (IN, SP, IP, TP, TK):
 - Features get their own TOPIC: `AUTH-SP01`, `CRWL-IP01`
 - If a document has a name, it has a TOPIC
 
-**Example: SINGLE-PROJECT**
+**Example: SINGLE-PROJECT-MODE**
 ```
 ## Topic Registry
-- `GLOB` - Project-wide (main spec, architecture)
+- `GLOB` - Project-mode (main spec, architecture)
 - `V1CR` - Version 1 Crawler
 - `V2CR` - Version 2 Crawler
 - `CUIF` - Common UI Functions

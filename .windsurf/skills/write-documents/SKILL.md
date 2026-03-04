@@ -50,7 +50,7 @@ You MUST read the appropriate template before creating documents:
 - `FIXES_TEMPLATE.md` - Fix tracking documents
 - `FAILS_TEMPLATE.md` - Failure log (lessons learned)
 - `REVIEW_TEMPLATE.md` - Review documents (_REVIEW.md)
-- `WORKFLOW_TEMPLATE.md` - AGEN verb workflow structure
+- `WORKFLOW_TEMPLATE.md` - Workflow structure template
 - `STRUT_TEMPLATE.md` - STRUT plans (embeddable in any document)
 
 ## Usage
@@ -95,9 +95,9 @@ See `[AGENT_FOLDER]/rules/devsystem-ids.md` rule (always-on) for complete ID sys
 - Plan-Level: `[TOPIC]-[DOC][NN]-[TYPE]-[NN]` (EC = Edge Case, IS = Implementation Step, VC = Verification Checklist, TC = Test Case)
   - Example: `CRWL-IP01-EC-01`, `AUTH-TP01-TC-05`
 
-## Writing AGEN Verb Workflows
+## Writing Workflows
 
-AGEN verbs map directly to Windsurf workflows. See `WORKFLOW_TEMPLATE.md` for:
+See `WORKFLOW_TEMPLATE.md` for:
 - Workflow structure template
 - General vs Specific parts pattern
 - Context discovery pattern

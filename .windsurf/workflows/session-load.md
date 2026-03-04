@@ -38,7 +38,7 @@ Make sure all state progress is documented in `NOTES.md` and `PROGRESS.md` and `
 ## Step 4: Summarize and Propose
 Start with single row: "Read [a] .md files ([b] priority), [c] code files ( [d] .py, [e] ...). Mode: [scenario]"
 
-Example: "Read 5 .md files (2 priority), 12 code files (10 .py, 2 .html). Mode: SINGLE-PROJECT + SINGLE-VERSION + SESSION-BASED"
+Example: "Read 5 .md files (2 priority), 12 code files (10 .py, 2 .html). Mode: SINGLE-PROJECT + SINGLE-VERSION + SESSION-MODE"
 
 Then:
 - Summarize findings and propose next steps.

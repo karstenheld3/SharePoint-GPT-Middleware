@@ -107,8 +107,8 @@ Three dimensions define how the agent should behave:
 
 ### Dimension 3: Work Mode
 
-- **SESSION-BASED** - Time-limited session with specific goals
-- **PROJECT-WIDE** - Work spans entire project without session boundaries
+- **SESSION-MODE** - Time-limited session with specific goals
+- **PROJECT-MODE** - Work spans entire project without session boundaries
 
 ## Folder Structure
 

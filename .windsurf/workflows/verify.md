@@ -17,14 +17,14 @@ Invoke these skills based on context:
 
 ## Mandatory Re-read
 
-**SESSION-BASED mode** - Re-read session folder documents:
+**SESSION-MODE mode** - Re-read session folder documents:
 - NOTES.md
 - PROBLEMS.md
 - PROGRESS.md
 - FAILS.md
 - LEARNINGS.md (if exists)
 
-**PROJECT-WIDE mode** - Re-read workspace-level documents:
+**PROJECT-MODE mode** - Re-read workspace-level documents:
 - README.md
 - !NOTES.md or NOTES.md
 - !PROBLEMS.md or PROBLEMS.md (if exists)
@@ -34,7 +34,7 @@ Invoke these skills based on context:
 
 ## Workflow
 
-1. First find out what the context is (INFO, SPEC, IMPL, Code, TEST, Session)
+1. First find out what the context is (INFO, SPEC, IMPL, Code, TEST, Session, Workflow, Skill)
 2. Read GLOBAL-RULES and Verification Labels
 3. Read the relevant Context-Specific section
 4. Create a verification task list
@@ -156,10 +156,32 @@ Apply these labels to findings, requirements, and decisions in all document type
 
 ## Workflows
 
+- Read @coding-conventions `WORKFLOW-RULES.md` and verify against rules
 - Verify structure follows GLOBAL-RULES + CONTEXT-SPECIFIC pattern (recommended)
 - Verify workflow references use inline code format: `/verify`, `/research`
-- Verify AGEN verb format: `[VERB](params)`
-- Read @coding-conventions `WORKFLOW-RULES.md` and verify against rules
+- Verify frontmatter has `description` field
+- Verify steps are numbered and actionable
+- Verify skill references use `@skill-name` format
+- Verify no hardcoded paths (use placeholders like `[WORKSPACE_FOLDER]`)
+
+## Skills
+
+- Read @coding-conventions `AGENT-SKILL-RULES.md` and verify against all sections
+- Verify SKILL.md exists with required content (Section 2.1 of AGENT-SKILL-RULES.md)
+- If SETUP.md exists: verify UNINSTALL.md also exists
+- If SETUP.md exists: verify pre-installation verification section present
+- Verify token optimization (Section 8 of AGENT-SKILL-RULES.md):
+  - No `**bold**` markup in LLM-consumed resource files
+  - No verbose prefixes (`- **URL:** `, `- **Best for:** `) where compact format works
+  - No redundant prose restating headings
+  - Keywords/trigger line present for lookup skills
+  - All URLs and technical detail preserved
+  - Ask: "If I remove this token, does the LLM lose information?" If no, flag it.
+- Verify skill files match their type:
+  - Resource/lookup skills: compact format (one line per resource)
+  - Instructional skills: richer format justified for multi-step reasoning
+  - SETUP/UNINSTALL: verbose format with verification steps
+- Run Section 9 Review Checklist from AGENT-SKILL-RULES.md
 
 ## Session Tracking (NOTES, PROBLEMS, PROGRESS)
 
