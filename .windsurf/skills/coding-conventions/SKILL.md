@@ -21,6 +21,7 @@ This skill implements:
 - `JSON-RULES.md` - JSON coding conventions (field naming, 2-space indent, 2D table formatting)
 - `WORKFLOW-RULES.md` - Workflow document conventions (structure, formatting)
 - `AGENT-SKILL-RULES.md` - Agent skill folder structure and SKILL.md conventions
+- `LOGGING-RULES.md` - Logging conventions for user-facing, system, and test output
 
 ## Tools
 
