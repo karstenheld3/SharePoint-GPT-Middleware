@@ -402,6 +402,19 @@ function connectStream(url, options = {{}}) {{
   let lastEndJson = null;
   
   fetch(url, fetchOptions).then(response => {{
+    if (!response.ok) {{
+      response.json().then(data => {{
+        const errorMsg = data?.error || response.statusText || 'Request failed';
+        appendToConsole('ERROR: ' + errorMsg);
+        showToast('Request Failed', errorMsg, 'error');
+      }}).catch(() => {{
+        appendToConsole('ERROR: ' + response.status + ' ' + response.statusText);
+        showToast('Request Failed', response.status + ' ' + response.statusText, 'error');
+      }}).finally(() => {{
+        updateConsoleStatus('disconnected');
+      }});
+      return;
+    }}
     updateConsoleStatus('connected', url);
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
