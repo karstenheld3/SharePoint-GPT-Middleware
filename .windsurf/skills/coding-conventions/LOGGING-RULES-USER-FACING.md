@@ -119,9 +119,9 @@ NullReferenceException at line 245
 *GOOD:*
 ```
 Scan complete: 156 users found.
-Could not save user. Error: A user with this email already exists.
-Request queued. Error: Server busy, retrying in 30 seconds.
-An error occurred while processing request. Error: Internal server error (500).
+Could not save user -> A user with this email already exists.
+Request queued -> Server busy, retrying in 30 seconds.
+An error occurred while processing request -> Internal server error (500).
 ```
 
 **Actionable errors:** Two-level format - defensive summary + exact error.
@@ -135,9 +135,9 @@ Error: 403
 
 *GOOD:*
 ```
-Could not connect to server. Error: Connection refused
-File not found. Error: ENOENT - No such file or directory
-Access denied to resource. Error: (403) Forbidden
+Could not connect to server -> Connection refused
+File not found -> ENOENT - No such file or directory
+Access denied to resource -> (403) Forbidden
 ```
 
 **Skipping:** Always explain why items are skipped.

@@ -41,19 +41,29 @@ Every descriptive line should read like a complete sentence. Include the subject
 **Error messages have two parts: defensive summary + exact system message.**
 
 1. **Defensive summary** - Non-technical, no jumping to conclusions. Describes what happened without blaming user or assuming cause.
-2. **Exact error** - The actual system error message for technical follow-up.
+2. **Exact error** - The actual system error message for technical follow-up, separated by ` -> `.
 
 *BAD:*
 ```
 Could not save user - a user with this email already exists.
+Could not save user. Error: A user with this email already exists.
 ```
 
 *GOOD:*
 ```
-Could not save user. Error: A user with this email already exists.
-Could not connect to site. Error: (401) Unauthorized
-An error occurred while processing the file. Error: Connection reset by peer
+Could not save user -> A user with this email already exists.
+Could not connect to site -> (401) Unauthorized
+An error occurred while processing the file -> Connection reset by peer
 ```
+
+### Arrow Convention
+
+**Use ` -> ` as the universal separator for:**
+- Error chains: `context -> nested error -> root cause`
+- Two-level errors: `summary -> exact error`
+- Transformations: `'old_value' -> 'new_value'`
+
+Never use `-`, `:`, or other separators for these patterns.
 
 ### Test-Level Goal
 
