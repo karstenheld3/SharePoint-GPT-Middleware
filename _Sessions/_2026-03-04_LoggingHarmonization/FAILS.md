@@ -4,6 +4,47 @@
 
 ## Active Failures
 
+### LOG-FL-003: Asking user to do things agent can do itself
+
+**Severity:** [HIGH]
+**When:** 2026-03-04 21:03
+**Where:** Agent behavior during testing
+
+**What happened:**
+Agent asked user to start the server instead of doing it. DevSystem rules state agent should be self-sufficient and execute tasks autonomously.
+
+**Wrong assumptions:**
+1. "User needs to start the server" - Agent has run_command tool
+2. "I should inform user and wait" - Agent should act, not delegate
+
+**Root cause:**
+Learned helplessness pattern. Agent defaulted to asking instead of doing.
+
+**Fix:**
+- Execute commands directly using run_command tool
+- Only ask user for things agent genuinely cannot do (credentials, approvals)
+- Re-read DevSystem rules about agent autonomy
+
+### LOG-FL-002: Assumed server restart needed instead of using hot reload
+
+**Severity:** [MEDIUM]
+**When:** 2026-03-04 21:00
+**Where:** Agent behavior during testing
+
+**What happened:**
+Agent repeatedly stopped and restarted uvicorn server after code changes, assuming restart was necessary. Wasted time and caused confusion when the glob pattern fix should have been picked up automatically.
+
+**Wrong assumptions:**
+1. "Server must be restarted after code changes" - FastAPI/uvicorn supports hot reload
+2. Started server without `--reload` flag, then blamed caching instead of recognizing the missing flag
+
+**Root cause:**
+Agent did not check if user's dev workflow uses `--reload` flag. Should have asked or used `--reload` by default for development.
+
+**Fix:**
+- Use `uvicorn app:app --reload` for development servers
+- Don't restart servers unnecessarily - check if hot reload is enabled first
+
 ### LOG-FL-001: Overwrote user edits during batch update
 
 **Severity:** [HIGH]
