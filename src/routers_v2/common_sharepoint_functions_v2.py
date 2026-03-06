@@ -1,12 +1,12 @@
 # Common functions for SharePoint operations using Office365-REST-Python-Client
 # https://pypi.org/project/Office365-REST-Python-Client/#Working-with-SharePoint-API
 # V2 version using MiddlewareLogger
-import csv, os
+import csv, os, re
 from cryptography import x509
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Optional, Any
 from urllib.parse import urlparse, quote, unquote
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from office365.sharepoint.client_context import ClientContext
 from office365.sharepoint.lists.list import List as DocumentLibrary
 from cryptography.hazmat.primitives.serialization import pkcs12, Encoding, PrivateFormat, NoEncryption
@@ -261,7 +261,7 @@ def get_document_library_files(ctx: ClientContext, document_library: DocumentLib
     
   except Exception as e:
     lib_title = (document_library.properties.get('Title') or UNKNOWN) if document_library else UNKNOWN
-    logger.log_function_output(f"  ERROR: Library '{lib_title}' - failed to retrieve files -> {str(e)}")
+    logger.log_function_output(f"  ERROR: Failed to retrieve files from library '{lib_title}' -> {str(e)}")
     logger.log_function_footer()
     return []
 
@@ -324,7 +324,7 @@ def get_list_items(ctx: ClientContext, list_name: str, filter_query: str, logger
     logger.log_function_footer()
     return result
   except Exception as e:
-    logger.log_function_output(f"  ERROR: List '{list_name}' - failed to get items -> {str(e)}")
+    logger.log_function_output(f"  ERROR: Failed to get items from list '{list_name}' -> {str(e)}")
     logger.log_function_footer()
     return []
 
@@ -399,7 +399,7 @@ def get_list_items_as_sharepoint_files(ctx: ClientContext, list_name: str, filte
     logger.log_function_footer()
     return result
   except Exception as e:
-    logger.log_function_output(f"  ERROR: List '{list_name}' - {str(e)}")
+    logger.log_function_output(f"  ERROR: Failed to process list '{list_name}' -> {str(e)}")
     logger.log_function_footer()
     return []
 
@@ -808,3 +808,289 @@ def file_exists_in_library(ctx: ClientContext, server_relative_url: str, logger:
     return False
 
 # ----------------------------------------- END: SharePoint Write Operations (Selftest) -------------------------------
+
+
+# ----------------------------------------- START: List Export Operations ------------------------------------------
+
+# System fields to skip during export (per V2CR-FR-09)
+LIST_EXPORT_IGNORE_FIELDS = {
+  'Author', 'Editor', 'AppAuthor', 'AppEditor', 'Attachments', 'CheckoutUser',
+  'ComplianceAssetId', 'ContentType', 'ContentTypeId', 'DocIcon', 'Edit',
+  'FileSizeDisplay', 'FolderChildCount', 'ItemChildCount', 'LinkTitle',
+  'LinkFilename', 'LinkFilenameNoMenu', 'MediaServiceAutoTags', 'MediaServiceLocation',
+  'MediaServiceOCR', 'ParentVersionString', 'SharedWithDetails', 'SharedWithUsers',
+  'GUID', 'FileRef', 'FileDirRef', 'FileLeafRef', 'FSObjType', 'PermMask',
+  'UniqueId', 'SyncClientId', 'ProgId', 'ScopeId', 'MetaInfo', 'ItemType',
+  'owshiddenversion', 'WorkflowVersion', 'WorkflowInstanceID', 'Order',
+  'InstanceID', 'ServerRedirectedEmbedUrl', 'ServerRedirectedEmbedUri'
+}
+
+@dataclass
+class ListFieldInfo:
+  """SharePoint list field metadata."""
+  internal_name: str
+  display_name: str
+  field_type_kind: int
+  is_hidden: bool = False
+
+@dataclass
+class ListExportResult:
+  """Result of list export operation."""
+  csv_content: str
+  md_content: str
+  item_count: int
+  field_count: int
+
+def convert_field_to_text(value: Any, field_type_kind: int = None) -> str | int | float | bool | None:
+  """
+  Convert SharePoint field value to human-readable text or native type.
+  Handles: User, Lookup, URL, Taxonomy, DateTime, Choice, MultiChoice, primitives.
+  """
+  if value is None:
+    return None
+  
+  # FieldUserValue - check for Email attribute (single user)
+  if hasattr(value, 'LookupValue') and hasattr(value, 'LookupId'):
+    # Check if it's a user (has Email) or just a lookup
+    email = getattr(value, 'Email', None) or ''
+    display = getattr(value, 'LookupValue', '') or ''
+    if email:
+      return f"{display} <{email}>"
+    # Check for Label (TaxonomyFieldValue)
+    label = getattr(value, 'Label', None)
+    if label:
+      return label
+    return display
+  
+  # List of FieldUserValue or FieldLookupValue
+  if isinstance(value, (list, tuple)) and len(value) > 0:
+    first = value[0]
+    # User array
+    if hasattr(first, 'Email'):
+      parts = []
+      for v in value:
+        email = getattr(v, 'Email', None) or ''
+        display = getattr(v, 'LookupValue', '') or ''
+        parts.append(f"{display} <{email}>" if email else display)
+      return '; '.join(parts)
+    # Taxonomy array
+    if hasattr(first, 'Label'):
+      return '|'.join(getattr(v, 'Label', '') for v in value if getattr(v, 'Label', None))
+    # Lookup array
+    if hasattr(first, 'LookupValue'):
+      return '|'.join(getattr(v, 'LookupValue', '') for v in value if getattr(v, 'LookupValue', None))
+    # String array (MultiChoice)
+    if all(isinstance(v, str) for v in value):
+      return '|'.join(value)
+  
+  # FieldUrlValue - can be object or dict from API
+  if hasattr(value, 'Url') and hasattr(value, 'Description'):
+    return getattr(value, 'Url', '') or ''
+  if isinstance(value, dict) and 'Url' in value:
+    return value.get('Url', '') or ''
+  
+  # TaxonomyFieldValue (single)
+  if hasattr(value, 'Label') and hasattr(value, 'TermGuid'):
+    return getattr(value, 'Label', '') or ''
+  
+  # DateTime - convert to local timezone with standard format
+  if isinstance(value, datetime):
+    try:
+      if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+      local_dt = value.astimezone()
+      return local_dt.strftime('%Y-%m-%d %H:%M:%S')
+    except:
+      return str(value)
+  
+  # Handle ISO date strings from SharePoint API
+  if isinstance(value, str) and len(value) >= 19 and 'T' in value:
+    try:
+      dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+      local_dt = dt.astimezone()
+      return local_dt.strftime('%Y-%m-%d %H:%M:%S')
+    except:
+      pass
+  
+  # Primitives - return as-is
+  if isinstance(value, bool):
+    return value
+  if isinstance(value, (int, float)):
+    return value
+  if isinstance(value, str):
+    return value
+  
+  # Fallback - convert to string
+  return str(value) if value else None
+
+def csv_escape(value: Any) -> str:
+  """Escape value for RFC 4180 CSV output. Numbers/bools unquoted, strings quoted if needed."""
+  if value is None:
+    return ''
+  if isinstance(value, bool):
+    return str(value)
+  if isinstance(value, (int, float)):
+    return str(value)
+  
+  s = str(value)
+  # Quote if: contains comma, quote, newline, or starts with special chars (=, +, -, @, tab, CR)
+  needs_quote = bool(re.search(r'[,"\n\r]', s)) or (s and s[0] in '=+-@\t\r')
+  if needs_quote:
+    return '"' + s.replace('"', '""') + '"'
+  return s
+
+def get_list_fields(ctx: ClientContext, list_name: str, logger: MiddlewareLogger) -> list[ListFieldInfo]:
+  """Get field definitions for a SharePoint list (display names, types)."""
+  logger.log_function_header("get_list_fields()")
+  try:
+    sp_list = ctx.web.lists.get_by_title(list_name)
+    fields = sp_list.fields.filter("Hidden eq false").get().execute_query()
+    
+    result = []
+    for f in fields:
+      internal_name = f.properties.get('InternalName', '')
+      # Skip system fields
+      if internal_name.startswith('_') or internal_name in LIST_EXPORT_IGNORE_FIELDS:
+        continue
+      result.append(ListFieldInfo(
+        internal_name=internal_name,
+        display_name=f.properties.get('Title', internal_name),
+        field_type_kind=f.properties.get('FieldTypeKind', 0),
+        is_hidden=f.properties.get('Hidden', False)
+      ))
+    
+    logger.log_function_output(f"{len(result)} visible field{'' if len(result) == 1 else 's'} retrieved.")
+    logger.log_function_footer()
+    return result
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to get fields for '{list_name}' -> {str(e)}")
+    logger.log_function_footer()
+    return []
+
+def get_list_items_with_fields(ctx: ClientContext, list_name: str, filter_query: str, logger: MiddlewareLogger) -> tuple[list[dict], list[ListFieldInfo]]:
+  """Get all items from a SharePoint list with field definitions. Returns (items, fields)."""
+  logger.log_function_header("get_list_items_with_fields()")
+  try:
+    # Get field definitions first
+    fields = get_list_fields(ctx, list_name, logger)
+    field_names = [f.internal_name for f in fields]
+    
+    # Get items with select to include all visible fields
+    sp_list = ctx.web.lists.get_by_title(list_name)
+    items_query = sp_list.items
+    if field_names:
+      items_query = items_query.select(field_names)
+    if filter_query and filter_query.strip():
+      items_query = items_query.filter(filter_query)
+    
+    def print_progress(items):
+      logger.log_function_output(f"{len(items)} list item{'' if len(items) == 1 else 's'} retrieved so far...")
+    
+    all_items = items_query.get_all(5000, print_progress).execute_query()
+    logger.log_function_output(f"{len(all_items)} list item{'' if len(all_items) == 1 else 's'} retrieved with {len(fields)} field{'' if len(fields) == 1 else 's'}.")
+    
+    result = []
+    for item in all_items:
+      result.append(dict(item.properties))
+    logger.log_function_footer()
+    return result, fields
+  except Exception as e:
+    logger.log_function_output(f"  ERROR: Failed to get items with fields from list '{list_name}' -> {str(e)}")
+    logger.log_function_footer()
+    return [], []
+
+def export_list_items_to_csv_string(items: list[dict], fields: list[ListFieldInfo]) -> str:
+  """Export list items to CSV string with field display names as headers."""
+  if not items or not fields:
+    return ''
+  
+  lines = []
+  # Header row with display names
+  header = ','.join(csv_escape(f.display_name) for f in fields)
+  lines.append(header)
+  
+  # Data rows
+  for item in items:
+    values = []
+    for f in fields:
+      raw_value = item.get(f.internal_name)
+      converted = convert_field_to_text(raw_value, f.field_type_kind)
+      values.append(csv_escape(converted))
+    lines.append(','.join(values))
+  
+  return '\n'.join(lines)
+
+def export_list_items_to_markdown_string(items: list[dict], list_name: str, fields: list[ListFieldInfo], currency_fields: set[str] = None) -> str:
+  """Export list items to Markdown string. Currency fields get $ prefix."""
+  if not items:
+    return ''
+  
+  currency_fields = currency_fields or set()
+  # Auto-detect currency fields from field_type_kind (10 = Currency)
+  for f in fields:
+    if f.field_type_kind == 10:
+      currency_fields.add(f.internal_name)
+  
+  lines = [f"## {list_name}", ""]
+  
+  for item in items:
+    item_id = item.get('ID', item.get('Id', '?'))
+    title = item.get('Title') or f"Item {item_id}"
+    lines.append(f'### "{list_name}" - {title}')
+    
+    for f in fields:
+      if f.internal_name == 'ID':
+        continue
+      raw_value = item.get(f.internal_name)
+      converted = convert_field_to_text(raw_value, f.field_type_kind)
+      if converted is None or converted == '':
+        continue
+      # Add $ prefix for currency fields
+      if f.internal_name in currency_fields and isinstance(converted, (int, float)):
+        lines.append(f"- {f.display_name}: $ {converted}")
+      else:
+        lines.append(f"- {f.display_name}: {converted}")
+    lines.append("")
+  
+  return '\n'.join(lines)
+
+def export_list_to_files(ctx: ClientContext, list_name: str, filter_query: str, csv_path: str, md_path: str, logger: MiddlewareLogger, dry_run: bool = False) -> tuple[bool, str, ListExportResult]:
+  """
+  Export SharePoint list to both CSV and Markdown files.
+  Returns (success, error_message, result).
+  """
+  logger.log_function_header("export_list_to_files()")
+  try:
+    items, fields = get_list_items_with_fields(ctx, list_name, filter_query, logger)
+    
+    if dry_run or not items:
+      result = ListExportResult(csv_content='', md_content='', item_count=len(items), field_count=len(fields))
+      logger.log_function_footer()
+      return True, "", result
+    
+    # Generate content
+    csv_content = export_list_items_to_csv_string(items, fields)
+    md_content = export_list_items_to_markdown_string(items, list_name, fields)
+    
+    # Write files
+    if csv_path:
+      os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+      with open(csv_path, 'w', encoding='utf-8', newline='') as f:
+        f.write(csv_content)
+      logger.log_function_output(f"CSV exported to '{csv_path}'.")
+    
+    if md_path:
+      os.makedirs(os.path.dirname(md_path), exist_ok=True)
+      with open(md_path, 'w', encoding='utf-8') as f:
+        f.write(md_content)
+      logger.log_function_output(f"Markdown exported to '{md_path}'.")
+    
+    result = ListExportResult(csv_content=csv_content, md_content=md_content, item_count=len(items), field_count=len(fields))
+    logger.log_function_output(f"{len(items)} item{'' if len(items) == 1 else 's'} exported with {len(fields)} field{'' if len(fields) == 1 else 's'}.")
+    logger.log_function_footer()
+    return True, "", result
+  except Exception as e:
+    logger.log_function_footer()
+    return False, str(e), ListExportResult(csv_content='', md_content='', item_count=0, field_count=0)
+
+# ----------------------------------------- END: List Export Operations --------------------------------------------
