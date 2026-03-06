@@ -229,7 +229,7 @@ async def demorouter_root(request: Request):
     <div class="toolbar">
       <button class="btn-primary" onclick="showNewItemForm()">New Item</button>
       <button class="btn-primary" onclick="showCreateDemoItemsForm()">Create Demo Items</button>
-      <button class="btn-primary" data-url="{router_prefix}/{router_name}/selftest?format=stream" data-format="stream" data-show-result="modal" onclick="callEndpoint(this)">Run Selftest</button>
+      <button class="btn-primary" data-url="{router_prefix}/{router_name}/selftest?format=stream" data-format="stream" data-show-result="modal" data-reload-on-finish="false" onclick="callEndpoint(this)">Run Selftest</button>
       <button id="btn-delete-selected" class="btn-primary btn-delete" onclick="bulkDelete()" disabled>Delete (<span id="selected-count">0</span>)</button>
     </div>
     

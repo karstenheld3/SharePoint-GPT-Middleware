@@ -2597,7 +2597,7 @@ function startSelftest(event) {{
   
   closeModal();
   showToast('Selftest', 'Starting crawler selftest...', 'info');
-  connectStream(url, {{ showResult: 'modal' }});
+  connectStream(url, {{ showResult: 'modal', reloadOnFinish: false }});
 }}
 async function showJobResult(jobId) {{
   try {{

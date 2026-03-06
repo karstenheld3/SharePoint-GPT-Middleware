@@ -632,7 +632,7 @@ async def sites_root(request: Request):
         "data_url": f"{router_prefix}/{router_name}/selftest?format=stream",
         "data_format": "stream",
         "data_show_result": "modal",
-        "data_reload_on_finish": "true",
+        "data_reload_on_finish": "false",
         "class": "btn-primary"
       },
       {
@@ -640,7 +640,7 @@ async def sites_root(request: Request):
         "data_url": f"{router_prefix}/{router_name}/security_scan/selftest?format=stream",
         "data_format": "stream",
         "data_show_result": "modal",
-        "data_reload_on_finish": "true",
+        "data_reload_on_finish": "false",
         "class": "btn-primary"
       }
     ]

@@ -425,7 +425,7 @@ def _generate_jobs_ui_page(jobs: list) -> str:
     
     <div class="toolbar">
       <button id="btn-delete-selected" class="btn-primary btn-delete" onclick="bulkDelete()" disabled>Delete (<span id="selected-count">0</span>)</button>
-      <button class="btn-primary" data-url="{router_prefix}/{router_name}/selftest?format=stream" data-format="stream" data-show-result="modal" data-reload-on-finish="true" onclick="callEndpoint(this)">Run Selftest</button>
+      <button class="btn-primary" data-url="{router_prefix}/{router_name}/selftest?format=stream" data-format="stream" data-show-result="modal" data-reload-on-finish="false" onclick="callEndpoint(this)">Run Selftest</button>
     </div>
     
     <table>
