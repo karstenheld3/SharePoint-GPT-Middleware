@@ -11,6 +11,42 @@
 
 ## Active Issues
 
+### 2026-03-06 - Azure/Local Environment Divergence
+
+#### [HIGH] `V2CR-FL-001` Storage path hardcoded to local config instead of request context
+
+- **When**: 2026-03-06 15:26
+- **Where**: `src/routers_v2/common_report_functions_v2.py` lines 25-27, 47, 65
+- **What**: Report functions used `config.LOCAL_PERSISTENT_STORAGE_PATH` directly instead of accepting `storage_path` parameter. Works locally but fails on Azure where path comes from `request.app.state.system_info.PERSISTENT_STORAGE_PATH`
+- **Why it went wrong**: 
+  1. **Inconsistent pattern**: Crawler functions already used `get_persistent_storage_path(request)` pattern, but common report functions used config directly
+  2. **No environment parity testing**: Code worked locally because config had correct path; failed on Azure where config path differs from computed path
+  3. **Utility function isolation**: `common_report_functions_v2.py` had no access to request object, so couldn't use the request-based pattern
+- **Evidence**: Reports created in correct Azure path by crawler, but `list_reports()` looked in wrong path (config-based)
+- **Suggested fix**: All functions touching persistent storage MUST accept `storage_path` parameter and pass it through the call chain
+
+**Code example**:
+```python
+# WRONG - Uses config directly, fails on Azure
+def get_reports_path() -> Path:
+  storage_path = getattr(config, 'LOCAL_PERSISTENT_STORAGE_PATH', None) or ''
+  return Path(storage_path) / "reports"
+
+# CORRECT - Accepts storage_path parameter, works everywhere
+def get_reports_path(storage_path: str = None) -> Path:
+  if storage_path:
+    return Path(storage_path) / "reports"
+  path = getattr(config, 'LOCAL_PERSISTENT_STORAGE_PATH', None) or ''
+  return Path(path) / "reports"
+```
+
+**Prevention Rules**:
+1. **Pattern consistency**: When adding new functions that touch storage, check how existing functions get their paths
+2. **Parameter propagation**: Utility functions MUST accept `storage_path` as parameter if called from request handlers
+3. **Azure testing checklist**: Before marking complete, ask "Does this code path use `get_persistent_storage_path(request)`?"
+4. **Two-environment test**: Critical storage operations need testing in BOTH local AND Azure before closing
+5. **Grep before closing**: Run `grep -r "create_report\|list_reports\|get_report" --include="*.py"` and verify ALL callers pass `storage_path`
+
 ### 2026-03-06 - Agent Behavior
 
 #### [HIGH] `GLOB-FL-002` Removed required import while "cleaning up"
@@ -52,6 +88,12 @@ credential = ManagedIdentityCredential(client_id=config.AZURE_MANAGED_IDENTITY_C
 (none)
 
 ## Document History
+
+**[2026-03-06 18:01]**
+- Updated V2CR-FL-001: Added grep verification rule after finding 2 more missing storage_path calls
+
+**[2026-03-06 17:56]**
+- Added V2CR-FL-001: Storage path hardcoded to local config instead of request context
 
 **[2026-03-06 13:57]**
 - Added GLOB-FL-002: Removed required import while "cleaning up"

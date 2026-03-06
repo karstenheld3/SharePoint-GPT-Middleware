@@ -1083,8 +1083,9 @@ async def create_demo_reports_endpoint(request: Request):
   if delay_ms < 0 or delay_ms > 5000:
     return json_result(False, "'delay_ms' must be between 0 and 5000.", {})
   
+  storage_path = get_persistent_storage_path(request)
   writer = StreamingJobWriter(
-    persistent_storage_path=get_persistent_storage_path(request),
+    persistent_storage_path=storage_path,
     router_name=router_name,
     action="create_demo_reports",
     object_id=None,
@@ -1154,7 +1155,7 @@ async def create_demo_reports_endpoint(request: Request):
           files = [
             ("sample_data.csv", f"id,name,value\n1,demo_{i+1}_a,100\n2,demo_{i+1}_b,200\n".encode('utf-8'))
           ]
-          report_id = create_report(report_type, filename, files, metadata)
+          report_id = create_report(report_type, filename, files, metadata, storage_path=storage_path)
           created_reports.append(report_id)
           sse = stream_logger.log_function_output("  OK." if not is_failed else "  OK (marked as failed report).")
           if sse: yield sse

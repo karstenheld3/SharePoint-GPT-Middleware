@@ -1603,6 +1603,7 @@ async def sites_security_scan_selftest(request: Request):
           filename=test_filename,
           files=test_files,
           metadata={"title": "Selftest", "type": "site_scan", "ok": True},
+          storage_path=storage_path,
           logger=stream_logger
         )
         
