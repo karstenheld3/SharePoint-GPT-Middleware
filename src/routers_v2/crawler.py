@@ -13,7 +13,7 @@ from routers_v2.common_logging_functions_v2 import MiddlewareLogger, UNKNOWN
 from routers_v2.common_job_functions_v2 import list_jobs, StreamingJobWriter, ControlAction, stream_with_flush
 from routers_v2.common_crawler_functions_v2 import DomainConfig, FileSource, ListSource, SitePageSource, load_domain, save_domain_to_file, delete_domain_folder, get_sources_for_scope, get_source_folder_path, get_embedded_folder_path, get_failed_folder_path, get_originals_folder_path, server_relative_url_to_local_path, get_file_relative_path, get_map_filename, cleanup_temp_map_files, is_file_embeddable, filter_embeddable_files, load_files_metadata, save_files_metadata, update_files_metadata, get_domain_path, SOURCE_TYPE_FOLDERS
 from routers_v2.common_map_file_functions_v2 import SharePointMapRow, FilesMapRow, VectorStoreMapRow, ChangeDetectionResult, MapFileWriter, read_sharepoint_map, read_files_map, read_vectorstore_map, detect_changes, is_file_changed, is_file_changed_for_embed, sharepoint_map_row_to_files_map_row, files_map_row_to_vectorstore_map_row
-from routers_v2.common_sharepoint_functions_v2 import SharePointFile, connect_to_site_using_client_id_and_certificate, try_get_document_library, get_document_library_files, download_file_from_sharepoint, get_list_items, get_list_items_as_sharepoint_files, export_list_to_csv, get_site_pages, download_site_page_html, create_document_library, add_number_field_to_list, add_text_field_to_list, upload_file_to_library, upload_file_to_folder, update_file_content, rename_file, move_file, delete_file, create_folder_in_library, delete_document_library, create_list, add_list_item, update_list_item, delete_list_item, delete_list, create_site_page, update_site_page, rename_site_page, delete_site_page, file_exists_in_library
+from routers_v2.common_sharepoint_functions_v2 import SharePointFile, connect_to_site_using_client_id_and_certificate, try_get_document_library, get_document_library_files, download_file_from_sharepoint, get_list_items, get_list_items_as_sharepoint_files, export_list_to_csv, get_site_pages, download_site_page_html, create_document_library, add_number_field_to_list, add_text_field_to_list, upload_file_to_library, upload_file_to_folder, update_file_content, rename_file, move_file, delete_file, create_folder_in_library, delete_document_library, create_list, add_list_item, update_list_item, delete_list_item, delete_list, create_site_page, update_site_page, rename_site_page, delete_site_page, file_exists_in_library, get_list_items_with_fields, export_list_items_to_csv_string, export_list_items_to_markdown_string, ListExportResult
 from routers_v2.common_embed_functions_v2 import upload_file_to_openai, delete_file_from_openai, add_file_to_vector_store, remove_file_from_vector_store, list_vector_store_files, wait_for_vector_store_ready, get_failed_embeddings, upload_and_embed_file, remove_and_delete_file
 from routers_v2.common_openai_functions_v2 import create_vector_store, try_get_vector_store_by_id
 
@@ -85,18 +85,40 @@ def _get_utc_now() -> tuple[str, int]:
 def _sharepoint_file_to_map_row(sp_file: SharePointFile) -> SharePointMapRow:
   return SharePointMapRow(sharepoint_listitem_id=sp_file.sharepoint_listitem_id, sharepoint_unique_file_id=sp_file.sharepoint_unique_file_id, filename=sp_file.filename, file_type=sp_file.file_type, file_size=sp_file.file_size, url=sp_file.url, raw_url=sp_file.raw_url, server_relative_url=sp_file.server_relative_url, last_modified_utc=sp_file.last_modified_utc, last_modified_timestamp=sp_file.last_modified_timestamp)
 
-def _export_list_item_to_csv(sp_item: SharePointMapRow, target_path: str, dry_run: bool = False) -> tuple[bool, str]:
-  """Export a list item placeholder to local file. For lists, actual content is fetched during process step."""
-  if dry_run: return True, ""
+def _export_list_to_files(ctx, list_name: str, filter_query: str, target_folder: str, logger: MiddlewareLogger, dry_run: bool = False) -> tuple[bool, str, int, int]:
+  """
+  Export entire SharePoint list to MD and CSV files with full field data.
+  Returns (success, error, item_count, field_count).
+  MD file is primary (for embedding), CSV is backup.
+  """
+  if dry_run:
+    return True, "", 0, 0
   try:
-    os.makedirs(os.path.dirname(target_path), exist_ok=True)
-    with open(target_path, 'w', encoding='utf-8') as f:
-      f.write(f"# List Item {sp_item.sharepoint_listitem_id}\n")
-      f.write(f"filename: {sp_item.filename}\n")
-      f.write(f"modified: {sp_item.last_modified_utc}\n")
-    return True, ""
+    items, fields = get_list_items_with_fields(ctx, list_name, filter_query, logger)
+    if not items:
+      return True, "", 0, len(fields)
+    
+    os.makedirs(target_folder, exist_ok=True)
+    
+    # Export to Markdown (primary - for embedding)
+    md_content = export_list_items_to_markdown_string(items, list_name, fields)
+    md_filename = f"{list_name}.md"
+    md_path = os.path.join(target_folder, md_filename)
+    with open(md_path, 'w', encoding='utf-8') as f:
+      f.write(md_content)
+    logger.log_function_output(f"  Exported {len(items)} item{'' if len(items) == 1 else 's'} to '{md_filename}'")
+    
+    # Export to CSV (backup)
+    csv_content = export_list_items_to_csv_string(items, fields)
+    csv_filename = f"{list_name}.csv"
+    csv_path = os.path.join(target_folder, csv_filename)
+    with open(csv_path, 'w', encoding='utf-8', newline='') as f:
+      f.write(csv_content)
+    logger.log_function_output(f"  Exported {len(items)} item{'' if len(items) == 1 else 's'} to '{csv_filename}'")
+    
+    return True, "", len(items), len(fields)
   except Exception as e:
-    return False, str(e)
+    return False, str(e), 0, 0
 
 def clear_domain_vectorstore_maps(storage_path: str, domain_id: str, logger: MiddlewareLogger) -> int:
   """Clear all vectorstore_map.csv files for a domain (stale references after VS recreation per edge case C4)."""
@@ -144,7 +166,34 @@ async def step_download_source(storage_path: str, domain: DomainConfig, source, 
     elif source_type == "sitepage_sources":
       sp_files = get_site_pages(ctx, source.site_url, source.sharepoint_url_part, source.filter, logger, dry_run)
     elif source_type == "list_sources":
-      sp_files = get_list_items_as_sharepoint_files(ctx, source.list_name, source.filter, logger, dry_run)
+      # For list_sources: export entire list as single MD file (with CSV backup) per V2CR-SP01
+      target_folder = get_originals_folder_path(storage_path, domain.domain_id, source_type, source_id)
+      logger.log_function_output(f"Exporting list '{source.list_name}' with full field data...")
+      success, error, item_count, field_count = _export_list_to_files(ctx, source.list_name, source.filter, target_folder, logger, dry_run)
+      for sse in writer.drain_sse_queue(): yield sse
+      if not success:
+        logger.log_function_output(f"  ERROR: {error}")
+        result.errors = 1
+        writer.set_step_result(result)
+        return
+      # Track the MD file (primary for embedding) in files_map
+      result.total_files = 1 if item_count > 0 else 0
+      result.downloaded = 1 if item_count > 0 else 0
+      if item_count > 0:
+        utc_now, ts_now = _get_utc_now()
+        md_filename = f"{source.list_name}.md"
+        subfolder = CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_ORIGINALS_SUBFOLDER
+        file_rel_path = get_file_relative_path(domain.domain_id, source_type, source_id, subfolder, md_filename)
+        files_writer = MapFileWriter(files_map_path, FilesMapRow)
+        files_writer.write_header()
+        # Create a synthetic map row for the exported MD file
+        md_row = FilesMapRow(sharepoint_listitem_id=0, sharepoint_unique_file_id=source.list_name, filename=md_filename, file_type="md", server_relative_url="", file_relative_path=file_rel_path, file_size=0, last_modified_utc=utc_now, last_modified_timestamp=ts_now, downloaded_utc=utc_now, downloaded_timestamp=ts_now, sharepoint_error="", processing_error="")
+        files_writer.append_row(md_row)
+        files_writer.finalize()
+        logger.log_function_output(f"  {item_count} list item{'' if item_count == 1 else 's'} with {field_count} field{'' if field_count == 1 else 's'} exported to '{md_filename}'.")
+      for sse in writer.drain_sse_queue(): yield sse
+      writer.set_step_result(result)
+      return
     # Drain SSE queue after SharePoint operations (realtime streaming)
     for sse in writer.drain_sse_queue(): yield sse
     sp_items = [_sharepoint_file_to_map_row(f) for f in sp_files]
@@ -173,20 +222,12 @@ async def step_download_source(storage_path: str, domain: DomainConfig, source, 
           files_writer.finalize()
           writer.set_step_result(result)
           return
-      # For list_sources, use filename directly (no sharepoint_url_part)
-      if source_type == "list_sources":
-        local_path = sp_item.filename
-      else:
-        local_path = server_relative_url_to_local_path(sp_item.server_relative_url, source.sharepoint_url_part)
+      local_path = server_relative_url_to_local_path(sp_item.server_relative_url, source.sharepoint_url_part)
       target_path = os.path.join(target_folder, local_path)
       utc_now, ts_now = _get_utc_now()
       logger.log_function_output(f"[ {i+1} / {total} ] Downloading '{sp_item.filename}'...")
       subfolder = CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_EMBEDDED_SUBFOLDER if source_type == "file_sources" else CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_ORIGINALS_SUBFOLDER
-      # For list_sources, export item as CSV instead of downloading from SharePoint
-      if source_type == "list_sources":
-        success, error = _export_list_item_to_csv(sp_item, target_path, dry_run)
-      else:
-        success, error = download_file_from_sharepoint(ctx, sp_item.server_relative_url, target_path, True, sp_item.last_modified_timestamp, dry_run)
+      success, error = download_file_from_sharepoint(ctx, sp_item.server_relative_url, target_path, True, sp_item.last_modified_timestamp, dry_run)
       if success:
         logger.log_function_output("  OK.")
         file_rel_path = get_file_relative_path(domain.domain_id, source_type, source_id, subfolder, local_path)
@@ -655,7 +696,7 @@ async def _crawl_stream(storage_path: str, domain: DomainConfig, mode: str, scop
       yield sse
     results = writer.get_crawl_results()  # FIX-04: Retrieve results from writer
     finished_utc, _ = _get_utc_now()
-    if not dry_run and results.get("ok", False):
+    if not dry_run:
       report_id = create_crawl_report(storage_path, domain.domain_id, mode, scope, results, started_utc, finished_utc)
       results["data"]["report_id"] = report_id
     total_embedded = results.get('data', {}).get('total_embedded', 0)
