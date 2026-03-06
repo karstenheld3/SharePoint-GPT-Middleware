@@ -22,9 +22,12 @@ def set_config(app_config):
   global config
   config = app_config
 
-def get_reports_path() -> Path:
-  storage_path = getattr(config, 'LOCAL_PERSISTENT_STORAGE_PATH', None) or ''
-  return Path(storage_path) / "reports"
+def get_reports_path(storage_path: str = None) -> Path:
+  """Get reports folder path. If storage_path provided, use it; otherwise fallback to config."""
+  if storage_path:
+    return Path(storage_path) / "reports"
+  path = getattr(config, 'LOCAL_PERSISTENT_STORAGE_PATH', None) or ''
+  return Path(path) / "reports"
 
 # ----------------------------------------- START: Type/Folder Conversion -----------------------------------------------------
 
@@ -114,14 +117,14 @@ def create_report(report_type: str, filename: str, files: list[tuple[str, bytes]
   
   return report_id
 
-def list_reports(type_filter: str = None, logger: Optional[MiddlewareLogger] = None) -> list[dict]:
+def list_reports(type_filter: str = None, storage_path: str = None, logger: Optional[MiddlewareLogger] = None) -> list[dict]:
   """
   List all reports, optionally filtered by type.
   Returns list of report.json contents, sorted by created_utc descending (newest first).
   """
   if logger: logger.log_function_output(f"Listing reports" + (f" (type='{type_filter}')" if type_filter else "") + "...")
   reports = []
-  reports_path = _long_path(get_reports_path())
+  reports_path = _long_path(get_reports_path(storage_path))
   
   if not reports_path.exists(): return []
   
@@ -155,12 +158,12 @@ def list_reports(type_filter: str = None, logger: Optional[MiddlewareLogger] = N
   if logger: logger.log_function_output(f"  {len(reports)} report{'' if len(reports) == 1 else 's'} found.")
   return reports
 
-def get_report_metadata(report_id: str, logger: Optional[MiddlewareLogger] = None) -> dict | None:
+def get_report_metadata(report_id: str, storage_path: str = None, logger: Optional[MiddlewareLogger] = None) -> dict | None:
   """
   Read and return report.json content from archive.
   Returns None if not found or invalid.
   """
-  archive_path = get_report_archive_path(report_id)
+  archive_path = get_report_archive_path(report_id, storage_path)
   if archive_path is None: return None
   
   try:
@@ -171,12 +174,12 @@ def get_report_metadata(report_id: str, logger: Optional[MiddlewareLogger] = Non
     if logger: logger.log_function_output(f"  WARNING: Failed to read report metadata for '{report_id}' -> {e}")
     return None
 
-def get_report_file(report_id: str, file_path: str, logger: Optional[MiddlewareLogger] = None) -> bytes | None:
+def get_report_file(report_id: str, file_path: str, storage_path: str = None, logger: Optional[MiddlewareLogger] = None) -> bytes | None:
   """
   Read specific file from archive.
   Returns None if not found.
   """
-  archive_path = get_report_archive_path(report_id)
+  archive_path = get_report_archive_path(report_id, storage_path)
   if archive_path is None: return None
   
   try:
@@ -187,18 +190,18 @@ def get_report_file(report_id: str, file_path: str, logger: Optional[MiddlewareL
     if logger: logger.log_function_output(f"  WARNING: Failed to read file '{file_path}' from report '{report_id}' -> {e}")
     return None
 
-def delete_report(report_id: str, dry_run: bool = False, logger: Optional[MiddlewareLogger] = None) -> dict | None:
+def delete_report(report_id: str, storage_path: str = None, dry_run: bool = False, logger: Optional[MiddlewareLogger] = None) -> dict | None:
   """
   Delete archive file.
   Returns the deleted report metadata, or None if not found.
   """
-  archive_path = get_report_archive_path(report_id)
+  archive_path = get_report_archive_path(report_id, storage_path)
   if archive_path is None: return None
   
   if logger: logger.log_function_output(f"Deleting report '{report_id}'...")
   
   # Read metadata before deleting
-  metadata = get_report_metadata(report_id)
+  metadata = get_report_metadata(report_id, storage_path)
   
   if dry_run:
     if logger: logger.log_function_output(f"  DRY_RUN: Would delete archive.")
@@ -212,7 +215,7 @@ def delete_report(report_id: str, dry_run: bool = False, logger: Optional[Middle
     if logger: logger.log_function_output(f"  ERROR: Failed to delete report '{report_id}' -> {e}")
     raise
 
-def get_report_archive_path(report_id: str) -> Path | None:
+def get_report_archive_path(report_id: str, storage_path: str = None) -> Path | None:
   """
   Return full filesystem path to archive.
   Returns None if not found or invalid format.
@@ -220,7 +223,7 @@ def get_report_archive_path(report_id: str) -> Path | None:
   if "/" not in report_id: return None
   
   folder, filename = report_id.split("/", 1)
-  reports_path = get_reports_path()
+  reports_path = get_reports_path(storage_path)
   archive_path = _long_path(reports_path / folder / f"{filename}.zip")
   
   if not archive_path.exists(): return None

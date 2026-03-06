@@ -762,7 +762,8 @@ async def list_reports_endpoint(request: Request):
   
   format_param = request_params.get("format", "json")
   type_filter = request_params.get("type", None)
-  reports = list_reports(type_filter=type_filter, logger=logger)
+  storage_path = get_persistent_storage_path(request)
+  reports = list_reports(type_filter=type_filter, storage_path=storage_path, logger=logger)
   
   if format_param == "ui":
     logger.log_function_footer()
@@ -810,7 +811,8 @@ async def get_report_endpoint(request: Request):
     if format_param == "html": return html_result("Error", {"error": "Missing 'report_id' parameter."}, main_page_nav_html.replace("{router_prefix}", router_prefix))
     return json_result(False, "Missing 'report_id' parameter.", {})
   
-  metadata = get_report_metadata(report_id, logger=logger)
+  storage_path = get_persistent_storage_path(request)
+  metadata = get_report_metadata(report_id, storage_path=storage_path, logger=logger)
   if metadata is None:
     logger.log_function_footer()
     if format_param == "html": return html_result("Not Found", {"error": f"Report '{report_id}' not found."}, main_page_nav_html.replace("{router_prefix}", router_prefix))
@@ -870,7 +872,8 @@ async def get_file_endpoint(request: Request):
     logger.log_function_footer()
     return json_result(False, "Missing 'file_path' parameter.", {})
   
-  content = get_report_file(report_id, file_path, logger=logger)
+  storage_path = get_persistent_storage_path(request)
+  content = get_report_file(report_id, file_path, storage_path=storage_path, logger=logger)
   if content is None:
     logger.log_function_footer()
     return JSONResponse({"ok": False, "error": f"File '{file_path}' not found in report '{report_id}'.", "data": {}}, status_code=404)
@@ -925,7 +928,8 @@ async def download_report_endpoint(request: Request):
     logger.log_function_footer()
     return json_result(False, "Missing 'report_id' parameter.", {})
   
-  archive_path = get_report_archive_path(report_id)
+  storage_path = get_persistent_storage_path(request)
+  archive_path = get_report_archive_path(report_id, storage_path=storage_path)
   if archive_path is None:
     logger.log_function_footer()
     return JSONResponse({"ok": False, "error": f"Report '{report_id}' not found.", "data": {}}, status_code=404)
@@ -970,7 +974,8 @@ async def delete_report_endpoint(request: Request):
     return json_result(False, "Missing 'report_id' parameter.", {})
   
   # DD-E017: Delete returns full object
-  deleted_metadata = delete_report(report_id, logger=logger)
+  storage_path = get_persistent_storage_path(request)
+  deleted_metadata = delete_report(report_id, storage_path=storage_path, logger=logger)
   if deleted_metadata is None:
     logger.log_function_footer()
     return JSONResponse({"ok": False, "error": f"Report '{report_id}' not found.", "data": {}}, status_code=404)
@@ -1017,7 +1022,8 @@ async def view_report_endpoint(request: Request):
     return json_result(False, "This endpoint only supports format=ui", {})
   
   # Fetch report metadata (server-side, embedded in page per RPTV-DD-02)
-  metadata = get_report_metadata(report_id, logger=logger)
+  storage_path = get_persistent_storage_path(request)
+  metadata = get_report_metadata(report_id, storage_path=storage_path, logger=logger)
   if metadata is None:
     logger.log_function_footer()
     error_msg = f"Report '{report_id}' not found."
