@@ -320,12 +320,12 @@ async function cacheDomains() {{
   }}
 }}
 
-// Override reloadItems to also update domainsState cache
+// Override reloadItems to also update domainsState cache and force full reload
 // Must use assignment (not function declaration) to avoid hoisting issues
 const _originalReloadItems = reloadItems;
 reloadItems = async function() {{
-  await _originalReloadItems();
-  await cacheDomains();
+  // Full page reload to ensure domain data (including vector_store_id) is fresh
+  window.location.reload();
 }};
 
 function showCrawlDomainForm(domainId) {{
