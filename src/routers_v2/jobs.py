@@ -332,33 +332,11 @@ async function bulkDelete() {{
   if (jobIds.length === 0) return;
   if (!confirm('Delete ' + jobIds.length + ' selected jobs?')) return;
   
-  let deleted = 0;
-  let failed = 0;
+  closeModal();
+  showConsole();
   
-  for (const jobId of jobIds) {{
-    try {{
-      const url = DELETE_ENDPOINT.replace('{{itemId}}', jobId);
-      const response = await fetch(url, {{ method: 'DELETE' }});
-      const result = await response.json();
-      if (result.ok) {{
-        jobsState.delete(jobId);
-        deleted++;
-      }} else {{
-        failed++;
-      }}
-    }} catch (e) {{
-      failed++;
-    }}
-  }}
-  
-  renderAllJobs();
-  
-  if (failed === 0) {{
-    const msg = deleted === 1 ? '1 job deleted' : deleted + ' jobs deleted';
-    showToast('Bulk Delete', msg, 'success');
-  }} else {{
-    showToast('Bulk Delete', deleted + ' deleted, ' + failed + ' failed', 'warning');
-  }}
+  const url = `{router_prefix}/{router_name}/delete_bulk?format=stream&job_ids=${{jobIds.join(',')}}`;
+  connectStream(url, {{ reloadOnFinish: true, showResult: 'toast' }});
 }}
 """
 
@@ -856,6 +834,122 @@ async def jobs_delete_impl(request: Request):
   return json_result(True, "", {"job_id": job_id})
 
 # ----------------------------------------- END: D(jh) - Delete ------------------------------------------------------------
+
+
+# ----------------------------------------- START: Bulk Delete (streaming) -------------------------------------------------
+
+@router.get(f"/{router_name}/delete_bulk")
+async def jobs_delete_bulk(request: Request):
+  """
+  Delete multiple jobs with streaming progress.
+  
+  Parameters:
+  - job_ids: Comma-separated list of job IDs to delete (required)
+  - format: Must be 'stream'
+  
+  Examples:
+  GET {router_prefix}/{router_name}/delete_bulk?format=stream&job_ids=jb_1,jb_2,jb_3
+  """
+  request_params = dict(request.query_params)
+  
+  if len(request_params) == 0:
+    doc = textwrap.dedent(jobs_delete_bulk.__doc__).replace("{router_prefix}", router_prefix).replace("{router_name}", router_name)
+    return PlainTextResponse(generate_endpoint_docs(doc, router_prefix), media_type="text/plain; charset=utf-8")
+  
+  format_param = request_params.get("format", "")
+  if format_param != "stream":
+    return json_result(False, "This endpoint only supports format=stream", {})
+  
+  job_ids_str = request_params.get("job_ids", "")
+  if not job_ids_str:
+    return json_result(False, "Missing required parameter: job_ids", {})
+  
+  job_ids = [jid.strip() for jid in job_ids_str.split(",") if jid.strip()]
+  if not job_ids:
+    return json_result(False, "No valid job IDs provided", {})
+  
+  storage_path = get_persistent_storage_path(request)
+  
+  writer = StreamingJobWriter(
+    persistent_storage_path=storage_path,
+    router_name=router_name,
+    action="delete_bulk",
+    object_id=None,
+    source_url=str(request.url),
+    router_prefix=router_prefix
+  )
+  stream_logger = MiddlewareLogger.create(stream_job_writer=writer)
+  stream_logger.log_function_header("jobs_delete_bulk")
+  
+  async def stream_delete_jobs():
+    deleted = []
+    failed = []
+    skipped = []
+    total = len(job_ids)
+    
+    try:
+      yield writer.emit_start()
+      
+      sse = stream_logger.log_function_output(f"Deleting {total} job(s)...")
+      if sse: yield sse
+      
+      for i, job_id in enumerate(job_ids):
+        sse = stream_logger.log_function_output(f"[ {i+1} / {total} ] Deleting '{job_id}'...")
+        if sse: yield sse
+        
+        # Check if job exists
+        job = find_job_by_id(storage_path, job_id)
+        if not job:
+          skipped.append({"job_id": job_id, "reason": "not found"})
+          sse = stream_logger.log_function_output(f"  SKIP: Job not found.")
+          if sse: yield sse
+          continue
+        
+        # Check if job is active
+        if job.state in ["running", "paused"]:
+          skipped.append({"job_id": job_id, "reason": f"active ({job.state})"})
+          sse = stream_logger.log_function_output(f"  SKIP: Cannot delete active job (state: {job.state}).")
+          if sse: yield sse
+          continue
+        
+        # Delete the job
+        success = delete_job(storage_path, job_id)
+        if success:
+          deleted.append(job_id)
+          sse = stream_logger.log_function_output(f"  OK.")
+          if sse: yield sse
+        else:
+          failed.append({"job_id": job_id, "reason": "delete failed"})
+          sse = stream_logger.log_function_output(f"  FAIL: Could not delete.")
+          if sse: yield sse
+        
+        await asyncio.sleep(0.05)  # Small delay for visual feedback
+      
+      sse = stream_logger.log_function_output("")
+      if sse: yield sse
+      sse = stream_logger.log_function_output(f"{len(deleted)} deleted, {len(skipped)} skipped, {len(failed)} failed.")
+      if sse: yield sse
+      
+      stream_logger.log_function_footer()
+      
+      ok = len(failed) == 0
+      yield writer.emit_end(
+        ok=ok,
+        error="" if ok else f"{len(failed)} job(s) failed to delete",
+        data={"deleted": len(deleted), "skipped": len(skipped), "failed": len(failed), "deleted_ids": deleted}
+      )
+      
+    except Exception as e:
+      sse = stream_logger.log_function_output(f"ERROR: Bulk delete failed -> {type(e).__name__}: {str(e)}")
+      if sse: yield sse
+      stream_logger.log_function_footer()
+      yield writer.emit_end(ok=False, error=str(e), data={"deleted": len(deleted), "deleted_ids": deleted})
+    finally:
+      writer.finalize()
+  
+  return StreamingResponse(stream_with_flush(stream_delete_jobs()), media_type="text/event-stream")
+
+# ----------------------------------------- END: Bulk Delete (streaming) ---------------------------------------------------
 
 
 # ----------------------------------------- START: Selftest helpers --------------------------------------------------------
