@@ -492,7 +492,7 @@ function queryDomain(domainId) {{
     showToast('Error', 'Domain has no vector store configured', 'error');
     return;
   }}
-  window.location.href = '/query2?vsid=' + encodeURIComponent(domain.vector_store_id) + '&query=List+all+files&results=50';
+  window.open('/query2?vsid=' + encodeURIComponent(domain.vector_store_id) + '&query=List+all+files&results=50', '_blank');
 }}
 """
 
