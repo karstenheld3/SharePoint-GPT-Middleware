@@ -21,6 +21,26 @@
 - **Actual**: files_map.csv contains only MD file entry
 - **Impact**: CSV backup file exists but is not tracked in files_map
 
+### V2CR-PR-009: List Sources Re-embedded on Every Incremental Crawl
+
+- **Status**: Open
+- **Description**: In incremental crawl mode, list sources are re-embedded every time even when nothing changed in SharePoint
+- **Expected**: List MD files should be skipped with "Skipped (unchanged)" like file sources
+- **Actual**: List MD files always show "OK" and are re-embedded
+- **Evidence**: 
+  - Files: `Embedding 'CV.pdf'... Skipped (unchanged)` ✓
+  - Lists: `Embedding 'Acronyms.md'... OK.` ✗
+- **Impact**: Unnecessary API calls, wasted embedding quota
+- **Likely Cause**: List export always generates new file, file hash changes even if content identical
+
+### V2CR-PR-008: Security Scan Report Download Fails on Azure
+
+- **Status**: Open
+- **Description**: Security scan report download returns "not found" on Azure even though scan completed
+- **URL**: `/v2/reports/download?report_id=site_scans/2026-03-06_14-35-13_[security_scan]_[AISearchTest01]`
+- **Error**: `"Report 'site_scans/2026-03-06_14-35-13 [security_scan] [AISearchTest01]' not found."`
+- **Likely Cause**: Report file path mismatch between create and download, or storage path issue on Azure
+
 ### V2CR-PR-007: Security Scan Reports Not Saved on Azure
 
 - **Status**: Resolved
