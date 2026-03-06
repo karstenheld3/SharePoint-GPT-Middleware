@@ -28,6 +28,12 @@
 - [x] Cleaned up test data (TestBugFix001, TestBugFix002 deleted)
 - [x] Updated session tracking documents
 - [x] Updated _V2_IMPL_DOMAINS_FIXES.md
+- [x] V2FX-PR-003: Fix selftest dialog/console auto-closing after completion
+- [x] Root cause: `data_reload_on_finish: "true"` triggered page reload
+- [x] Fix: Changed to `data_reload_on_finish: "false"` in selftest button config
+- [x] Tested with Playwright: Dialog and console stay open
+- [x] Added Selftest Button Pattern to V2_INFO_IMPLEMENTATION_PATTERNS.md
+- [x] Fixed all V2 routers: domains.py, sites.py, jobs.py, crawler.py, demorouter1.py, demorouter2.py
 
 ## Tried But Not Used
 
@@ -35,6 +41,10 @@
   - Reason: JS hoisting causes `_originalReloadItems` to capture the new function, creating infinite recursion
 
 ## Progress Changes
+
+**[2026-03-06 14:30]**
+- Added Selftest Button Pattern to V2_INFO_IMPLEMENTATION_PATTERNS.md
+- Fixed all V2 routers with incorrect selftest config
 
 **[2026-02-05 15:18]**
 - Initial progress tracking created

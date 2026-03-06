@@ -10,6 +10,7 @@
 3. [Response Pattern](#response-pattern)
 4. [Import Pattern](#import-pattern)
 5. [Endpoint Structure Pattern](#endpoint-structure-pattern)
+6. [Selftest Button Pattern](#selftest-button-pattern)
 
 ## SSE Streaming Pattern
 
@@ -209,7 +210,93 @@ async def router_stream_action(request: Request):
 2. Format check (`ui`/`json`/`stream`) determines response type
 3. Streaming generators must call `writer.finalize()` in `finally` block
 
+## Selftest Button Pattern
+
+**Intent**: Selftest buttons should display results in a modal dialog and keep the console visible after completion.
+
+### The Problem
+
+Selftest operations run via SSE streaming and output logs to the console. When `data_reload_on_finish` is set to `"true"`, the page reloads after selftest completes, which:
+1. Closes the results dialog before user can review
+2. Hides the console log output
+3. Prevents examination of test failures
+
+### The Solution
+
+**Selftest toolbar buttons must use these exact settings:**
+
+```python
+toolbar_buttons = [
+  {
+    "text": "Run Selftest",
+    "data_url": f"{router_prefix}/{router_name}/selftest?format=stream",
+    "data_format": "stream",
+    "data_show_result": "modal",
+    "data_reload_on_finish": "false",
+    "class": "btn-primary"
+  }
+]
+```
+
+**For HTML-based buttons (custom UI):**
+
+```html
+<button class="btn-primary" 
+        data-url="/v2/router/selftest?format=stream" 
+        data-format="stream" 
+        data-show-result="modal" 
+        data-reload-on-finish="false" 
+        onclick="callEndpoint(this)">Run Selftest</button>
+```
+
+**For custom selftest dialogs with `connectStream()`:**
+
+```javascript
+connectStream(url, { showResult: 'modal', reloadOnFinish: false });
+```
+
+### Rules
+
+1. **ALWAYS** set `data_show_result` to `"modal"` for selftest buttons
+2. **ALWAYS** set `data_reload_on_finish` to `"false"` for selftest buttons
+3. Selftest results should remain visible until user explicitly closes them
+4. Console output should remain visible for debugging failed tests
+
+### Why No Reload?
+
+- Selftests create and delete test data - no persistent changes to display
+- User needs to review results and console output for failures
+- Modal dialog provides clear pass/fail summary with details
+- User can manually reload if needed after reviewing results
+
+### Common Mistake
+
+```python
+# WRONG - reload closes dialog and console
+{
+  "text": "Run Selftest",
+  "data_url": f"{router_prefix}/{router_name}/selftest?format=stream",
+  "data_format": "stream",
+  "data_show_result": "modal",
+  "data_reload_on_finish": "true",  # BAD - closes everything!
+  "class": "btn-primary"
+}
+
+# CORRECT - dialog and console stay open
+{
+  "text": "Run Selftest",
+  "data_url": f"{router_prefix}/{router_name}/selftest?format=stream",
+  "data_format": "stream",
+  "data_show_result": "modal",
+  "data_reload_on_finish": "false",  # GOOD - user can review results
+  "class": "btn-primary"
+}
+```
+
 ## Document History
+
+**[2026-03-06]**
+- Added Selftest Button Pattern (V2FX-PR-003)
 
 **[2026-03-03]**
 - Added Logger, Response, Import, and Endpoint Structure patterns
