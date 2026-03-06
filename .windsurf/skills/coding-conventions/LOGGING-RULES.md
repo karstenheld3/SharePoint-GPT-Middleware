@@ -44,6 +44,10 @@ Each logging type has a specific goal that drives its rules.
 
 Every log line should convey maximum information with minimum words. Avoid verbosity, filler words, and redundant phrases. Be concise but never ambiguous.
 
+**Anti-pattern:** Cryptic abbreviations sacrifice precision for brevity.
+- BAD: `P=1`, `F1=1` - unclear type, unclear meaning
+- GOOD: `Precision=1.00`, `F1-Score=1.00` - full name, 2 decimals indicate float
+
 ### Principle of Least Surprise
 
 **Logging should be predictable across all solutions.**
@@ -55,6 +59,20 @@ A developer familiar with one codebase should immediately understand logs from a
 **Each log line should be understandable without context.**
 
 Every descriptive line should read like a complete sentence. Include the subject (what), the action (verb), and the target (where/which). A reader scanning logs should not need to look at previous lines to understand the current one.
+
+**Required context per line:**
+- **What** is being processed (file name, item ID, record)
+- **What action** is happening (extracting, validating, converting)
+- **Enough detail** for the reader to assess complexity and estimate completion
+
+**BAD:**
+- `[ 1 / 2 ] LLM extraction run 1...`
+- Missing: which file? what content? how complex?
+
+**GOOD:**
+- `[ 1 / 2 ] Calling gpt-5-mini to extract 5 records from 20 rows...`
+- `[ 1 / 2 ] Extracting metadata from 'invoice_2024.pdf' (3 pages)...`
+- Reader knows: file name, model, operation, complexity indicator
 
 ### Principle of Visible Structure
 
@@ -100,6 +118,15 @@ and can log additional
 - `WARNING: <non-breaking problem>` (can continue, but noticed something worth noting)
 
 **Final line rule:** The last line of any activity or script must contain a status keyword (`OK.`, `FAIL:`, `PARTIAL FAIL:`, `SKIP:`) so scripts can determine success without reading the entire log.
+
+**Parallel execution rule:** When items run in parallel, Report lines MUST carry the same identifier as their Announce line (results arrive in arbitrary order).
+- BAD: `OK. Extracted 5 correct...` - which run?
+- GOOD: `[ 1 / 2 ] OK. Extracted 5 correct...` - run 1 result
+
+**Worker/process prefix rule:** Scripts with multiple workers or apps with multiple processes MUST prefix all log lines with their identity.
+- Workers: `[ worker 1 ] [ 1 / 5 ] Processing 'file.pdf'...`
+- Processes: `[timestamp,process 12345,request 1] START: function_name...`
+- This enables log filtering and correlation when output is interleaved
 
 **Not used for status:** `DONE`, `FINISHED`, `INFO`, `DEBUG`, etc.
 

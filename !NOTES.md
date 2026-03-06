@@ -30,6 +30,14 @@
 - Regenerates `requirements.txt` via `uv pip compile`
 - Required for Azure deployment (Oryx build uses requirements.txt)
 
+## Development Server
+
+**Server restart only needed when startup sequence is affected**
+- Router endpoint changes: NO restart needed (uvicorn `--reload` handles it)
+- Changes to `app.py` startup code: Restart needed
+- Changes to module imports in `create_app()`: Restart needed
+- New routers or middleware: Restart needed
+
 ## Environment
 
 **Windows - No grep**: Use PowerShell alternatives:
@@ -75,3 +83,22 @@ All batch files are in the workspace root. Double-click to run or execute from t
 - `PSCP` - Permission Scanner POC
 - `V2FX` - V2 Endpoint Fixes
 - `LOG` - Logging harmonization
+- `V2CR` - V2 Crawler Endpoint
+
+## Session Patterns
+
+### V2 Doc-Sync Sessions
+
+Sessions working on V2 routers copy SPEC/IMPL docs from `docs/routers_v2/` into the session folder for local editing.
+
+**Pattern:**
+- **Init**: Copy `docs/routers_v2/_V2_*.md` to session folder
+- **Work**: Edit docs in session folder
+- **Save/Close**: Copy modified `_V2_*.md` back to `docs/routers_v2/`
+
+**Files to load on `/session-load`:**
+- `docs/V2_INFO_IMPLEMENTATION_PATTERNS.md`
+- `SOPS.md`
+
+**Active sessions using this pattern:**
+- `_Sessions/_2026-03-06_V2CrawlerEndpoint/`
