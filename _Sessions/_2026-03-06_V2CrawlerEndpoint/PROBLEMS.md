@@ -21,6 +21,21 @@
 - **Actual**: files_map.csv contains only MD file entry
 - **Impact**: CSV backup file exists but is not tracked in files_map
 
+### V2CR-PR-007: Security Scan Reports Not Saved on Azure
+
+- **Status**: Resolved
+- **Description**: Security scan reports not saved to `PERSISTENT_STORAGE_PATH/reports/site_scans/` on Azure
+- **Root Cause**: `create_report()` in `common_report_functions_v2.py` lacked `storage_path` parameter; `run_security_scan()` couldn't pass the correct Azure path
+- **Solution**: Added `storage_path` parameter to `create_report()`, updated security scan to pass it
+- **Files Modified**: `common_report_functions_v2.py`, `common_security_scan_functions_v2.py`
+
+### V2CR-PR-006: Query Button Opens in Same Tab
+
+- **Status**: Resolved
+- **Description**: Clicking "Query" button in Domains UI navigates in same tab instead of opening new tab
+- **Solution**: Changed `window.location.href` to `window.open(..., '_blank')` in `queryDomain()` function
+- **Commit**: d02e94f
+
 ### V2CR-PR-005: Reports Not Visible on Azure After Crawl
 
 - **Status**: Resolved

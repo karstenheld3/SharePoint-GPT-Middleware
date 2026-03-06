@@ -44,7 +44,7 @@ def get_type_from_folder(folder: str) -> str:
 
 # ----------------------------------------- START: Report CRUD Functions ------------------------------------------------------
 
-def create_report(report_type: str, filename: str, files: list[tuple[str, bytes]], metadata: dict, keep_folder_structure: bool = True, dry_run: bool = False, logger: Optional[MiddlewareLogger] = None) -> str:
+def create_report(report_type: str, filename: str, files: list[tuple[str, bytes]], metadata: dict, storage_path: str = None, keep_folder_structure: bool = True, dry_run: bool = False, logger: Optional[MiddlewareLogger] = None) -> str:
   """
   Create a report archive with report.json and provided files.
   Returns report_id on success.
@@ -62,7 +62,7 @@ def create_report(report_type: str, filename: str, files: list[tuple[str, bytes]
   report_id = f"{folder}/{filename}"
   
   # Ensure folder exists
-  reports_path = get_reports_path()
+  reports_path = get_reports_path(storage_path)
   folder_path = _long_path(reports_path / folder)
   folder_path.mkdir(parents=True, exist_ok=True)
   

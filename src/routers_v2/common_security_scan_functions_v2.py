@@ -1279,6 +1279,7 @@ async def run_security_scan(
         "stats": stats,
         "scanned_utc": datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
       },
+      storage_path=storage_path,
       logger=logger
     )
     report_path = report_id
