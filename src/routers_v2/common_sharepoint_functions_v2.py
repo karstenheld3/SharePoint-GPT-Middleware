@@ -1000,19 +1000,38 @@ def get_list_items_with_fields(ctx: ClientContext, list_name: str, filter_query:
     return [], []
 
 def export_list_items_to_csv_string(items: list[dict], fields: list[ListFieldInfo]) -> str:
-  """Export list items to CSV string with field display names as headers."""
+  """Export list items to CSV string with field display names as headers.
+  Column order: ID, Title, alphabetical user fields, Created, Modified."""
   if not items or not fields:
     return ''
   
+  # Build ordered field list: ID, Title, alphabetical, Created, Modified
+  system_fields = {'ID', 'Title', 'Created', 'Modified'}
+  id_field = next((f for f in fields if f.internal_name == 'ID'), None)
+  title_field = next((f for f in fields if f.internal_name == 'Title'), None)
+  created_field = next((f for f in fields if f.internal_name == 'Created'), None)
+  modified_field = next((f for f in fields if f.internal_name == 'Modified'), None)
+  
+  # User fields sorted alphabetically by display name
+  user_fields = sorted([f for f in fields if f.internal_name not in system_fields], key=lambda f: f.display_name.lower())
+  
+  # Final order: ID, Title, user fields, Created, Modified
+  ordered_fields = []
+  if id_field: ordered_fields.append(id_field)
+  if title_field: ordered_fields.append(title_field)
+  ordered_fields.extend(user_fields)
+  if created_field: ordered_fields.append(created_field)
+  if modified_field: ordered_fields.append(modified_field)
+  
   lines = []
   # Header row with display names
-  header = ','.join(csv_escape(f.display_name) for f in fields)
+  header = ','.join(csv_escape(f.display_name) for f in ordered_fields)
   lines.append(header)
   
   # Data rows
   for item in items:
     values = []
-    for f in fields:
+    for f in ordered_fields:
       raw_value = item.get(f.internal_name)
       converted = convert_field_to_text(raw_value, f.field_type_kind)
       values.append(csv_escape(converted))
@@ -1032,14 +1051,23 @@ def export_list_items_to_markdown_string(items: list[dict], list_name: str, fiel
       currency_fields.add(f.internal_name)
   
   lines = [f"## {list_name}", ""]
+  # Fields to skip in body: ID in heading, Modified/Created are system timestamps
+  skip_fields = {'ID', 'Modified', 'Created'}
+  
+  # Find Title field for outputting first
+  title_field = next((f for f in fields if f.internal_name == 'Title'), None)
   
   for item in items:
     item_id = item.get('ID', item.get('Id', '?'))
     title = item.get('Title') or f"Item {item_id}"
     lines.append(f'### "{list_name}" - {title}')
     
+    # Output Title first if present
+    if title_field and title:
+      lines.append(f"- {title_field.display_name}: {title}")
+    
     for f in fields:
-      if f.internal_name == 'ID':
+      if f.internal_name in skip_fields or f.internal_name == 'Title':
         continue
       raw_value = item.get(f.internal_name)
       converted = convert_field_to_text(raw_value, f.field_type_kind)

@@ -182,7 +182,8 @@ async def step_download_source(storage_path: str, domain: DomainConfig, source, 
       if item_count > 0:
         utc_now, ts_now = _get_utc_now()
         md_filename = f"{source.list_name}.md"
-        subfolder = CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_ORIGINALS_SUBFOLDER
+        # FIX: Use EMBEDDED subfolder - step_process_source copies to 02_embedded, step_embed_source reads from file_relative_path
+        subfolder = CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_EMBEDDED_SUBFOLDER
         file_rel_path = get_file_relative_path(domain.domain_id, source_type, source_id, subfolder, md_filename)
         files_writer = MapFileWriter(files_map_path, FilesMapRow)
         files_writer.write_header()
@@ -311,7 +312,7 @@ async def step_process_source(storage_path: str, domain_id: str, source, source_
       else:
         try:
           with open(source_path, 'r', encoding='utf-8') as f: content = f.read()
-          with open(target_path, 'w', encoding='utf-8') as f: f.write(f"# {filename}\n\n```\n{content}\n```\n")
+          with open(target_path, 'w', encoding='utf-8') as f: f.write(f"# {filename}\n\n{content}\n")
           result.processed += 1
         except Exception as e:
           result.errors += 1
