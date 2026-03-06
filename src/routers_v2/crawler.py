@@ -1020,8 +1020,8 @@ SELFTEST_MUTATION_MAX_WAIT = 60
 SNAP_FULL_ALL = {
   "01_files/files_all": {"files_map_rows": 8},  # 9 files - 1 .zip
   "01_files/files_crawl1": {"files_map_rows": 5},  # 6 files - 1 .zip
-  "02_lists/lists_all": {"files_map_rows": 0},  # Lists export as .csv (non-embeddable)
-  "02_lists/lists_active": {"files_map_rows": 0}  # Lists export as .csv (non-embeddable)
+  "02_lists/lists_all": {"files_map_rows": 1},  # 1 MD file per list source (V2CR-SP01)
+  "02_lists/lists_active": {"files_map_rows": 1}  # 1 MD file per list source (V2CR-SP01)
 }
 
 SNAP_FULL_FILES = {
@@ -1034,8 +1034,8 @@ SNAP_FULL_FILES = {
 SNAP_FULL_LISTS = {
   "01_files/files_all": {"files_map_rows": 0},
   "01_files/files_crawl1": {"files_map_rows": 0},
-  "02_lists/lists_all": {"files_map_rows": 0},  # Lists export as .csv (non-embeddable)
-  "02_lists/lists_active": {"files_map_rows": 0}  # Lists export as .csv (non-embeddable)
+  "02_lists/lists_all": {"files_map_rows": 1},  # 1 MD file per list source (V2CR-SP01)
+  "02_lists/lists_active": {"files_map_rows": 1}  # 1 MD file per list source (V2CR-SP01)
 }
 
 SNAP_EMPTY = {
