@@ -8,6 +8,13 @@
 
 ## Resolved
 
+**V2FX-PR-004: Crawler selftest fails after V2CR-SP01 list export changes**
+- **History**: Added 2026-03-06 14:54 | Resolved 2026-03-06 14:55
+- **Description**: 9 selftest failures after list export changed from CSV to MD files
+- **Root Cause**: Commit 5cc8c73 exports lists as MD (embeddable) creating 1 files_map entry per source, but SNAP_FULL_ALL/SNAP_FULL_LISTS expected 0
+- **Solution**: Updated snapshot expectations from 0 to 1 for list sources
+- **Verification**: Commit d5ab1c1
+
 **V2FX-PR-003: Selftest dialog and console close automatically after completion**
 - **History**: Added 2026-03-06 14:27 | Resolved 2026-03-06 14:27
 - **Description**: After running selftest on Domains UI, the results dialog closes and console hides automatically
@@ -33,6 +40,9 @@
 (none yet)
 
 ## Problems Changes
+
+**[2026-03-06 14:55]**
+- Added: V2FX-PR-004 (Crawler selftest snapshot expectations) - Resolved
 
 **[2026-03-06 14:30]**
 - Updated: V2FX-PR-003 - Added pattern to V2_INFO_IMPLEMENTATION_PATTERNS.md, fixed all routers

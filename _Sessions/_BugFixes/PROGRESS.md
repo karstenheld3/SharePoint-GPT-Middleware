@@ -34,6 +34,9 @@
 - [x] Tested with Playwright: Dialog and console stay open
 - [x] Added Selftest Button Pattern to V2_INFO_IMPLEMENTATION_PATTERNS.md
 - [x] Fixed all V2 routers: domains.py, sites.py, jobs.py, crawler.py, demorouter1.py, demorouter2.py
+- [x] V2FX-PR-004: Fix crawler selftest snapshot expectations for V2CR-SP01
+- [x] Root cause: List export changed from CSV to MD (1 files_map entry per list source)
+- [x] Fix: Updated SNAP_FULL_ALL and SNAP_FULL_LISTS expectations from 0 to 1
 
 ## Tried But Not Used
 
@@ -41,6 +44,9 @@
   - Reason: JS hoisting causes `_originalReloadItems` to capture the new function, creating infinite recursion
 
 ## Progress Changes
+
+**[2026-03-06 14:55]**
+- Fixed crawler selftest snapshot expectations for V2CR-SP01 list export
 
 **[2026-03-06 14:30]**
 - Added Selftest Button Pattern to V2_INFO_IMPLEMENTATION_PATTERNS.md

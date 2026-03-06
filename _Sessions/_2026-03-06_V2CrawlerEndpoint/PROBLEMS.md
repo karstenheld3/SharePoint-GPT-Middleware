@@ -21,6 +21,20 @@
 - **Actual**: files_map.csv contains only MD file entry
 - **Impact**: CSV backup file exists but is not tracked in files_map
 
+### V2CR-PR-003: Crawler Selftest Needs List Field Type Coverage
+
+- **Status**: Open
+- **Description**: Crawler selftest lacks comprehensive test cases for list field type conversions
+- **Required Test Data**:
+  - Lists with all supported user field types
+  - All cases of user data: empty fields, single values, multi-value (1 item vs many items)
+- **Verification Required**:
+  - All values exported correctly?
+  - Correct format per field type?
+  - Correct number of fields in MD and CSV?
+  - Correct order of fields (CSV: ID, Title, alphabetical, Created, Modified)?
+  - Title first in Markdown body?
+
 ## Resolved
 
 ## Deferred
