@@ -114,3 +114,108 @@ Streaming endpoints support `format=stream` and create job files for long-runnin
     }
     ```
 14. Verify implementation against Python rules
+
+## Creating a Release
+
+Release workflow for versioning, tagging, and publishing to GitHub.
+
+### Phase 1: Pre-Release Verification
+
+1. Ensure all features for this release are committed
+2. Run `git status` - working directory should be clean (no uncommitted changes)
+3. Find last release and review commits since then:
+   ```bash
+   # Find last release tag
+   git tag -l "v*" --sort=-v:refname | head -1
+   
+   # List commits since last release (e.g., v0.8.0)
+   git log --oneline v0.8.0..HEAD
+   ```
+4. Run all tests and verify they pass
+5. Start local server and verify key functionality works
+
+### Phase 2: Version Updates
+
+Update version number in these files:
+
+1. **`src/pyproject.toml`** - Update `version = "X.Y.Z"`
+2. **`src/app.py`** - Update `<h1>SharePoint-GPT-Middleware Version X.Y.Z (Mon YYYY)</h1>` in `root()` function
+
+### Phase 3: Release Documentation
+
+1. Create `docs/releases/VERSION_X.Y.Z.md` following existing format:
+   - Copy structure from previous release (e.g., `VERSION_0.8.0.md`)
+   - Add "What's New in X.Y.Z" section with new features/improvements
+   - Update "Features" section if endpoints changed
+   - Add "Breaking Changes" section (or "None in this release")
+   - Add "Migration Notes" if applicable
+   - Add "Known Issues" section
+2. Run `/verify` against commits to ensure release notes are accurate
+3. Cross-check "What's New" against git log - don't claim existing features as new
+
+### Phase 4: Commit Release
+
+```bash
+git add src/pyproject.toml src/app.py docs/releases/VERSION_X.Y.Z.md
+git commit -m "chore: bump version to X.Y.Z (Month YYYY)"
+```
+
+### Phase 5: Push and Tag
+
+```bash
+# Push commits to remote
+git push origin main
+
+# Create annotated tag
+git tag -a vX.Y.Z -m "Release X.Y.Z - Brief description"
+
+# Push tag to remote
+git push origin vX.Y.Z
+```
+
+**Tag naming**: Use `vX.Y.Z` format (e.g., `v0.9.0`)
+
+### Phase 6: Create GitHub Release
+
+1. Go to GitHub repository > Releases > "Draft a new release"
+2. Select the tag `vX.Y.Z` just pushed
+3. Set release title: `Version X.Y.Z (Month YYYY)`
+4. Copy "What's New" section from `VERSION_X.Y.Z.md` as release notes
+5. Check "Set as the latest release"
+6. Click "Publish release"
+
+### Phase 7: Post-Release Verification
+
+1. Verify tag appears on GitHub: `https://github.com/[owner]/[repo]/tags`
+2. Verify release appears: `https://github.com/[owner]/[repo]/releases`
+3. Verify release notes display correctly
+4. If Azure deployment configured, verify deployment completed successfully
+5. Test production endpoint `/alive` health check
+
+### Quick Reference Commands
+
+```bash
+# View all tags
+git tag -l
+
+# View tag details
+git show vX.Y.Z
+
+# Delete local tag (if mistake)
+git tag -d vX.Y.Z
+
+# Delete remote tag (if mistake)
+git push origin --delete vX.Y.Z
+
+# List recent commits for release notes
+git log --oneline --since="YYYY-MM-01"
+```
+
+### Version Number Guidelines
+
+Follow semantic versioning (SemVer):
+
+- **Major (X.0.0)** - Breaking changes, incompatible API changes
+- **Minor (0.X.0)** - New features, backward compatible
+- **Patch (0.0.X)** - Bug fixes, backward compatible
+
