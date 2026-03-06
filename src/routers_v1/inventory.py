@@ -103,7 +103,7 @@ def _generate_ui_response_for_vector_store_files(title: str, count: int, vector_
     {'field': 'filename', 'header': 'Filename'},
     {'field': 'id', 'header': 'ID'},
     {'field': 'created_at', 'header': 'Created At'},
-    {'field': 'bytes', 'header': 'Size (bytes)', 'default': 0},
+    {'field': 'usage_bytes', 'header': 'Size (bytes)', 'default': 0},
     {'field': 'status', 'header': 'Status'},
     {'field': 'actions', 'header': 'Actions', 'buttons': get_file_actions}
   ]
