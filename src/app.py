@@ -594,7 +594,7 @@ def root() -> str:
   <script src="/static/js/htmx.js"></script>
 </head>
 <body>
-  <h1>SharePoint-GPT-Middleware Version 0.8.0 (Feb 2026)</h1>
+  <h1>SharePoint-GPT-Middleware Version 0.9.0 (Mar 2026)</h1>
   <p>This middleware provides OpenAI proxy endpoints, crawling SharePoint files into Open AI vector stores, vector search based query functionality, and inventory management for vector stores.</p>
   
   <div class="toolbar">
