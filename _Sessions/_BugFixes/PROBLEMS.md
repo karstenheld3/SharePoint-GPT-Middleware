@@ -4,9 +4,21 @@
 
 ## Open
 
-(none)
-
 ## Resolved
+
+**V2FX-PR-005: Misleading "Vector store not found" error when OpenAI backend unavailable**
+- **History**: Added 2026-03-08 17:56 | Resolved 2026-03-08 18:00
+- **Description**: When middleware has no connection to OpenAI backend, accessing v1 endpoints or query endpoint returns "Vector store 'xxxxxxx' not found" instead of proper connection error
+- **Root Cause**: `try_get_vector_store_by_id()` catches ALL exceptions and returns None, masking connection errors as "not found"
+- **Solution**: 
+  1. Import `NotFoundError` from openai, only catch that specific exception
+  2. Add try/except at call sites with proper error format per LOG-GN-08: `Failed to connect to OpenAI -> {error}`
+- **Files Changed**: 
+  - `common_openai_functions_v1.py` - NotFoundError import + exception handling
+  - `common_openai_functions_v2.py` - NotFoundError import + exception handling
+  - `sharepoint_search.py` - Added try/except with LOG-GN-08 compliant error
+  - `crawler.py` (v2) - Added try/except with LOG-GN-08 compliant error
+  - `router_crawler_functions_v1.py` - Added try/except with LOG-GN-08 compliant error
 
 **V2FX-PR-004: Crawler selftest fails after V2CR-SP01 list export changes**
 - **History**: Added 2026-03-06 14:54 | Resolved 2026-03-06 14:55

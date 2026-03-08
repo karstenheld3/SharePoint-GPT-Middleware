@@ -20,6 +20,7 @@
 
 ## Done
 
+- [x] V2FX-PR-005: Fix misleading "Vector store not found" error when OpenAI unavailable
 - [x] V2FX-PR-001: Fix domains UI table not refreshing after create
 - [x] V2FX-PR-002: Fix domainsState cache synchronization
 - [x] Identified root cause: JS function hoisting causing infinite recursion
@@ -44,6 +45,13 @@
   - Reason: JS hoisting causes `_originalReloadItems` to capture the new function, creating infinite recursion
 
 ## Progress Changes
+
+**[2026-03-08 18:00]**
+- Verified V2FX-PR-005 against logging rules (LOG-GN-08)
+- Added try/except at 3 call sites with proper `context -> error` format
+
+**[2026-03-08 17:58]**
+- Fixed V2FX-PR-005: `try_get_vector_store_by_id()` now only catches `NotFoundError`, letting connection/auth errors propagate
 
 **[2026-03-06 14:55]**
 - Fixed crawler selftest snapshot expectations for V2CR-SP01 list export
