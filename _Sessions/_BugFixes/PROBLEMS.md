@@ -8,10 +8,10 @@
 
 **V2FX-PR-006: Query2 HTML table not responsive (wider than viewport)**
 - **History**: Added 2026-03-08 18:40 | Resolved 2026-03-08 18:40
-- **Description**: HTML table in /query2 and /describe2 endpoints extends beyond viewport on narrow screens
-- **Root Cause**: Table not wrapped in responsive container, no overflow handling in CSS
-- **Solution**: Add `.table-responsive` CSS class with `overflow-x: auto`, wrap tables in div
-- **Files Changed**: `styles.css`, `sharepoint_search.py`
+- **Description**: HTML table in /query2 endpoint extends beyond viewport on narrow screens
+- **Root Cause**: Long unbroken strings (file paths, IDs, UUIDs) in nested td cells prevent word wrapping
+- **Solution**: Inline scoped style `word-break:break-all` on td + `overflow-x:auto` wrapper, local to query2 only
+- **Files Changed**: `sharepoint_search.py`
 
 **V2FX-PR-005: Misleading "Vector store not found" error when OpenAI backend unavailable**
 - **History**: Added 2026-03-08 17:56 | Resolved 2026-03-08 18:00

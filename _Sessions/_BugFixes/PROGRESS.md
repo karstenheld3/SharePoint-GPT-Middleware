@@ -20,7 +20,7 @@
 
 ## Done
 
-- [x] V2FX-PR-006: Fix query2/describe2 HTML table responsiveness
+- [x] V2FX-PR-006: Fix query2 HTML table responsiveness
 - [x] V2FX-PR-005: Fix misleading "Vector store not found" error when OpenAI unavailable
 - [x] V2FX-PR-001: Fix domains UI table not refreshing after create
 - [x] V2FX-PR-002: Fix domainsState cache synchronization
@@ -48,7 +48,7 @@
 ## Progress Changes
 
 **[2026-03-08 18:40]**
-- Fixed V2FX-PR-006: Added `.table-responsive` wrapper to query2/describe2 HTML output
+- Fixed V2FX-PR-006: Inline `word-break:break-all` + `overflow-x:auto` on query2 HTML (scoped, no CSS file changes)
 
 **[2026-03-08 18:00]**
 - Verified V2FX-PR-005 against logging rules (LOG-GN-08)

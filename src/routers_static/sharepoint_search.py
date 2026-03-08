@@ -354,7 +354,7 @@ async def _internal_query2(request: Request, request_params, function_name: str,
       <script src='/html_javascript_static_files/js/htmx.js'></script>
       </head><body>
       <h1>{truncate_string(query,50)}</h1>
-      <div class="table-responsive">{table_html}</div>
+      <div style="overflow-x:auto"><style>td:first-child{{white-space:nowrap}} td:last-child{{word-break:break-all}}</style>{table_html}</div>
       </body></html>
       """
       output = HTMLResponse(html)
