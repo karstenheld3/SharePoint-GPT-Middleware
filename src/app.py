@@ -403,15 +403,7 @@ def create_app() -> FastAPI:
         openai_client = create_async_azure_openai_client_with_api_key(config.AZURE_OPENAI_ENDPOINT, config.AZURE_OPENAI_API_VERSION, config.AZURE_OPENAI_API_KEY)
       elif config.AZURE_OPENAI_USE_MANAGED_IDENTITY and config.AZURE_MANAGED_IDENTITY_CLIENT_ID:
         # 2) Use managed identity if configured
-        if is_running_on_azure_app_service():
-          # In Azure: Use ManagedIdentityCredential directly (IMDS available)
-          credential = ManagedIdentityCredential(client_id=config.AZURE_MANAGED_IDENTITY_CLIENT_ID)
-        else:
-          # Locally: Fall back to service principal or default credential chain
-          if config.AZURE_TENANT_ID and config.AZURE_CLIENT_ID and config.AZURE_CLIENT_SECRET:
-            credential = ClientSecretCredential(tenant_id=config.AZURE_TENANT_ID, client_id=config.AZURE_CLIENT_ID, client_secret=config.AZURE_CLIENT_SECRET)
-          else:
-            credential = DefaultAzureCredential()
+        credential = ManagedIdentityCredential(client_id=config.AZURE_MANAGED_IDENTITY_CLIENT_ID)
         openai_client = create_async_azure_openai_client_with_credential(config.AZURE_OPENAI_ENDPOINT, config.AZURE_OPENAI_API_VERSION, credential)
       elif config.AZURE_TENANT_ID and config.AZURE_CLIENT_ID and config.AZURE_CLIENT_SECRET:
         # 3) Use service principal if configured
