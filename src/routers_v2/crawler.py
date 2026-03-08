@@ -439,8 +439,14 @@ async def crawl_domain(storage_path: str, domain: DomainConfig, mode: str, scope
   else:
     # Validate vector store exists in OpenAI (edge case C4: VS_DELETED)
     if not dry_run:
-      existing_vs = await try_get_vector_store_by_id(openai_client, domain.vector_store_id)
-      if existing_vs is None:
+      try:
+        existing_vs = await try_get_vector_store_by_id(openai_client, domain.vector_store_id)
+      except Exception as e:
+        logger.log_function_output(f"ERROR: Failed to connect to OpenAI -> {str(e)}")
+        logger.log_function_output("Embedding will be skipped for all sources.")
+        skip_embedding = True
+        existing_vs = None
+      if existing_vs is None and not skip_embedding:
         old_vs_id = domain.vector_store_id
         logger.log_function_output(f"Vector store '{old_vs_id}' not found in OpenAI, creating new...")
         try:

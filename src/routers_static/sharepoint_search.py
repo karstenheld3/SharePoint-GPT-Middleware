@@ -223,10 +223,17 @@ async def _internal_request_to_llm(request: Request, request_params: dict, reque
     if vsid in found_vector_store_ids:
       vs = found_vector_store_ids[vsid]
     else:
-      vs = await try_get_vector_store_by_id(request.app.state.openai_client, vsid)
-      if vs is not None:
-        found_vector_store_ids[vsid] = vs
-        log_function_output(request_data, f"VectorStoreCache - Added '{vs.name}' (id='{vsid}')")
+      try:
+        vs = await try_get_vector_store_by_id(request.app.state.openai_client, vsid)
+        if vs is not None:
+          found_vector_store_ids[vsid] = vs
+          log_function_output(request_data, f"VectorStoreCache - Added '{vs.name}' (id='{vsid}')")
+      except Exception as e:
+        error_message = f"ERROR: Failed to connect to OpenAI -> {str(e)}"
+        log_function_output(request_data, error_message)
+        fake_search_results = []
+        data = build_data_object(query, fake_search_results, None, request.app.state.metadata_cache)
+        return JSONResponse({'error': error_message}), data, error_message
     
     if vs is None:
       error_message = f"ERROR: Vector store '{vsid}' not found!"

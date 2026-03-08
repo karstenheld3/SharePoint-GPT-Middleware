@@ -10,7 +10,7 @@ from azure.core.credentials import TokenCredential
 from azure.core.credentials_async import AsyncTokenCredential
 from azure.identity import ClientSecretCredential as SyncClientSecretCredential, DefaultAzureCredential as SyncDefaultAzureCredential, get_bearer_token_provider as sync_get_bearer_token_provider
 from azure.identity.aio import ClientSecretCredential, DefaultAzureCredential, get_bearer_token_provider
-from openai import AsyncAzureOpenAI, AsyncOpenAI
+from openai import AsyncAzureOpenAI, AsyncOpenAI, NotFoundError
 from openai._types import Body, Headers, NOT_GIVEN, NotGiven, Query
 from openai.types.responses import ResponseInputParam, ResponseTextConfigParam, ToolParam, response_create_params
 from openai.types.responses.response_includable import ResponseIncludable
@@ -537,12 +537,15 @@ async def try_get_vector_store_by_id(client: AsyncAzureOpenAI | AsyncOpenAI, vec
   
   Returns:
     CoaiVectorStore object or None if not found
+    
+  Raises:
+    Connection/authentication errors are re-raised (not masked as "not found")
   """
   if not vector_store_id: return None
   try:
     vector_store = await client.vector_stores.retrieve(vector_store_id)
     return _convert_to_coai_vector_store(vector_store)
-  except Exception as e:
+  except NotFoundError:
     return None
 
 async def replicate_vector_store_content(client: AsyncAzureOpenAI | AsyncOpenAI, source_vector_store_ids: str | list[str], target_vector_store_ids: str | list[str], remove_target_files_not_in_sources: bool = False) -> tuple[list, list, list]:

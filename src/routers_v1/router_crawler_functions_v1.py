@@ -1146,7 +1146,11 @@ async def update_vector_store(system_info, openai_client, domain_id: str, temp_v
   log_function_output(request_data, f"Checking domain vector store...")
   domain_vs = None
   if domain.vector_store_id:
-    domain_vs = await try_get_vector_store_by_id(openai_client, domain.vector_store_id)
+    try:
+      domain_vs = await try_get_vector_store_by_id(openai_client, domain.vector_store_id)
+    except Exception as e:
+      log_function_output(request_data, f"  ERROR: Failed to connect to OpenAI -> {str(e)}")
+      raise
   
   if not domain_vs:
     log_function_output(request_data, f"  Domain vector store not found, creating new one...")
