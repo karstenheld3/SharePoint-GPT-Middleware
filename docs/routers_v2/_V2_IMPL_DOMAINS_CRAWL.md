@@ -473,7 +473,7 @@ The following bugs were discovered and fixed during verification testing:
 
 ### BF-01: CSS radio button display (2025-12-30)
 
-**Files**: `src/static/css/routers_v2.css`, `src/routers_v2/domains.py`
+**Files**: `src/html_javascript_static_files/css/routers_v2.css`, `src/routers_v2/domains.py`
 **Problem**: `.form-group input { width: 100% }` caused radio buttons to stretch across full width
 **Fix**: Added specific CSS for radio/checkbox inputs + inline styles in crawl form HTML
 

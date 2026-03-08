@@ -28,7 +28,7 @@ A reactive web UI for monitoring and controlling long-running jobs. Uses the uni
 - HTMX core for declarative HTTP interactions
 - Native JavaScript with fetch/ReadableStream for SSE streaming (unified pattern from `common_ui_functions_v2.py`)
 - Declarative `data-*` button attributes with `callEndpoint()` pattern
-- CSS for styling (reuses `/static/css/styles.css` and `/static/css/routers_v2.css`)
+- CSS for styling (reuses `/html_javascript_static_files/css/styles.css` and `/html_javascript_static_files/css/routers_v2.css`)
 
 ## Scenario
 
@@ -642,9 +642,9 @@ User clicks [Disconnect]
 <head>
   <meta charset="utf-8">
   <title>Jobs</title>
-  <link rel="stylesheet" href="/static/css/styles.css">
-  <script src="/static/js/htmx.js"></script>
-  <script src="/static/js/sse.js"></script>
+  <link rel="stylesheet" href="/html_javascript_static_files/css/styles.css">
+  <script src="/html_javascript_static_files/js/htmx.js"></script>
+  <script src="/html_javascript_static_files/js/sse.js"></script>
   <style>/* Console and toast styles */</style>
 </head>
 <body>
@@ -838,7 +838,7 @@ function parseSourceUrl(source_url) { ... }
 
 ### CSS: Styles from routers_v2.css
 
-The Jobs UI uses `/static/css/routers_v2.css` which provides all V2 UI component styles:
+The Jobs UI uses `/html_javascript_static_files/css/routers_v2.css` which provides all V2 UI component styles:
 - Toast notifications (`.toast`, `.toast-info`, `.toast-success`, etc.)
 - Modal overlay (`.modal-overlay`, `.modal-content`, `.modal-close`)
 - Console panel (`.console-panel`, `.console-header`, `.console-output`)

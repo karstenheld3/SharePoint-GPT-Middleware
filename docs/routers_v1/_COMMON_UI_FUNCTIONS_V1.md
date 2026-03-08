@@ -337,6 +337,6 @@ async def create_item(request: Request):
 ## Related Files
 
 - **Source:** `src/common_ui_functions.py`
-- **Styles:** `src/static/css/styles.css`
-- **Scripts:** `src/static/js/htmx.js`
+- **Styles:** `src/html_javascript_static_files/css/styles.css`
+- **Scripts:** `src/html_javascript_static_files/js/htmx.js`
 - **Routers:** `src/routers/inventory.py`, `src/routers/domains.py`, `src/routers/crawler.py`

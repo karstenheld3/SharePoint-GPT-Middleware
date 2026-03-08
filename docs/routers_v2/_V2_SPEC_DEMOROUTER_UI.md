@@ -26,7 +26,7 @@ A reactive web UI for managing demo items with CRUD operations and streaming job
 **Key Technologies:**
 - HTMX for declarative HTTP interactions (included but minimally used)
 - Native JavaScript for SSE streaming via unified `fetch()` with `ReadableStream`
-- CSS for styling (reuses `/static/css/styles.css` with inline additions)
+- CSS for styling (reuses `/html_javascript_static_files/css/styles.css` with inline additions)
 - Modal dialogs for Create/Edit forms
 
 ## Scenario
@@ -560,8 +560,8 @@ User clicks [Pause] in console header
 <head>
   <meta charset="utf-8">
   <title>Demo Items</title>
-  <link rel="stylesheet" href="/static/css/styles.css">
-  <script src="/static/js/htmx.js"></script>
+  <link rel="stylesheet" href="/html_javascript_static_files/css/styles.css">
+  <script src="/html_javascript_static_files/js/htmx.js"></script>
   <style>/* Toast, Modal, Console, Form styles */</style>
 </head>
 <body>
@@ -604,7 +604,7 @@ User clicks [Pause] in console header
 
 ### CSS Classes
 
-All V2 UI component styles are defined in `/static/css/styles.css` under the "V2 UI Components" section:
+All V2 UI component styles are defined in `/html_javascript_static_files/css/styles.css` under the "V2 UI Components" section:
 
 - **Toast notifications:** `#toast-container`, `.toast`, `.toast-info`, `.toast-success`, `.toast-error`, `.toast-warning`
 - **Modal overlay:** `.modal-overlay`, `.modal-overlay.visible`, `.modal-content`, `.modal-close`

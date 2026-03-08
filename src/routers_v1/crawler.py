@@ -122,8 +122,8 @@ async def crawler_root(request: Request):
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Crawler Endpoints</title>
-  <link rel="stylesheet" href="/static/css/styles.css">
-  <script src="/static/js/htmx.js"></script>
+  <link rel="stylesheet" href="/html_javascript_static_files/css/styles.css">
+  <script src="/html_javascript_static_files/js/htmx.js"></script>
 </head>
 <body>
   <h1>Crawler Endpoints</h1>
@@ -350,8 +350,8 @@ async def list_sharepoint_files(request: Request):
       
       html_content = f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
   <title>{title}</title>
-  <link rel='stylesheet' href='/static/css/styles.css'>
-  <script src='/static/js/htmx.js'></script>
+  <link rel='stylesheet' href='/html_javascript_static_files/css/styles.css'>
+  <script src='/html_javascript_static_files/js/htmx.js'></script>
 </head>
 <body>
   <h1>{title}</h1>
@@ -508,8 +508,8 @@ async def list_local_files(request: Request):
       
       html_content = f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
   <title>{title}</title>
-  <link rel='stylesheet' href='/static/css/styles.css'>
-  <script src='/static/js/htmx.js'></script>
+  <link rel='stylesheet' href='/html_javascript_static_files/css/styles.css'>
+  <script src='/html_javascript_static_files/js/htmx.js'></script>
 </head>
 <body>
   <h1>{title}</h1>
@@ -661,8 +661,8 @@ async def list_vectorstore_files(request: Request):
       
       html_content = f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
   <title>{title}</title>
-  <link rel='stylesheet' href='/static/css/styles.css'>
-  <script src='/static/js/htmx.js'></script>
+  <link rel='stylesheet' href='/html_javascript_static_files/css/styles.css'>
+  <script src='/html_javascript_static_files/js/htmx.js'></script>
 </head>
 <body>
   <h1>{title}</h1>
@@ -841,8 +841,8 @@ async def migrate_from_v2_to_v3(request: Request):
       
       html_content = f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
   <title>Migration v2 to v3 Results</title>
-  <link rel='stylesheet' href='/static/css/styles.css'>
-  <script src='/static/js/htmx.js'></script>
+  <link rel='stylesheet' href='/html_javascript_static_files/css/styles.css'>
+  <script src='/html_javascript_static_files/js/htmx.js'></script>
 </head>
 <body>
   <h1>Migration v2 to v3 Results</h1>

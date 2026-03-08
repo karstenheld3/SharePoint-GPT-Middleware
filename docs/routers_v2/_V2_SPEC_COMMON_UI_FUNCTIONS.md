@@ -3,7 +3,7 @@
 **Doc ID**: V2UI-SP01
 **Goal**: Enable any V2 router to provide a full-featured interactive UI with minimal boilerplate code by calling shared Python functions that generate consistent HTML/JavaScript.
 **Target file**: `/src/routers_v2/common_ui_functions_v2.py`
-**Styles file**: `/src/static/css/routers_v2.css`
+**Styles file**: `/src/html_javascript_static_files/css/routers_v2.css`
 
 ## MUST-NOT-FORGET
 
@@ -1141,7 +1141,7 @@ Routers implement 1-5 as `additional_js` parameter or in separate JS files.
 3. Implement component generators (head, toast, modal, console, table)
 4. Implement JavaScript generators (core, console, table, selection, form)
 5. Implement high-level `generate_ui_page()`
-6. Extend `/static/css/routers_v2.css` with missing styles
+6. Extend `/html_javascript_static_files/css/routers_v2.css` with missing styles
 7. Create `demorouter2.py` using the library (refactored from demorouter1.py)
 8. Verify all features work identically to current implementation
 
@@ -1226,7 +1226,7 @@ return PlainTextResponse(generate_endpoint_docs(doc, router_prefix), ...)
 ## Document History
 
 **[2026-02-04 07:31]**
-- Fixed: Styles file path `/static/css/routers_v2.css` to `/src/static/css/routers_v2.css`
+- Fixed: Styles file path `/html_javascript_static_files/css/routers_v2.css` to `/src/html_javascript_static_files/css/routers_v2.css`
 - Fixed: FR-05 now mentions Cancel button alongside Pause/Resume
 - Fixed: `generate_console_panel()` parameter name to `include_pause_resume_cancel`
 - Removed: Non-existent `generate_list_page()` from layer architecture

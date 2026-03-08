@@ -343,8 +343,8 @@ async def _internal_query2(request: Request, request_params, function_name: str,
         table_html = convert_to_nested_html_table(data)
       html = f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
       <title>SharePoint Search Query Results</title>
-      <link rel='stylesheet' href='/static/css/styles.css'>
-      <script src='/static/js/htmx.js'></script>
+      <link rel='stylesheet' href='/html_javascript_static_files/css/styles.css'>
+      <script src='/html_javascript_static_files/js/htmx.js'></script>
       </head><body>
       <h1>{truncate_string(query,50)}</h1>
       {table_html}
@@ -421,8 +421,8 @@ async def describe2(request: Request):
     table_html = convert_to_nested_html_table(response_data['data'])
     html_content = f"""<!DOCTYPE html>
 <html><head><meta charset='utf-8'><title>{title}</title>
-  <link rel='stylesheet' href='/static/css/styles.css'>
-  <script src='/static/js/htmx.js'></script>
+  <link rel='stylesheet' href='/html_javascript_static_files/css/styles.css'>
+  <script src='/html_javascript_static_files/js/htmx.js'></script>
 </head><body>{table_html}</body></html>"""
     
     return HTMLResponse(html_content)

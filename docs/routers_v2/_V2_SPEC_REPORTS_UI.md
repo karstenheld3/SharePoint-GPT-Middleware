@@ -320,7 +320,7 @@ function formatResult(ok) { /* -, OK, FAIL */ }
 
 ### CSS Classes
 
-Uses existing classes from `/src/static/css/routers_v2.css`:
+Uses existing classes from `/src/html_javascript_static_files/css/routers_v2.css`:
 - `.row-cancel-or-fail` for failed reports
 - `.empty-state` for empty table message
 - Modal, toast, console classes from common UI
@@ -344,4 +344,4 @@ Uses existing classes from `/src/static/css/routers_v2.css`:
 - Added: "Create Demo Reports" toolbar button to match implementation
 - Fixed: Console panel note (shows for demo report creation)
 - Fixed: Page load description (server pre-renders rows, not empty tbody)
-- Fixed: CSS path from `/static/` to `/src/static/`
+- Fixed: CSS path from `/html_javascript_static_files/` to `/src/html_javascript_static_files/`

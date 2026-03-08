@@ -535,10 +535,10 @@ def create_app() -> FastAPI:
     initialization_errors.append({"component": "Crawler V2 Router", "error": str(e)})
 
   # Mount static files directory
-  static_path = os.path.join(os.path.dirname(__file__), "static")
+  static_path = os.path.join(os.path.dirname(__file__), "html_javascript_static_files")
   if os.path.exists(static_path):
-    app.mount("/static", StaticFiles(directory=static_path), name="static")
-    log_function_output(log_data, f"Static files mounted from '{static_path}' at /static")
+    app.mount("/html_javascript_static_files", StaticFiles(directory=static_path), name="html_javascript_static_files")
+    log_function_output(log_data, f"Static files mounted from '{static_path}' at /html_javascript_static_files")
   else:
     initialization_errors.append({"component": "Static Files", "error": f"Static directory not found: {static_path}"})
     log_function_output(log_data, f"Static directory not found: {static_path}")
@@ -590,8 +590,8 @@ def root() -> str:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SharePoint-GPT-Middleware</title>
-  <link rel="stylesheet" href="/static/css/styles.css">
-  <script src="/static/js/htmx.js"></script>
+  <link rel="stylesheet" href="/html_javascript_static_files/css/styles.css">
+  <script src="/html_javascript_static_files/js/htmx.js"></script>
 </head>
 <body>
   <h1>SharePoint-GPT-Middleware Version 0.9.0 (Mar 2026)</h1>

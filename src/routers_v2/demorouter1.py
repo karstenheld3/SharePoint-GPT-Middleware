@@ -107,7 +107,7 @@ def html_result(title: str, data, navigation_html: str = "") -> HTMLResponse:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{title}</title>
-  <link rel="stylesheet" href="/static/css/styles.css">
+  <link rel="stylesheet" href="/html_javascript_static_files/css/styles.css">
 </head>
 <body>
   <h1>{title}</h1>
@@ -146,8 +146,8 @@ async def demorouter_root(request: Request):
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Demo Router</title>
-  <link rel="stylesheet" href="/static/css/styles.css">
-  <script src="/static/js/htmx.js"></script>
+  <link rel="stylesheet" href="/html_javascript_static_files/css/styles.css">
+  <script src="/html_javascript_static_files/js/htmx.js"></script>
 </head>
 <body>
   <h1>Demo Router</h1>
@@ -205,9 +205,9 @@ async def demorouter_root(request: Request):
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Demo Items</title>
-  <link rel="stylesheet" href="/static/css/styles.css">
-  <link rel="stylesheet" href="/static/css/routers_v2.css">
-  <script src="/static/js/htmx.js"></script>
+  <link rel="stylesheet" href="/html_javascript_static_files/css/styles.css">
+  <link rel="stylesheet" href="/html_javascript_static_files/css/routers_v2.css">
+  <script src="/html_javascript_static_files/js/htmx.js"></script>
 </head>
 <body class="has-console">
   <!-- Toast Container (z-index above modal) -->

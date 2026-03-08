@@ -85,7 +85,7 @@ def html_result(title: str, data: Any, navigation_html: str = "") -> HTMLRespons
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{_escape_html(title)}</title>
-  <link rel="stylesheet" href="/static/css/styles.css">
+  <link rel="stylesheet" href="/html_javascript_static_files/css/styles.css">
 </head>
 <body>
   <h1>{_escape_html(title)}</h1>
@@ -101,15 +101,15 @@ def html_result(title: str, data: Any, navigation_html: str = "") -> HTMLRespons
 
 def generate_html_head(title: str, include_htmx: bool = True, include_v2_css: bool = True, additional_css: str = "") -> str:
   """Generate <head> section with standard resources."""
-  htmx_script = '<script src="/static/js/htmx.js"></script>' if include_htmx else ''
-  v2_css = '<link rel="stylesheet" href="/static/css/routers_v2.css">' if include_v2_css else ''
+  htmx_script = '<script src="/html_javascript_static_files/js/htmx.js"></script>' if include_htmx else ''
+  v2_css = '<link rel="stylesheet" href="/html_javascript_static_files/css/routers_v2.css">' if include_v2_css else ''
   additional_style = f'<style>{additional_css}</style>' if additional_css else ''
   
   return f"""<head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{_escape_html(title)}</title>
-  <link rel="stylesheet" href="/static/css/styles.css">
+  <link rel="stylesheet" href="/html_javascript_static_files/css/styles.css">
   {v2_css}
   {htmx_script}
   {additional_style}
@@ -1205,8 +1205,8 @@ def generate_router_docs_page(title: str, description: str, router_prefix: str, 
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{_escape_html(title)}</title>
-  <link rel="stylesheet" href="/static/css/styles.css">
-  <script src="/static/js/htmx.js"></script>
+  <link rel="stylesheet" href="/html_javascript_static_files/css/styles.css">
+  <script src="/html_javascript_static_files/js/htmx.js"></script>
 </head>
 <body>
   <h1>{_escape_html(title)}</h1>

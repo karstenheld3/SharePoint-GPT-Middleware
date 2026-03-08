@@ -707,8 +707,8 @@ Two types of self-documentation exist:
    - List of available endpoints with links to each supported format
    - Back navigation link
    - Required elements for consistent look and feel:
-     - Stylesheet: `/static/css/styles.css`
-     - Script: `/static/js/htmx.js` (include for HTMX interactivity)
+     - Stylesheet: `/html_javascript_static_files/css/styles.css`
+     - Script: `/html_javascript_static_files/js/htmx.js` (include for HTMX interactivity)
      - Standard HTML5 doctype: `<!doctype html><html lang="en">`
      - Viewport meta tag for responsive design
 
@@ -754,7 +754,7 @@ async def demorouter_root(request: Request):
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Demo Router</title>
-  <link rel="stylesheet" href="/static/css/styles.css">
+  <link rel="stylesheet" href="/html_javascript_static_files/css/styles.css">
 </head>
 <body>
   <h1>Demo Router</h1>
