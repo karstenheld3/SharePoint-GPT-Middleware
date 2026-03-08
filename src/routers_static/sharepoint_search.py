@@ -430,7 +430,7 @@ async def describe2(request: Request):
 <html><head><meta charset='utf-8'><title>{title}</title>
   <link rel='stylesheet' href='/html_javascript_static_files/css/styles.css'>
   <script src='/html_javascript_static_files/js/htmx.js'></script>
-</head><body><div class="table-responsive">{table_html}</div></body></html>"""
+</head><body>{table_html}</body></html>"""
     
     return HTMLResponse(html_content)
 
