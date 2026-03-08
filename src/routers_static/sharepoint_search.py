@@ -354,7 +354,7 @@ async def _internal_query2(request: Request, request_params, function_name: str,
       <script src='/html_javascript_static_files/js/htmx.js'></script>
       </head><body>
       <h1>{truncate_string(query,50)}</h1>
-      {table_html}
+      <div class="table-responsive">{table_html}</div>
       </body></html>
       """
       output = HTMLResponse(html)
@@ -430,7 +430,7 @@ async def describe2(request: Request):
 <html><head><meta charset='utf-8'><title>{title}</title>
   <link rel='stylesheet' href='/html_javascript_static_files/css/styles.css'>
   <script src='/html_javascript_static_files/js/htmx.js'></script>
-</head><body>{table_html}</body></html>"""
+</head><body><div class="table-responsive">{table_html}</div></body></html>"""
     
     return HTMLResponse(html_content)
 
