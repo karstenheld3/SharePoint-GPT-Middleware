@@ -78,6 +78,16 @@ Documents may opt-in to use Markdown tables or emojis by adding a DevSystem tag 
 - `MarkdownTablesAllowed=true` - Allow Markdown tables in this document
 - `EmojisAllowed=true` - Allow emojis in this document
 
+**Table formatting rule:** When tables are allowed, format with aligned columns using spaces for human readability. No bold, italic, or other formatting inside table cells.
+```markdown
+| Model           | Workers | TPM   |
+|-----------------|---------|-------|
+| gpt-5-nano      | 120+    | ~402K |
+| claude-4-5-opus | 60+     | ~473K |
+```
+- BAD: `|Model|Workers|TPM|` (no spacing)
+- BAD: `| **Model** | Workers |` (bold in cells)
+
 **Allowed emojis (when enabled):**
 - ✅ - Yes, supported, pass, enabled
 - ❌ - No, unsupported, fail, disabled

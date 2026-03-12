@@ -41,6 +41,8 @@ Behavioral rules for agent execution patterns.
 
 ## Batch Operations
 
+**Cascade terminal limit (2026-03-09):** Max 4 concurrent terminals. Additional terminals are queued/delayed.
+
 Before processing multiple files:
 
 1. Run `tool --help` or read source
