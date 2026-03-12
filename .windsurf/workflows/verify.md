@@ -58,10 +58,22 @@ Apply to ALL document types and contexts:
   - Tables found? → Convert to unnumbered lists with bold labels
   - Exception: README.md may use tables without `<DevSystem>` tag
   - Only [ACTOR] may add `<DevSystem MarkdownTablesAllowed=true />` exception to other files
+  - If tables ARE allowed: verify formatting per `core-conventions.md` (aligned columns with spaces)
 - **Avoid emojis** - Remove or replace with text:
   - Emojis found? → Replace with text equivalents (Yes/No/Warning)
   - Exception: README.md may use emojis without `<DevSystem>` tag
   - Only [ACTOR] may add `<DevSystem EmojisAllowed=true />` exception to other files
+
+## Conceptual verification
+
+When reviewing architechture, design and solution strategy, look for:
+- inconsistencies
+- new solutions for already solved problems
+- ambiguities
+- underspeced behavior
+- unverified assumptions
+- over-engineering and introduction of unwanted complexity
+- flawed thinking and underestimated complexity
 
 ## Verification Labels
 
