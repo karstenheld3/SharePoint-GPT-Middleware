@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
-from routers_v1.common_openai_functions_v1 import CoaiSearchParams, get_search_results_using_responses_api, get_search_results_using_search_api, try_get_vector_store_by_id
+from routers_v1.common_openai_functions_v1 import CoaiSearchParams, format_openai_connection_error, get_search_results_using_responses_api, get_search_results_using_search_api, try_get_vector_store_by_id
 from routers_v1.router_crawler_functions_v1 import is_files_metadata_v2_format, convert_file_metadata_item_from_v2_to_v3
 from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from common_utility_functions import convert_to_nested_html_table, remove_linebreaks
@@ -229,7 +229,7 @@ async def _internal_request_to_llm(request: Request, request_params: dict, reque
           found_vector_store_ids[vsid] = vs
           log_function_output(request_data, f"VectorStoreCache - Added '{vs.name}' (id='{vsid}')")
       except Exception as e:
-        error_message = f"ERROR: Failed to connect to OpenAI -> {str(e)}"
+        error_message = format_openai_connection_error(e, config.AZURE_MANAGED_IDENTITY_CLIENT_ID)
         log_function_output(request_data, error_message)
         fake_search_results = []
         data = build_data_object(query, fake_search_results, None, request.app.state.metadata_cache)

@@ -16,6 +16,7 @@ from routers_v2.common_map_file_functions_v2 import SharePointMapRow, FilesMapRo
 from routers_v2.common_sharepoint_functions_v2 import SharePointFile, connect_to_site_using_client_id_and_certificate, try_get_document_library, get_document_library_files, download_file_from_sharepoint, get_list_items, get_list_items_as_sharepoint_files, export_list_to_csv, get_site_pages, download_site_page_html, create_document_library, add_number_field_to_list, add_text_field_to_list, upload_file_to_library, upload_file_to_folder, update_file_content, rename_file, move_file, delete_file, create_folder_in_library, delete_document_library, create_list, add_list_item, update_list_item, delete_list_item, delete_list, create_site_page, update_site_page, rename_site_page, delete_site_page, file_exists_in_library, get_list_items_with_fields, export_list_items_to_csv_string, export_list_items_to_markdown_string, ListExportResult
 from routers_v2.common_embed_functions_v2 import upload_file_to_openai, delete_file_from_openai, add_file_to_vector_store, remove_file_from_vector_store, list_vector_store_files, wait_for_vector_store_ready, get_failed_embeddings, upload_and_embed_file, remove_and_delete_file
 from routers_v2.common_openai_functions_v2 import create_vector_store, try_get_vector_store_by_id
+from routers_v1.common_openai_functions_v1 import format_openai_connection_error
 
 router = APIRouter()
 config = None
@@ -442,7 +443,7 @@ async def crawl_domain(storage_path: str, domain: DomainConfig, mode: str, scope
       try:
         existing_vs = await try_get_vector_store_by_id(openai_client, domain.vector_store_id)
       except Exception as e:
-        logger.log_function_output(f"ERROR: Failed to connect to OpenAI -> {str(e)}")
+        logger.log_function_output(format_openai_connection_error(e, config.AZURE_MANAGED_IDENTITY_CLIENT_ID))
         logger.log_function_output("Embedding will be skipped for all sources.")
         skip_embedding = True
         existing_vs = None

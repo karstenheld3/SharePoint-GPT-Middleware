@@ -7,7 +7,7 @@ from hardcoded_config import CRAWLER_HARDCODED_CONFIG
 from common_utility_functions import normalize_long_path
 from routers_v1.common_logging_functions_v1 import log_function_output
 from routers_v1.common_sharepoint_functions_v1 import connect_to_site_using_client_id_and_certificate, try_get_document_library, get_document_library_files
-from routers_v1.common_openai_functions_v1 import get_vector_store_files_with_filenames_as_dict, create_vector_store, try_get_vector_store_by_id, replicate_vector_store_content
+from routers_v1.common_openai_functions_v1 import format_openai_connection_error, get_vector_store_files_with_filenames_as_dict, create_vector_store, try_get_vector_store_by_id, replicate_vector_store_content
 @dataclass
 class FileSource:
     """Represents a SharePoint document library source."""
@@ -1121,7 +1121,7 @@ def download_files_from_sharepoint(system_info, domain_id: str, source_id: str, 
   return results
 
 
-async def update_vector_store(system_info, openai_client, domain_id: str, temp_vs_only: bool, request_data: Dict[str, Any] = None) -> Dict[str, Any]:
+async def update_vector_store(system_info, openai_client, domain_id: str, temp_vs_only: bool, request_data: Dict[str, Any] = None, managed_identity_client_id: str = None) -> Dict[str, Any]:
   """
   Update vector store with files from local storage.
   
@@ -1131,6 +1131,7 @@ async def update_vector_store(system_info, openai_client, domain_id: str, temp_v
     domain_id: The ID of the domain to process
     temp_vs_only: If False, replicate temp VS to domain VS
     request_data: Optional logging context
+    managed_identity_client_id: Optional managed identity client ID for error messages
     
   Returns:
     Dictionary with results
@@ -1149,7 +1150,7 @@ async def update_vector_store(system_info, openai_client, domain_id: str, temp_v
     try:
       domain_vs = await try_get_vector_store_by_id(openai_client, domain.vector_store_id)
     except Exception as e:
-      log_function_output(request_data, f"  ERROR: Failed to connect to OpenAI -> {str(e)}")
+      log_function_output(request_data, f"  {format_openai_connection_error(e, managed_identity_client_id)}")
       raise
   
   if not domain_vs:

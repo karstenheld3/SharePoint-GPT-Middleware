@@ -1031,7 +1031,8 @@ async def update_vector_store(request: Request):
       openai_client=request.app.state.openai_client,
       domain_id=domain_id,
       temp_vs_only=temp_vs_only,
-      request_data=request_data
+      request_data=request_data,
+      managed_identity_client_id=request.app.state.config.AZURE_MANAGED_IDENTITY_CLIENT_ID
     )
     
     log_function_output(request_data, "Vector store update completed successfully")

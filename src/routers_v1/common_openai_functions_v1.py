@@ -204,6 +204,15 @@ def create_async_azure_openai_client_with_credential(endpoint, api_version, cred
   token_provider = get_bearer_token_provider(credential, "https://cognitiveservices.azure.com/.default")
   return AsyncAzureOpenAI(api_version=api_version, azure_endpoint=endpoint, azure_ad_token_provider=token_provider, max_retries=5)
 
+# Generate standardized "Failed to connect to OpenAI" error message
+# If error mentions managed identity, include the client ID for debugging
+def format_openai_connection_error(e: Exception, managed_identity_client_id: Optional[str] = None) -> str:
+  error_str = str(e)
+  msg = f"ERROR: Failed to connect to OpenAI -> {error_str}"
+  if managed_identity_client_id and "managed identity" in error_str.lower():
+    msg += f" (managed_identity_client_id: {managed_identity_client_id})"
+  return msg
+
 # Retries the given function on rate limit errors
 def retry_on_openai_rate_limit_errors_for_sync_client(fn, function_name="retry_on_openai_errors", request_number=0, indentation=0, retries=5, backoff_seconds=10):
   for attempt in range(retries):
