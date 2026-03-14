@@ -73,17 +73,18 @@ Delegated permissions are used when a user is present. The app acts on behalf of
 
 ### Permission Type by Auth Method
 
-| Authentication Method              | Document | Permission Type | Sites.Selected Available |  
-|------------------------------------|----------|-----------------|--------------------------|
-| Certificate Credentials            | AM01     | Application     | Yes                      |
-| Client Secret                      | AM02     | Application     | Yes (Graph only)         |
-| Managed Identity                   | AM03     | Application     | Yes                      |
-| Interactive Browser                | AM04     | Delegated       | No                       |
-| Device Code                        | AM05     | Delegated       | No                       |
-| Authorization Code                 | AM06     | Delegated       | No                       |
-| Username/Password (ROPC)           | AM07     | Delegated       | No                       |
-| On-Behalf-Of                       | AM08     | Delegated       | No                       |
-| Development Tools                  | AM09     | Delegated       | No                       |
+**Application Permissions (Sites.Selected available):**
+- **Certificate Credentials** (AM01) - Application, Sites.Selected: Yes
+- **Client Secret** (AM02) - Application, Sites.Selected: Yes (Graph only)
+- **Managed Identity** (AM03) - Application, Sites.Selected: Yes
+
+**Delegated Permissions (Sites.Selected NOT available):**
+- **Interactive Browser** (AM04) - Delegated
+- **Device Code** (AM05) - Delegated
+- **Authorization Code** (AM06) - Delegated
+- **Username/Password (ROPC)** (AM07) - Delegated
+- **On-Behalf-Of** (AM08) - Delegated
+- **Development Tools** (AM09) - Delegated
 
 ## 2. API Targets: Microsoft Graph vs SharePoint REST
 
@@ -91,19 +92,20 @@ Delegated permissions are used when a user is present. The app acts on behalf of
 
 Different APIs require different token audiences. You cannot use a Graph token for SharePoint REST API calls.
 
-| API                | Token Audience                      | Endpoint Pattern                               |
-|--------------------|-------------------------------------|------------------------------------------------|
-| Microsoft Graph    | `https://graph.microsoft.com`       | `https://graph.microsoft.com/v1.0/sites/...`   |
-| SharePoint REST    | `https://{tenant}.sharepoint.com`   | `https://{tenant}.sharepoint.com/_api/...`     |
+- **Microsoft Graph**
+  - Token Audience: `https://graph.microsoft.com`
+  - Endpoint Pattern: `https://graph.microsoft.com/v1.0/sites/...`
+
+- **SharePoint REST**
+  - Token Audience: `https://{tenant}.sharepoint.com`
+  - Endpoint Pattern: `https://{tenant}.sharepoint.com/_api/...`
 
 ### Which API to Use?
 
-| Scenario                    | Recommended API   | Reason                                              |
-|-----------------------------|-------------------|-----------------------------------------------------|
-| Modern development          | Microsoft Graph   | Unified endpoint, cross-Microsoft 365, better docs  |
-| Legacy migration            | SharePoint REST   | Compatibility with existing code                    |
-| Full SharePoint features    | SharePoint REST   | Some features not exposed in Graph                  |
-| Cross-tenant operations     | Microsoft Graph   | Easier multi-tenant configuration                   |
+- **Modern development** - Microsoft Graph (unified endpoint, cross-Microsoft 365, better docs)
+- **Legacy migration** - SharePoint REST (compatibility with existing code)
+- **Full SharePoint features** - SharePoint REST (some features not exposed in Graph)
+- **Cross-tenant operations** - Microsoft Graph (easier multi-tenant configuration)
 
 ### Permission Registration Per API
 
@@ -114,7 +116,7 @@ Azure Portal > App Registration > API Permissions > Add a permission
                                                           │
                     ┌─────────────────────────────────────┼─────────────────────────────────────┐
                     │                                     │                                     │
-                    ▼                                     ▼                                     ▼
+                    v                                     v                                     v
             Microsoft Graph                         SharePoint                           Custom API
             (for Graph API)                    (for SharePoint REST)                  (for your APIs)
 ```
@@ -125,16 +127,19 @@ Azure Portal > App Registration > API Permissions > Add a permission
 
 ### Read vs Write Operations
 
-| Operation              | Required Scope (Read)  | Required Scope (Write)   |
-|------------------------|------------------------|--------------------------|
-| List sites             | Sites.Read.All         | -                        |
-| Read list items        | Sites.Read.All         | -                        |
-| Read files             | Sites.Read.All         | -                        |
-| Create list items      | -                      | Sites.ReadWrite.All      |
-| Upload files           | -                      | Sites.ReadWrite.All      |
-| Delete items           | -                      | Sites.ReadWrite.All      |
-| Create lists           | -                      | Sites.ReadWrite.All      |
-| Modify site settings   | -                      | Sites.FullControl.All    |
+**Read Operations** (require `Sites.Read.All`):
+- List sites
+- Read list items
+- Read files
+
+**Write Operations** (require `Sites.ReadWrite.All`):
+- Create list items
+- Upload files
+- Delete items
+- Create lists
+
+**Admin Operations** (require `Sites.FullControl.All`):
+- Modify site settings
 
 ### Available Scopes
 
@@ -142,40 +147,32 @@ Azure Portal > App Registration > API Permissions > Add a permission
 
 **Application Permissions:**
 
-| Scope                   | Access Level             | Use Case                                    |
-|-------------------------|--------------------------|---------------------------------------------|
-| `Sites.Read.All`        | Read all sites           | Reporting, indexing (read-only)             |
-| `Sites.ReadWrite.All`   | Read/write all sites     | Full access crawlers, automation            |
-| `Sites.FullControl.All` | Full control all sites   | Administrator operations, site creation     |
-| `Sites.Selected`        | Specific sites only      | **Recommended** for least-privilege         |
+- **`Sites.Read.All`** - Read all sites (reporting, indexing)
+- **`Sites.ReadWrite.All`** - Read/write all sites (crawlers, automation)
+- **`Sites.FullControl.All`** - Full control all sites (admin operations, site creation)
+- **`Sites.Selected`** - Specific sites only (**Recommended** for least-privilege)
 
 **Delegated Permissions:**
 
-| Scope                   | Access Level                     | Use Case                    |
-|-------------------------|----------------------------------|-----------------------------|  
-| `Sites.Read.All`        | Read sites user can access       | User-facing read apps       |
-| `Sites.ReadWrite.All`   | Read/write sites user can access | User-facing editing apps    |
+- **`Sites.Read.All`** - Read sites user can access (user-facing read apps)
+- **`Sites.ReadWrite.All`** - Read/write sites user can access (user-facing editing apps)
 
 **Note:** `Sites.Selected` is NOT available as a delegated permission.
 
 #### SharePoint Scopes
 
-**Application Permissions:**
+**Application Permissions:** (all require certificate authentication)
 
-| Scope                   | Access Level           | Notes                              |
-|-------------------------|------------------------|------------------------------------|  
-| `Sites.Read.All`        | Read all sites         | Requires certificate authentication|
-| `Sites.ReadWrite.All`   | Read/write all sites   | Requires certificate authentication|
-| `Sites.FullControl.All` | Full control           | Requires certificate authentication|
-| `Sites.Selected`        | Specific sites         | Requires certificate authentication|
+- **`Sites.Read.All`** - Read all sites
+- **`Sites.ReadWrite.All`** - Read/write all sites
+- **`Sites.FullControl.All`** - Full control
+- **`Sites.Selected`** - Specific sites
 
-**Delegated Permissions:**
+**Delegated Permissions:** (legacy scopes)
 
-| Scope                  | Access Level                     | Notes        |
-|------------------------|----------------------------------|--------------|  
-| `AllSites.Read`        | Read all sites user can access   | Legacy scope |
-| `AllSites.Write`       | Write all sites user can access  | Legacy scope |
-| `AllSites.FullControl` | Full control                     | Legacy scope |
+- **`AllSites.Read`** - Read all sites user can access
+- **`AllSites.Write`** - Write all sites user can access
+- **`AllSites.FullControl`** - Full control
 
 ### Choosing the Right Scope
 
@@ -206,10 +203,8 @@ Azure Portal > App Registration > API Permissions > Add a permission
 
 ### Availability
 
-| Context                   | Available | Notes                                        |
-|---------------------------|-----------|----------------------------------------------|
-| Application permissions   | Yes       | Requires per-site grant via Graph API        |
-| Delegated permissions     | **No**    | Use user's existing SharePoint permissions   |
+- **Application permissions** - Yes (requires per-site grant via Graph API)
+- **Delegated permissions** - **No** (use user's existing SharePoint permissions)
 
 ### How to Configure Sites.Selected
 
@@ -256,21 +251,25 @@ Get-MgSitePermission -SiteId $site.Id
 
 ### Sites.Selected Roles
 
-| Role    | Access Level                                  |
-|---------|-----------------------------------------------|  
-| `read`  | Read access to site content                   |
-| `write` | Read and write access to site content         |
-| `owner` | Full control including permissions management |
+- **`read`** - Read access to site content
+- **`write`** - Read and write access to site content
+- **`owner`** - Full control including permissions management
 
 ### Sites.Selected vs Sites.Read/ReadWrite.All
 
-| Aspect            | Sites.Selected                 | Sites.Read/ReadWrite.All       |
-|-------------------|--------------------------------|--------------------------------|
-| Scope             | Specific sites only            | All sites in tenant            |
-| Configuration     | Per-site grants required       | Single administrator consent   |
-| Least privilege   | Yes                            | No                             |
-| Maintenance       | Higher (track site access)     | Lower                          |
-| Security          | Better (limited blast radius)  | Worse (full tenant access)     |
+**Sites.Selected:**
+- Scope: Specific sites only
+- Configuration: Per-site grants required
+- Least privilege: Yes
+- Maintenance: Higher (track site access)
+- Security: Better (limited blast radius)
+
+**Sites.Read/ReadWrite.All:**
+- Scope: All sites in tenant
+- Configuration: Single administrator consent
+- Least privilege: No
+- Maintenance: Lower
+- Security: Worse (full tenant access)
 
 ## 5. Permission Matrix by Auth Method
 
@@ -278,36 +277,28 @@ Get-MgSitePermission -SiteId $site.Id
 
 #### AM01: Certificate Credentials
 
-| API               | Recommended Permissions        | Notes                              |
-|-------------------|--------------------------------|------------------------------------|
-| Microsoft Graph   | `Sites.Selected` (preferred)   | Grant per-site access              |
-| Microsoft Graph   | `Sites.ReadWrite.All`          | If all-site access needed          |
-| SharePoint REST   | `Sites.ReadWrite.All`          | **Certificate required**           |
+- **Microsoft Graph** - `Sites.Selected` (preferred, grant per-site access)
+- **Microsoft Graph** - `Sites.ReadWrite.All` (if all-site access needed)
+- **SharePoint REST** - `Sites.ReadWrite.All` (**certificate required**)
 
 #### AM02: Client Secret
 
-| API               | Recommended Permissions        | Notes                                    |
-|-------------------|--------------------------------|------------------------------------------|
-| Microsoft Graph   | `Sites.Selected` (preferred)   | Grant per-site access                    |
-| Microsoft Graph   | `Sites.ReadWrite.All`          | If all-site access needed                |
-| SharePoint REST   | **NOT SUPPORTED**              | Client secrets blocked by SharePoint     |
+- **Microsoft Graph** - `Sites.Selected` (preferred, grant per-site access)
+- **Microsoft Graph** - `Sites.ReadWrite.All` (if all-site access needed)
+- **SharePoint REST** - **NOT SUPPORTED** (client secrets blocked by SharePoint)
 
 #### AM03: Managed Identity
 
-| API               | Recommended Permissions        | Notes                              |
-|-------------------|--------------------------------|------------------------------------|
-| Microsoft Graph   | `Sites.Selected` (preferred)   | Grant via PowerShell               |
-| Microsoft Graph   | `Sites.ReadWrite.All`          | If all-site access needed          |
-| SharePoint REST   | `Sites.ReadWrite.All`          | Via Graph API permission grant     |
+- **Microsoft Graph** - `Sites.Selected` (preferred, grant via PowerShell)
+- **Microsoft Graph** - `Sites.ReadWrite.All` (if all-site access needed)
+- **SharePoint REST** - `Sites.ReadWrite.All` (via Graph API permission grant)
 
 ### User-Delegated Methods (Delegated Permissions)
 
 #### AM04, AM05, AM06, AM07, AM08, AM09
 
-| API               | Recommended Permissions        | Notes                              |
-|-------------------|--------------------------------|------------------------------------|
-| Microsoft Graph   | `Sites.ReadWrite.All`          | User's permissions apply           |
-| SharePoint REST   | `AllSites.Write`               | Only if using REST API directly    |
+- **Microsoft Graph** - `Sites.ReadWrite.All` (user's permissions apply)
+- **SharePoint REST** - `AllSites.Write` (only if using REST API directly)
 
 **Important:** For delegated flows, the effective permission is:
 ```
@@ -391,13 +382,11 @@ The app cannot access more than the user can access, regardless of granted scope
 
 ### Common Errors
 
-| Error Code       | Meaning                          | Solution                                         |
-|------------------|----------------------------------|--------------------------------------------------|
-| AADSTS65001      | User/admin has not consented     | Grant consent in Azure Portal                    |
-| AADSTS70011      | Invalid scope format             | Use correct scope format (e.g., `.default`)      |
-| AADSTS700016     | Application not found            | Verify client_id and tenant_id                   |
-| 401 Unauthorized | Token missing or invalid         | Check token audience matches API                 |
-| 403 Forbidden    | Insufficient permissions         | Add required permissions, re-consent             |
+- **AADSTS65001** - User/admin has not consented → Grant consent in Azure Portal
+- **AADSTS70011** - Invalid scope format → Use correct scope format (e.g., `.default`)
+- **AADSTS700016** - Application not found → Verify client_id and tenant_id
+- **401 Unauthorized** - Token missing or invalid → Check token audience matches API
+- **403 Forbidden** - Insufficient permissions → Add required permissions, re-consent
 
 ### Debugging Checklist
 

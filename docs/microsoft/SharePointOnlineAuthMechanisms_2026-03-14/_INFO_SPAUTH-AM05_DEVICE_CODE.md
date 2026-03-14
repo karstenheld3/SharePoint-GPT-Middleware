@@ -33,11 +33,11 @@ Device code flow is for **browserless** or **input-constrained** environments:
 │  │ Enter code: ABCD-EFGH                                      │  │
 │  └────────────────────────────────────────────────────────────┘  │
 │                          │                                       │
-│                          ▼                                       │
+│                          v                                       │
 │  User opens browser on ANY device (phone, laptop, etc.)          │
 │  Visits URL, enters code, logs in                                │
 │                          │                                       │
-│                          ▼                                       │
+│                          v                                       │
 │  App polls Microsoft until login complete                        │
 │  Receives tokens                                                 │
 └──────────────────────────────────────────────────────────────────┘

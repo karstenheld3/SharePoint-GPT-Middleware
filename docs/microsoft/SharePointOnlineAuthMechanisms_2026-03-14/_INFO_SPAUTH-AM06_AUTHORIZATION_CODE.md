@@ -28,21 +28,21 @@ Authorization code flow is the **standard OAuth 2.0 flow** for web applications:
 │                                                                 │
 │  1. User clicks "Login"                                         │
 │     │                                                           │
-│     ▼                                                           │
+│     v                                                           │
 │  2. App redirects to Microsoft login                            │
 │     (includes code_challenge for PKCE)                          │
 │     │                                                           │
-│     ▼                                                           │
+│     v                                                           │
 │  3. User authenticates (may include MFA)                        │
 │     │                                                           │
-│     ▼                                                           │
+│     v                                                           │
 │  4. Microsoft redirects back with authorization code            │
 │     │                                                           │
-│     ▼                                                           │
+│     v                                                           │
 │  5. App exchanges code for tokens (with code_verifier)          │
 │     (This happens server-side - code never exposed to browser)  │
 │     │                                                           │
-│     ▼                                                           │
+│     v                                                           │
 │  6. App receives access_token, refresh_token, id_token          │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -89,7 +89,7 @@ Authorization code flow is the **standard OAuth 2.0 flow** for web applications:
 │ └─────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
                               │
-                              ▼
+                              v
 ┌─────────────────────────────────────────────────────────────────┐
 │ FastAPI Backend                                                 │
 │ ┌─────────────────────────────────────────────────────────────┐ │

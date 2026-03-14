@@ -75,7 +75,7 @@ Managed Identity is the **most secure** authentication method for Azure-hosted a
 │ │  └───────────────┘    │ - No secrets needed!             │  │ │
 │ │                       └──────────────────────────────────┘  │ │
 │ │                                    │                        │ │
-│ │                                    ▼                        │ │
+│ │                                    v                        │ │
 │ │                       ┌──────────────────────────────────┐  │ │
 │ │                       │ IMDS Endpoint                    │  │ │
 │ │                       │ 169.254.169.254/metadata/...     │  │ │

@@ -21,7 +21,7 @@ The `files_metadata.json` file serves as the central mapping that connects files
 └──────┬──────┘
        │ 1. Download
        │ (Crawler)
-       ▼
+       v
 ┌─────────────────────┐
 │   Local Files       │
 │ (Persistent Storage)│
@@ -29,14 +29,14 @@ The `files_metadata.json` file serves as the central mapping that connects files
 └──────┬──────────────┘
        │ 2. Upload
        │ (Embedding)
-       ▼
+       v
 ┌─────────────────────┐
 │  Vector Stores      │
 │   (OpenAI API)      │
 └─────────────────────┘
        │
        │ 3. Track
-       ▼
+       v
 ┌─────────────────────┐
 │ files_metadata.json │
 │  (Central Mapping)  │

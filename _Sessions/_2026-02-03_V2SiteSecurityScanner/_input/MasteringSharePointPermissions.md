@@ -3167,7 +3167,7 @@ Inset zoom on two checkboxes:
 
 +------------------------------------------------------------+
 | People and Groups > SharePoint Su...                        |
-|  New ▼   Actions ▼   Settings ▼                             |
+|  New v   Actions v   Settings v                             |
 |  (empty list with text: "There are no items to show...")   |
 +------------------------------------------------------------+
 
@@ -3177,7 +3177,7 @@ Inset zoom on two checkboxes:
 |  🔔   ?     Held Karsten (YI) |
 | ---------------------------- |
 |  [ SHARE ] [ FOLLOW ] [ EDIT ]|
-|  Search this site ▼           |
+|  Search this site v           |
 +------------------------------+
 
 [SCREENSHOT - SHARE DIALOG]

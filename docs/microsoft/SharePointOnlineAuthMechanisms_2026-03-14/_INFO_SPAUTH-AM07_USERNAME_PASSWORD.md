@@ -256,19 +256,19 @@ fastapi>=0.100.0
 ```
 Current State: ROPC
         │
-        ▼
+        v
 Step 1: Implement modern auth alongside ROPC
         │
-        ▼
+        v
 Step 2: Migrate clients to modern auth
         │
-        ▼
+        v
 Step 3: Monitor ROPC usage
         │
-        ▼
+        v
 Step 4: Remove ROPC endpoint
         │
-        ▼
+        v
 Target State: Interactive/Certificate/Managed Identity
 ```
 

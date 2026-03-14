@@ -381,29 +381,29 @@ Three JavaScript functions handle all HTTP communication:
 ```
 User clicks button
        │
-       ▼
+       v
 ┌──────────────────┐
 │  callEndpoint()  │  Reads data-* attributes from button
 └────────┬─────────┘
          │
-         ▼
+         v
     ┌────────────┐
     │ format=?   │
     └─────┬──────┘
           │
     ┌─────┴─────┐
     │           │
-    ▼           ▼
+    v           v
 ┌────────┐  ┌─────────────┐
 │ "json" │  │  "stream"   │
 └───┬────┘  └──────┬──────┘
     │              │
-    ▼              ▼
+    v              v
 ┌────────┐  ┌───────────────┐
 │ fetch()│  │connectStream()│
 └───┬────┘  └──────┬────────┘
     │              │
-    ▼              ▼
+    v              v
 ┌────────────┐  ┌─────────────────┐
 │ JSON result│  │ SSE events:     │
 │ {ok, data} │  │ start_json      │
@@ -412,7 +412,7 @@ User clicks button
       │         │ end_json        │
       │         └────────┬────────┘
       │                  │
-      ▼                  ▼
+      v                  v
 ┌─────────────────────────────────┐
 │  Post-call behavior:            │
 │  - Show toast or modal          │

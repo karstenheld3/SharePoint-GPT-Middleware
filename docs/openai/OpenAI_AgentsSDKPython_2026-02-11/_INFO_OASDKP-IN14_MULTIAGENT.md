@@ -25,7 +25,7 @@ A central manager/orchestrator invokes specialized sub-agents as tools and retai
 └───────────────┬─────────────────────────┘
                 │ calls as tools
     ┌───────────┼───────────┐
-    ▼           ▼           ▼
+    v           v           v
 ┌─────────┐ ┌─────────┐ ┌─────────┐
 │ Booking │ │ Refund  │ │ Account │
 │ Expert  │ │ Expert  │ │ Expert  │
@@ -98,7 +98,7 @@ Peer agents hand off control to a specialized agent that takes over the conversa
 └───────────────┬─────────────────────────┘
                 │ hands off to
     ┌───────────┼───────────┐
-    ▼           ▼           ▼
+    v           v           v
 ┌─────────┐ ┌─────────┐ ┌─────────┐
 │ Booking │ │ Refund  │ │ Account │
 │ Agent   │ │ Agent   │ │ Agent   │

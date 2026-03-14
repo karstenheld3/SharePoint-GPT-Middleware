@@ -75,14 +75,14 @@ Client secrets provide simple app-only authentication but with significant limit
 └─────────────────────────────────────────────────────────────┘
          │
          │ Works for Graph API
-         ▼
+         v
 ┌─────────────────────┐
 │ Microsoft Graph API │  ✅ Supported
 └─────────────────────┘
 
          │
          │ BLOCKED for SharePoint REST
-         ▼
+         v
 ┌─────────────────────┐
 │ SharePoint REST API │  ❌ Access Denied
 └─────────────────────┘

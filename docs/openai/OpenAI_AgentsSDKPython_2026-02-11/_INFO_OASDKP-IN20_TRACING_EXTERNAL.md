@@ -125,7 +125,7 @@ set_tracing_processor(CustomProcessor("https://my-obs.example.com"))
 ```
 Runner.run() starts
     │
-    ▼
+    v
 on_trace_start(trace)
     │
     ├─► on_span_start(agent_span)

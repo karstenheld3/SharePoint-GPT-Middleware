@@ -64,19 +64,19 @@ When you call a run method, the Runner executes a loop: [VERIFIED]
 │ 1. Call LLM for current agent with current input │
 └────────────────────────┬────────────────────────┘
                          │
-                         ▼
+                         v
 ┌─────────────────────────────────────────────────┐
 │ 2. LLM produces output                          │
 └────────────────────────┬────────────────────────┘
                          │
           ┌──────────────┼──────────────┐
-          ▼              ▼              ▼
+          v              v              v
     ┌──────────┐   ┌──────────┐   ┌──────────┐
     │ Final    │   │ Handoff  │   │ Tool     │
     │ Output   │   │          │   │ Calls    │
     └────┬─────┘   └────┬─────┘   └────┬─────┘
          │              │              │
-         ▼              ▼              ▼
+         v              v              v
     ┌──────────┐   ┌──────────┐   ┌──────────┐
     │ Return   │   │ Update   │   │ Run      │
     │ Result   │   │ agent &  │   │ tools,   │

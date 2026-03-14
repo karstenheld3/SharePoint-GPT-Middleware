@@ -168,7 +168,7 @@ Cat 1: Error Cases (Tests 1-10)
 ├─ Test 10b: /results non-existent → 404
 ├─ Test 10c: /results running job → needs running job (use Job 2 from Cat 4 later, or skip)
 │
-▼
+v
 Cat 2: Job Creation (Tests 11-15)
 │
 │  ┌─ Job 1 (completed_job_id) ─────────────────────────────────────────────────────────────┐
@@ -183,11 +183,11 @@ Cat 2: Job Creation (Tests 11-15)
 │  ├─ Test 14: GET / → in list
 │  └─ Test 15: GET /results → has data
 │
-▼
+v
 Cat 3: Monitor Endpoint (Tests 16-19)
 │ Uses Job 1 (completed)
 │
-▼
+v
 Cat 4: Pause/Resume + Error Cases (Tests 20-29)
 │
 │  ┌─ Job 2 (pause_resume_job_id) ──────────────────────────────────────────────────────────┐
@@ -212,7 +212,7 @@ Cat 4: Pause/Resume + Error Cases (Tests 20-29)
 │
 │  [Job 2 continues running in background...]
 │
-▼
+v
 Cat 5: Cancel (Tests 30-34)
 │
 │  ┌─ Job 3 (cancel_job_id) ────────────────────────────────────────────────────────────────┐
@@ -227,7 +227,7 @@ Cat 5: Cancel (Tests 30-34)
 │  │     └─ Job 3 receives cancel, emits end_json(cancelled=true), file renamed .cancelled
 │  └─ Tests 32-34: Verify cancelled state
 │
-▼
+v
 Cat 6: Control Error Cases (Tests 35-38)
 │
 │  ├─ Test 35: Pause completed → fails (Job 1 completed)
@@ -237,7 +237,7 @@ Cat 6: Control Error Cases (Tests 35-38)
 │  │     └─ Job 2 file renamed .cancelled directly
 │  └─ Test 38: GET /get → cancelled
 │
-▼
+v
 Cat 7: Delete Tests (Tests 39-46)
 │
 │  ┌─ Job 4 (running_for_delete_id) ────────────────────────────────────────────────────────┐
@@ -256,14 +256,14 @@ Cat 7: Delete Tests (Tests 39-46)
 │  ├─ Test 45: DELETE force_cancelled (Job 2) → ok
 │  └─ Test 46: DELETE Job 2 again → 404
 │
-▼
+v
 [CLEANUP]
 │
 │  ├─ Cancel Job 4 (still running)
 │  ├─ Force cancel any remaining running/paused jobs
 │  └─ Delete all test job files
 │
-▼
+v
 [emit end_json with results]
 
 ════════════════════════════════════════════════════════════════════════════════════════════════

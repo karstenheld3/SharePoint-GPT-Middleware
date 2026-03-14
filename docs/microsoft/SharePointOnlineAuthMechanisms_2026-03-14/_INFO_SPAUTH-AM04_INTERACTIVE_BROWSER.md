@@ -67,13 +67,13 @@ Interactive browser authentication is for **delegated** scenarios where a user i
 │ │  └───────────┘    │ Redirects to Microsoft login         │  │ │
 │ │                   └──────────────────────────────────────┘  │ │
 │ │                              │                              │ │
-│ │                              ▼                              │ │
+│ │                              v                              │ │
 │ │  ┌──────────────────────────────────────────────────────┐   │ │
 │ │  │ Microsoft Login Page (login.microsoftonline.com)     │   │ │
 │ │  │ User enters credentials, completes MFA               │   │ │
 │ │  └──────────────────────────────────────────────────────┘   │ │
 │ │                              │                              │ │
-│ │                              ▼                              │ │
+│ │                              v                              │ │
 │ │  ┌──────────────────────────────────────────────────────┐   │ │
 │ │  │ /auth/callback - Receives auth code                  │   │ │
 │ │  │ Exchanges for tokens, stores in session              │   │ │
