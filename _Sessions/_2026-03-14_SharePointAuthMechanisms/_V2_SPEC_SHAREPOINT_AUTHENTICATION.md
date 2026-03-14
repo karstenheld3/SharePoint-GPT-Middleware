@@ -23,10 +23,10 @@
 
 ## MUST-NOT-FORGET
 
-- `ClientContext.with_access_token(token_func)` is the canonical integration pattern - all auth methods use it
+- `ClientContext.with_access_token(token_func)` is the canonical integration pattern for non-certificate auth methods
 - Library has built-in token caching - do NOT add external caching for `ClientContext` tokens
 - `TokenResponse` requires `accessToken` (str), `tokenType` (str), optionally `expiresIn` (int seconds)
-- SharePoint REST API token audience: `https://{tenant}.sharepoint.com/.default`
+- SharePoint REST API token scope: `https://{tenant}.sharepoint.com/.default` (the `.default` suffix requests all configured permissions)
 - Current `get_or_create_pem_from_pfx()` must be preserved (certificate auth stays)
 - `get_crawler_config()` in `crawler.py` currently returns cert-only config dict - must be extended
 - `common_security_scan_functions_v2.py` also calls `connect_to_site_using_client_id_and_certificate()` - in scope
@@ -35,7 +35,7 @@
 - Override file written ONLY after successful auth test
 - Interactive Browser = standard OAuth redirect in user's browser (NOT server-side browser launch)
 - Graph client (`get_graph_client()`) stays on certificate auth - out of scope for this SPEC
-- FAILS: SPAUTH-FL-001 (headless browser misconception), SPAUTH-FL-002 (acronym expansion)
+- FAILS: SPAUTH-FL-001 (headless browser misconception)
 
 ## Table of Contents
 
@@ -53,11 +53,12 @@
 12. [Action Flow](#12-action-flow)
 13. [Data Structures](#13-data-structures)
 14. [Implementation Details](#14-implementation-details)
-15. [Document History](#15-document-history)
+15. [PROPOSAL: Unified Authentication Router](#15-proposal-unified-authentication-router)
+16. [Document History](#16-document-history)
 
 ## 1. Scenario
 
-**Problem:** One client disabled certificate-based authentication. The crawler cannot connect to their SharePoint sites. Currently, `connect_to_site_using_client_id_and_certificate()` is the only auth path. Adding Managed Identity requires an abstraction layer. Future needs include personal account fallback and SPA frontend support.
+**Problem:** One client disabled certificate-based authentication. The crawler cannot connect to their SharePoint sites. Currently, `connect_to_site_using_client_id_and_certificate()` is the only auth path. Adding Managed Identity requires an abstraction layer. Future needs include personal account fallback and Single Page Application (SPA) frontend support.
 
 **Solution:**
 - Introduce `AuthenticationFactory` that returns `ClientContext` for any auth method
@@ -78,49 +79,49 @@
 ### Current Architecture
 
 ```
-┌───────────────────────────────────────────────────────────────────────────┐
-│  Callers                                                                  │
-│  ├─> crawler.py          → connect_to_site_using_client_id_and_certificate│
-│  ├─> sites.py            → connect_to_site_using_client_id_and_certificate│
-│  └─> common_security_scan_functions_v2.py → same function + get_graph_client│
-├───────────────────────────────────────────────────────────────────────────┤
-│  Auth Layer (common_sharepoint_functions_v2.py)                           │
-│  └─> connect_to_site_using_client_id_and_certificate()                    │
-│      └─> ClientContext(site_url).with_client_certificate(...)             │
-├───────────────────────────────────────────────────────────────────────────┤
-│  Library (office365-rest-python-client 2.6.2)                             │
-│  └─> ClientContext → AuthenticationContext → MSAL → Token → HTTP request  │
-└───────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────────┐
+│  Callers                                                                      │
+│  ├─> crawler.py          → connect_to_site_using_client_id_and_certificate()  │
+│  ├─> sites.py            → connect_to_site_using_client_id_and_certificate()  │
+│  └─> common_security_scan_functions_v2.py → same function + get_graph_client()│
+├───────────────────────────────────────────────────────────────────────────────┤
+│  Auth Layer (common_sharepoint_functions_v2.py)                               │
+│  └─> connect_to_site_using_client_id_and_certificate()                        │
+│      └─> ClientContext(site_url).with_client_certificate(...)                 │
+├───────────────────────────────────────────────────────────────────────────────┤
+│  Library (office365-rest-python-client 2.6.2)                                 │
+│  └─> ClientContext → AuthenticationContext → MSAL → Token → HTTP request      │
+└───────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Target Architecture
 
 ```
-┌───────────────────────────────────────────────────────────────────────────┐
-│  Callers (unchanged signatures)                                           │
-│  ├─> crawler.py          → get_sharepoint_context(site_url, request)      │
-│  ├─> sites.py            → get_sharepoint_context(site_url, request)      │
-│  └─> common_security_scan_functions_v2.py → get_sharepoint_context(...)   │
-├───────────────────────────────────────────────────────────────────────────┤
-│  Auth Layer (common_sharepoint_functions_v2.py)                           │
-│  ├─> AuthenticationFactory                                                │
-│  │   ├─> CertificateProvider     → ClientContext.with_client_certificate()│
-│  │   ├─> ManagedIdentityProvider → ClientContext.with_access_token()      │
-│  │   ├─> InteractiveBrowserProvider → ClientContext.with_access_token()   │
-│  │   ├─> DeviceCodeProvider      → ClientContext.with_access_token()      │
-│  │   └─> OBOProvider             → ClientContext.with_access_token()      │
-│  └─> AuthStateManager (override file + default config)                    │
-├───────────────────────────────────────────────────────────────────────────┤
-│  Library (office365-rest-python-client 2.6.2)                             │
-│  └─> ClientContext → AuthenticationContext → built-in token cache → HTTP  │
-└───────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────────┐
+│  Callers (unchanged signatures)                                               │
+│  ├─> crawler.py          → get_sharepoint_context(site_url, request)          │
+│  ├─> sites.py            → get_sharepoint_context(site_url, request)          │
+│  └─> common_security_scan_functions_v2.py → get_sharepoint_context(...)       │
+├───────────────────────────────────────────────────────────────────────────────┤
+│  Auth Layer (common_sharepoint_functions_v2.py)                               │
+│  ├─> AuthenticationFactory                                                    │
+│  │   ├─> CertificateProvider     → ClientContext.with_client_certificate()    │
+│  │   ├─> ManagedIdentityProvider → ClientContext.with_access_token()          │
+│  │   ├─> InteractiveBrowserProvider → ClientContext.with_access_token()       │
+│  │   ├─> DeviceCodeProvider      → ClientContext.with_access_token()          │
+│  │   └─> OnBehalfOfProvider      → ClientContext.with_access_token()          │
+│  └─> AuthStateManager (override file + default config)                        │
+├───────────────────────────────────────────────────────────────────────────────┤
+│  Library (office365-rest-python-client 2.6.2)                                 │
+│  └─> ClientContext → AuthenticationContext → built-in token cache → HTTP      │
+└───────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Hosting Environment
 
-- **Production**: Azure App Service (Managed Identity available)
-- **Local dev**: Developer machine (Certificate, Interactive Browser available)
-- **Single tenant**: One Azure AD tenant per deployment
+- **Production**: Azure App Service (Managed Identity primary; Interactive Browser available as admin fallback)
+- **Local dev**: Developer machine (Certificate primary; Interactive Browser available)
+- **Single tenant**: One Microsoft Entra ID tenant per deployment
 
 ## 3. Domain Objects
 
@@ -128,29 +129,37 @@
 
 An **AuthMethod** is an enum representing a supported authentication mechanism.
 
-- `certificate` - App-only, certificate credentials (current implementation)
-- `managed_identity` - App-only, Azure Managed Identity (Phase 1)
-- `interactive_browser` - Delegated, OAuth redirect in user's browser (Phase 2)
-- `device_code` - Delegated, code displayed for auth on separate device (Phase 3)
-- `on_behalf_of` - Delegated, per-request user token exchange (Phase 4)
+**System Auth (app-only or admin-delegated)** - configured system-wide via env var or override file:
+- `certificate` - certificate credentials (current implementation)
+- `managed_identity` - Azure Managed Identity (Phase 1)
+- `device_code` - admin authenticates once, all workers use cached token (Phase 3)
+
+**User Auth (delegated)** - per-session overlay, used when user has authenticated:
+- `interactive_browser` - OAuth redirect in user's browser (Phase 2)
+- `on_behalf_of` - per-request user token exchange (Phase 4)
+
+**Two-Tier Model:** System Auth is always configured (via env var or override file). User Auth is an optional per-session overlay that takes precedence when the request carries a valid user session. This separation ensures non-browser API calls always work via System Auth, while browser-based admin sessions can use delegated permissions. Device Code is System Auth because admin authenticates once and ALL workers/callers use that token (emergency fallback for blocked sites).
 
 ### AuthProvider
 
 An **AuthProvider** creates an authenticated `ClientContext` for a specific `AuthMethod`.
 
 **Interface:**
-- `get_context(site_url: str) -> ClientContext` - returns authenticated context
-- `validate(site_url: str) -> bool` - tests if provider can authenticate to the given site
+- `get_context(site_url: str, request: Request | None = None) -> ClientContext` - returns authenticated context; `request` required for User Auth methods (Interactive Browser, On-Behalf-Of)
+- `validate(site_url: str) -> tuple[bool, str | None]` - tests auth; returns `(True, None)` on success, `(False, error_message)` on failure
 - `method` - the `AuthMethod` this provider handles
 
 ### AuthenticationFactory
 
 The **AuthenticationFactory** resolves which `AuthProvider` to use for a given request.
 
-**Resolution order:**
-1. If request has `Authorization` header AND OBO is enabled -> `OBOProvider` (Phase 4)
-2. If override file exists -> provider for overridden method
-3. Else -> provider for default method (from env config)
+**Resolution order (Two-Tier):**
+1. [Phase 4] If request has `Authorization` header AND On-Behalf-Of is enabled -> `OnBehalfOfProvider`
+2. [Phase 2] If request has valid user session (Interactive Browser token) -> use session's User Auth
+3. If override file exists -> provider for overridden System Auth method (certificate, managed_identity, or device_code)
+4. Else -> provider for default System Auth method (from env config)
+
+**Note:** Steps 1-2 check for User Auth (per-session). Steps 3-4 resolve System Auth (system-wide). User Auth takes precedence when present, but non-browser API calls without session always use System Auth. Device Code is resolved via override file (step 3) or default (step 4), not per-session.
 
 **Storage:** N/A (stateless, reads config on each call)
 
@@ -158,7 +167,7 @@ The **AuthenticationFactory** resolves which `AuthProvider` to use for a given r
 
 The **AuthStateManager** manages the current effective auth method.
 
-**Storage:** `{PERSISTENT_STORAGE_PATH}/sharepoint_auth_override.json`
+**Storage:** `{PERSISTENT_STORAGE_PATH}/sharepoint_online_auth_override.json`
 
 **Key properties:**
 - `default_method` - from environment config (`SHAREPOINT_AUTH_METHOD`)
@@ -169,17 +178,28 @@ The **AuthStateManager** manages the current effective auth method.
 
 An **Override File** persists an admin-selected auth method that differs from the default.
 
-**Storage:** `{PERSISTENT_STORAGE_PATH}/sharepoint_auth_override.json`
+**Storage:** `{PERSISTENT_STORAGE_PATH}/sharepoint_online_auth_override.json`
 
-**Schema:**
+**Note:** This file stores only the method selection, NOT tokens. Token storage is method-specific:
+- Device Code tokens: `{PERSISTENT_STORAGE_PATH}/sharepoint_online_device_code_cache.bin`
+- Interactive Browser tokens: encrypted session cookie (travels with each browser request; provider reads from `request.session`, passes to `with_access_token()`)
+- Managed Identity/Certificate: no disk persistence needed (in-memory cache per worker; credential auto-refreshes)
+
+**Schema:** (3 valid method values - System Auth only)
+
 ```json
-{
-  "method": "device_code",
-  "set_by": "admin@contoso.com",
-  "set_at_utc": "2026-03-14T21:00:00Z",
-  "reason": "MI access revoked by IT"
-}
+{ "method": "certificate", "set_by": "admin@contoso.com", "set_at_utc": "2026-03-14T21:00:00Z" }
 ```
+
+```json
+{ "method": "managed_identity", "set_by": "admin@contoso.com", "set_at_utc": "2026-03-14T21:00:00Z" }
+```
+
+```json
+{ "method": "device_code", "set_by": "admin@contoso.com", "set_at_utc": "2026-03-14T21:00:00Z" }
+```
+
+**Note:** User Auth methods (`interactive_browser`, `on_behalf_of`) are NOT valid override values. They are per-session and managed via user login, not system-wide override.
 
 ## 4. Implementation Phases
 
@@ -204,7 +224,7 @@ An **Override File** persists an admin-selected auth method that differs from th
   - Admin-initiated flow via middleware UI
 
 - **Phase 4**: On-Behalf-Of (COMPLEXITY-HIGH)
-  - OBOProvider with per-request token exchange
+  - OnBehalfOfProvider with per-request token exchange
   - Smart Auth Selection (Authorization header detection)
   - Token validation (issuer, audience, claims)
   - Per-user in-memory token cache
@@ -273,7 +293,7 @@ Phase 1 (Certificate + MI)
 
 **SPAUTH-DD-03:** ManagedIdentityCredential is instantiated once at module level and reused. Rationale: `azure.identity` credentials are designed for reuse; internal token caching is per-credential-instance.
 
-**SPAUTH-DD-04:** Token scope derived from site URL hostname. `https://contoso.sharepoint.com/sites/hr` -> scope `https://contoso.sharepoint.com/.default`. Rationale: avoids separate tenant name config; URL already contains tenant.
+**SPAUTH-DD-04:** Token scope derived from site URL hostname. `https://contoso.sharepoint.com/sites/hr` -> scope `https://contoso.sharepoint.com/.default`. Fallback: if URL doesn't contain `.sharepoint.com` (e.g., vanity domain), use `CRAWLER_TENANT_NAME` env var. Rationale: avoids separate tenant name config in common case; fallback handles edge cases.
 
 **SPAUTH-DD-05:** `get_crawler_config()` in `crawler.py` extended to include `auth_method` field. Rationale: selftest and other callers need to know current method without reading env vars directly.
 
@@ -285,7 +305,7 @@ Phase 1 (Certificate + MI)
 
 **SPAUTH-IG-03:** If `SHAREPOINT_AUTH_METHOD` is not set, default is `certificate`. Rationale: zero-config backward compatibility.
 
-**SPAUTH-IG-04:** ManagedIdentityCredential failure produces actionable error: "Managed Identity not available. Ensure app is running in Azure with MI enabled, or set SHAREPOINT_AUTH_METHOD=certificate."
+**SPAUTH-IG-04:** ManagedIdentityCredential failure produces actionable error: "Managed Identity not available. Ensure app is running in Azure with MI enabled, or set SHAREPOINT_AUTH_METHOD=certificate." No automatic fallback to `DefaultAzureCredential` or `AzureCliCredential` - admin must explicitly configure method for local dev (per SPAUTH-DD-42).
 
 **SPAUTH-IG-05:** All callers receive `ClientContext` with identical interface regardless of auth method. No caller needs to know which method was used.
 
@@ -296,7 +316,7 @@ Phase 1 (Certificate + MI)
 **SPAUTH-FR-10: InteractiveBrowserProvider**
 - Uses Microsoft Authentication Library (MSAL) `ConfidentialClientApplication` with Authorization Code + Proof Key for Code Exchange (PKCE) flow
 - Config from env: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET` (or certificate), `AUTH_REDIRECT_URI`
-- Token scope: `https://{tenant}.sharepoint.com/Sites.Read.All`, `offline_access`
+- Token scopes: `https://{tenant}.sharepoint.com/Sites.Read.All`, `offline_access` (delegated permissions require explicit scopes, not `.default`)
 - Standard OAuth redirect flow: `/auth/login` -> Microsoft login -> `/auth/callback`
 - Token stored in user session (FastAPI session middleware)
 
@@ -327,9 +347,67 @@ Phase 1 (Certificate + MI)
 
 **SPAUTH-DD-10:** Interactive Browser uses Authorization Code flow (not `InteractiveBrowserCredential` from `azure.identity`). Rationale: `InteractiveBrowserCredential` opens a local browser on the server. The middleware UI is already in the user's browser, so standard OAuth redirect is correct.
 
-**SPAUTH-DD-11:** Session middleware added for token storage. Rationale: per-user tokens stored in encrypted session cookie. No cross-worker sharing needed for Interactive Browser.
+**SPAUTH-DD-11:** Session middleware added for token storage. Rationale: per-user tokens stored in encrypted session cookie. No cross-worker sharing needed for Interactive Browser. If encrypted token payload exceeds cookie size limits (~4KB), use server-side session storage keyed by session ID instead.
 
 **SPAUTH-DD-12:** `offline_access` scope requested for refresh tokens. Rationale: allows silent token refresh without re-prompting user.
+
+### Token Flow (Session Cookie to SharePoint Header)
+
+```
+1. STORAGE: Session cookie in user's browser
+   ├─> Encrypted by SESSION_SECRET_KEY
+   └─> Contains: { access_token, refresh_token, expires_at }
+
+2. SERVER READS: FastAPI session middleware
+   ├─> Request arrives with session cookie
+   └─> Session data available via request.session["sharepoint_token"]
+
+3. INTO HEADER: via with_access_token()
+   ├─> InteractiveBrowserProvider.get_context(site_url)
+   │   └─> token_func = lambda: TokenResponse(request.session["sharepoint_token"])
+   ├─> ClientContext(site_url).with_access_token(token_func)
+   └─> Library internally sets: Authorization: Bearer <token>
+```
+
+### Token Refresh Mechanism
+
+The `token_func` passed to `with_access_token()` must handle token refresh:
+
+```python
+def _token_func():
+    token_data = request.session["sharepoint_token"]
+    expires_at = token_data["expires_at"]
+    remaining = expires_at - time.time()
+    
+    if remaining <= 300:  # 5 minute buffer
+        # Refresh using MSAL + refresh_token
+        result = msal_app.acquire_token_by_refresh_token(
+            token_data["refresh_token"],
+            scopes=["https://{tenant}.sharepoint.com/Sites.Read.All"]
+        )
+        if "access_token" in result:
+            # Update session with new tokens
+            request.session["sharepoint_token"] = {
+                "access_token": result["access_token"],
+                "refresh_token": result.get("refresh_token", token_data["refresh_token"]),
+                "expires_at": time.time() + result["expires_in"]
+            }
+            token_data = request.session["sharepoint_token"]
+        else:
+            raise AuthError("Session expired. Please re-authenticate via /v2/auth/login.")
+    
+    return TokenResponse(
+        access_token=token_data["access_token"],
+        token_type="Bearer",
+        expiresIn=int(max(0, token_data["expires_at"] - time.time()))
+    )
+```
+
+**Key points:**
+- Check expiry before returning token
+- Use 5-minute buffer to refresh proactively
+- Update session with refreshed tokens
+- If refresh fails, raise clear error per SPAUTH-IG-13
 
 ### Implementation Guarantees
 
@@ -348,9 +426,9 @@ Phase 1 (Certificate + MI)
 **SPAUTH-FR-20: DeviceCodeProvider**
 - Uses MSAL `PublicClientApplication` with device code flow
 - Config from env: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`
-- Token scope: `https://{tenant}.sharepoint.com/.default`
+- Token scopes: `https://{tenant}.sharepoint.com/Sites.Read.All`, `offline_access` (delegated flow)
 - Shared file-based token cache using `msal-extensions` for cross-worker locking
-- Cache location: `{PERSISTENT_STORAGE_PATH}/sharepoint_device_code_cache.bin`
+- Cache location: `{PERSISTENT_STORAGE_PATH}/sharepoint_online_device_code_cache.bin`
 
 **SPAUTH-FR-21: Device Code Initiation Endpoint**
 - `POST /v2/auth/device-code/initiate` starts device code flow
@@ -364,7 +442,7 @@ Phase 1 (Certificate + MI)
 
 **SPAUTH-FR-23: Token Cache Sharing**
 - All workers access same file-based MSAL token cache
-- `msal-extensions` `PersistedTokenCache` with `FilePersistenceWithDataProtection` (Linux) or `FilePersistence` (Windows)
+- `msal-extensions` `PersistedTokenCache` with platform-specific persistence: `FilePersistenceWithDataProtection` (Windows), `LibsecretPersistence` (Linux with libsecret), or `PlainTextPersistence` (fallback)
 - Automatic token refresh via MSAL when refresh token is available
 
 ### Design Decisions
@@ -387,7 +465,7 @@ Phase 1 (Certificate + MI)
 
 ### Functional Requirements
 
-**SPAUTH-FR-30: OBOProvider**
+**SPAUTH-FR-30: OnBehalfOfProvider**
 - Uses MSAL `ConfidentialClientApplication.acquire_token_on_behalf_of()`
 - Config from env: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET` (or certificate)
 - Input: user's access token from `Authorization` header
@@ -395,9 +473,9 @@ Phase 1 (Certificate + MI)
 - In-memory per-worker token cache keyed by hash of user token
 
 **SPAUTH-FR-31: Smart Auth Selection**
-- If request has `Authorization: Bearer <token>` header AND OBO is enabled -> use OBO
+- If request has `Authorization: Bearer <token>` header AND On-Behalf-Of is enabled -> use On-Behalf-Of
 - If no Authorization header -> use default/override method
-- OBO enable/disable controlled by env var `SHAREPOINT_OBO_ENABLED` (default: `false`)
+- On-Behalf-Of enable/disable controlled by env var `SHAREPOINT_ON_BEHALF_OF_ENABLED` (default: `false`)
 
 **SPAUTH-FR-32: Token Validation**
 - Validate incoming user token before OBO exchange:
@@ -422,7 +500,7 @@ Phase 1 (Certificate + MI)
 
 ### Implementation Guarantees
 
-**SPAUTH-IG-30:** If OBO is disabled (`SHAREPOINT_OBO_ENABLED=false`), Authorization headers are ignored for auth selection. Requests use default/override method.
+**SPAUTH-IG-30:** If On-Behalf-Of is disabled (`SHAREPOINT_ON_BEHALF_OF_ENABLED=false`), Authorization headers are ignored for auth selection. Requests use default/override method.
 
 **SPAUTH-IG-31:** OBO failure does NOT fall back to default/override method. Returns 401/403 to caller. Rationale: caller sent user token expecting user-context access. Silently using app permissions would be a privilege escalation.
 
@@ -446,7 +524,7 @@ Phase 1 (Certificate + MI)
 
 **SPAUTH-IG-40:** Each phase is independently deployable. Phase 2 code can exist without Phase 3/4. Unused providers are never instantiated.
 
-**SPAUTH-IG-41:** No new pip dependencies in Phase 1 (`azure-identity` already in `pyproject.toml`). Phase 2 adds `starlette[sessions]` or equivalent. Phase 3 uses `msal-extensions` (already transitive via `azure-identity`).
+**SPAUTH-IG-41:** No new pip dependencies in Phase 1 (`azure-identity` already in `pyproject.toml`). Phase 2 adds `itsdangerous` for signed session cookies. Phase 3 adds `msal-extensions` (separate package, NOT transitive via `azure-identity`).
 
 **SPAUTH-IG-42:** `PERSISTENT_STORAGE_PATH` must be set for override file and token cache operations. If not set, factory logs warning and operates without override support.
 
@@ -484,7 +562,7 @@ The library caches the `TokenResponse` internally and only calls `_token_func` w
 ```
 Request arrives
 ├─> AuthenticationFactory.get_sharepoint_context(site_url, request)
-│   ├─> [Phase 4] Check Authorization header + OBO enabled -> OBOProvider
+│   ├─> [Phase 4] Check Authorization header + On-Behalf-Of enabled -> OnBehalfOfProvider
 │   ├─> AuthStateManager.get_effective_method()
 │   │   ├─> Read override file (if exists, valid JSON, known method)
 │   │   └─> Else: read SHAREPOINT_AUTH_METHOD env var
@@ -515,7 +593,7 @@ API request (e.g., POST /v2/crawler/sites/{id}/crawl)
 │   │   ├─> AuthStateManager.get_effective_method()
 │   │   │   └─> Returns "managed_identity" (from env)
 │   │   └─> ManagedIdentityProvider.get_context(site_url)
-│   │       └─> ClientContext(site_url).with_access_token(_mi_token_func)
+│   │       └─> ClientContext(site_url).with_access_token(_managed_identity_token_func)
 │   └─> ctx used for SharePoint operations (unchanged)
 └─> Response returned
 ```
@@ -587,8 +665,7 @@ Subsequent API requests (all workers)
   "override": {
     "method": "interactive_browser",
     "set_by": "admin@contoso.com",
-    "set_at_utc": "2026-03-14T21:00:00Z",
-    "reason": "MI access revoked"
+    "set_at_utc": "2026-03-14T21:00:00Z"
   },
   "available_methods": ["certificate", "managed_identity", "interactive_browser"],
   "session_authenticated": true
@@ -601,8 +678,7 @@ Subsequent API requests (all workers)
 {
   "method": "device_code",
   "set_by": "admin@contoso.com",
-  "set_at_utc": "2026-03-14T21:00:00Z",
-  "reason": "MI access revoked by IT"
+  "set_at_utc": "2026-03-14T21:00:00Z"
 }
 ```
 
@@ -657,7 +733,7 @@ Phase 3 adds:
 - No new env vars (uses existing `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `PERSISTENT_STORAGE_PATH`)
 
 Phase 4 adds:
-- `SHAREPOINT_OBO_ENABLED` - enable OBO flow (`true` | `false`), default: `false`
+- `SHAREPOINT_ON_BEHALF_OF_ENABLED` - enable On-Behalf-Of flow (`true` | `false`), default: `false`
 
 ### Function Signatures
 
@@ -670,8 +746,8 @@ def get_auth_status(request: Request) -> dict: ...
 # Phase 1 - providers (internal)
 class AuthProvider(Protocol):
     method: str
-    def get_context(self, site_url: str) -> ClientContext: ...
-    def validate(self, site_url: str) -> bool: ...
+    def get_context(self, site_url: str, request: Request | None = None) -> ClientContext: ...
+    def validate(self, site_url: str) -> tuple[bool, str | None]: ...
 
 class CertificateProvider: ...     # wraps existing logic
 class ManagedIdentityProvider: ... # azure.identity + with_access_token
@@ -689,10 +765,85 @@ async def get_device_code_status(request: Request) -> dict: ...
 class DeviceCodeProvider: ...
 
 # Phase 4
-class OBOProvider: ...
+class OnBehalfOfProvider: ...
 ```
 
-## 15. Document History
+## 15. PROPOSAL: Unified Authentication Router
+
+**Status:** PROPOSAL - Not yet approved for implementation
+
+### Rationale
+
+The current endpoint design uses `/v2/auth/` prefix. However, aligning with V2 Routers SPEC (`_V2_SPEC_ROUTERS.md`) patterns suggests a more extensible structure that could support multiple authentication targets (SharePoint, Azure OpenAI, future Graph API).
+
+### Proposed Endpoint Structure
+
+```
+/v2/authentication/
+├─> sharepoint_online/
+│   ├─> status              # GET - current SharePoint Online auth state
+│   ├─> login               # GET - initiate OAuth redirect (Phase 2)
+│   ├─> callback            # GET - OAuth callback (Phase 2)
+│   ├─> override            # POST/DELETE - set/clear method override
+│   └─> device_code/
+│       ├─> initiate        # POST - start device code flow (Phase 3)
+│       └─> status          # GET - poll for completion (Phase 3)
+│
+└─> azure_openai/           # Future: Azure OpenAI auth management
+    └─> status              # GET - current Azure OpenAI auth state
+```
+
+### Mapping: Current vs Proposed
+
+- `GET /v2/auth/status` -> `GET /v2/authentication/sharepoint_online/status`
+- `GET /v2/auth/login` -> `GET /v2/authentication/sharepoint_online/login`
+- `GET /v2/auth/callback` -> `GET /v2/authentication/sharepoint_online/callback`
+- `POST /v2/auth/override` -> `POST /v2/authentication/sharepoint_online/override`
+- `DELETE /v2/auth/override` -> `DELETE /v2/authentication/sharepoint_online/override`
+- `POST /v2/auth/device-code/initiate` -> `POST /v2/authentication/sharepoint_online/device_code/initiate`
+- `GET /v2/auth/device-code/status` -> `GET /v2/authentication/sharepoint_online/device_code/status`
+
+### Benefits
+
+- Follows V2 Routers nested resource pattern: `/v2/[RESOURCE]/[RESOURCE]/[ACTION]`
+- Single router handles all authentication concerns
+- Extensible for future services (Azure OpenAI, Graph API)
+- Consistent with existing V2 endpoint naming (full words, not abbreviations)
+
+### Decision Required
+
+Before Phase 2 implementation, decide:
+1. **Keep `/v2/auth/`** - shorter, SharePoint-only scope
+2. **Use `/v2/authentication/sharepoint_online/`** - extensible, follows V2 patterns
+
+## 16. Document History
+
+**[2026-03-14 23:30]**
+- Changed: Device Code moved from User Auth to System Auth (Tier 1)
+- Changed: Override file now accepts 3 values: certificate, managed_identity, device_code
+- Changed: Resolution order updated - Device Code resolved via override/default, not per-session
+- Rationale: Device Code is emergency fallback - admin authenticates once, ALL workers use cached token
+
+**[2026-03-14 23:13]**
+- Added: Two-Tier Auth Model (System Auth vs User Auth) - separates app-only from delegated methods
+- Changed: AuthProvider.get_context() - added optional `request` parameter for User Auth methods
+- Changed: AuthenticationFactory resolution order - User Auth (per-session) takes precedence over System Auth
+- Changed: Override File - now only accepts System Auth methods (`certificate`, `managed_identity`)
+- Added: Token Refresh Mechanism section in Phase 2 - explicit refresh logic via `token_func`
+- Changed: SPAUTH-DD-11 - added note about server-side sessions for large tokens
+- Fixed: Function Signatures - AuthProvider interface now matches Domain Objects section
+- Fixed: Table of Contents - added PROPOSAL section, renumbered Document History
+
+**[2026-03-14 22:36]**
+- Fixed: Line 26 - clarified `with_access_token` is for non-certificate methods only
+- Fixed: Line 123 - "Azure AD" updated to "Microsoft Entra ID"
+- Fixed: Lines 299, 351 - delegated flows use explicit scopes (`Sites.Read.All`), not `.default`
+- Fixed: Line 367 - corrected msal-extensions platform persistence classes
+
+**[2026-03-14 22:32]**
+- Fixed: SPAUTH-DD-04 - Added CRAWLER_TENANT_NAME fallback for vanity domains
+- Fixed: SPAUTH-IG-04 - Clarified no DefaultAzureCredential fallback for local dev
+- Verified: Cross-checked against SPAUTH-IN10, IN11, AM01, AM03
 
 **[2026-03-14 22:06]**
 - Fixed: Acronym expansion - MI, MSAL, PKCE expanded on first use (per SPAUTH-FL-002)

@@ -36,7 +36,7 @@
 6. **How to switch all workers?**
    → Create override file read on each request, no restart
 7. **How to switch back to default?**
-   → Delete override file (sharepoint_auth_override.json)
+   → Delete override file (sharepoint_online_auth_override.json)
 
 ## Table of Contents
 
@@ -67,7 +67,7 @@
 │       │             │             │             │               │
 │       └─────────────┴──────┬──────┴─────────────┘               │
 │                            │                                    │
-│                            ▼                                    │
+│                            v                                    │
 │                  ┌─────────────────────┐                        │
 │                  │ Shared Auth State?  │                        │
 │                  │ How to share tokens │                        │
@@ -204,14 +204,14 @@ def connect_to_site_using_client_id_and_certificate(...):
 │                                                                 │
 │  Admin User ──> Device Code ──> Browser Auth ──> Token          │
 │                                      │                          │
-│                                      ▼                          │
+│                                      v                          │
 │                          ┌─────────────────────┐                │
 │                          │ Token acquired by   │                │
 │                          │ ONE worker process  │                │
 │                          └─────────────────────┘                │
 │                                      │                          │
 │       ┌──────────────────────────────┼───────────────────┐      │
-│       ▼                              ▼                   ▼      │
+│       v                              v                   v      │
 │  ┌──────────┐                  ┌──────────┐       ┌──────────┐  │
 │  │ Worker 1 │ Need the token!  │ Worker 2 │       │ Worker N │  │
 │  └──────────┘                  └──────────┘       └──────────┘  │
@@ -231,7 +231,7 @@ def connect_to_site_using_client_id_and_certificate(...):
 │  Admin ──> Device Code ──> Token ──> Shared Cache (File/DB)     │
 │                                              │                  │
 │       ┌──────────────────────────────────────┼──────────────┐   │
-│       ▼                                      ▼              ▼   │
+│       v                                      v              v   │
 │  Worker 1 ──> Read Cache ──> Token      Worker 2       Worker N │
 │                                                                 │
 │  All workers read from same cache                               │
@@ -249,7 +249,7 @@ import os
 import fcntl  # For file locking (Unix) or msvcrt (Windows)
 
 class SharedDeviceCodeAuth:
-    CACHE_FILE = None  # Set at runtime: {PERSISTENT_STORAGE_PATH}/device_code_cache.json
+    CACHE_FILE = None  # Set at runtime: {PERSISTENT_STORAGE_PATH}/sharepoint_online_device_code_cache.bin
     
     def __init__(self, client_id: str, tenant_id: str):
         self.cache = SerializableTokenCache()
@@ -411,18 +411,18 @@ No cross-worker sharing needed:
 │  SPA Frontend ──> User Login ──> User Token                     │
 │                                      │                          │
 │       ┌──────────────────────────────┼──────────────────────┐   │
-│       ▼                              ▼                      ▼   │
+│       v                              v                      v   │
 │  Request to   ──> Worker receives user token in header          │
 │  Middleware       (Authorization: Bearer <user_token>)          │
 │                                      │                          │
-│                                      ▼                          │
+│                                      v                          │
 │                          ┌─────────────────────┐                │
 │                          │ Exchange for SP     │                │
 │                          │ token (OBO)         │                │
 │                          └─────────────────────┘                │
 │                                      │                          │
 │       ┌──────────────────────────────┼──────────────────────┐   │
-│       ▼                              ▼                      ▼   │
+│       v                              v                      v   │
 │  Cache OBO   ──> Key: hash(user_token) ──> Value: SP token      │
 │  result          Shared across workers                          │
 └─────────────────────────────────────────────────────────────────┘
@@ -516,9 +516,9 @@ For high-traffic scenarios:
   - Complexity: High
 
 - **Interactive Browser**
-  - Shared state: Access + Refresh tokens
-  - Sharing mechanism: In-memory (local dev) OR same as Device Code
-  - Complexity: Low (local) / High (production)
+  - Shared state: Per-user session token
+  - Sharing mechanism: Session cookie (no cross-worker sharing needed)
+  - Complexity: Low
 
 - **On-Behalf-Of**
   - Shared state: OBO exchange results (optional)
@@ -544,12 +544,12 @@ Based on the requirements (admin-selected, all workers use same method):
 │  │  ├─> ManagedIdentity: Azure handles sharing                 ││
 │  │  ├─> Certificate: Load from shared path                     ││
 │  │  ├─> DeviceCode: SharedTokenCache (file-based)              ││
-│  │  ├─> InteractiveBrowser: Same as DeviceCode                 ││
+│  │  ├─> InteractiveBrowser: Session cookie (per-user)          ││
 │  │  └─> OnBehalfOf: Per-request with optional cache            ││
 │  └─────────────────────────────────────────────────────────────┘│
 │                                                                 │
 │  SharedTokenCache (for delegated flows):                        │
-│  ├─> File: {PERSISTENT_STORAGE_PATH}/device_code_cache.json      │
+│  ├─> File: {PERSISTENT_STORAGE_PATH}/sharepoint_online_device_code_cache.bin     │
 │  ├─> Locking: File locks for concurrent access                  │
 │  └─> Format: MSAL SerializableTokenCache JSON                   │
 └─────────────────────────────────────────────────────────────────┘
@@ -560,7 +560,7 @@ Based on the requirements (admin-selected, all workers use same method):
 1. **Managed Identity** - No sharing code needed
 2. **Certificate** - Current impl works (each worker loads cert)
 3. **Device Code** - Implement SharedTokenCache with file locking
-4. **Interactive Browser** - Reuse DeviceCode cache infrastructure
+4. **Interactive Browser** - Session-based token storage (no file cache needed)
 5. **On-Behalf-Of** - Per-worker cache is sufficient initially
 
 ## 9. Mechanism Switching Questions
@@ -609,22 +609,22 @@ The authentication mechanism is abstracted behind an `AuthenticationFactory` tha
 │                                                                 │
 │  1. Admin clicks "Switch to Device Code" in UI                  │
 │                         │                                       │
-│                         ▼                                       │
+│                         v                                       │
 │  2. Admin completes Device Code authentication                  │
 │                         │                                       │
-│                         ▼                                       │
+│                         v                                       │
 │  3. Middleware TESTS auth against SharePoint → success           │
 │                         │                                       │
-│                         ▼                                       │
+│                         v                                       │
 │  4. Override file written AFTER successful test:                │
-│     {PERSISTENT_STORAGE_PATH}/sharepoint_auth_override.json       │
+│     {PERSISTENT_STORAGE_PATH}/sharepoint_online_auth_override.json       │
 │     { "method": "device_code" }                                 │
 │                         │                                       │
-│                         ▼                                       │
+│                         v                                       │
 │  5. All workers read override file on next request              │
 │     AuthenticationFactory._get_selected_method()                │
 │                         │                                       │
-│                         ▼                                       │
+│                         v                                       │
 │  6. Workers use new mechanism immediately                       │
 │     No restart required                                         │
 └─────────────────────────────────────────────────────────────────┘
@@ -689,7 +689,7 @@ class AuthenticationFactory:
 │ Switching Back to Default                                       │
 │                                                                 │
 │  Option A: Delete override file (RECOMMENDED)                   │
-│  ├─> rm {PERSISTENT_STORAGE_PATH}/sharepoint_auth_override.json   │
+│  ├─> rm {PERSISTENT_STORAGE_PATH}/sharepoint_online_auth_override.json   │
 │  └─> Factory uses DEFAULT_METHOD (Managed Identity)             │
 │                                                                 │
 │  Option B: Automatic prompt on error                            │
@@ -742,6 +742,11 @@ async def reset_to_default():
 6. **Add method validation** to reject invalid method values in override file
 
 ## Document History
+
+**[2026-03-14 23:30]**
+- Fixed: File names updated to match SPEC naming (sharepoint_online_ prefix)
+- Fixed: Section 7 matrix - Interactive Browser now correctly shows session-based storage (not "same as Device Code")
+- Fixed: Section 8 architecture diagram - Interactive Browser uses session cookie, not file cache
 
 **[2026-03-14 21:56]**
 - Changed: Interactive Browser section rewritten - standard OAuth redirect, no cross-worker sharing needed

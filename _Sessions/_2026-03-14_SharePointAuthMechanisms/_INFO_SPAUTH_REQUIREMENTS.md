@@ -7,7 +7,8 @@
 ## Summary
 
 - Certificate auth blocked by ONE client; adding alternative mechanisms (certificate remains supported) [VERIFIED]
-- Admin-selected authentication (not auto-failover); one mechanism for all workers [VERIFIED]
+- Two-Tier Auth Model: System Auth (app-only, system-wide) + User Auth (delegated, per-session) [VERIFIED]
+- Admin-selected System Auth (not auto-failover); User Auth does not break System Auth [VERIFIED]
 - Two UI architectures supported: middleware-served UI AND separate SPA frontend [VERIFIED]
 - Four admin-selectable methods + On-Behalf-Of (automatic, per-request) [VERIFIED]
 - SharePoint REST API blocks client secrets for app-only access [VERIFIED]
@@ -76,21 +77,36 @@ Implications:
 
 ### 2.3 Authentication Selection Model
 
-**Admin-Selected (NOT auto-failover)**
+**Two-Tier Model: System Auth + User Auth**
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ Admin-Selected Authentication                                   │
+│ Two-Tier Authentication Model                                   │
 │                                                                 │
-│  UI Admin selects ONE mechanism → Used by ALL workers           │
+│  SYSTEM AUTH (app-only or admin-delegated, system-wide):        │
+│  ├─> Managed Identity, Certificate, Device Code                 │
+│  ├─> Configured via env var or override file                    │
+│  └─> Used by ALL workers, ALL requests without user session     │
 │                                                                 │
-│  Why NOT auto-failover:                                         │
-│  - UI calls endpoints, does not track individual workers        │
-│  - Consistent behavior: all workers use same auth method        │
-│  - Admin control: explicit choice when MI access revoked        │
-│  - No surprise fallbacks: admin knows which mechanism is active │
+│  USER AUTH (delegated, per-session overlay):                    │
+│  ├─> Interactive Browser                                        │
+│  ├─> Per-session, does NOT affect other requests                │
+│  └─> Admin uses own credentials for inaccessible sites          │
+│                                                                 │
+│  KEY PRINCIPLE: User Auth must NOT break System Auth            │
+│  - Middleware has many independent workers                      │
+│  - Other apps may call API without user session                 │
+│  - User Auth is an OVERLAY, not a system-wide switch            │
+│  - Device Code is System Auth (admin authenticates once,        │
+│    ALL workers use cached token - emergency fallback)           │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+**Why Two-Tier:**
+- Middleware workers may be used by other apps we don't control
+- Non-browser API callers have no session - must use System Auth
+- Goal: Enable admins to scan sites inaccessible via MI, without breaking other callers
+- Device Code is System Auth because it's an emergency fallback - all workers need the token
 
 ## 3. Authentication Methods
 
@@ -183,39 +199,40 @@ System must support BOTH scenarios:
 
 ## 5. Runtime Behavior Scenarios
 
-### 5.1 Scenario 1: Admin Device Code Override
+### 5.1 Scenario 1: Admin Uses Delegated Auth (Per-Session)
 
-Admin uses Middleware UI to authenticate via Device Code. All subsequent requests use admin's cached credentials.
+Admin uses Middleware UI to authenticate via Interactive Browser or Device Code. Only requests WITH the admin's session use delegated credentials. Other callers continue using System Auth.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ Scenario 1: Device Code Override Active                         │
+│ Scenario 1: Admin Session Active (Two-Tier in Action)           │
 │                                                                 │
 │  1. Admin opens Middleware UI                                   │
-│  2. Admin clicks "Switch to Device Code"                        │
-│  3. Admin authenticates via Device Code flow                    │
+│  2. Admin clicks "Login with Microsoft"                         │
+│  3. Admin authenticates (Interactive Browser or Device Code)    │
 │  4. Auth TESTED against SharePoint → success                    │
-│  5. Override file created AFTER successful auth test            │
+│  5. Token stored in admin's SESSION (not system-wide)           │
 │                         │                                       │
-│                         ▼                                       │
+│                         v                                       │
 │  ┌─────────────────────────────────────────────────────────────┐│
-│  │ ALL subsequent requests use admin's delegated token         ││
+│  │ ONLY admin's session uses delegated token                   ││
 │  │                                                             ││
-│  │  - Middleware UI calls      → uses admin's token            ││
-│  │  - External app calls       → uses admin's token            ││
-│  │  - Scheduled jobs           → uses admin's token            ││
-│  │  - Any API caller           → uses admin's token            ││
+│  │  - Admin's browser requests → uses admin's token            ││
+│  │  - External app calls       → uses System Auth (unchanged)  ││
+│  │  - Scheduled jobs           → uses System Auth (unchanged)  ││
+│  │  - Other API callers        → uses System Auth (unchanged)  ││
 │  │                                                             ││
-│  │  SharePoint access = Admin's permissions (not app's)        ││
+│  │  Admin can access sites MI cannot reach                     ││
+│  │  Other callers are NOT affected                             ││
 │  └─────────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 **Key implications:**
-- SharePoint access limited to admin's permissions (not Sites.Selected)
-- Token expires after 90 days (or 24 hours of inactivity)
-- If admin leaves company, token still works until expiry
-- **Security consideration**: Any caller gets admin's SharePoint access level
+- Admin's session accesses SharePoint with admin's permissions
+- Other callers continue using System Auth (MI or Certificate)
+- No system-wide disruption when admin logs in
+- **Security improvement**: User Auth is isolated to admin's session
 
 ### 5.2 Scenario 2: Headless API with OBO and Default Auth
 
@@ -229,16 +246,16 @@ External applications use middleware as headless API. Must support BOTH OBO (whe
 │                                                                 │
 │  External App (SPA) ──> User logs in ──> Gets user token        │
 │                                               │                 │
-│                                               ▼                 │
+│                                               v                 │
 │  Request to Middleware:                                         │
 │  POST /v2/crawler/sites/{id}/crawl                              │
 │  Authorization: Bearer <user_access_token>                      │
 │                                               │                 │
-│                                               ▼                 │
+│                                               v                 │
 │  Middleware detects Authorization header                        │
 │  ──> OBO exchange ──> Gets SharePoint token for user            │
 │                                               │                 │
-│                                               ▼                 │
+│                                               v                 │
 │  SharePoint access = User's permissions                         │
 │  (User must have access to the site being crawled)              │
 └─────────────────────────────────────────────────────────────────┘
@@ -254,13 +271,13 @@ External applications use middleware as headless API. Must support BOTH OBO (whe
 │  POST /v2/crawler/sites/{id}/crawl                              │
 │  (No Authorization header)                                      │
 │                                               │                 │
-│                                               ▼                 │
+│                                               v                 │
 │  Middleware checks for override file:                           │
 │  ├─> Override exists (device_code) → use cached admin token    │
 │  ├─> Override exists (other)       → use specified method      │
 │  └─> No override                   → use default (Managed ID)  │
 │                                               │                 │
-│                                               ▼                 │
+│                                               v                 │
 │  SharePoint access = App permissions OR cached user permissions │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -275,19 +292,19 @@ External applications use middleware as headless API. Must support BOTH OBO (whe
 │                                                                 │
 │  Request arrives at endpoint                                    │
 │              │                                                  │
-│              ▼                                                  │
+│              v                                                  │
 │  ┌─────────────────────────────────────────┐                    │
 │  │ Does request have Authorization header? │                    │
 │  └─────────────────────────────────────────┘                    │
 │         │ YES                    │ NO                           │
-│         ▼                        ▼                              │
+│         v                        v                              │
 │  ┌─────────────┐        ┌──────────────────────┐                │
 │  │ Use OBO     │        │ Use override/default │                │
 │  │ Exchange    │        │ Check override file  │                │
 │  │ user token  │        │ or use default auth  │                │
 │  └─────────────┘        └──────────────────────┘                │
 │         │                        │                              │
-│         ▼                        ▼                              │
+│         v                        v                              │
 │  SP access =              SP access =                           │
 │  calling user's           app permissions OR                    │
 │  permissions              cached admin permissions              │
@@ -310,14 +327,14 @@ When SharePoint returns 401 (Unauthorized) or 403 (Forbidden):
 │                                                                 │
 │  SharePoint returns 401/403                                     │
 │              │                                                  │
-│              ▼                                                  │
+│              v                                                  │
 │  ┌─────────────────────────────────────────┐                    │
 │  │ Which auth method was used?             │                    │
 │  └─────────────────────────────────────────┘                    │
 │         │                        │                              │
 │    OBO (user token)         Override/Default                    │
 │         │                        │                              │
-│         ▼                        ▼                              │
+│         v                        v                              │
 │  ┌─────────────────┐    ┌─────────────────────────┐             │
 │  │ Return 403      │    │ Return 403 with details │             │
 │  │ "User lacks     │    │ "Auth method: [method]  │             │
@@ -415,11 +432,15 @@ When SharePoint returns 401 (Unauthorized) or 403 (Forbidden):
 
 ### 7.5 Token Caching Requirements
 
-For Device Code and On-Behalf-Of (delegated flows):
-- Token persistence required (file cache or in-memory with refresh)
-- All workers must access same cached token
-- Refresh token handling for long-running operations
-- Admin re-authentication when tokens expire
+**System Auth (Certificate, Managed Identity):**
+- In-memory cache per worker (credential auto-refreshes)
+- No cross-worker sharing needed
+
+**User Auth (Interactive Browser, Device Code):**
+- Interactive Browser: Session cookie (per-user, travels with browser request)
+- Device Code: Session-scoped token (stored in user's session after auth)
+- User Auth does NOT break System Auth - isolated to user's session
+- Refresh token handling for session longevity
 
 ### 7.6 Environment Requirements
 
@@ -458,6 +479,19 @@ For Device Code and On-Behalf-Of (delegated flows):
 7. **Design UI/UX**: Admin auth selection interface (deferred to SPEC phase, assumes UI will exist)
 
 ## Document History
+
+**[2026-03-14 23:30]**
+- Changed: Device Code moved from User Auth to System Auth (Tier 1)
+- Changed: Section 2.3 diagram updated - Device Code now in System Auth
+- Rationale: Device Code is emergency fallback - admin authenticates once, ALL workers use cached token
+
+**[2026-03-14 23:20]**
+- Changed: Authentication model updated to Two-Tier (System Auth + User Auth)
+- Changed: Section 2.3 - replaced "Admin-Selected" with "Two-Tier Model" diagram
+- Changed: Section 5.1 - User Auth is per-session, does not affect other callers
+- Changed: Section 7.5 - Token caching now reflects per-session model for User Auth
+- Added: Key principle "User Auth must NOT break System Auth"
+- Rationale: Middleware workers may be used by other apps; admin login should not disrupt them
 
 **[2026-03-14 20:40]**
 - Fixed: OBO separated from admin-selectable methods (§3.2 → §3.3)

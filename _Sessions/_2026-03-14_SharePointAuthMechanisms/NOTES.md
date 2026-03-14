@@ -90,8 +90,38 @@ Then we explore and implement 2)
 
 **[2026-03-14] Fallback Scenario:**
 - Default: Managed Identity (zero-config in Azure)
-- If MI access revoked: Admin switches to Device Code in UI
-- Device Code: Admin authenticates once → token cached → all workers use it
+- If MI access revoked: Admin logs in via Interactive Browser or Device Code
+- Admin's session uses delegated auth; other callers continue using System Auth
+
+**[2026-03-14 23:20] Two-Tier Auth Model Decision:**
+
+The SPEC now implements a Two-Tier model:
+
+```
+SYSTEM AUTH (app-only or admin-delegated, system-wide):
+├─> Managed Identity, Certificate, Device Code
+├─> Configured via env var or override file
+└─> Used by ALL workers, ALL requests without user session
+
+USER AUTH (delegated, per-session overlay):
+├─> Interactive Browser, On-Behalf-Of
+├─> Per-session, does NOT affect other requests
+└─> Admin uses own credentials for inaccessible sites
+```
+
+**Key principle:** User Auth must NOT break System Auth.
+
+**Device Code is System Auth** (updated 23:30):
+- Admin authenticates once via Device Code
+- Token cached in file, ALL workers use it
+- Emergency fallback for blocked sites - needs to work for all callers
+
+**Rationale:**
+- Middleware has many independent workers
+- Other apps may call API without user session
+- Goal: Enable admins to scan sites inaccessible via MI, without breaking other callers
+- User Auth (Interactive Browser) is per-session OVERLAY
+- Device Code is system-wide because it's an emergency fallback
 
 ## Important Findings
 
