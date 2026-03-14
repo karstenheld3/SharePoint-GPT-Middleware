@@ -16,7 +16,6 @@ from routers_v2.common_map_file_functions_v2 import SharePointMapRow, FilesMapRo
 from routers_v2.common_sharepoint_functions_v2 import SharePointFile, connect_to_site_using_client_id_and_certificate, try_get_document_library, get_document_library_files, download_file_from_sharepoint, get_list_items, get_list_items_as_sharepoint_files, export_list_to_csv, get_site_pages, download_site_page_html, create_document_library, add_number_field_to_list, add_text_field_to_list, upload_file_to_library, upload_file_to_folder, update_file_content, rename_file, move_file, delete_file, create_folder_in_library, delete_document_library, create_list, add_list_item, update_list_item, delete_list_item, delete_list, create_site_page, update_site_page, rename_site_page, delete_site_page, file_exists_in_library, get_list_items_with_fields, export_list_items_to_csv_string, export_list_items_to_markdown_string, ListExportResult
 from routers_v2.common_embed_functions_v2 import upload_file_to_openai, delete_file_from_openai, add_file_to_vector_store, remove_file_from_vector_store, list_vector_store_files, wait_for_vector_store_ready, get_failed_embeddings, upload_and_embed_file, remove_and_delete_file
 from routers_v2.common_openai_functions_v2 import create_vector_store, try_get_vector_store_by_id
-from routers_v1.common_openai_functions_v1 import format_openai_connection_error
 
 router = APIRouter()
 config = None
@@ -328,6 +327,48 @@ async def step_process_source(storage_path: str, domain_id: str, source, source_
   for sse in writer.drain_sse_queue(): yield sse
   writer.set_step_result(result)
 
+def _scan_disk_for_embeddable_files(folder: str, domain_id: str, source_type: str, source_id: str, storage_path: str) -> list:
+  """
+  Fallback: Scan disk for embeddable files when files_map.csv is missing.
+  Creates synthetic FilesMapRow entries for each file found.
+  """
+  import hashlib
+  results = []
+  if not os.path.exists(folder):
+    return results
+  for root, dirs, files in os.walk(folder):
+    for filename in files:
+      if not is_file_embeddable(filename):
+        continue
+      file_path = os.path.join(root, filename)
+      file_stat = os.stat(file_path)
+      file_size = file_stat.st_size
+      mtime = file_stat.st_mtime
+      mtime_utc = datetime.datetime.fromtimestamp(mtime, tz=datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+      # Generate synthetic IDs based on file path hash
+      path_hash = hashlib.md5(file_path.encode()).hexdigest()[:16]
+      synthetic_uid = f"DISK_{path_hash}"
+      # Calculate relative path from storage_path/crawler/
+      rel_path = os.path.relpath(file_path, os.path.join(storage_path, CRAWLER_HARDCODED_CONFIG.PERSISTENT_STORAGE_PATH_CRAWLER_SUBFOLDER))
+      ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+      row = FilesMapRow(
+        sharepoint_listitem_id=0,
+        sharepoint_unique_file_id=synthetic_uid,
+        filename=filename,
+        file_type=ext,
+        server_relative_url=f"/DISK/{rel_path}",
+        file_relative_path=rel_path,
+        file_size=file_size,
+        last_modified_utc=mtime_utc,
+        last_modified_timestamp=int(mtime),
+        downloaded_utc=mtime_utc,
+        downloaded_timestamp=int(mtime),
+        sharepoint_error="",
+        processing_error=""
+      )
+      results.append(row)
+  return results
+
 async def step_embed_source(storage_path: str, domain: DomainConfig, source, source_type: str, mode: str, dry_run: bool, retry_batches: int, writer: StreamingJobWriter, logger: MiddlewareLogger, openai_client, job_id: str = None) -> AsyncGenerator[str, None]:
   """Async generator that yields SSE events during execution. Result stored in writer.get_step_result()."""
   source_id = source.source_id
@@ -342,11 +383,22 @@ async def step_embed_source(storage_path: str, domain: DomainConfig, source, sou
   files_map_name = get_map_filename(CRAWLER_HARDCODED_CONFIG.FILE_MAP_CSV, temp_job_id)
   files_map_path = os.path.join(source_folder, files_map_name)
   if not os.path.exists(files_map_path): files_map_path = os.path.join(source_folder, CRAWLER_HARDCODED_CONFIG.FILE_MAP_CSV)
+  
+  # Fallback: If files_map.csv missing, scan disk for embeddable files
+  use_disk_fallback = False
   if not os.path.exists(files_map_path):
-    for sse in writer.drain_sse_queue(): yield sse
-    writer.set_step_result(result)
-    return
-  files_items = read_files_map(files_map_path)
+    logger.log_function_output(f"  WARNING: files_map.csv not found, using disk fallback mode")
+    disk_files = _scan_disk_for_embeddable_files(embedded_folder, domain.domain_id, source_type, source_id, storage_path)
+    if not disk_files:
+      logger.log_function_output(f"  No embeddable files found on disk in '{embedded_folder}'")
+      for sse in writer.drain_sse_queue(): yield sse
+      writer.set_step_result(result)
+      return
+    logger.log_function_output(f"  Found {len(disk_files)} file(s) on disk")
+    files_items = disk_files
+    use_disk_fallback = True
+  else:
+    files_items = read_files_map(files_map_path)
   embeddable, skipped = filter_embeddable_files(files_items)
   result.total_files = len(embeddable)
   vs_map_path = os.path.join(source_folder, CRAWLER_HARDCODED_CONFIG.VECTOR_STORE_MAP_CSV)
@@ -443,7 +495,7 @@ async def crawl_domain(storage_path: str, domain: DomainConfig, mode: str, scope
       try:
         existing_vs = await try_get_vector_store_by_id(openai_client, domain.vector_store_id)
       except Exception as e:
-        logger.log_function_output(format_openai_connection_error(e, config.AZURE_MANAGED_IDENTITY_CLIENT_ID))
+        logger.log_function_output(f"ERROR: Failed to connect to OpenAI -> {str(e)}")
         logger.log_function_output("Embedding will be skipped for all sources.")
         skip_embedding = True
         existing_vs = None
@@ -994,12 +1046,57 @@ async def _embed_stream(storage_path: str, domain: DomainConfig, mode: str, scop
   logger.stream_job_writer = writer
   try:
     yield writer.emit_start()
+    # FIX: Auto-create vector store if empty (same logic as crawl_domain)
+    skip_embedding = False
+    if not domain.vector_store_id:
+      if dry_run:
+        logger.log_function_output(f"Vector store would be created: '{domain.vector_store_name or domain.domain_id}'")
+      else:
+        try:
+          vs_name = domain.vector_store_name or domain.domain_id
+          logger.log_function_output(f"Creating vector store '{vs_name}'...")
+          new_vs = await create_vector_store(openai_client, vs_name)
+          domain.vector_store_id = new_vs.id
+          save_domain_to_file(storage_path, domain, logger)
+          logger.log_function_output(f"  Created vector store '{vs_name}' (ID={new_vs.id})")
+        except Exception as e:
+          logger.log_function_output(f"  ERROR: Failed to create vector store -> {str(e)}")
+          logger.log_function_output("  Embedding will be skipped for all sources.")
+          skip_embedding = True
+    else:
+      # Validate vector store exists in OpenAI
+      if not dry_run:
+        try:
+          existing_vs = await try_get_vector_store_by_id(openai_client, domain.vector_store_id)
+        except Exception as e:
+          logger.log_function_output(f"ERROR: Failed to connect to OpenAI -> {str(e)}")
+          logger.log_function_output("Embedding will be skipped for all sources.")
+          skip_embedding = True
+          existing_vs = None
+        if existing_vs is None and not skip_embedding:
+          old_vs_id = domain.vector_store_id
+          logger.log_function_output(f"Vector store '{old_vs_id}' not found in OpenAI, creating new...")
+          try:
+            vs_name = domain.vector_store_name or domain.domain_id
+            new_vs = await create_vector_store(openai_client, vs_name)
+            domain.vector_store_id = new_vs.id
+            save_domain_to_file(storage_path, domain, logger)
+            logger.log_function_output(f"  Created vector store '{vs_name}' (ID={new_vs.id})")
+            cleared_count = clear_domain_vectorstore_maps(storage_path, domain.domain_id, logger)
+            if cleared_count > 0:
+              logger.log_function_output(f"  Cleared {cleared_count} stale vectorstore_map.csv file(s)")
+          except Exception as e:
+            logger.log_function_output(f"  ERROR: Failed to create vector store -> {str(e)}")
+            logger.log_function_output("  Embedding will be skipped for all sources.")
+            skip_embedding = True
+    for sse in writer.drain_sse_queue(): yield sse
     job_id = writer.job_id if dry_run else None
     results = []
     for source_type, source in get_sources_for_scope(domain, scope, source_id):
-      async for sse in step_embed_source(storage_path, domain, source, source_type, mode, dry_run, retry_batches, writer, logger, openai_client, job_id):
-        yield sse
-      results.append(asdict(writer.get_step_result()))
+      if not skip_embedding:
+        async for sse in step_embed_source(storage_path, domain, source, source_type, mode, dry_run, retry_batches, writer, logger, openai_client, job_id):
+          yield sse
+        results.append(asdict(writer.get_step_result()))
     yield writer.emit_end(ok=True, data={"results": results})
   except Exception as e:
     yield writer.emit_end(ok=False, error=str(e), data={})
