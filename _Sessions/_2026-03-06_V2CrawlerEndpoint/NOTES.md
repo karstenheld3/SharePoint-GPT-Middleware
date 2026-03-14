@@ -23,6 +23,13 @@ This session uses a **doc-sync workflow**:
 **On Session Load** (`/session-load`):
 1. Load session tracking files (NOTES, PROGRESS, PROBLEMS)
 2. Load reference docs:
+   - `docs/_V2_SPEC_ROUTERS.md`
+   - `docs/_V2_SPEC_CRAWLER.md`
+   - `docs/_V2_SPEC_CRAWLER_UI.md`
+   - `docs/_V2_SPEC_CRAWLER_LISTS.md`
+   - `docs/_V2_IMPL_CRAWLER.md`
+   - `docs/_V2_IMPL_DOMAINS_CRAWL.md`
+   - `docs/_V2_IMPL_CRAWLER_SELFTEST.md`
    - `docs/V2_INFO_IMPLEMENTATION_PATTERNS.md`
    - `SOPS.md`
 3. V2 docs are already in session folder (copied on init)
