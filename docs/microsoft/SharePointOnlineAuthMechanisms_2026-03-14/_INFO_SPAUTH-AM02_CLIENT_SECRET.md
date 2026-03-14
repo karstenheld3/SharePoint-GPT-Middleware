@@ -61,11 +61,11 @@ Client secrets provide simple app-only authentication but with significant limit
 │ ┌─────────────────────────────────────────────────────────┐ │
 │ │ FastAPI Application                                     │ │
 │ │                                                         │ │
-│ │  ┌─────────────┐    ┌──────────────────────────────┐   │ │
-│ │  │ Endpoint    │───>│ GraphService                 │   │ │
-│ │  │ /api/users  │    │ - ClientSecretCredential     │   │ │
-│ │  └─────────────┘    │ - Graph API calls            │   │ │
-│ │                     └──────────────────────────────┘   │ │
+│ │  ┌─────────────┐    ┌──────────────────────────────┐    │ │
+│ │  │ Endpoint    │───>│ GraphService                 │    │ │
+│ │  │ /api/users  │    │ - ClientSecretCredential     │    │ │
+│ │  └─────────────┘    │ - Graph API calls            │    │ │
+│ │                     └──────────────────────────────┘    │ │
 │ └─────────────────────────────────────────────────────────┘ │
 │                                                             │
 │ Secret stored in:                                           │
@@ -285,13 +285,13 @@ httpx>=0.25.0  # For async HTTP calls
 
 ### Maintenance Concerns
 
-| Issue | Impact | Mitigation |
-|-------|--------|------------|
-| Secret expiration | **Auth fails** - max 24 months | Set rotation reminders; use Key Vault rotation |
-| Secret in logs | Security breach | Never log secrets; use structured logging |
-| Secret in source control | Compromised credential | Use .gitignore; scan for secrets in CI |
-| Secret theft | Full app access | Monitor sign-in logs; use Conditional Access |
-| No rotation mechanism | Manual rotation needed | Implement dual-secret strategy |
+| Issue                      | Impact                                      | Mitigation                                                 |
+|----------------------------|---------------------------------------------|------------------------------------------------------------|
+| Secret expiration          | **Authentication fails** - max 24 months    | Set rotation reminders; use Key Vault rotation             |
+| Secret in logs             | Security breach                             | Never log secrets; use structured logging                  |
+| Secret in source control   | Compromised credential                      | Use .gitignore; scan for secrets in continuous integration |
+| Secret theft               | Full application access                     | Monitor sign-in logs; use Conditional Access               |
+| No rotation mechanism      | Manual rotation needed                      | Implement dual-secret strategy                             |
 
 ### Secret Rotation Strategy
 
@@ -456,8 +456,8 @@ When you create a client secret in Azure Portal, the value is displayed only onc
 
 ```
 ┌──────────────────────────────────────────────────┐
-│ ⚠️ Copy the secret value NOW - you can't see it │
-│    again after leaving this page!               │
+│ ⚠️ Copy the secret value NOW - you can't see it  │
+│    again after leaving this page!                │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -485,12 +485,12 @@ credential.get_token("https://graph.microsoft.com/.default")
 
 ### Common Error Codes
 
-| Error Code | Meaning | Solution |
-|------------|---------|----------|
-| AADSTS7000215 | Invalid client secret | Check secret value; may be expired |
-| AADSTS700016 | Application not found | Check client_id and tenant_id |
-| AADSTS70011 | Invalid scope | Use `.default` suffix |
-| AADSTS65001 | No permission granted | Grant admin consent |
+| Error Code    | Meaning                  | Solution                                 |
+|---------------|--------------------------|------------------------------------------|
+| AADSTS7000215 | Invalid client secret    | Check secret value; may be expired       |
+| AADSTS700016  | Application not found    | Check client_id and tenant_id            |
+| AADSTS70011   | Invalid scope            | Use `.default` suffix                    |
+| AADSTS65001   | No permission granted    | Grant administrator consent              |
 
 ### Performance: Reuse Credential Instance
 

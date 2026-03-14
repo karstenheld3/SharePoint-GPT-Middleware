@@ -5,7 +5,8 @@
 **Doc ID**: SPAUTH-IN01
 **Goal**: Comprehensive reference for all SharePoint/Graph authentication mechanisms in Python
 **Research Type**: MCPI (exhaustive)
-**Timeline**: Created 2026-03-14
+**Timeline**: Created 2026-03-14, Updated 2026-03-14
+**Detailed Guides**: See `SharePointOnlineAuthMechanisms_2026-03-14/_INFO_SPAUTH-AM*.md` for FastAPI integration patterns
 
 ## Quick Reference Summary
 
@@ -39,6 +40,13 @@
 
 - **SharePoint REST API**: `https://{tenant}.sharepoint.com/.default`
 - **Microsoft Graph API**: `https://graph.microsoft.com/.default`
+
+### Critical Constraints
+
+- **SharePoint REST API requires certificate auth** - Client secrets are blocked for `/_api/` endpoints
+- **Managed Identity + Sites.Selected** - Must grant permission to MI's service principal, not app registration
+- **DefaultAzureCredential** - Not recommended for production; use specific credential types
+- **Token scope format** - Must include `/.default` suffix (e.g., `https://graph.microsoft.com/.default`)
 
 ## Table of Contents
 
@@ -135,6 +143,13 @@ with open("cert.pem", "wb") as f:
 thumbprint = certificate.fingerprint(certificate.signature_hash_algorithm).hex().upper()
 ```
 
+### Key Gotchas
+
+- **PEM must include private key** - File needs both `-----BEGIN PRIVATE KEY-----` and `-----BEGIN CERTIFICATE-----` sections
+- **Thumbprint format** - Azure Portal shows colons (`AB:CD:EF`), MSAL expects none (`ABCDEF`)
+- **Certificate expiration** - Auth fails completely when cert expires; set rotation reminders
+- **PFX password** - Pass `None` for no password, not empty string `""`
+
 ## 2. Client Secret (App-Only)
 
 **Use case:** Microsoft Graph API only. Simple setup for non-SharePoint services.
@@ -188,6 +203,12 @@ ctx = ClientContext(site_url).with_credentials(credentials)
 # Note: This uses legacy SharePoint ACS, not Azure AD
 # Requires: set-spotenant -DisableCustomAppAuthentication $false
 ```
+
+### Key Gotchas
+
+- **SharePoint blocks secrets** - Token acquisition succeeds but API returns 401/403
+- **Secret expiration** - Maximum 24 months; no auto-rotation
+- **Secret shown once** - Copy immediately when created in Azure Portal
 
 ## 3. Managed Identity
 
@@ -264,6 +285,32 @@ ctx = ClientContext(site_url).with_access_token(get_token)
 web = ctx.web.get().execute_query()
 ```
 
+### Key Gotchas
+
+- **IMDS cold start** - First token request takes 2-5 seconds after VM/container cold start
+- **Local development** - IMDS not available; use `DefaultAzureCredential` fallback
+- **User-assigned confusion** - If both types exist, explicitly specify `client_id`
+- **Detect Azure environment** - Check for `IDENTITY_ENDPOINT` or `WEBSITE_INSTANCE_ID` env vars
+
+### FastAPI Integration Pattern
+
+```python
+from azure.identity import ManagedIdentityCredential, DefaultAzureCredential
+import os
+
+def create_credential():
+    """Create credential based on environment."""
+    if os.environ.get("IDENTITY_ENDPOINT"):  # Azure
+        return ManagedIdentityCredential()
+    return DefaultAzureCredential(exclude_managed_identity_credential=True)
+
+# Singleton - reuse to leverage token cache
+_credential = create_credential()
+
+def get_token():
+    return _credential.get_token("https://contoso.sharepoint.com/.default").token
+```
+
 ## 4. Interactive Browser (Delegated)
 
 **Use case:** Desktop apps, web apps where user is present and has a browser.
@@ -323,6 +370,13 @@ credential = InteractiveBrowserCredential(
     )
 )
 ```
+
+### Key Gotchas
+
+- **Redirect URI must match exactly** - Including trailing slash, protocol (http vs https)
+- **Production URI must be HTTPS** - Localhost can use HTTP for development
+- **Popup blockers** - Users may need to allow popups
+- **Include `offline_access`** - Required scope to receive refresh tokens
 
 ## 5. Device Code Flow (Delegated)
 
@@ -384,6 +438,12 @@ def get_token():
 ctx = ClientContext(site_url).with_access_token(get_token)
 ```
 
+### Key Gotchas
+
+- **Code expires in ~15 minutes** - Display expiration time to users
+- **Public client required** - App registration > Authentication > Allow public client flows: Yes
+- **Polling interval** - Don't poll faster than 5 seconds or you get `slow_down` error
+
 ## 6. Authorization Code Flow (Delegated)
 
 **Use case:** Web applications with server-side code.
@@ -431,6 +491,12 @@ credential = AuthorizationCodeCredential(
 token = credential.get_token("https://contoso.sharepoint.com/.default")
 ```
 
+### Key Gotchas
+
+- **State parameter critical** - Always validate to prevent CSRF attacks
+- **Code is single-use** - Exchange fails on second attempt
+- **PKCE recommended** - Use `code_challenge` and `code_verifier` for security
+
 ## 7. Username/Password (Legacy)
 
 **WARNING:** This flow (ROPC - Resource Owner Password Credentials) is deprecated and NOT recommended. It does not support:
@@ -468,6 +534,13 @@ ctx = ClientContext(site_url).with_credentials(credentials)
 # Will fail if MFA is enabled
 ```
 
+### Key Gotchas
+
+- **MFA breaks ROPC** - Error `AADSTS50076` with no workaround
+- **Conditional Access blocks** - Error `AADSTS53003`
+- **Federated users may fail** - ADFS/PingFederate may not support ROPC
+- **Migration path** - Plan to move to interactive or app-only auth
+
 ## 8. On-Behalf-Of Flow
 
 **Use case:** Middle-tier API that needs to call downstream APIs on behalf of the user.
@@ -504,6 +577,33 @@ credential = OnBehalfOfCredential(
 )
 
 token = credential.get_token("https://contoso.sharepoint.com/.default")
+```
+
+### Key Gotchas
+
+- **Token audience must match your API** - Frontend requests token for `api://your-api-client-id`
+- **User must consent to downstream scopes** - Error `AADSTS65001` if not consented
+- **Cannot chain OBO indefinitely** - A -> B -> C may fail at C
+
+### FastAPI OBO Pattern
+
+```python
+from msal import ConfidentialClientApplication
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPBearer
+
+security = HTTPBearer()
+
+def get_downstream_token(user_token: str, scopes: list[str]) -> str:
+    app = ConfidentialClientApplication(
+        client_id=os.environ["AZURE_CLIENT_ID"],
+        authority=f"https://login.microsoftonline.com/{os.environ['AZURE_TENANT_ID']}",
+        client_credential=os.environ["AZURE_CLIENT_SECRET"]
+    )
+    result = app.acquire_token_on_behalf_of(user_assertion=user_token, scopes=scopes)
+    if "error" in result:
+        raise HTTPException(status_code=401, detail=result.get("error_description"))
+    return result["access_token"]
 ```
 
 ## 9. Development Tool Credentials
@@ -550,6 +650,13 @@ credential = ChainedTokenCredential(
 
 token = credential.get_token("https://contoso.sharepoint.com/.default")
 ```
+
+### Key Gotchas
+
+- **`az login` required first** - Error `CredentialUnavailableError` if not logged in
+- **Multiple accounts** - Use `az account set` to select correct subscription
+- **Tokens refresh for ~90 days** - Eventually requires re-login
+- **Not for production** - Use managed identity or certificate in Azure
 
 ## 10. Office365-REST-Python-Client Methods
 
@@ -696,6 +803,50 @@ Is a user present and signing in?
 - Azure Identity SDK handles refresh automatically
 - MSAL requires checking `result.get("access_token")` and re-acquiring
 
+**5. Creating new credential per request**
+- Bypasses token cache, causes excessive token requests
+- Always reuse credential instances (singleton pattern)
+
+**6. Using DefaultAzureCredential in production**
+- Can silently fall back to wrong credential (e.g., developer's CLI session)
+- Use specific credential type (ManagedIdentityCredential, CertificateCredential)
+
+## 13. Common Error Codes
+
+| Error Code | Meaning | Solution |
+|------------|---------|----------|
+| `AADSTS50076` | MFA required | Use interactive flow, not ROPC |
+| `AADSTS53003` | Conditional Access blocked | Check CA policies |
+| `AADSTS65001` | Consent not granted | Grant admin consent |
+| `AADSTS700016` | Application not found | Check client_id and tenant_id |
+| `AADSTS700024` | Client assertion expired | Certificate may be expired |
+| `AADSTS7000215` | Invalid client secret | Check secret value; may be expired |
+| `AADSTS70011` | Invalid scope | Use `.default` suffix |
+| `CredentialUnavailableError` | Credential not configured | Check environment/config |
+
+## 14. Prerequisites Summary
+
+### Certificate Auth (App-Only)
+1. Create app registration in Azure Portal
+2. Generate certificate (self-signed or CA)
+3. Upload `.cer` to app registration > Certificates
+4. Add API permissions (Sites.Read.All, etc.)
+5. Grant admin consent
+6. Store `.pem` or `.pfx` securely
+
+### Managed Identity
+1. Enable identity on App Service/VM (System or User-assigned)
+2. Note the Object (principal) ID
+3. Grant Sites.Selected via Graph API (not portal)
+4. No credentials needed in code
+
+### Interactive/Device Code
+1. Create app registration
+2. Enable "Allow public client flows" in Authentication
+3. Add redirect URIs (localhost for dev, HTTPS for prod)
+4. Add delegated permissions
+5. Optional: Grant admin consent
+
 ## Sources
 
 ### Microsoft Learn Documentation
@@ -738,6 +889,14 @@ Is a user present and signing in?
   - https://github.com/vgrem/Office365-REST-Python-Client
 
 ## Document History
+
+**[2026-03-14 17:10]**
+- Enhanced: Key gotchas for each authentication method
+- Added: FastAPI integration patterns (Managed Identity, OBO)
+- Added: Common error codes reference table
+- Added: Prerequisites summary section
+- Added: Critical constraints in Quick Reference
+- Added: Link to detailed AM guides
 
 **[2026-03-14 16:30]**
 - Initial document created

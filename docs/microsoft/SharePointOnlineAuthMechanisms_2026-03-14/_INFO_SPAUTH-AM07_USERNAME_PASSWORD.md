@@ -15,8 +15,8 @@
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│ ⚠️ WARNING: Resource Owner Password Credentials (ROPC) is     │
-│ DEPRECATED and NOT RECOMMENDED for new applications.          │
+│ ⚠️ WARNING: Resource Owner Password Credentials (ROPC) is      │
+│ DEPRECATED and NOT RECOMMENDED for new applications.           │
 │                                                                │
 │ - Cannot support MFA                                           │
 │ - Cannot support Conditional Access                            │
@@ -45,12 +45,12 @@ Only consider ROPC when ALL of the following are true:
 
 ### Recommendation Level
 
-| Scenario | Recommendation |
-|----------|----------------|
-| New applications | **DO NOT USE** |
-| MFA-enabled environments | **BLOCKED** |
-| Legacy migration (temporary) | Acceptable with plan to migrate |
-| Automated testing | Consider, but service principal better |
+| Scenario                                   | Recommendation                              |
+|--------------------------------------------|---------------------------------------------|
+| New applications                           | **DO NOT USE**                              |
+| Multi-Factor Authentication environments   | **BLOCKED**                                 |
+| Legacy migration (temporary)               | Acceptable with plan to migrate             |
+| Automated testing                          | Consider, but service principal better      |
 
 ## 2. How to Use in FastAPI Azure Web App
 
@@ -60,9 +60,9 @@ Only consider ROPC when ALL of the following are true:
 ┌─────────────────────────────────────────────────────────────────┐
 │ SECURITY WARNING                                                │
 │                                                                 │
-│ Using ROPC means your application handles user credentials:    │
+│ Using ROPC means your application handles user credentials:     │
 │                                                                 │
-│  User ──[username/password]──> Your App ──> Microsoft          │
+│  User ──[username/password]──> Your App ──> Microsoft           │
 │                                   │                             │
 │                                   └── Credentials visible       │
 │                                       to your code!             │
@@ -243,13 +243,13 @@ fastapi>=0.100.0
 
 ### Maintenance Concerns
 
-| Issue | Impact | Mitigation |
-|-------|--------|------------|
-| MFA rollout | **All ROPC breaks** | Migrate to modern auth before MFA rollout |
-| Conditional Access | ROPC blocked | Exempt service accounts or migrate |
-| Password expiration | Auth fails | Use service accounts with no expiry |
-| Microsoft deprecation | May be disabled | Plan migration timeline |
-| Credential exposure | Security risk | Audit access, use secrets management |
+| Issue                              | Impact                                                   | Mitigation                                                        |
+|------------------------------------|----------------------------------------------------------|-------------------------------------------------------------------|
+| Multi-Factor Authentication rollout| **All Resource Owner Password Credentials breaks**       | Migrate to modern authentication before rollout                   |
+| Conditional Access                 | Resource Owner Password Credentials blocked              | Exempt service accounts or migrate                                |
+| Password expiration                | Authentication fails                                     | Use service accounts with no expiry                               |
+| Microsoft deprecation              | May be disabled                                          | Plan migration timeline                                           |
+| Credential exposure                | Security risk                                            | Audit access, use secrets management                              |
 
 ### Migration Path
 

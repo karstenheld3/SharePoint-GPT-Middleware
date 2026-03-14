@@ -29,12 +29,12 @@ Certificate credentials are the **mandatory** authentication method for SharePoi
 
 ### Recommendation Level
 
-| Scenario | Recommendation |
-|----------|----------------|
-| SharePoint REST API (app-only) | **REQUIRED** - Only supported method |
-| Microsoft Graph API (app-only) | **RECOMMENDED** - More secure than secrets |
-| Azure-hosted apps | Consider Managed Identity first, then certificate |
-| On-premises apps | **RECOMMENDED** - Best option for non-Azure |
+| Scenario                                   | Recommendation                                        |
+|--------------------------------------------|-------------------------------------------------------|
+| SharePoint REST API (app-only)             | **REQUIRED** - Only supported method                  |
+| Microsoft Graph API (app-only)             | **RECOMMENDED** - More secure than secrets            |
+| Azure-hosted applications                  | Consider Managed Identity first, then certificate     |
+| On-premises applications                   | **RECOMMENDED** - Best option for non-Azure hosting   |
 
 ## 2. How to Use in FastAPI Azure Web App
 
@@ -46,12 +46,12 @@ Certificate credentials are the **mandatory** authentication method for SharePoi
 │ ┌─────────────────────────────────────────────────────┐ │
 │ │ FastAPI Application                                 │ │
 │ │                                                     │ │
-│ │  ┌─────────────┐    ┌──────────────────────────┐   │ │
-│ │  │ Endpoint    │───>│ SharePointService        │   │ │
-│ │  │ /api/crawl  │    │ - CertificateCredential  │   │ │
-│ │  └─────────────┘    │ - Token acquisition      │   │ │
-│ │                     │ - SharePoint API calls   │   │ │
-│ │                     └──────────────────────────┘   │ │
+│ │  ┌─────────────┐    ┌──────────────────────────┐    │ │
+│ │  │ Endpoint    │───>│ SharePointService        │    │ │
+│ │  │ /api/crawl  │    │ - CertificateCredential  │    │ │
+│ │  └─────────────┘    │ - Token acquisition      │    │ │
+│ │                     │ - SharePoint API calls   │    │ │
+│ │                     └──────────────────────────┘    │ │
 │ └─────────────────────────────────────────────────────┘ │
 │                                                         │
 │ Certificate stored in:                                  │
@@ -301,13 +301,13 @@ cryptography>=41.0.0
 
 ### Maintenance Concerns
 
-| Issue | Impact | Mitigation |
-|-------|--------|------------|
-| Certificate expiration | **Auth fails completely** | Set calendar reminder 30 days before expiry; implement monitoring |
-| Key Vault access revoked | Cannot retrieve certificate | Use managed identity; monitor access policies |
-| Private key compromise | Security breach | Use Key Vault; never commit to source control |
-| Certificate rotation | Temporary auth failures | Add new cert first, update app, remove old cert |
-| PEM format issues | Auth failures | Ensure PEM includes private key; check encoding |
+| Issue                      | Impact                              | Mitigation                                                           |
+|----------------------------|-------------------------------------|----------------------------------------------------------------------|
+| Certificate expiration     | **Authentication fails completely** | Set calendar reminder 30 days before expiry; implement monitoring    |
+| Key Vault access revoked   | Cannot retrieve certificate         | Use managed identity; monitor access policies                        |
+| Private key compromise     | Security breach                     | Use Key Vault; never commit to source control                        |
+| Certificate rotation       | Temporary authentication failures   | Add new certificate first, update application, remove old certificate|
+| PEM format issues          | Authentication failures             | Ensure PEM includes private key; check encoding                      |
 
 ### Certificate Rotation Strategy
 

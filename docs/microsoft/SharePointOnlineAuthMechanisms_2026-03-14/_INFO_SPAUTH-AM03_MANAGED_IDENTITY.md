@@ -44,20 +44,20 @@ Managed Identity is the **most secure** authentication method for Azure-hosted a
 
 ### System-Assigned vs User-Assigned
 
-| Type | Description | Use Case |
-|------|-------------|----------|
-| System-Assigned | Tied to single resource, deleted with resource | Simple single-app scenarios |
-| User-Assigned | Independent identity, can be shared | Multiple apps sharing identity |
+| Type            | Description                                      | Use Case                                   |
+|-----------------|--------------------------------------------------|--------------------------------------------|
+| System-Assigned | Tied to single resource, deleted with resource   | Simple single-application scenarios        |
+| User-Assigned   | Independent identity, can be shared              | Multiple applications sharing identity     |
 
 ### Recommendation Level
 
-| Scenario | Recommendation |
-|----------|----------------|
-| Azure App Service (SharePoint) | **STRONGLY RECOMMENDED** |
-| Azure Functions | **STRONGLY RECOMMENDED** |
-| Azure VMs | **RECOMMENDED** |
-| Local development | Not available (use fallback) |
-| On-premises | Not available |
+| Scenario                             | Recommendation                      |
+|--------------------------------------|-------------------------------------|
+| Azure App Service (SharePoint)       | **STRONGLY RECOMMENDED**            |
+| Azure Functions                      | **STRONGLY RECOMMENDED**            |
+| Azure Virtual Machines               | **RECOMMENDED**                     |
+| Local development                    | Not available (use fallback)        |
+| On-premises                          | Not available                       |
 
 ## 2. How to Use in FastAPI Azure Web App
 
@@ -69,18 +69,18 @@ Managed Identity is the **most secure** authentication method for Azure-hosted a
 │ ┌─────────────────────────────────────────────────────────────┐ │
 │ │ FastAPI Application                                         │ │
 │ │                                                             │ │
-│ │  ┌───────────────┐    ┌──────────────────────────────────┐ │ │
-│ │  │ Endpoint      │───>│ SharePointService                │ │ │
-│ │  │ /api/crawl    │    │ - ManagedIdentityCredential      │ │ │
-│ │  └───────────────┘    │ - No secrets needed!             │ │ │
-│ │                       └──────────────────────────────────┘ │ │
-│ │                                    │                       │ │
-│ │                                    ▼                       │ │
-│ │                       ┌──────────────────────────────────┐ │ │
-│ │                       │ IMDS Endpoint                    │ │ │
-│ │                       │ 169.254.169.254/metadata/...     │ │ │
-│ │                       │ (Azure-managed, internal only)   │ │ │
-│ │                       └──────────────────────────────────┘ │ │
+│ │  ┌───────────────┐    ┌──────────────────────────────────┐  │ │
+│ │  │ Endpoint      │───>│ SharePointService                │  │ │
+│ │  │ /api/crawl    │    │ - ManagedIdentityCredential      │  │ │
+│ │  └───────────────┘    │ - No secrets needed!             │  │ │
+│ │                       └──────────────────────────────────┘  │ │
+│ │                                    │                        │ │
+│ │                                    ▼                        │ │
+│ │                       ┌──────────────────────────────────┐  │ │
+│ │                       │ IMDS Endpoint                    │  │ │
+│ │                       │ 169.254.169.254/metadata/...     │  │ │
+│ │                       │ (Azure-managed, internal only)   │  │ │
+│ │                       └──────────────────────────────────┘  │ │
 │ └─────────────────────────────────────────────────────────────┘ │
 │                                                                 │
 │ Identity: System-Assigned or User-Assigned                      │
@@ -353,13 +353,13 @@ Office365-REST-Python-Client>=2.5.0
 
 ### Maintenance Concerns
 
-| Issue | Impact | Mitigation |
-|-------|--------|------------|
-| Cold start delay | First request slow (2-5s) | Implement health probe warmup |
-| IMDS timeout | Token acquisition fails | Azure SDK handles retries |
-| Permission drift | Access lost if site moves | Monitor with Graph API |
-| Identity deleted | Auth fails | Don't delete App Service |
-| User-assigned ID confusion | Wrong identity used | Explicitly specify client_id |
+| Issue                                 | Impact                           | Mitigation                                     |
+|---------------------------------------|----------------------------------|------------------------------------------------|
+| Cold start delay                      | First request slow (2-5 seconds) | Implement health probe warmup                  |
+| Instance Metadata Service timeout     | Token acquisition fails          | Azure SDK handles retries automatically        |
+| Permission drift                      | Access lost if site moves        | Monitor with Graph API                         |
+| Identity deleted                      | Authentication fails             | Do not delete App Service                      |
+| User-assigned identity confusion      | Wrong identity used              | Explicitly specify client_id                   |
 
 ### Cold Start Handling
 

@@ -22,12 +22,12 @@ Development tool credentials leverage existing CLI/IDE authentication for local 
 
 ### Available Development Credentials
 
-| Credential | Source | Command to Authenticate |
-|------------|--------|------------------------|
-| AzureCliCredential | Azure CLI | `az login` |
-| AzurePowerShellCredential | Azure PowerShell | `Connect-AzAccount` |
-| VisualStudioCodeCredential | VS Code Azure extension | Sign in via extension |
-| AzureDeveloperCliCredential | Azure Developer CLI | `azd auth login` |
+| Credential                    | Source                            | Command to Authenticate  |
+|-------------------------------|-----------------------------------|--------------------------|  
+| AzureCliCredential            | Azure Command Line Interface      | `az login`               |
+| AzurePowerShellCredential     | Azure PowerShell                  | `Connect-AzAccount`      |
+| VisualStudioCodeCredential    | Visual Studio Code Azure extension| Sign in via extension    |
+| AzureDeveloperCliCredential   | Azure Developer CLI               | `azd auth login`         |
 
 ### When NOT to Use
 
@@ -38,12 +38,12 @@ Development tool credentials leverage existing CLI/IDE authentication for local 
 
 ### Recommendation Level
 
-| Scenario | Recommendation |
-|----------|----------------|
-| Local development | **RECOMMENDED** |
-| Quick testing | **RECOMMENDED** |
-| Production | **DO NOT USE** |
-| CI/CD | **DO NOT USE** |
+| Scenario                               | Recommendation     |
+|----------------------------------------|--------------------|
+| Local development                      | **RECOMMENDED**    |
+| Quick testing                          | **RECOMMENDED**    |
+| Production                             | **DO NOT USE**     |
+| Continuous Integration/Deployment      | **DO NOT USE**     |
 
 ## 2. How to Use in FastAPI Azure Web App (Local Development)
 
@@ -55,11 +55,11 @@ Development tool credentials leverage existing CLI/IDE authentication for local 
 │ ┌─────────────────────────────────────────────────────────────┐ │
 │ │ FastAPI Application (localhost:8000)                        │ │
 │ │                                                             │ │
-│ │  ┌───────────────┐    ┌──────────────────────────────────┐ │ │
-│ │  │ Endpoint      │───>│ SharePointService                │ │ │
-│ │  │ /api/lists    │    │ - Uses AzureCliCredential        │ │ │
-│ │  └───────────────┘    │ - Gets token from az CLI cache   │ │ │
-│ │                       └──────────────────────────────────┘ │ │
+│ │  ┌───────────────┐    ┌──────────────────────────────────┐  │ │
+│ │  │ Endpoint      │───>│ SharePointService                │  │ │
+│ │  │ /api/lists    │    │ - Uses AzureCliCredential        │  │ │
+│ │  └───────────────┘    │ - Gets token from az CLI cache   │  │ │
+│ │                       └──────────────────────────────────┘  │ │
 │ └─────────────────────────────────────────────────────────────┘ │
 │                                                                 │
 │ Prerequisites:                                                  │
@@ -268,13 +268,13 @@ Office365-REST-Python-Client>=2.5.0
 
 ### Maintenance Concerns
 
-| Issue | Impact | Mitigation |
-|-------|--------|------------|
-| Token expiration | Auth fails after ~1 hour | Re-run `az login` |
-| Wrong account signed in | Access to wrong tenant | Verify with `az account show` |
-| Multiple subscriptions | May use wrong subscription | Set default with `az account set` |
-| VS Code extension issues | Credential not found | Re-sign in via extension |
-| CLI/PowerShell not installed | Credential unavailable | Install required tool |
+| Issue                                   | Impact                          | Mitigation                               |
+|-----------------------------------------|---------------------------------|------------------------------------------|
+| Token expiration                        | Authentication fails after ~1 hour | Re-run `az login`                     |
+| Wrong account signed in                 | Access to wrong tenant          | Verify with `az account show`            |
+| Multiple subscriptions                  | May use wrong subscription      | Set default with `az account set`        |
+| Visual Studio Code extension issues     | Credential not found            | Re-sign in via extension                 |
+| CLI/PowerShell not installed            | Credential unavailable          | Install required tool                    |
 
 ### Refresh Tokens
 

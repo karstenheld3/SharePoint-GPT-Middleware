@@ -26,15 +26,15 @@ OBO flow is for **middle-tier services** that need to call downstream APIs on be
 ┌────────────────────────────────────────────────────────────────────┐
 │ On-Behalf-Of Flow                                                  │
 │                                                                    │
-│  ┌──────────┐    ┌──────────────────┐    ┌───────────────────┐   │
-│  │ Frontend │───>│ Your FastAPI     │───>│ SharePoint/Graph  │   │
-│  │ (SPA)    │    │ (Middle-tier)    │    │ (Downstream API)  │   │
-│  └──────────┘    └──────────────────┘    └───────────────────┘   │
-│       │                  │                        │               │
-│       │ Token A          │ Exchange A for B       │ Token B       │
-│       │ (for your API)   │ via OBO flow           │ (for Graph)   │
-│       │                  │                        │               │
-│       └──────────────────┴────────────────────────┘               │
+│  ┌──────────┐    ┌──────────────────┐    ┌───────────────────┐     │
+│  │ Frontend │───>│ Your FastAPI     │───>│ SharePoint/Graph  │     │
+│  │ (SPA)    │    │ (Middle-tier)    │    │ (Downstream API)  │     │
+│  └──────────┘    └──────────────────┘    └───────────────────┘     │
+│       │                  │                        │                │
+│       │ Token A          │ Exchange A for B       │ Token B        │
+│       │ (for your API)   │ via OBO flow           │ (for Graph)    │
+│       │                  │                        │                │
+│       └──────────────────┴────────────────────────┘                │
 │                                                                    │
 │  Key: User identity preserved through entire chain                 │
 └────────────────────────────────────────────────────────────────────┘
@@ -48,13 +48,13 @@ OBO flow is for **middle-tier services** that need to call downstream APIs on be
 
 ### Recommendation Level
 
-| Scenario | Recommendation |
-|----------|----------------|
-| API calling downstream API as user | **RECOMMENDED** |
-| Microservice architecture | **RECOMMENDED** |
-| BFF pattern | **RECOMMENDED** |
-| Simple CRUD API | NOT NEEDED |
-| Background jobs | NOT APPLICABLE |
+| Scenario                                    | Recommendation     |
+|---------------------------------------------|--------------------|
+| API calling downstream API as user          | **RECOMMENDED**    |
+| Microservice architecture                   | **RECOMMENDED**    |
+| Backend-for-Frontend pattern                | **RECOMMENDED**    |
+| Simple Create/Read/Update/Delete API        | NOT NEEDED         |
+| Background jobs                             | NOT APPLICABLE     |
 
 ## 2. How to Use in FastAPI Azure Web App
 
@@ -344,13 +344,13 @@ Office365-REST-Python-Client>=2.5.0
 
 ### Maintenance Concerns
 
-| Issue | Impact | Mitigation |
-|-------|--------|------------|
-| Consent not granted | OBO fails with AADSTS65001 | Pre-consent via admin grant |
-| Token audience wrong | Exchange fails | Verify frontend requests correct scope |
-| Secret expiration | OBO stops working | Rotate secrets before expiry |
-| Permission changes | May need re-consent | Monitor permission changes |
-| Token caching | Performance issues | MSAL handles caching |
+| Issue                 | Impact                                  | Mitigation                                    |
+|-----------------------|-----------------------------------------|-----------------------------------------------|
+| Consent not granted   | On-Behalf-Of fails with AADSTS65001     | Pre-consent via administrator grant           |
+| Token audience wrong  | Exchange fails                          | Verify frontend requests correct scope        |
+| Secret expiration     | On-Behalf-Of stops working              | Rotate secrets before expiry                  |
+| Permission changes    | May need re-consent                     | Monitor permission changes                    |
+| Token caching         | Performance issues                      | Microsoft Authentication Library handles this |
 
 ### Token Caching
 

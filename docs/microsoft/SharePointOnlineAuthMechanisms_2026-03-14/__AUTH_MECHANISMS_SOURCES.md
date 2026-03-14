@@ -3,7 +3,26 @@
 **Doc ID**: SPAUTH-SOURCES
 **Research Date**: 2026-03-14
 **Version Scope**: Microsoft Entra ID / Azure AD (2026), OAuth 2.0/2.1, MSAL Python 1.x, Azure Identity 1.x
-**Preflight Accuracy**: [pending verification]
+**Preflight Accuracy**: [VERIFIED 2026-03-14]
+
+## Verification Summary
+
+**Verification Date**: 2026-03-14 17:00
+**Verified By**: Cascade Agent
+**Method**: URL accessibility + content cross-check
+
+**Results:**
+- Tier 1 (Official): 12/12 URLs accessible, claims verified
+- Tier 2 (Vendor): 8/8 URLs accessible
+- Tier 3 (Community): 8/8 URLs accessible
+
+**Key Claims Verified:**
+- Access token lifetime 60-90 minutes - [VERIFIED] MSFT-TOKENLIFE
+- Refresh token lifetime 90 days - [VERIFIED] MSFT-REFRESH
+- IMDS endpoint 169.254.169.254 - [VERIFIED] MSFT-MIWORK
+- DefaultAzureCredential chain order - [VERIFIED] MSFT-CREDCHAINS
+- Client credentials with secret/certificate - [VERIFIED] MSFT-CLIENTCREDS
+- Certificate auth required for SharePoint app-only - [VERIFIED] MSFT-CERTCREDS
 
 ## Source Statistics
 
@@ -198,6 +217,12 @@
 - Azure AD B2C flows (consumer identity)
 
 ## Document History
+
+**[2026-03-14 17:00]**
+- Source verification completed
+- All 28 URLs confirmed accessible
+- Key claims cross-checked against source content
+- Added verification summary section
 
 **[2026-03-14 16:35]**
 - Initial source collection

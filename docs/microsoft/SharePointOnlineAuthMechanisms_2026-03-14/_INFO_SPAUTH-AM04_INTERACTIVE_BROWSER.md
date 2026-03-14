@@ -28,7 +28,7 @@ Interactive browser authentication is for **delegated** scenarios where a user i
 │ User clicks  │───>│ Browser opens   │───>│ User logs in     │
 │ "Login"      │    │ login.microsoft │    │ (may have MFA)   │
 └──────────────┘    └─────────────────┘    └──────────────────┘
-                                                    │
+                                                   │
                     ┌─────────────────┐            │
                     │ Token returned  │<───────────┘
                     │ to application  │
@@ -62,22 +62,22 @@ Interactive browser authentication is for **delegated** scenarios where a user i
 │ ┌─────────────────────────────────────────────────────────────┐ │
 │ │ FastAPI Web UI                                              │ │
 │ │                                                             │ │
-│ │  ┌───────────┐    ┌──────────────────────────────────────┐ │ │
-│ │  │ Login Btn │───>│ /auth/login endpoint                 │ │ │
-│ │  └───────────┘    │ Redirects to Microsoft login         │ │ │
-│ │                   └──────────────────────────────────────┘ │ │
-│ │                              │                             │ │
-│ │                              ▼                             │ │
-│ │  ┌──────────────────────────────────────────────────────┐ │ │
-│ │  │ Microsoft Login Page (login.microsoftonline.com)     │ │ │
-│ │  │ User enters credentials, completes MFA               │ │ │
-│ │  └──────────────────────────────────────────────────────┘ │ │
-│ │                              │                             │ │
-│ │                              ▼                             │ │
-│ │  ┌──────────────────────────────────────────────────────┐ │ │
-│ │  │ /auth/callback - Receives auth code                  │ │ │
-│ │  │ Exchanges for tokens, stores in session              │ │ │
-│ │  └──────────────────────────────────────────────────────┘ │ │
+│ │  ┌───────────┐    ┌──────────────────────────────────────┐  │ │
+│ │  │ Login Btn │───>│ /auth/login endpoint                 │  │ │
+│ │  └───────────┘    │ Redirects to Microsoft login         │  │ │
+│ │                   └──────────────────────────────────────┘  │ │
+│ │                              │                              │ │
+│ │                              ▼                              │ │
+│ │  ┌──────────────────────────────────────────────────────┐   │ │
+│ │  │ Microsoft Login Page (login.microsoftonline.com)     │   │ │
+│ │  │ User enters credentials, completes MFA               │   │ │
+│ │  └──────────────────────────────────────────────────────┘   │ │
+│ │                              │                              │ │
+│ │                              ▼                              │ │
+│ │  ┌──────────────────────────────────────────────────────┐   │ │
+│ │  │ /auth/callback - Receives auth code                  │   │ │
+│ │  │ Exchanges for tokens, stores in session              │   │ │
+│ │  └──────────────────────────────────────────────────────┘   │ │
 │ └─────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -318,13 +318,13 @@ python-multipart>=0.0.6  # For form handling
 
 ### Maintenance Concerns
 
-| Issue | Impact | Mitigation |
-|-------|--------|------------|
-| Redirect URI mismatch | Auth fails completely | Keep URIs in sync between code and Azure |
-| Session expiration | User logged out unexpectedly | Implement refresh token handling |
-| Consent prompt changes | Users see unexpected prompts | Pre-consent via admin grant |
-| MFA requirements | Additional friction | Document user flow |
-| Token expiration | API calls fail | Implement silent token refresh |
+| Issue                          | Impact                              | Mitigation                                                        |
+|--------------------------------|-------------------------------------|-------------------------------------------------------------------|
+| Redirect URI mismatch          | Authentication fails completely     | Keep Uniform Resource Identifiers in sync between code and Azure  |
+| Session expiration             | User logged out unexpectedly        | Implement refresh token handling                                  |
+| Consent prompt changes         | Users see unexpected prompts        | Pre-consent via administrator grant                               |
+| Multi-Factor Authentication    | Additional friction for users       | Document user flow                                                |
+| Token expiration               | API calls fail                      | Implement silent token refresh                                    |
 
 ### Token Refresh Implementation
 

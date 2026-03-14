@@ -49,13 +49,13 @@ Authorization code flow is the **standard OAuth 2.0 flow** for web applications:
 
 ### Authorization Code vs Interactive Browser
 
-| Aspect | Authorization Code | Interactive Browser |
-|--------|-------------------|---------------------|
-| Use case | Web apps with backend | Desktop/CLI apps |
-| Token exchange | Server-side | Client-side |
-| Security | Higher (code_verifier) | Good |
-| Refresh tokens | Yes | Yes |
-| Implementation | More complex | Simpler |
+| Aspect           | Authorization Code                     | Interactive Browser                 |
+|------------------|----------------------------------------|-------------------------------------|
+| Use case         | Web applications with backend          | Desktop and command-line apps       |
+| Token exchange   | Server-side                            | Client-side                         |
+| Security         | Higher (uses code_verifier)            | Good                                |
+| Refresh tokens   | Yes                                    | Yes                                 |
+| Implementation   | More complex                           | Simpler                             |
 
 ### When NOT to Use
 
@@ -65,12 +65,12 @@ Authorization code flow is the **standard OAuth 2.0 flow** for web applications:
 
 ### Recommendation Level
 
-| Scenario | Recommendation |
-|----------|----------------|
-| Web app with user login | **STRONGLY RECOMMENDED** |
-| SPA with backend | **RECOMMENDED** |
-| FastAPI with UI | **RECOMMENDED** |
-| API-only services | NOT APPLICABLE |
+| Scenario                              | Recommendation            |
+|---------------------------------------|---------------------------|
+| Web application with user login       | **STRONGLY RECOMMENDED**  |
+| Single Page Application with backend  | **RECOMMENDED**           |
+| FastAPI with user interface           | **RECOMMENDED**           |
+| API-only services                     | NOT APPLICABLE            |
 
 ## 2. How to Use in FastAPI Azure Web App
 
@@ -398,13 +398,13 @@ python-multipart>=0.0.6
 
 ### Maintenance Concerns
 
-| Issue | Impact | Mitigation |
-|-------|--------|------------|
-| Client secret expiration | Auth breaks | Rotate before expiry |
-| Redirect URI mismatch | Auth fails | Keep in sync |
-| Session hijacking | Security breach | Use secure cookies, HTTPS |
-| Token storage | Data exposure | Encrypt session data |
-| CSRF attacks | Security vulnerability | Validate state parameter |
+| Issue                       | Impact                   | Mitigation                                       |
+|-----------------------------|--------------------------|--------------------------------------------------|
+| Client secret expiration    | Authentication breaks    | Rotate before expiry                             |
+| Redirect URI mismatch       | Authentication fails     | Keep in sync                                     |
+| Session hijacking           | Security breach          | Use secure cookies, HTTPS                        |
+| Token storage               | Data exposure            | Encrypt session data                             |
+| Cross-Site Request Forgery  | Security vulnerability   | Validate state parameter                         |
 
 ### Token Refresh
 

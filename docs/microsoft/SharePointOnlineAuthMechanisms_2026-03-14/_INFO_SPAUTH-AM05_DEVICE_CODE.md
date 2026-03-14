@@ -28,10 +28,10 @@ Device code flow is for **browserless** or **input-constrained** environments:
 │ Device Code Flow                                                 │
 │                                                                  │
 │  CLI/App displays:                                               │
-│  ┌────────────────────────────────────────────────────────────┐ │
-│  │ To sign in, visit: https://microsoft.com/devicelogin       │ │
-│  │ Enter code: ABCD-EFGH                                      │ │
-│  └────────────────────────────────────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │ To sign in, visit: https://microsoft.com/devicelogin       │  │
+│  │ Enter code: ABCD-EFGH                                      │  │
+│  └────────────────────────────────────────────────────────────┘  │
 │                          │                                       │
 │                          ▼                                       │
 │  User opens browser on ANY device (phone, laptop, etc.)          │
@@ -77,7 +77,7 @@ Device code is typically used for CLI tools, not web apps. However, a FastAPI ap
 │ │  Enter code: ABCD-EFGH                                      │ │
 │ │                                                             │ │
 │ │  [Polling for authentication...]                            │ │
-│ │  ✓ Logged in as user@contoso.com                           │ │
+│ │  ✓ Logged in as user@contoso.com                            │ │
 │ └─────────────────────────────────────────────────────────────┘ │
 │                                                                 │
 │ User opens phone/laptop browser:                                │
@@ -298,12 +298,12 @@ Office365-REST-Python-Client>=2.5.0
 
 ### Maintenance Concerns
 
-| Issue | Impact | Mitigation |
-|-------|--------|------------|
-| Code expiration (15 min) | User must restart flow | Display countdown, clear messaging |
-| Polling too fast | Throttled by server | Use recommended interval (5s) |
-| User confusion | Auth fails | Clear instructions in prompt |
-| Token storage | Security risk | Use secure storage or don't persist |
+| Issue                             | Impact                     | Mitigation                                          |
+|-----------------------------------|----------------------------|-----------------------------------------------------|
+| Code expiration (15 minutes)      | User must restart flow     | Display countdown, clear messaging                  |
+| Polling too fast                  | Throttled by server        | Use recommended interval (5 seconds)                |
+| User confusion                    | Authentication fails       | Clear instructions in prompt                        |
+| Token storage                     | Security risk              | Use secure storage or do not persist                |
 
 ### Polling Best Practices
 
