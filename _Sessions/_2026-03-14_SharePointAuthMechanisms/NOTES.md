@@ -70,8 +70,8 @@ Then we explore and implement 2)
 │  │ 2. Certificate       (Any environment, current impl)        ││
 │  │                                                             ││
 │  │ Delegated Permissions:                                      ││
-│  │ 3. Device Code       (Headless/server, production+dev)      ││
-│  │ 4. Interactive Browser (Any env, requires browser)          ││
+│  │ 3. Interactive Browser (Any env, user already in browser)   ││
+│  │ 4. Device Code       (CLI/scripts, headless only)           ││
 │  └─────────────────────────────────────────────────────────────┘│
 │                                                                 │
 │  Automatic Method (when request HAS Authorization header):      │
@@ -110,9 +110,12 @@ Then we explore and implement 2)
 - `docs/microsoft/SharePointOnlineAuthMechanisms_2026-03-14/_INFO_SPAUTH-AM04_INTERACTIVE_BROWSER.md`
 - `docs/microsoft/SharePointOnlineAuthMechanisms_2026-03-14/_INFO_SPAUTH-AM05_DEVICE_CODE.md`
 - `docs/microsoft/SharePointOnlineAuthMechanisms_2026-03-14/_INFO_SPAUTH-AM06_AUTHORIZATION_CODE.md`
+- `docs/microsoft/SharePointOnlineAuthMechanisms_2026-03-14/_INFO_SPAUTH-AM08_ON_BEHALF_OF.md`
+
 
 **Background Information (IN):**
 - `docs/microsoft/SharePointOnlineAuthMechanisms_2026-03-14/_INFO_SPAUTH-IN01_OAUTH_FLOWS.md`
+- `docs/microsoft/SharePointOnlineAuthMechanisms_2026-03-14/_INFO_SPAUTH-IN04_SDK_INTERNALS.md`
 - `docs/microsoft/SharePointOnlineAuthMechanisms_2026-03-14/_INFO_SPAUTH-IN05_SECURITY.md`
 - `docs/microsoft/SharePointOnlineAuthMechanisms_2026-03-14/_INFO_SPAUTH-IN06_OPERATIONAL.md`
 - `docs/microsoft/SharePointOnlineAuthMechanisms_2026-03-14/_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md`
