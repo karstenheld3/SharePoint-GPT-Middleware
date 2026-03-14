@@ -70,8 +70,8 @@ Implications:
 **Azure App Service + Local Development**
 
 - Azure: Managed Identity is primary option
-- Local dev: Certificate or Device Code fallback (no IMDS endpoint locally)
-- Interactive Browser available for local development convenience
+- Local dev: Certificate or Interactive Browser fallback (no IMDS endpoint locally)
+- Interactive Browser works in ANY environment where middleware UI is accessed via browser
 - Default method configured via environment variables / `.env` file (not hardcoded)
 
 ### 2.3 Authentication Selection Model
@@ -110,14 +110,16 @@ Implications:
 
 ### 3.2 Delegated Permissions (Admin-Selectable)
 
-- **Device Code**
-  - Best for: Headless/server
-  - User experience: Display code, auth on phone/other device
-
 - **Interactive Browser**
-  - Best for: Local development (requires browser on server machine)
-  - User experience: Opens browser on same machine
-  - Admin may select this in any environment if applicable
+  - Best for: Any environment where user accesses middleware via browser
+  - User experience: Standard OAuth redirect in user's browser (same as any web app login)
+  - Works in production AND local dev - middleware UI is already in browser
+  - LOW complexity: standard OAuth redirect flow, no token sharing needed
+
+- **Device Code**
+  - Best for: CLI tools, scripts, headless automation
+  - User experience: Display code, auth on phone/other device
+  - MEDIUM complexity: requires token persistence and cross-worker sharing
 
 ### 3.3 Automatic Method (Per-Request)
 
@@ -138,8 +140,8 @@ Implications:
 │  └─> 2. Certificate       (Any environment, current impl)       │
 │                                                                 │
 │  Delegated Permissions:                                         │
-│  ├─> 3. Device Code       (Headless/server, production+dev)     │
-│  └─> 4. Interactive Browser (Any env, requires browser)         │
+│  ├─> 3. Interactive Browser (Any env, user already in browser)  │
+│  └─> 4. Device Code       (CLI/scripts, headless only)          │
 │                                                                 │
 │  Automatic Method (when request HAS Authorization header)       │
 │  └─> On-Behalf-Of         (Per-request, user's permissions)     │
@@ -469,6 +471,12 @@ For Device Code and On-Behalf-Of (delegated flows):
 - Added: Token audience `https://{tenant}.sharepoint.com` to §2.1
 - Added: SharePoint REST API only scope note, Graph API deferred
 - Changed: Next Steps - endpoints and UI/UX deferred to SPEC phase
+
+**[2026-03-14 21:56]**
+- Changed: Interactive Browser now primary delegated method (OAuth redirect, works in production)
+- Changed: Device Code demoted to CLI/headless scenarios only
+- Fixed: Removed "requires browser on server" misconception - middleware UI IS in browser
+- Changed: Reordered delegated methods (Interactive Browser before Device Code)
 
 **[2026-03-14 20:23]**
 - Added: Section 5 - Runtime Behavior Scenarios

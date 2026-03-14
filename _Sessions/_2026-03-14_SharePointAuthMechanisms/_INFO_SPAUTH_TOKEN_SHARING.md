@@ -12,9 +12,9 @@
 - **Managed Identity**: No sharing needed - Azure IMDS handles caching at infrastructure level [VERIFIED]
 - **Certificate**: Each worker loads cert independently; duplicate Azure AD calls acceptable (fast, no refresh token) [VERIFIED]
 - **Device Code**: HIGH complexity - requires shared file cache with locking; all workers must access same tokens [VERIFIED]
-- **Interactive Browser**: Same as Device Code for production; in-memory sufficient for local dev [VERIFIED]
+- **Interactive Browser**: Per-session token via OAuth redirect; no cross-worker sharing needed [VERIFIED]
 - **On-Behalf-Of**: Per-request with user token; in-memory cache per worker is sufficient [VERIFIED]
-- **Recommendation**: File-based `SharedTokenCache` with locking for Device Code/Interactive Browser flows [ASSUMED]
+- **Recommendation**: File-based `SharedTokenCache` with locking for Device Code only; Interactive Browser uses standard session management [VERIFIED]
 
 ## Key Questions
 
@@ -349,35 +349,52 @@ MSAL handles refresh automatically when using `acquire_token_silent()`:
 
 ## 5. Interactive Browser
 
+### Middleware Architecture Clarification
+
+The middleware serves its own UI (`html_javascript_static_files/`). Users access this UI via browser. This means Interactive Browser auth is a **standard OAuth redirect flow** - NOT "server opens browser on itself."
+
+```
+User Browser ──> Middleware UI ──> "Login with Microsoft" button
+                                          │
+                                          v
+                              [Redirect to login.microsoftonline.com]
+                                          │
+                                          v
+                              [User authenticates in SAME browser]
+                                          │
+                                          v
+                              [Redirect back with auth code]
+                                          │
+                                          v
+                              [Middleware exchanges code for token]
+```
+
 ### What Needs to Be Shared
 
-Same as Device Code - **access token AND refresh token**.
+**Nothing across workers.** Each user session has its own token stored in session/cookie.
 
 ### How It Differs from Device Code
 
-- Interactive Browser opens browser on SAME machine
-- Only works when user is physically present
-- Primarily for local development
+| Aspect | Interactive Browser | Device Code |
+|--------|---------------------|-------------|
+| Flow | OAuth redirect in user's browser | Display code, user authenticates elsewhere |
+| Token scope | Per-user session | Shared admin token for all requests |
+| Cross-worker sharing | Not needed (session-based) | Required (all workers use same token) |
+| Production viable | Yes - standard web app OAuth | Yes - but more complex |
+| Use case | Any user accessing middleware UI | CLI tools, scripts, headless automation |
 
 ### Sharing Strategy
 
-Same options as Device Code:
-- Shared file cache
-- Redis/database cache
-- In-memory singleton (single worker only)
-
-### For Local Development
-
-Since Interactive Browser is primarily for local dev:
-- Usually single worker process
-- In-memory cache is sufficient
-- No need for distributed cache
+No cross-worker sharing needed:
+- Token stored in user's session (cookie/session store)
+- Each request from that user carries session identifier
+- Standard web session management
 
 ### Verdict
 
-- **Sharing complexity**: LOW for local dev (single worker)
-- **Production use**: Same as Device Code (HIGH if needed)
-- **Recommendation**: Use Device Code for production multi-worker scenarios
+- **Sharing complexity**: LOW (standard session management)
+- **Production use**: YES - works like any web app with OAuth login
+- **Recommendation**: Preferred delegated method for middleware UI users
 
 ## 6. On-Behalf-Of
 
@@ -725,6 +742,12 @@ async def reset_to_default():
 6. **Add method validation** to reject invalid method values in override file
 
 ## Document History
+
+**[2026-03-14 21:56]**
+- Changed: Interactive Browser section rewritten - standard OAuth redirect, no cross-worker sharing needed
+- Added: Middleware architecture clarification diagram
+- Added: Comparison table (Interactive Browser vs Device Code)
+- Changed: Recommendation updated - SharedTokenCache for Device Code only
 
 **[2026-03-14 20:40]**
 - Fixed: Stale `/var/app/` paths replaced with `{PERSISTENT_STORAGE_PATH}`
