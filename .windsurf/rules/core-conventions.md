@@ -15,6 +15,7 @@ Universal formatting and writing conventions for all documents.
   - Trees and flows: `├─>` `└─>` `│` (2-space indentation compatible)
   - Boxes and diagrams (non-UI): `┌─` `├─` `└─` `│` `─` `┐` `┤` `┘`
   - UI diagrams and designs: Keep ASCII `+` `-` `|` for compatibility and easy manual editing
+- Never use `▼` (U+25BC); use `v` instead
 - Try to fit single statements/decisions/objects on a single line
 - Format workflow references as inline code: `/verify`, `/go`, `/recap`
 

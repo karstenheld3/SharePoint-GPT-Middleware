@@ -4,6 +4,25 @@
 
 ## Active Issues
 
+### [LOW] `SPAUTH-FL-002` Acronyms Not Written Out
+
+- **When**: 2026-03-14 20:06
+- **Where**: `_INFO_SPAUTH_TOKEN_SHARING.md` Key Questions section (lines 23-39)
+- **What**: Used abbreviations like "MI", "Cert", "OBO" without writing out full terms first
+- **Why it went wrong**: Prioritized brevity over clarity; forgot documentation rule to write out acronyms on first use
+- **Evidence**: Line 24: `→ Varies: Nothing (MI), cert path (Cert), tokens (Device Code, Interactive, OBO)`
+- **Suggested fix**: Write out full terms: "Managed Identity (MI)", "Certificate (Cert)", "On-Behalf-Of (OBO)" on first use
+
+**Before (wrong):**
+```
+→ Varies: Nothing (MI), cert path (Cert), tokens (Device Code, Interactive, OBO)
+```
+
+**After (correct):**
+```
+→ Varies: Nothing (Managed Identity), cert path (Certificate), tokens (Device Code, Interactive Browser, On-Behalf-Of)
+```
+
 ### [LOW] `SPAUTH-FL-001` Incorrect Architecture Assumption
 
 - **When**: 2026-03-14 16:18
@@ -30,6 +49,9 @@
 (none yet)
 
 ## Document History
+
+**[2026-03-14 20:06]**
+- Added: SPAUTH-FL-002 - Acronyms not written out in INFO document
 
 **[2026-03-14 16:18]**
 - Added: SPAUTH-FL-001 - Incorrect headless assumption
