@@ -8,7 +8,7 @@
 **Depends on:**
 - `_V2_SPEC_ROUTERS.md [V2CR-SP00]` for V2 router patterns
 - `_V2_IMPL_CRAWLER.md [V2CR-IP01]` for crawler implementation context
-- `_INFO_SHAREPOINT_LIST_COLUMN_TYPES.md [V2CR-IN01]` for column type research
+- `docs/sharepoint/_INFO_SHAREPOINT_LIST_COLUMN_TYPES.md [SPAPI-IN01]` for column types and Python SDK classes
 
 ## MUST-NOT-FORGET
 
@@ -62,80 +62,24 @@ get_list_items() -> get_list_items_as_sharepoint_files() -> step_download_source
 
 ## 3. Domain Objects
 
-### SharePoint Field Types
+**See also:** `docs/sharepoint/_INFO_SHAREPOINT_LIST_COLUMN_TYPES.md [SPAPI-IN01]` for:
+- FieldTypeKind enumeration
+- Python SDK classes (FieldLookupValue, FieldUserValue, FieldUrlValue, TaxonomyFieldValue)
+- System fields to ignore
 
-SharePoint fields are typed objects returned by the REST API. The `FieldTypeKind` enum defines the type.
+### ListFieldInfo [PROVEN]
 
-**User-Editable Field Types** (FieldTypeKind values users can create/edit):
-
-- `2` - **Text** - Single line of text (max 255 chars)
-- `3` - **Note** - Multi-line text (plain or rich text)
-- `4` - **DateTime** - Date or date and time
-- `6` - **Choice** - Single selection from predefined options
-- `7` - **Lookup** - Reference to another list item
-- `8` - **Boolean** - Yes/No checkbox
-- `9` - **Number** - Decimal number
-- `10` - **Currency** - Currency value with locale formatting
-- `11` - **URL** - Hyperlink with optional description
-- `15` - **MultiChoice** - Multiple selections from predefined options
-- `20` - **User** - Person or group picker (single or multi)
-- **Taxonomy** - Managed metadata (term picker, single or multi)
-
-**Read-Only/Computed Fields** (system-generated, included in export):
-- `1` - **Integer** - Whole number (often system-generated)
-- `5` - **Counter** - Auto-increment ID
-- `12` - **Computed** - Calculated from other fields
-- `17` - **Calculated** - Formula-based value
-
-**Note:** Internal system fields (Threading, Attachments, ContentTypeId, etc.) are filtered out by FR-09
-
-### Python Field Value Classes
-
-From `office365-rest-python-client` library: [VERIFIED]
-
-**FieldLookupValue** (`office365.sharepoint.fields.lookup_value`)
-- `LookupId` (int) - Referenced item ID
-- `LookupValue` (str) - Display value
-
-**FieldUserValue** (`office365.sharepoint.fields.user_value`)
-- Extends `FieldLookupValue`
-- `LookupId` (int) - User ID
-- `LookupValue` (str) - User login name or display name
-
-**FieldUrlValue** (`office365.sharepoint.fields.url_value`)
-- `Url` (str) - URI (max 255 chars)
-- `Description` (str) - Description (max 255 chars)
-
-**TaxonomyFieldValue** (`office365.sharepoint.taxonomy.field_value`) [VERIFIED]
-- `Label` (str) - Term label (NOT `LookupValue`)
-- `TermGuid` (str) - Term GUID
-- `WssId` (int) - List item ID
-
-**TaxonomyFieldValueCollection**
-- Collection of `TaxonomyFieldValue` objects
-
-### User Object Properties
-
-From `office365.sharepoint.principal.users.user.User`:
-- `email` (str) - User email address
-- `login_name` (str) - Login name (claims format: `i:0#.f|membership|user@domain.com`)
-- `user_principal_name` (str) - UPN (user@domain.com)
-- `title` (str) - Display name
-
-**Note:** User email is NOT available on `FieldUserValue` directly. Must expand User object or use separate lookup. [VERIFIED]
-
-### ListItemExport
-
-A **ListItemExport** represents a single list item with all fields converted to human-readable format.
+SharePoint list field metadata used during export.
 
 **Properties:**
-- `id` (int) - Item ID
-- `title` (str) - Item title
-- `list_name` (str) - Source list name
-- `fields` (dict[str, str]) - Field name -> converted value
-- `field_display_names` (dict[str, str]) - Internal name -> display name
+- `internal_name` (str) - SharePoint internal field name
+- `display_name` (str) - User-friendly display name
+- `field_type_kind` (int) - FieldTypeKind enum value
+- `is_hidden` (bool) - Whether field is hidden
 
-### ExportResult
+### ListExportResult [PROVEN]
+
+Result of list export operation.
 
 **Properties:**
 - `csv_content` (str) - Full CSV file content with header
@@ -235,58 +179,85 @@ A **ListItemExport** represents a single list item with all fields converted to 
 
 ## 7. Key Mechanisms
 
-### Field Conversion Function
+### Field Conversion Function [PROVEN]
 
 ```python
-def convert_field_to_text(value: Any, field_type: int = None) -> str | int | float | bool | None:
+def convert_field_to_text(value: Any, field_type_kind: int = None) -> str | int | float | bool | None:
     """Convert SharePoint field value to human-readable text or native type."""
     if value is None:
         return None
     
-    # FieldUserValue - check for Email attribute
+    # FieldUserValue - check for Email attribute (single user)
     if hasattr(value, 'LookupValue') and hasattr(value, 'LookupId'):
-        email = getattr(value, 'Email', '') or ''
-        display = value.LookupValue or ''
-        return f"{display} <{email}>" if email else display
+        email = getattr(value, 'Email', None) or ''
+        display = getattr(value, 'LookupValue', '') or ''
+        if email:
+            return f"{display} <{email}>"
+        # Check for Label (TaxonomyFieldValue)
+        label = getattr(value, 'Label', None)
+        if label:
+            return label
+        return display
     
-    # List of FieldUserValue
-    if isinstance(value, list) and len(value) > 0 and hasattr(value[0], 'LookupValue'):
-        parts = []
-        for v in value:
-            email = getattr(v, 'Email', '') or ''
-            display = v.LookupValue or ''
-            parts.append(f"{display} <{email}>" if email else display)
-        return '; '.join(parts)
+    # List of FieldUserValue or FieldLookupValue
+    if isinstance(value, (list, tuple)) and len(value) > 0:
+        first = value[0]
+        # User array
+        if hasattr(first, 'Email'):
+            parts = []
+            for v in value:
+                email = getattr(v, 'Email', None) or ''
+                display = getattr(v, 'LookupValue', '') or ''
+                parts.append(f"{display} <{email}>" if email else display)
+            return '; '.join(parts)
+        # Taxonomy array
+        if hasattr(first, 'Label'):
+            return '|'.join(getattr(v, 'Label', '') for v in value if getattr(v, 'Label', None))
+        # Lookup array
+        if hasattr(first, 'LookupValue'):
+            return '|'.join(getattr(v, 'LookupValue', '') for v in value if getattr(v, 'LookupValue', None))
+        # String array (MultiChoice)
+        if all(isinstance(v, str) for v in value):
+            return '|'.join(value)
     
-    # FieldUrlValue
+    # FieldUrlValue - can be object or dict from API
     if hasattr(value, 'Url') and hasattr(value, 'Description'):
-        return value.Url or ''
+        return getattr(value, 'Url', '') or ''
+    if isinstance(value, dict) and 'Url' in value:
+        return value.get('Url', '') or ''
     
-    # TaxonomyFieldValue
+    # TaxonomyFieldValue (single)
     if hasattr(value, 'Label') and hasattr(value, 'TermGuid'):
-        return value.Label or ''
+        return getattr(value, 'Label', '') or ''
     
-    # TaxonomyFieldValueCollection or list of TaxonomyFieldValue
-    if isinstance(value, (list, tuple)) and len(value) > 0 and hasattr(value[0], 'Label'):
-        return '|'.join(v.Label for v in value if v.Label)
+    # DateTime - convert to local timezone with standard format
+    if isinstance(value, datetime):
+        try:
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=timezone.utc)
+            local_dt = value.astimezone()
+            return local_dt.strftime('%Y-%m-%d %H:%M:%S')
+        except:
+            return str(value)
     
-    # DateTime
-    if hasattr(value, 'isoformat'):  # datetime object
-        local_dt = value.astimezone() if value.tzinfo else value
-        return local_dt.strftime('%Y-%m-%d %H:%M:%S')
+    # Handle ISO date strings from SharePoint API
+    if isinstance(value, str) and len(value) >= 19 and 'T' in value:
+        try:
+            dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+            local_dt = dt.astimezone()
+            return local_dt.strftime('%Y-%m-%d %H:%M:%S')
+        except:
+            pass
     
-    # String array (MultiChoice)
-    if isinstance(value, list) and all(isinstance(v, str) for v in value):
-        return '|'.join(value)
-    
-    # Primitives
-    if isinstance(value, (int, float, bool)):
+    # Primitives - return as-is
+    if isinstance(value, bool):
         return value
-    
+    if isinstance(value, (int, float)):
+        return value
     if isinstance(value, str):
         return value
     
-    # Fallback
+    # Fallback - convert to string
     return str(value) if value else None
 ```
 
@@ -540,6 +511,16 @@ ID,Title,Description,Notes,Formula,Status,Tags
 - **Calculated** (17): Computed value as string/number
 
 ## 9. Document History
+
+**[2026-03-14 09:40]**
+- Changed: Domain Objects - replaced unused `ListItemExport` with actual `ListFieldInfo` dataclass
+- Changed: Renamed `ExportResult` to `ListExportResult` to match implementation
+- Changed: Updated `convert_field_to_text()` code example to match implementation (URL dict handling, ISO string parsing)
+- Added: `[PROVEN]` labels to verified domain objects and mechanisms
+
+**[2026-03-14 09:35]**
+- Changed: Moved SharePoint column types and Python SDK classes to `_INFO_SHAREPOINT_LIST_COLUMN_TYPES.md [SPAPI-IN01]`
+- Changed: Updated dependency reference to new INFO doc location
 
 **[2026-03-06 14:16]**
 - Changed: FR-07 - CSV column order: ID, Title, alphabetical user fields, Created, Modified
