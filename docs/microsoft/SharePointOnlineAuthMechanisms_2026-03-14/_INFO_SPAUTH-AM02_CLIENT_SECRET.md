@@ -238,12 +238,14 @@ AZURE_CLIENT_SECRET=your-client-secret-value
    - **Copy the secret value immediately** - it's only shown once!
 
 3. **Configure API Permissions**
-   - App registration > API permissions > Add a permission
-   - Microsoft Graph > Application permissions
-   - Add required permissions:
-     - `User.Read.All` - Read all users
-     - `Sites.Read.All` - Read sites via Graph
-   - Click "Grant admin consent"
+   
+   This method uses **Application permissions** (app-only). **Graph API only** - SharePoint REST blocked.
+   
+   - **Recommended:** `Sites.Selected` - Least-privilege, per-site access
+   - **Alternative:** `Sites.ReadWrite.All` - If accessing many sites
+   - **Important:** Client secrets do NOT work with SharePoint REST API
+   
+   See [`_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md`](_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md) for full details.
 
 ### Storing Secrets Securely
 

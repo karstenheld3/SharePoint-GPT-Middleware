@@ -251,10 +251,13 @@ Get-AzContext
 
 ### Required Permissions
 
-Your Azure AD account needs:
-- **User.Read** - Basic Graph access
-- **Sites.Read.All** or **Sites.Selected** - SharePoint access
-- Membership in appropriate Azure AD groups
+This method uses **Delegated permissions** (your developer identity). Your SharePoint permissions apply.
+
+- **Read-only access:** `Sites.Read.All`
+- **Read-write access:** `Sites.ReadWrite.All`
+- **Note:** `Sites.Selected` is NOT available for delegated permissions
+
+See [`_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md`](_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md) for full details.
 
 ## 4. Dependencies and Maintenance Problems
 

@@ -375,12 +375,14 @@ HTTPS_ONLY=true
    - Copy value immediately
 
 4. **Configure API Permissions (Delegated)**
-   - App registration > API permissions
-   - Microsoft Graph (Delegated):
-     - `User.Read`
-     - `Sites.Read.All`
-     - `offline_access` (for refresh tokens)
-   - Grant admin consent
+   
+   This method uses **Delegated permissions** (user context). User's SharePoint permissions apply.
+   
+   - **Read-only apps:** `Sites.Read.All` + `offline_access`
+   - **Read-write apps:** `Sites.ReadWrite.All` + `offline_access`
+   - **Note:** `Sites.Selected` is NOT available for delegated permissions
+   
+   See [`_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md`](_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md) for full details.
 
 ## 4. Dependencies and Maintenance Problems
 

@@ -292,15 +292,16 @@ SHAREPOINT_URL=https://contoso.sharepoint.com
      - Admin consent description: "Allows the app to access the API on behalf of the signed-in user"
      - State: Enabled
 
-3. **Configure API Permissions**
-   - App registration > API permissions
-   - Add permissions for downstream APIs:
-     - Microsoft Graph (Delegated):
-       - `User.Read`
-       - `Sites.Read.All`
-     - SharePoint (Delegated):
-       - `Sites.Read.All`
-   - **Grant admin consent**
+3. **Configure API Permissions (Delegated)**
+   
+   This method uses **Delegated permissions** for downstream API calls. User's permissions apply.
+   
+   - **Read-only apps:** `Sites.Read.All`
+   - **Read-write apps:** `Sites.ReadWrite.All`
+   - **Note:** `Sites.Selected` is NOT available for delegated permissions
+   - **Important:** Admin consent recommended to avoid user consent prompts
+   
+   See [`_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md`](_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md) for full details.
 
 4. **Create Client Secret**
    - App registration > Certificates & secrets

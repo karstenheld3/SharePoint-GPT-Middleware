@@ -281,13 +281,14 @@ SESSION_SECRET=random-secret-for-session-encryption
    - Enable "ID tokens" under Implicit grant
 
 3. **Configure API Permissions (Delegated)**
-   - App registration > API permissions > Add a permission
-   - Microsoft Graph:
-     - `User.Read` - Sign in and read user profile
-     - `Sites.Read.All` - Read items in all site collections
-   - SharePoint:
-     - `Sites.Read.All` - Read items in all site collections
-   - Click "Grant admin consent" (or users will be prompted)
+   
+   This method uses **Delegated permissions** (user context). User's SharePoint permissions apply.
+   
+   - **Read-only apps:** `Sites.Read.All`
+   - **Read-write apps:** `Sites.ReadWrite.All`
+   - **Note:** `Sites.Selected` is NOT available for delegated permissions
+   
+   See [`_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md`](_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md) for full details.
 
 4. **Create Client Secret (For Confidential Client)**
    - App registration > Certificates & secrets > Client secrets

@@ -273,12 +273,14 @@ SHAREPOINT_URL=https://contoso.sharepoint.com
    - Save
 
 3. **Configure API Permissions (Delegated)**
-   - App registration > API permissions > Add a permission
-   - Microsoft Graph or SharePoint (delegated, not application)
-   - Common permissions:
-     - `User.Read` - Sign in and read profile
-     - `Sites.Read.All` - Read SharePoint sites
-   - Grant admin consent (optional - users can self-consent)
+   
+   This method uses **Delegated permissions** (user context). User's SharePoint permissions apply.
+   
+   - **Read-only apps:** `Sites.Read.All`
+   - **Read-write apps:** `Sites.ReadWrite.All`
+   - **Note:** `Sites.Selected` is NOT available for delegated permissions
+   
+   See [`_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md`](_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md) for full details.
 
 ### No Client Secret Needed
 

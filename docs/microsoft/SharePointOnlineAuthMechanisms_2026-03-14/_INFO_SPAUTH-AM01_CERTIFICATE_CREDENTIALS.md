@@ -241,33 +241,17 @@ KEYVAULT_CERT_NAME=sharepoint-app-cert
    - Note the **Thumbprint** displayed
 
 4. **Configure API Permissions**
-   - App registration > API permissions > Add a permission
-   - Microsoft Graph or SharePoint (depending on API used)
-   - Application permissions (not delegated)
-   - Common permissions:
-     - `Sites.Read.All` - Read all sites
-     - `Sites.ReadWrite.All` - Read/write all sites
-     - `Sites.Selected` - Access to specific sites only (recommended)
-   - Click "Grant admin consent"
-
-5. **For Sites.Selected: Grant Per-Site Access**
-   ```powershell
-   # Using Microsoft Graph PowerShell
-   Connect-MgGraph -Scopes "Sites.FullControl.All"
    
-   $siteId = "contoso.sharepoint.com,<site-guid>,<web-guid>"
-   $appId = "your-app-client-id"
+   This method uses **Application permissions** (app-only, no user context).
    
-   New-MgSitePermission -SiteId $siteId -Body @{
-       roles = @("write")
-       grantedToIdentities = @(@{
-           application = @{
-               id = $appId
-               displayName = "SharePoint Crawler App"
-           }
-       })
-   }
-   ```
+   - **Recommended:** `Sites.Selected` - Least-privilege, per-site access
+   - **Alternative:** `Sites.ReadWrite.All` - If accessing many sites
+   - **SharePoint REST API:** Requires certificate auth (client secrets blocked)
+   
+   See [`_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md`](_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md) for:
+   - Full permission matrix and scope selection guide
+   - Sites.Selected per-site grant configuration
+   - Graph vs SharePoint REST API considerations
 
 ### Azure Key Vault Setup (Production)
 

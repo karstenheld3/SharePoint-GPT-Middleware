@@ -318,28 +318,18 @@ def grant_site_permission(site_id: str, mi_object_id: str, access_token: str):
     return response.json()
 ```
 
-### Grant Graph API Permissions (If Needed)
+### Configure API Permissions
 
-For Graph API access, permissions must be granted via PowerShell:
+This method uses **Application permissions** (app-only, no user context).
 
-```powershell
-# Get the managed identity service principal
-$miObjectId = "your-managed-identity-object-id"
-$mi = Get-MgServicePrincipal -Filter "id eq '$miObjectId'"
+- **Recommended:** `Sites.Selected` - Least-privilege, per-site access
+- **Alternative:** `Sites.ReadWrite.All` - If accessing many sites
+- **Note:** Managed Identity permissions must be granted via PowerShell (not Azure Portal)
 
-# Get Microsoft Graph service principal
-$graphSp = Get-MgServicePrincipal -Filter "appId eq '00000003-0000-0000-c000-000000000000'"
-
-# Find the permission (e.g., Sites.Read.All)
-$permission = $graphSp.AppRoles | Where-Object { $_.Value -eq "Sites.Read.All" }
-
-# Grant the permission
-New-MgServicePrincipalAppRoleAssignment `
-    -ServicePrincipalId $mi.Id `
-    -PrincipalId $mi.Id `
-    -ResourceId $graphSp.Id `
-    -AppRoleId $permission.Id
-```
+See [`_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md`](_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md) for:
+- Full permission matrix and scope selection guide
+- Sites.Selected per-site grant configuration
+- PowerShell commands for managed identity permission grants
 
 ## 4. Dependencies and Maintenance Problems
 

@@ -6,7 +6,41 @@
 **Goal**: Comprehensive reference for all SharePoint/Graph authentication mechanisms in Python
 **Research Type**: MCPI (exhaustive)
 **Timeline**: Created 2026-03-14, Updated 2026-03-14
-**Detailed Guides**: See `SharePointOnlineAuthMechanisms_2026-03-14/_INFO_SPAUTH-AM*.md` for FastAPI integration patterns
+
+**Deep Research**: See `SharePointOnlineAuthMechanisms_2026-03-14/` for:
+- `_INFO_SPAUTH-IN01` to `IN07` - Protocol internals, token structure, SDK mechanics, security, operational patterns, permissions
+- `_INFO_SPAUTH-AM01` to `AM09` - Implementation guides with FastAPI patterns per auth method
+
+## Key Findings from Deep Research
+
+**Authentication Constraints:**
+- SharePoint REST API (`/_api/`) **requires certificate authentication** - client secrets are blocked at the API level, not Azure AD
+- Client secrets work for Microsoft Graph API but NOT for SharePoint REST endpoints
+- Managed Identity uses internal IMDS endpoint (169.254.169.254) with automatic certificate - no credentials in code
+
+**Token Behavior:**
+- Access tokens: 60-90 minutes default lifetime
+- Refresh tokens: Up to 90 days with sliding expiration (24hr inactivity max)
+- MSAL refreshes tokens proactively 5 minutes before expiration
+- Client credentials flow has NO refresh token - app re-authenticates with credentials
+- Token audience MUST match API: Graph token cannot call SharePoint REST, and vice versa
+
+**Permission Model:**
+- **Application permissions** (app-only): App acts as itself, requires admin consent, `Sites.Selected` available
+- **Delegated permissions** (user context): App acts on behalf of user, effective access = app permissions AND user permissions
+- `Sites.Selected` is ONLY available for Application permissions, NOT Delegated
+- For Managed Identity + `Sites.Selected`: Grant to MI's service principal via PowerShell, not Azure Portal
+
+**SDK Internals:**
+- DefaultAzureCredential tries credentials in order: Environment > Workload > Managed Identity > CLI > PowerShell > VS Code
+- Azure Identity wraps MSAL internally - both use same token cache
+- Office365-REST-Python-Client `with_access_token()` accepts any callable returning token string
+
+**Security:**
+- Certificate auth is more secure than secrets (no network transmission of secret, hardware storage possible)
+- Certificates can have 2+ year validity vs 24-month max for secrets
+- Managed Identity is most secure for Azure-hosted apps (no credentials to manage)
+- Always validate state parameter in Authorization Code flow to prevent CSRF
 
 ## Quick Reference Summary
 
@@ -710,9 +744,18 @@ ctx = ClientContext(
 
 ## 11. Permission Scopes Reference
 
+**Full details:** See [`_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md`](SharePointOnlineAuthMechanisms_2026-03-14/_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md)
+
+### Permission Types Summary
+
+| Permission Type | Auth Methods | Sites.Selected | Access Control |
+|-----------------|--------------|----------------|----------------|
+| Application     | Certificate, Client Secret, Managed Identity | Yes | App's granted permissions |
+| Delegated       | Interactive, Device Code, Auth Code, OBO | No | App permissions AND user permissions |
+
 ### SharePoint Permissions (Azure AD)
 
-| Permission               | Type          | Description                     |
+| Permission               | Type          | Description                      |
 |--------------------------|---------------|----------------------------------|
 | `Sites.Read.All`         | Delegated/App | Read all site collections        |
 | `Sites.ReadWrite.All`    | Delegated/App | Read/write all site collections  |
@@ -720,25 +763,21 @@ ctx = ClientContext(
 | `Sites.FullControl.All`  | App only      | Full control all sites           |
 | `Sites.Selected`         | App only      | Access to specific sites only    |
 
-### Sites.Selected Permission Model
+### Sites.Selected Configuration
 
-For granular per-site access (instead of tenant-wide):
+`Sites.Selected` enables least-privilege access to specific sites instead of tenant-wide.
 
-1. Grant `Sites.Selected` application permission in Azure AD
-2. Use Graph API or PowerShell to grant specific site access:
+**Step 1:** Grant `Sites.Selected` in Azure Portal (API Permissions > Microsoft Graph > Application)
 
-```http
-POST https://graph.microsoft.com/v1.0/sites/{site-id}/permissions
-Content-Type: application/json
-
-{
-  "roles": ["write"],
-  "grantedToIdentities": [{
-    "application": {
-      "id": "{app-client-id}",
-      "displayName": "My App"
-    }
-  }]
+**Step 2:** Grant per-site access via PowerShell:
+```powershell
+Connect-MgGraph -Scopes "Sites.FullControl.All"
+$site = Get-MgSite -SiteId "contoso.sharepoint.com:/sites/targetsite"
+New-MgSitePermission -SiteId $site.Id -BodyParameter @{
+    roles = @("write")  # "read", "write", or "owner"
+    grantedToIdentities = @(@{
+        application = @{ id = "your-app-client-id"; displayName = "Your App" }
+    })
 }
 ```
 
@@ -889,6 +928,12 @@ Is a user present and signing in?
   - https://github.com/vgrem/Office365-REST-Python-Client
 
 ## Document History
+
+**[2026-03-14 19:45]**
+- Added: Key Findings from Deep Research summary section
+- Added: Link to IN07 Azure Permission Requirements
+- Updated: Permission Scopes Reference with Sites.Selected PowerShell config
+- Added: Permission Types Summary table
 
 **[2026-03-14 17:10]**
 - Enhanced: Key gotchas for each authentication method

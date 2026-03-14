@@ -4,7 +4,7 @@
 **Goal**: Exhaustive documentation of HOW authentication mechanisms work internally
 **Strategy**: MCPI (Most Complete Point of Information)
 **Domain**: SOFTWARE
-**Research stats**: 50m net | 28 sources | 6 topic files
+**Research stats**: 50m net | 28 sources | 7 topic files
 **Coverage**: 100% (all dimensions covered)
 
 ## File Index
@@ -17,6 +17,7 @@
 - [_INFO_SPAUTH-IN04_SDK_INTERNALS.md](_INFO_SPAUTH-IN04_SDK_INTERNALS.md) - Azure Identity/MSAL internals
 - [_INFO_SPAUTH-IN05_SECURITY.md](_INFO_SPAUTH-IN05_SECURITY.md) - Security considerations
 - [_INFO_SPAUTH-IN06_OPERATIONAL.md](_INFO_SPAUTH-IN06_OPERATIONAL.md) - Caching, lifetime, debugging
+- [_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md](_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md) - API permissions reference
 
 ### Implementation Guides (AM = Auth Method)
 
@@ -138,16 +139,32 @@ This research documents the internal workings of authentication mechanisms for M
 - **Key sources**: SPAUTH-SC-MSFT-CLIENTCREDS, SPAUTH-SC-PYPI-O365
 - **Focus**: Certificate requirement for app-only, token resource URL differences
 
+### API Permission Requirements
+- **File**: [`_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md`](_INFO_SPAUTH-IN07_AZURE_PERMISSION_REQUIREMENTS.md)
+- **Status**: [x] Complete
+- **Sources**: SPAUTH-SC-MSFT-GRAPHPERM, SPAUTH-SC-MSFT-SPPERM, SPAUTH-SC-MSFT-SITESSELECTED
+- **Topics**:
+  - Application vs Delegated permissions
+  - Microsoft Graph vs SharePoint REST API
+  - Sites.Read.All, Sites.ReadWrite.All, Sites.Selected
+  - Permission matrix by auth method
+  - Sites.Selected configuration (per-site grants)
+  - Common permission scenarios
+
 ## File Naming Convention
 
 ```
 _INFO_SPAUTH-IN[XX]_[TOPIC].md
 ```
 
-- XX = sequential number (01-06)
+- XX = sequential number (01-07)
 - TOPIC = descriptive name in SCREAMING_SNAKE_CASE
 
 ## Document History
+
+**[2026-03-14 19:30]**
+- Added: IN07 Azure Permission Requirements (cross-cutting reference)
+- Updated: Research stats to 7 topic files
 
 **[2026-03-14 17:15]**
 - Added: File Index with links to all 21 documents
