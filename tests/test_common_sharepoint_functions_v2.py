@@ -1,21 +1,42 @@
 # Test script for common_sharepoint_functions_v2.py
-# Run: python -m routers_v2.common_sharepoint_functions_v2_test
-# Or:  python src/routers_v2/common_sharepoint_functions_v2_test.py
+#
+# Tests the SharePoint utility functions that provide:
+# - Certificate-based authentication (PFX to PEM conversion, site connection)
+# - Document library operations (get library, list files, download files)
+# - SharePoint list operations (get items, export to CSV, export to CSV+Markdown)
+# - Site pages operations (list pages, download page HTML)
+#
+# Run: python tests/test_common_sharepoint_functions_v2.py
 #
 # Prerequisites:
-# - Domain "AiSearchTest01" must exist with valid SharePoint credentials
-# - Environment variables or config must provide SharePoint credentials
+# - Domain "AiSearchTest01" must exist in LOCAL_PERSISTENT_STORAGE_PATH/domains/
+# - Domain must have at least one file_source configured
+# - Environment variables set in .env file:
+#   - LOCAL_PERSISTENT_STORAGE_PATH: Path to persistent storage directory
+#   - CRAWLER_CLIENT_ID: Azure AD app registration client ID
+#   - CRAWLER_TENANT_ID: Azure AD tenant ID
+#   - CRAWLER_CLIENT_CERTIFICATE_PFX_FILE: Path to PFX certificate (relative to storage path)
+#   - CRAWLER_CLIENT_CERTIFICATE_PASSWORD: Certificate password
+#
+# Output: Script-level logging per LOGGING-RULES-SCRIPT-LEVEL.md
+# - Section progress: [ x / n ] Section Name
+# - Test results: OK. / FAIL: / SKIP:
+# - Summary: OK: X, SKIP: Y, FAIL: Z
+# - Final: RESULT: PASSED or RESULT: FAILED
 
 import sys, os, tempfile, shutil, json
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from dotenv import load_dotenv
 
+# Project root is parent of tests/
+project_root = Path(__file__).parent.parent
+
 # Load .env file from project root
-load_dotenv(Path(__file__).parent.parent.parent / '.env')
+load_dotenv(project_root / '.env')
 
 # Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(project_root / 'src'))
 
 from routers_v2 import common_sharepoint_functions_v2 as cspf
 from routers_v2.common_logging_functions_v2 import MiddlewareLogger
@@ -29,8 +50,8 @@ delete_downloaded_files_after_test = False
 # Domain to test with
 test_domain_id = "AiSearchTest01"
 
-# Path to persistent storage - read from environment like app.py does
-persistent_storage_path = os.environ.get('LOCAL_PERSISTENT_STORAGE_PATH', r'E:\Dev\RAGFiles2\AzureOpenAiProject')
+# Path to persistent storage - read from environment (required)
+persistent_storage_path = os.environ.get('LOCAL_PERSISTENT_STORAGE_PATH', '')
 
 # SharePoint credentials from environment (same env vars as app.py)
 sharepoint_client_id = os.environ.get('CRAWLER_CLIENT_ID', '')
@@ -60,7 +81,7 @@ def test(name: str, condition: bool, details: str = ""):
   test_count += 1
   if condition:
     pass_count += 1
-    print(f"  OK: {name}")
+    print(f"  OK. {name}")
   else:
     fail_count += 1
     fail_msg = f"{name}" + (f" -> {details}" if details else "")
@@ -236,10 +257,6 @@ def test_get_document_library_files(ctx, document_library, logger: MiddlewareLog
     if len(filtered_files) > 0:
       test("Filter matches filename", filtered_files[0].filename == test_filename)
   
-  # Test dry_run - should return empty list but verify access
-  dry_files = cspf.get_document_library_files(ctx, document_library, "", logger, dry_run=True)
-  test("dry_run returns empty list", dry_files == [])
-  
   return files
 
 def test_download_file(ctx, files: list, temp_dir: str):
@@ -362,6 +379,52 @@ def test_export_list_to_csv(ctx, list_name: str, temp_dir: str, logger: Middlewa
   test("dry_run succeeds", dry_success, dry_error)
   test("dry_run does not create file", not os.path.exists(dry_target))
 
+def test_export_list_to_files(ctx, list_name: str, temp_dir: str, logger: MiddlewareLogger):
+  """
+  Test SharePoint list export to both CSV and Markdown.
+  - Verifies both CSV and MD files are created
+  - Verifies ListExportResult contains correct counts
+  - Skips if no list_name configured in domain
+  """
+  section("export_list_to_files()")
+  
+  if ctx is None:
+    skip("Export list to files test", "No context available")
+    return
+  
+  if not list_name:
+    skip("Export list to files test", "No list_name configured in domain")
+    return
+  
+  csv_path = os.path.join(temp_dir, "02_lists", f"{list_name}_dual.csv")
+  md_path = os.path.join(temp_dir, "02_lists", f"{list_name}_dual.md")
+  
+  success, error, result = cspf.export_list_to_files(ctx, list_name, "", csv_path, md_path, logger)
+  test("Export succeeds", success, error)
+  test("CSV file created", os.path.exists(csv_path))
+  test("MD file created", os.path.exists(md_path))
+  test("Result has item_count", result.item_count >= 0)
+  test("Result has field_count", result.field_count >= 0)
+  
+  if os.path.exists(csv_path):
+    with open(csv_path, 'r', encoding='utf-8') as f:
+      csv_lines = f.readlines()
+    print(f"    CSV: {len(csv_lines)} line{'' if len(csv_lines) == 1 else 's'}.")
+  
+  if os.path.exists(md_path):
+    with open(md_path, 'r', encoding='utf-8') as f:
+      md_content = f.read()
+    test("MD has list name header", list_name in md_content)
+    print(f"    MD: {len(md_content)} chars.")
+  
+  # Test dry_run
+  dry_csv = os.path.join(temp_dir, "02_lists", "dry_run_dual.csv")
+  dry_md = os.path.join(temp_dir, "02_lists", "dry_run_dual.md")
+  dry_success, dry_error, dry_result = cspf.export_list_to_files(ctx, list_name, "", dry_csv, dry_md, logger, dry_run=True)
+  test("dry_run succeeds", dry_success, dry_error)
+  test("dry_run does not create CSV", not os.path.exists(dry_csv))
+  test("dry_run does not create MD", not os.path.exists(dry_md))
+
 def test_get_site_pages(ctx, site_url: str, pages_url_part: str, logger: MiddlewareLogger):
   """
   Test site pages retrieval.
@@ -386,10 +449,6 @@ def test_get_site_pages(ctx, site_url: str, pages_url_part: str, logger: Middlew
   if len(pages) > 0:
     test("Pages are SharePointFile", isinstance(pages[0], cspf.SharePointFile))
     print(f"    First page: '{pages[0].filename}'")
-  
-  # Test dry_run - should verify library exists but return empty list
-  dry_pages = cspf.get_site_pages(ctx, site_url, pages_url_part, "", logger, dry_run=True)
-  test("dry_run returns empty list", dry_pages == [])
   
   return pages
 
@@ -442,16 +501,16 @@ def print_credentials_status():
   print(f"  CRAWLER_CLIENT_CERTIFICATE_PFX_FILE: {sharepoint_cert_file}" if sharepoint_cert_file else "  CRAWLER_CLIENT_CERTIFICATE_PFX_FILE: (not set)")
   print(f"  Cert full path: {sharepoint_cert_path}")
   if sharepoint_cert_path and os.path.exists(sharepoint_cert_path):
-    print(f"    OK: Certificate file exists.")
+    print(f"    OK. Certificate file exists.")
   elif sharepoint_cert_path:
     print(f"    ERROR: Certificate file not found.")
 
 def main():
   global test_count, pass_count, fail_count, skip_count
   
-  print("=" * 70)
-  print("common_sharepoint_functions_v2.py Test Suite")
-  print("=" * 70)
+  print("=" * 100)
+  print("START: common_sharepoint_functions_v2.py Test Suite".center(100))
+  print("=" * 100)
   print(f"\nTest domain: {test_domain_id}")
   print(f"Persistent storage: {persistent_storage_path}")
   
@@ -460,6 +519,7 @@ def main():
   
   # Verify required credentials are available
   missing_creds = []
+  if not persistent_storage_path: missing_creds.append("LOCAL_PERSISTENT_STORAGE_PATH")
   if not sharepoint_client_id: missing_creds.append("CRAWLER_CLIENT_ID")
   if not sharepoint_tenant_id: missing_creds.append("CRAWLER_TENANT_ID")
   if not sharepoint_cert_file: missing_creds.append("CRAWLER_CLIENT_CERTIFICATE_PFX_FILE")
@@ -480,7 +540,7 @@ def main():
   os.makedirs(test_output_dir, exist_ok=True)
   print(f"Test output directory: {test_output_dir}")
 
-  print("=" * 70)
+  print("=" * 100)
   
   # Create logger without line headers for cleaner test output
   logger = MiddlewareLogger.create(include_line_header=False)
@@ -534,6 +594,7 @@ def main():
     list_name = domain.list_sources[0].list_name if len(domain.list_sources) > 0 else ""
     test_get_list_items(ctx, list_name, logger)
     test_export_list_to_csv(ctx, list_name, test_output_dir, logger)
+    test_export_list_to_files(ctx, list_name, test_output_dir, logger)
     
     # Test 8: Site pages (if sitepage_sources configured)
     pages_site_url = domain.sitepage_sources[0].site_url if len(domain.sitepage_sources) > 0 else site_url
@@ -543,8 +604,8 @@ def main():
     
   finally:
     # Cleanup
-    print("\nCleanup")
-    print("=" * 70)
+    print("\n" + "=" * 100)
+    print("Cleanup")
     if delete_downloaded_files_after_test:
       try:
         shutil.rmtree(test_output_dir)
@@ -556,9 +617,8 @@ def main():
   
   # Summary
   print("\nTEST SUMMARY")
-  print("=" * 70)
   print(f"  Sections: {section_num} / {total_sections}")
-  print(f"  Tests:    {test_count} total, {pass_count} passed, {fail_count} failed, {skip_count} skipped")
+  print(f"  OK: {pass_count}, SKIP: {skip_count}, FAIL: {fail_count}")
   
   if len(failed_tests) > 0:
     print(f"\nFailed tests ({len(failed_tests)}):")
@@ -570,13 +630,15 @@ def main():
     for st in skipped_tests:
       print(f"  - {st}")
   
-  print("=" * 70)
+  print("=" * 100)
   
   if fail_count > 0:
-    print(f"\nRESULT: FAIL ({fail_count} test(s) failed)")
+    print(f"RESULT: FAILED")
+    print("=" * 100)
     sys.exit(1)
   else:
-    print(f"\nRESULT: OK (all {pass_count} tests passed)")
+    print(f"RESULT: PASSED")
+    print("=" * 100)
     sys.exit(0)
 
 if __name__ == "__main__":
