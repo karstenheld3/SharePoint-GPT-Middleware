@@ -15,7 +15,7 @@
 ## Sources
 
 - Anthropic: `https://docs.anthropic.com/en/docs/about-claude/pricing`
-- OpenAI: `https://platform.openai.com/docs/pricing`
+- OpenAI: `https://developers.openai.com/api/docs/pricing?latest-pricing=batch`
 
 ## Step 1: Capture Pricing Page Screenshots
 
@@ -97,12 +97,28 @@ Replace `[SUBFOLDER_ANTHROPIC]` with the actual path: `[SCREENSHOTS]/[DATE]_Anth
 
 ### 1b. Capture OpenAI Pricing
 
-URL: `https://platform.openai.com/docs/pricing`
+URL: `https://developers.openai.com/api/docs/pricing?latest-pricing=batch`
 
-**IMPORTANT**: The OpenAI page uses a scrollable inner container (`div.docs-scroll-container`), not the document body. `fullPage: true` will NOT capture the full content. Scroll the inner container instead:
+**IMPORTANT**: 
+1. The URL includes `?latest-pricing=batch` to pre-select the Batch pricing tier
+2. The "All models" table is collapsed by default - must click "View more" to expand
+3. The page uses a scrollable inner container, not the document body
 
 ```
 browser_run_code(code: "async (page) => {
+  // Click all 'View more' buttons to expand collapsed tables
+  await page.evaluate(async () => {
+    const delay = ms => new Promise(r => setTimeout(r, ms));
+    const viewMoreButtons = document.querySelectorAll('button');
+    for (const btn of viewMoreButtons) {
+      if (btn.textContent.toLowerCase().includes('view more')) {
+        btn.click();
+        await delay(500);
+      }
+    }
+  });
+  await page.waitForTimeout(1000);
+  
   // Scroll inner container to load lazy content
   const container = await page.evaluate(async () => {
     const c = document.querySelector('.docs-scroll-container');
@@ -181,7 +197,7 @@ Get-ChildItem "[SCREENSHOTS]/[DATE]_Anthropic-ModelPricing/*.md" |
 Get-ChildItem "[SCREENSHOTS]/[DATE]_OpenAI-ModelPricing/*.md" |
   Sort-Object Name |
   ForEach-Object { Get-Content $_.FullName -Raw } |
-  Out-File "[PRICING_SOURCES]/[DATE]_OpenAI-ModelPricing-Standard.md" -Encoding utf8
+  Out-File "[PRICING_SOURCES]/[DATE]_OpenAI-ModelPricing-Batch.md" -Encoding utf8
 ```
 
 Delete individual page .md files and batch summary from screenshot subfolders (keep JPGs as archival reference):
@@ -195,7 +211,7 @@ Remove-Item "[SCREENSHOTS]/[DATE]_OpenAI-ModelPricing/_batch_summary.json" -Forc
 
 **Expected output files:**
 - `[PRICING_SOURCES]/[DATE]_Anthropic-ModelPricing.md`
-- `[PRICING_SOURCES]/[DATE]_OpenAI-ModelPricing-Standard.md`
+- `[PRICING_SOURCES]/[DATE]_OpenAI-ModelPricing-Batch.md`
 
 ## Step 3: Read Transcriptions and Update model-pricing.json
 
@@ -203,7 +219,7 @@ Remove-Item "[SCREENSHOTS]/[DATE]_OpenAI-ModelPricing/_batch_summary.json" -Forc
 
 Read the two combined transcription files from `[PRICING_SOURCES]`:
 - `[DATE]_Anthropic-ModelPricing.md`
-- `[DATE]_OpenAI-ModelPricing-Standard.md`
+- `[DATE]_OpenAI-ModelPricing-Batch.md`
 
 ### 3b. Extract Pricing Data
 
@@ -250,6 +266,6 @@ Summarize what changed:
 ## Notes
 
 - Screenshots may span multiple pages/images. Read ALL numbered files for a source before extracting prices.
-- The OpenAI pricing page may have separate sections for standard and batch pricing. Only extract **standard** (non-batch) pricing.
+- The OpenAI pricing page URL includes `?latest-pricing=batch` to capture **batch** tier pricing (50% of standard).
 - If a model has different pricing tiers (e.g., long context), use the **standard** tier pricing.
 - The Anthropic pricing page uses full model IDs with date suffixes. Always use the full ID as it appears in the API.

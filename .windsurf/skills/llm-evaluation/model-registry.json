@@ -1,6 +1,6 @@
 {
   "_version": "1.3.0",
-  "_updated": "2026-03-10",
+  "_updated": "2026-03-12",
   "_comment": "Model properties and boundaries. context_window = max input tokens, max_output in tokens, temp_max for temperature models, thinking_max for extended thinking models.",
   
   "models": [
@@ -18,6 +18,7 @@
     {"provider": "openai", "model_id": "gpt-4.1-nano", "name": "GPT-4.1 Nano", "context_window": 1047576, "enabled": true, "status": "available"},
     {"provider": "openai", "model_id": "gpt-4o", "name": "GPT-4o", "context_window": 128000, "enabled": true, "status": "available"},
     {"provider": "openai", "model_id": "gpt-4o-mini", "name": "GPT-4o Mini", "context_window": 128000, "enabled": true, "status": "available"},
+    {"provider": "openai", "model_id": "gpt-4o-2024-05-13", "name": "GPT-4o (2024-05-13)", "context_window": 128000, "enabled": false, "status": "legacy"},
     {"provider": "openai", "model_id": "o1", "name": "O1", "context_window": 200000, "enabled": false, "status": "untested"},
     {"provider": "openai", "model_id": "o1-pro", "name": "O1 Pro", "context_window": 200000, "enabled": false, "status": "untested"},
     {"provider": "openai", "model_id": "o1-mini", "name": "O1 Mini", "context_window": 128000, "enabled": false, "status": "no_access"},
@@ -27,14 +28,16 @@
     {"provider": "openai", "model_id": "o3-deep-research", "name": "O3 Deep Research", "context_window": 200000, "enabled": false, "status": "untested"},
     {"provider": "openai", "model_id": "o4-mini", "name": "O4 Mini", "context_window": 200000, "enabled": false, "status": "untested"},
     {"provider": "openai", "model_id": "o4-mini-deep-research", "name": "O4 Mini Deep Research", "context_window": 200000, "enabled": false, "status": "untested"},
+    {"provider": "openai", "model_id": "computer-use-preview", "name": "Computer Use Preview", "context_window": 128000, "enabled": false, "status": "untested"},
+    {"provider": "openai", "model_id": "gpt-image-1.5", "name": "GPT Image 1.5", "context_window": null, "enabled": false, "status": "untested"},
     {"provider": "anthropic", "model_id": "claude-opus-4-5-20251101", "name": "Claude Opus 4.5", "context_window": 200000, "enabled": true, "status": "available"},
     {"provider": "anthropic", "model_id": "claude-sonnet-4-5-20250929", "name": "Claude Sonnet 4.5", "context_window": 200000, "enabled": true, "status": "available"},
     {"provider": "anthropic", "model_id": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5", "context_window": 200000, "enabled": true, "status": "available"},
     {"provider": "anthropic", "model_id": "claude-opus-4-20250514", "name": "Claude Opus 4", "context_window": 200000, "enabled": false, "status": "streaming_required"},
     {"provider": "anthropic", "model_id": "claude-sonnet-4-20250514", "name": "Claude Sonnet 4", "context_window": 200000, "enabled": true, "status": "available"},
-    {"provider": "anthropic", "model_id": "claude-3-7-sonnet-20250219", "name": "Claude 3.7 Sonnet", "context_window": 200000, "enabled": true, "status": "available"},
+    {"provider": "anthropic", "model_id": "claude-3-7-sonnet-20250219", "name": "Claude 3.7 Sonnet", "context_window": 200000, "enabled": false, "status": "deprecated"},
     {"provider": "anthropic", "model_id": "claude-3-5-sonnet-20241022", "name": "Claude 3.5 Sonnet", "context_window": 200000, "enabled": false, "status": "deprecated"},
-    {"provider": "anthropic", "model_id": "claude-3-5-haiku-20241022", "name": "Claude 3.5 Haiku", "context_window": 200000, "enabled": true, "status": "available"}
+    {"provider": "anthropic", "model_id": "claude-3-5-haiku-20241022", "name": "Claude 3.5 Haiku", "context_window": 200000, "enabled": false, "status": "deprecated"}
   ],
 
   "model_id_startswith": [
@@ -50,8 +53,8 @@
     { "prefix": "gpt-5-pro",       "provider": "openai", "method": "reasoning_effort", "max_input": null, "max_output": 32768, "effort": ["high"], "default": "high", "seed": false },
     { "prefix": "gpt-5.1-codex-max", "provider": "openai", "method": "reasoning_effort", "max_input": null, "max_output": 65536, "effort": ["none", "minimal", "low", "medium", "high", "xhigh"], "default": "none", "seed": false },
     { "prefix": "gpt-5.1",   "provider": "openai", "method": "reasoning_effort", "max_input": null, "max_output": 32768, "effort": ["none", "minimal", "low", "medium", "high"], "default": "none", "seed": false },
-    { "prefix": "gpt-5.4",   "provider": "openai", "method": "reasoning_effort", "max_input": 1047576, "max_output": 32768, "effort": ["none", "minimal", "low", "medium", "high"], "default": "none", "seed": false },
-    { "prefix": "gpt-5.2",   "provider": "openai", "method": "reasoning_effort", "max_input": null, "max_output": 32768, "effort": ["none", "minimal", "low", "medium", "high"], "default": "none", "seed": false },
+    { "prefix": "gpt-5.4",   "provider": "openai", "method": "reasoning_effort", "max_input": 1047576, "max_output": 32768, "effort": ["none", "low", "medium", "high", "xhigh"], "default": "none", "seed": false },
+    { "prefix": "gpt-5.2",   "provider": "openai", "method": "reasoning_effort", "max_input": null, "max_output": 32768, "effort": ["none", "low", "medium", "high", "xhigh"], "default": "none", "seed": false },
     { "prefix": "gpt-5",     "provider": "openai", "method": "reasoning_effort", "max_input": null, "max_output": 32768, "effort": ["minimal", "low", "medium", "high"], "default": "medium", "seed": false },
     
     { "prefix": "claude-opus-4.5",   "provider": "anthropic", "method": "effort", "max_input": 200000, "max_output": 8192, "effort": ["low", "medium", "high"], "default": "high", "beta": "effort-2025-11-24" },

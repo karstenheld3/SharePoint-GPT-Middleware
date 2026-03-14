@@ -53,7 +53,7 @@ def get_model_config(model: str, registry: dict) -> dict:
 
 def build_api_params(model: str, mapping: dict, registry: dict,
                      temperature: str, reasoning_effort: str,
-                     output_length: str, seed: int = None) -> dict:
+                     output_length: str, verbosity: str = None, seed: int = None) -> dict:
     """Build API parameters using effort levels."""
     model_config = get_model_config(model, registry)
     effort_map = mapping['effort_mapping']
@@ -66,7 +66,17 @@ def build_api_params(model: str, mapping: dict, registry: dict,
         factor = effort_map[temperature]['temperature_factor']
         params['temperature'] = factor * model_config.get('temp_max', 2.0)
     elif method == 'reasoning_effort':
-        params['reasoning_effort'] = effort_map[reasoning_effort]['openai_reasoning_effort']
+        effort_value = effort_map[reasoning_effort]['openai_reasoning_effort']
+        supported = model_config.get('effort', [])
+        if effort_value not in supported and supported:
+            # Fallback: none->minimal, minimal->low if not supported
+            fallback_map = {'none': 'minimal', 'minimal': 'low'}
+            if effort_value in fallback_map and fallback_map[effort_value] in supported:
+                print(f"[WARN] '{effort_value}' not supported by {model}, falling back to '{fallback_map[effort_value]}'", file=sys.stderr)
+                effort_value = fallback_map[effort_value]
+        params['reasoning_effort'] = effort_value
+        if verbosity:
+            params['verbosity'] = effort_map[verbosity]['openai_verbosity']
     elif method == 'effort':
         params['effort'] = effort_map[reasoning_effort]['openai_reasoning_effort']
     elif method == 'thinking':
@@ -221,9 +231,53 @@ def create_anthropic_client(keys: dict):
     return Anthropic(api_key=api_key)
 
 
-def call_openai(client, model: str, prompt: str, api_params: dict,
-                image_data: str = None, image_media_type: str = None):
-    """Call OpenAI API with configurable parameters."""
+def call_openai_responses(client, model: str, prompt: str, api_params: dict,
+                          image_data: str = None, image_media_type: str = None):
+    """Call OpenAI Responses API for reasoning models with verbosity support."""
+    if image_data:
+        input_content = [
+            {"type": "input_text", "text": prompt},
+            {"type": "input_image", "image_url": f"data:{image_media_type};base64,{image_data}"}
+        ]
+    else:
+        input_content = prompt
+    
+    call_params = {'model': model, 'input': input_content}
+    
+    if 'reasoning_effort' in api_params:
+        call_params['reasoning'] = {'effort': api_params['reasoning_effort']}
+    
+    if 'verbosity' in api_params:
+        call_params['text'] = {'verbosity': api_params['verbosity']}
+    
+    if 'max_tokens' in api_params:
+        call_params['max_output_tokens'] = api_params['max_tokens']
+    
+    response = client.responses.create(**call_params)
+    
+    # Extract text from response output
+    output_text = ""
+    for item in response.output:
+        if hasattr(item, 'content') and item.content is not None:
+            for content in item.content:
+                if hasattr(content, 'text'):
+                    output_text += content.text
+    
+    result = {
+        "text": output_text,
+        "usage": {
+            "input_tokens": response.usage.input_tokens,
+            "output_tokens": response.usage.output_tokens
+        },
+        "model": response.model
+    }
+    
+    return result
+
+
+def call_openai_chat(client, model: str, prompt: str, api_params: dict,
+                     image_data: str = None, image_media_type: str = None):
+    """Call OpenAI Chat Completions API for temperature models."""
     if image_data:
         content = [
             {"type": "text", "text": prompt},
@@ -237,13 +291,10 @@ def call_openai(client, model: str, prompt: str, api_params: dict,
     
     if 'temperature' in api_params:
         call_params['temperature'] = api_params['temperature']
-    if 'reasoning_effort' in api_params:
-        call_params['reasoning_effort'] = api_params['reasoning_effort']
     if 'seed' in api_params:
         call_params['seed'] = api_params['seed']
     
-    token_param = 'max_completion_tokens' if any(x in model for x in ['gpt-5', 'o1-', 'o3-', 'o4-']) else 'max_tokens'
-    call_params[token_param] = api_params.get('max_tokens', 4096)
+    call_params['max_tokens'] = api_params.get('max_tokens', 4096)
     
     response = client.chat.completions.create(**call_params)
     
@@ -265,6 +316,15 @@ def call_openai(client, model: str, prompt: str, api_params: dict,
         result['system_fingerprint'] = response.system_fingerprint
     
     return result
+
+
+def call_openai(client, model: str, prompt: str, api_params: dict, method: str,
+                image_data: str = None, image_media_type: str = None):
+    """Call OpenAI API - routes to Responses API for reasoning models, Chat for temperature models."""
+    if method == 'reasoning_effort':
+        return call_openai_responses(client, model, prompt, api_params, image_data, image_media_type)
+    else:
+        return call_openai_chat(client, model, prompt, api_params, image_data, image_media_type)
 
 
 def call_anthropic(client, model: str, prompt: str, api_params: dict, method: str,
@@ -442,7 +502,7 @@ def process_file(worker_id: int, file_idx: int, total_files: int, input_file: Pa
             
             if provider == 'openai':
                 result = retry_with_backoff(
-                    lambda: call_openai(client, args.model, file_prompt, api_params, image_data, image_media_type)
+                    lambda: call_openai(client, args.model, file_prompt, api_params, method, image_data, image_media_type)
                 )
             else:
                 result = retry_with_backoff(
@@ -497,6 +557,7 @@ def parse_args():
     parser.add_argument('--temperature', choices=EFFORT_LEVELS, default='medium', help='Temperature control (default: medium)')
     parser.add_argument('--reasoning-effort', choices=EFFORT_LEVELS, default='medium', help='Reasoning effort (default: medium)')
     parser.add_argument('--output-length', choices=EFFORT_LEVELS, default='medium', help='Output length (default: medium)')
+    parser.add_argument('--verbosity', choices=EFFORT_LEVELS, default=None, help='Output verbosity for OpenAI reasoning models (default: None)')
     parser.add_argument('--seed', type=int, default=None, help='Random seed (OpenAI only)')
     parser.add_argument('--response-format', choices=['text', 'json'], default='text', help='Response format (default: text)')
     parser.add_argument('--use-prompt-caching', action='store_true', help='Enable prompt caching (Anthropic explicit, OpenAI automatic)')
@@ -517,7 +578,7 @@ def main():
     api_params, method, provider = build_api_params(
         args.model, mapping, registry,
         args.temperature, getattr(args, 'reasoning_effort', 'medium'),
-        getattr(args, 'output_length', 'medium'), args.seed
+        getattr(args, 'output_length', 'medium'), getattr(args, 'verbosity', None), args.seed
     )
     
     print(f"API params: {api_params}", file=sys.stderr)
@@ -557,6 +618,7 @@ def main():
         'temperature': args.temperature,
         'reasoning_effort': getattr(args, 'reasoning_effort', 'medium'),
         'output_length': getattr(args, 'output_length', 'medium'),
+        'verbosity': getattr(args, 'verbosity', None),
         'seed': args.seed
     }
     save_used_settings(args.output_folder, args.model, cli_params, api_params, args.prompt_file)
