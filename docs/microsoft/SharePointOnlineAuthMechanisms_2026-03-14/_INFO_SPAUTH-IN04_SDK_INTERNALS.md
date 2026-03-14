@@ -325,19 +325,60 @@ class CertificateCredential:
 This pattern allows using any Azure Identity credential:
 
 ```python
+import time
 from azure.identity import DefaultAzureCredential
 from office365.sharepoint.client_context import ClientContext
+from office365.runtime.auth.token_response import TokenResponse
 
 credential = DefaultAzureCredential()
 resource = "https://contoso.sharepoint.com"
 
 def token_provider():
-    """Called by library when token is needed."""
+    """Called by library only when token is needed (cached internally)."""
     token = credential.get_token(f"{resource}/.default")
-    return token.token
+    return TokenResponse(
+        access_token=token.token,
+        token_type="Bearer",
+        expiresIn=int(token.expires_on - time.time())
+    )
 
 ctx = ClientContext(site_url).with_access_token(token_provider)
 ```
+
+### Token Callback Contract
+
+The callback can return either:
+- A `TokenResponse` object with `accessToken`, `tokenType`, and optionally `expiresIn`
+- A dict matching MSAL response format (converted via `TokenResponse.from_json()`)
+
+### Built-in Token Caching
+
+The library caches tokens internally and only calls the callback when needed:
+
+```python
+# From office365/runtime/auth/authentication_context.py
+def with_access_token(self, token_func):
+    def _authenticate(request):
+        request_time = datetime.now(timezone.utc)
+        
+        # Only acquire new token if cache empty or expired
+        if self._cached_token is None or request_time > self._token_expires:
+            self._cached_token = token_func()
+            if hasattr(self._cached_token, "expiresIn"):
+                self._token_expires = request_time + timedelta(
+                    seconds=self._cached_token.expiresIn
+                )
+        
+        request.set_header("Authorization", _get_authorization_header(self._cached_token))
+    
+    self._authenticate = _authenticate
+```
+
+**Key behaviors:**
+- Token is cached after first acquisition
+- Callback only invoked when `_cached_token is None` or `request_time > _token_expires`
+- If `expiresIn` is provided, expiry is calculated automatically
+- No need for external caching when using `with_access_token()`
 
 ### Internal Flow
 
@@ -345,13 +386,17 @@ ctx = ClientContext(site_url).with_access_token(token_provider)
 ClientContext.execute_query()
     |
     v
-[Check if token needed]
+[Check _cached_token and _token_expires]
+    |
+    +---> [Token valid] ---> [Use cached token]
+    |
+    +---> [Token missing/expired] ---> [Call token_provider()]
+                                            |
+                                            v
+                                       [Cache new token]
     |
     v
-[Call token_provider function]
-    |
-    v
-[Add Authorization header: "Bearer {token}"]
+[Add Authorization header: "{tokenType} {accessToken}"]
     |
     v
 [Make HTTP request to SharePoint]
@@ -478,6 +523,12 @@ token_cache.save()
 - SPAUTH-SC-DEV-MSALCACHE: Python MSAL Token Cache for Confidential Clients
 
 ## Document History
+
+**[2026-03-14 21:52]**
+- Added: Token Callback Contract section
+- Added: Built-in Token Caching section with library source reference
+- Changed: Internal Flow diagram to show caching logic
+- Changed: Code sample to use TokenResponse with expiresIn
 
 **[2026-03-14 17:05]**
 - Initial document created
