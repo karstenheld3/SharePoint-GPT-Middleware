@@ -810,10 +810,8 @@ function Attach-UserAssignedMI {
         } | ConvertTo-Json -Depth 5 -Compress
         
         $apiUrl = "https://management.azure.com${machineResourceId}?api-version=2024-07-10"
-        Write-Host "  url='$apiUrl'"
-        $result = az rest --method PATCH --url $apiUrl --headers "Content-Type=application/json" --body $body 2>&1
+        $result = az rest --method PATCH --url $apiUrl --body $body 2>&1
         $exitCode = $LASTEXITCODE
-        Write-Host "  exit_code=$exitCode"
         
         # Check for token cache corruption during REST call
         if ($result -match "Decryption failed" -or $result -match "2146893813") {
