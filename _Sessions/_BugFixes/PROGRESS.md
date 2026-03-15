@@ -2,14 +2,6 @@
 
 **Doc ID**: BugFixes-PROGRESS
 
-## Phase Plan
-
-- [x] **EXPLORE** - in_progress
-- [ ] **DESIGN** - pending
-- [ ] **IMPLEMENT** - pending
-- [ ] **REVIEW** - pending
-- [ ] **DEPLOY** - pending
-
 ## To Do
 
 (none)

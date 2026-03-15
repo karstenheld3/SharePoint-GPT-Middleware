@@ -10,14 +10,13 @@
 
 ## Global Bug Number Registry
 
-**Next available BG number**: `0001`
+Single source of truth for PROJECT-MODE bug numbering.
+Get next number here before creating `[BUG_FOLDER]`.
 
-| BG-NNNN | TOPIC | Description | Status |
-|---------|-------|-------------|--------|
-| (none yet) | | | |
+Format: `BG-NNNN` - Description - Status
+Next available: `BG-0001`
 
-This is the **single source of truth** for PROJECT-MODE bug numbering.
-Before creating a new `[BUG_FOLDER]`, get the next number here and update this table.
+- (none yet)
 
 ## Folder Structure
 
@@ -57,8 +56,7 @@ Commit: fix([TOPIC]-BG-NNN): ...      Commit: fix(BG-NNNN): ...
 
 ## Topic Registry
 
-- `BUGFIXES` - Bug fixes session
-- `DOM` - Domains router
+- `BUGFIXES` - Bug fixes session (this session's TOPIC)
 
 ## Significant Prompts Log
 
