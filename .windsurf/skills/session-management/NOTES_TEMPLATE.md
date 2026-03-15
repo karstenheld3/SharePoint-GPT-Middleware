@@ -49,6 +49,9 @@ Maintain list of TOPIC IDs used in this session/project:
 Session-local bug tracking. SESSION <-> TOPIC is 1:1, so simple list suffices.
 Get next number by counting existing entries. See `/fix` workflow.
 
+Format: `[TOPIC]-BG-NNN` - Description - Status
+Example: AUTH-BG-001 - Token refresh race condition - Resolved
+
 - (none yet)
 
 ## Significant Prompts Log
