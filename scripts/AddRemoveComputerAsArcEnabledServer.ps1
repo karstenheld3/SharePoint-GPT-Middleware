@@ -541,9 +541,20 @@ function Show-SystemAssignedMI {
     Write-Host "  Checking Azure CLI authentication..."
     $accountJson = az account show 2>&1
     $accountExitCode = $LASTEXITCODE
-    Write-Host "    az account show exit_code=$accountExitCode"
     
-    if ($accountExitCode -ne 0 -or -not $accountJson -or $accountJson -match "ERROR") {
+    # Check for token cache corruption error (WinError -2146893813)
+    if ($accountJson -match "Decryption failed" -or $accountJson -match "2146893813") {
+        Write-Host "    WARNING: Azure CLI token cache corrupted." -ForegroundColor Yellow
+        Write-Host "    Clearing cache and re-authenticating..."
+        az account clear 2>$null
+        az login
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "    FAIL: Azure CLI login failed." -ForegroundColor Red
+            return
+        }
+        Write-Host "    OK. Re-authenticated." -ForegroundColor Green
+    }
+    elseif ($accountExitCode -ne 0 -or -not $accountJson -or $accountJson -match "ERROR") {
         Write-Host "    Not logged in. Running 'az login'..."
         az login
         if ($LASTEXITCODE -ne 0) {
@@ -644,8 +655,22 @@ function Attach-UserAssignedMI {
     # Check Azure CLI authentication first
     Write-Host ""
     Write-Host "Checking Azure CLI authentication..."
-    $accountJson = az account show 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $accountJson) {
+    $accountJson = az account show 2>&1
+    $accountExitCode = $LASTEXITCODE
+    
+    # Check for token cache corruption error (WinError -2146893813)
+    if ($accountJson -match "Decryption failed" -or $accountJson -match "2146893813") {
+        Write-Host "  WARNING: Azure CLI token cache corrupted." -ForegroundColor Yellow
+        Write-Host "  Clearing cache and re-authenticating..."
+        az account clear 2>$null
+        az login
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  FAIL: Azure CLI login failed." -ForegroundColor Red
+            return $false
+        }
+        Write-Host "  OK. Re-authenticated." -ForegroundColor Green
+    }
+    elseif ($accountExitCode -ne 0 -or -not $accountJson) {
         Write-Host "  Not logged in. Running 'az login'..."
         az login
         if ($LASTEXITCODE -ne 0) {
