@@ -516,57 +516,96 @@ function Show-SystemAssignedMI {
     Write-Host ""
     Write-Host "Querying system-assigned managed identity..."
     
+    # Validate Status object
+    Write-Host "  Validating status..."
+    Write-Host "    ResourceName='$($Status.ResourceName)'"
+    Write-Host "    ResourceGroup='$($Status.ResourceGroup)'"
+    Write-Host "    SubscriptionId='$($Status.SubscriptionId)'"
+    
+    if (-not $Status.ResourceName -or -not $Status.ResourceGroup -or -not $Status.SubscriptionId) {
+        Write-Host "  FAIL: Missing required status fields." -ForegroundColor Red
+        return
+    }
+    Write-Host "    OK." -ForegroundColor Green
+    
     # Check Azure CLI
+    Write-Host "  Checking Azure CLI..."
     $azCmd = Get-Command az -ErrorAction SilentlyContinue
     if (-not $azCmd) {
-        Write-Host "  FAIL: Azure CLI (az) is not installed." -ForegroundColor Red
+        Write-Host "    FAIL: Azure CLI (az) is not installed." -ForegroundColor Red
+        return
+    }
+    Write-Host "    OK. Azure CLI found." -ForegroundColor Green
+    
+    # Check Azure CLI authentication
+    Write-Host "  Checking Azure CLI authentication..."
+    $accountJson = az account show 2>&1
+    $accountExitCode = $LASTEXITCODE
+    Write-Host "    az account show exit_code=$accountExitCode"
+    
+    if ($accountExitCode -ne 0 -or -not $accountJson -or $accountJson -match "ERROR") {
+        Write-Host "    Not logged in. Running 'az login'..."
+        az login
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "    FAIL: Azure CLI login failed." -ForegroundColor Red
+            return
+        }
+        Write-Host "    OK. Logged in." -ForegroundColor Green
+    } else {
+        try {
+            $account = $accountJson | ConvertFrom-Json
+            Write-Host "    OK. Logged in as '$($account.user.name)'." -ForegroundColor Green
+        } catch {
+            Write-Host "    OK. Logged in (could not parse account info)." -ForegroundColor Green
+        }
+    }
+    
+    # Build API URL
+    $subscriptionId = $Status.SubscriptionId
+    $resourceGroup = $Status.ResourceGroup
+    $resourceName = $Status.ResourceName
+    $machineResourceId = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroup/providers/Microsoft.HybridCompute/machines/$resourceName"
+    $apiUrl = "https://management.azure.com${machineResourceId}?api-version=2024-07-10"
+    
+    Write-Host "  Calling REST API..."
+    Write-Host "    url='$apiUrl'"
+    
+    # Call REST API
+    $restOutput = az rest --method GET --url $apiUrl 2>&1
+    $restExitCode = $LASTEXITCODE
+    Write-Host "    exit_code=$restExitCode"
+    
+    if ($restExitCode -ne 0) {
+        Write-Host "  FAIL: REST API call failed." -ForegroundColor Red
+        Write-Host "  Error: $restOutput" -ForegroundColor Red
         return
     }
     
-    # Check Azure CLI authentication first
-    Write-Host "  Checking Azure CLI authentication..."
-    $accountJson = az account show 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $accountJson) {
-        Write-Host "  Not logged in. Running 'az login'..."
-        az login
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "  FAIL: Azure CLI login failed." -ForegroundColor Red
-            return
-        }
+    if (-not $restOutput) {
+        Write-Host "  FAIL: REST API returned empty response." -ForegroundColor Red
+        return
     }
     
-    Write-Host "  Fetching machine details via REST API..."
+    # Parse response
+    Write-Host "  Parsing response..."
     try {
-        # Use az rest instead of az connectedmachine show (extension has permission issues)
-        $subscriptionId = $Status.SubscriptionId
-        $resourceGroup = $Status.ResourceGroup
-        $machineResourceId = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroup/providers/Microsoft.HybridCompute/machines/$($Status.ResourceName)"
-        
-        $apiUrl = "https://management.azure.com${machineResourceId}?api-version=2024-07-10"
-        Write-Host "  url='$apiUrl'"
-        
-        $machineJson = az rest --method GET --url $apiUrl 2>&1
-        
-        if ($LASTEXITCODE -ne 0 -or -not $machineJson) {
-            Write-Host "  FAIL: Could not query machine details -> $machineJson" -ForegroundColor Red
-            return
-        }
-        
-        $machine = $machineJson | ConvertFrom-Json
-        
-        Write-Host ""
-        Write-Host "System-Assigned Managed Identity:" -ForegroundColor Cyan
-        Write-Host "  name='$($Status.ResourceName)'"
-        Write-Host "  principal_id='$($machine.identity.principalId)'"
-        Write-Host "  tenant_id='$($machine.identity.tenantId)'"
-        Write-Host "  type='$($machine.identity.type)'"
-        Write-Host ""
-        Write-Host "Use principal_id for RBAC role assignments."
-        Write-Host ""
+        $machine = $restOutput | ConvertFrom-Json
+        Write-Host "    OK." -ForegroundColor Green
+    } catch {
+        Write-Host "  FAIL: Could not parse JSON -> $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "  Raw output: $restOutput"
+        return
     }
-    catch {
-        Write-Host "  FAIL: Could not query MI -> $($_.Exception.Message)" -ForegroundColor Red
-    }
+    
+    # Display MI info
+    Write-Host ""
+    Write-Host "System-Assigned Managed Identity:" -ForegroundColor Cyan
+    Write-Host "  name='$resourceName'"
+    Write-Host "  principal_id='$($machine.identity.principalId)'"
+    Write-Host "  tenant_id='$($machine.identity.tenantId)'"
+    Write-Host "  type='$($machine.identity.type)'"
+    Write-Host ""
+    Write-Host "Use principal_id for RBAC role assignments."
 }
 
 function Attach-UserAssignedMI {
