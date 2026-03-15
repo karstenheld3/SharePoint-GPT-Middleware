@@ -542,12 +542,13 @@ function Show-SystemAssignedMI {
         $resourceGroup = $Status.ResourceGroup
         $machineResourceId = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroup/providers/Microsoft.HybridCompute/machines/$($Status.ResourceName)"
         
-        $machineJson = az rest --method GET `
-            --url "https://management.azure.com${machineResourceId}?api-version=2024-07-10" `
-            2>$null
+        $apiUrl = "https://management.azure.com${machineResourceId}?api-version=2024-07-10"
+        Write-Host "  url='$apiUrl'"
+        
+        $machineJson = az rest --method GET --url $apiUrl 2>&1
         
         if ($LASTEXITCODE -ne 0 -or -not $machineJson) {
-            Write-Host "  FAIL: Could not query machine details." -ForegroundColor Red
+            Write-Host "  FAIL: Could not query machine details -> $machineJson" -ForegroundColor Red
             return
         }
         
