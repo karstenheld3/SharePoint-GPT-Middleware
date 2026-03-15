@@ -142,7 +142,12 @@ Entry format:
 2. Search in code, verify each assumption
 3. Disambiguate and narrow down the problem
 
-Create [BUG_FOLDER] (only when problem confirmed as bug needing investigation):
+A problem is confirmed as a **bug** when it's a deviation from desired behavior that prevents the goal from being reached. Can be:
+- A flaw in the code
+- A flawed design decision in the IMPL
+- A flawed assumption or design decision in the SPEC (rare)
+
+Create [BUG_FOLDER] (only when problem confirmed as bug):
 
 - SESSION-MODE: `[SESSION_FOLDER]/[TOPIC]-BG-NNN_IssueDescription/` (3-digit, session-local)
   - Get next BG number from `[SESSION_FOLDER]/NOTES.md` "Bug List" section (count existing entries + 1)
