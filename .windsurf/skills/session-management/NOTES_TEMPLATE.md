@@ -49,9 +49,7 @@ Maintain list of TOPIC IDs used in this session/project:
 Session-local bug tracking. SESSION <-> TOPIC is 1:1, so simple list suffices.
 Get next number by counting existing entries. See `/fix` workflow.
 
-| ID | Description | Status |
-|----|-------------|--------|
-| (none yet) | | |
+- (none yet)
 
 ## Significant Prompts Log
 
