@@ -523,6 +523,18 @@ function Show-SystemAssignedMI {
         return
     }
     
+    # Check Azure CLI authentication first
+    Write-Host "  Checking Azure CLI authentication..."
+    $accountJson = az account show 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $accountJson) {
+        Write-Host "  Not logged in. Running 'az login'..."
+        az login
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  FAIL: Azure CLI login failed." -ForegroundColor Red
+            return
+        }
+    }
+    
     # Check connectedmachine extension
     $extCheck = az extension list --query "[?name=='connectedmachine'].name" -o tsv 2>$null
     if (-not $extCheck) {
@@ -530,6 +542,7 @@ function Show-SystemAssignedMI {
         az extension add --name connectedmachine --yes 2>$null
     }
     
+    Write-Host "  Fetching machine details..."
     try {
         $machineJson = az connectedmachine show `
             --name $Status.ResourceName `
