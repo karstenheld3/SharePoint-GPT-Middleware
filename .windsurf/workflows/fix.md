@@ -62,13 +62,13 @@ CRITICAL: The entire workflow depends on this determination.
 - Bug found AFTER implementation is done
 - Confirmed defect in existing code
 - Fix happens in persistent `_BugFixes` session
-- Uses BG (Bug) tracking ID (4-digit: NNNN)
+- Uses BG (Bug) tracking ID (4-digit: NNNN, globally unique across project)
 
 **Folder structure**:
 ```
 [BUGFIXES_SESSION_FOLDER]/              <- Permanent session (never archived)
 ├── NOTES.md, PROBLEMS.md, PROGRESS.md
-└── [TOPIC]-BG-NNNN_ShortDescription/   <- [BUG_FOLDER] (4-digit)
+└── BG-NNNN_[TOPIC]_ShortDescription/   <- [BUG_FOLDER] (global 4-digit)
     ├── PROBLEMS.md                      <- Full detail
     ├── _INFO_*.md, _STRUT_*.md
     ├── backup/, poc/, test/
@@ -130,7 +130,9 @@ Entry format:
 Create [BUG_FOLDER]:
 
 - SESSION-MODE: `[SESSION_FOLDER]/[TOPIC]-PR-NNN_ShortDescription/` (3-digit)
-- PROJECT-MODE: `[BUGFIXES_SESSION_FOLDER]/[TOPIC]-BG-NNNN_ShortDescription/` (4-digit)
+- PROJECT-MODE: `[BUGFIXES_SESSION_FOLDER]/BG-NNNN_[TOPIC]_ShortDescription/` (global 4-digit)
+  - Get next BG number from `[BUGFIXES_SESSION_FOLDER]/NOTES.md` (single source of truth)
+  - Update NOTES.md with new number after creating folder
   - Check `ID-REGISTRY.md` for existing TOPIC. If new TOPIC needed, add it.
 
 Inside [BUG_FOLDER], create:
@@ -211,7 +213,7 @@ PROJECT-MODE only:
 
 ### 10.3 Commit
 
-Run `/commit` with format: `fix([TOPIC]-BG-NNNN): description` (PROJECT-MODE) or `fix([TOPIC]-PR-NNN): description` (SESSION-MODE)
+Run `/commit` with format: `fix(BG-NNNN): description` (PROJECT-MODE) or `fix([TOPIC]-PR-NNN): description` (SESSION-MODE)
 
 ### 10.4 Mark Resolved
 
@@ -244,9 +246,9 @@ SESSION-MODE                          PROJECT-MODE
 ─────────────────────────────────────────────────────────────────
 Found: During active session          Found: After session closed
 Folder: [SESSION_FOLDER]/             Folder: _BugFixes/
-Bug ID: [TOPIC]-PR-NNN (3-digit)      Bug ID: [TOPIC]-BG-NNNN (4-digit)
+Bug ID: [TOPIC]-PR-NNN (3-digit)      Bug ID: BG-NNNN (global 4-digit)
 Docs: SPEC/IMPL/TEST only             Docs: SPEC/IMPL/TEST + _FIXES.md
-Commit: fix([TOPIC]-PR-NNN): ...      Commit: fix([TOPIC]-BG-NNNN): ...
+Commit: fix([TOPIC]-PR-NNN): ...      Commit: fix(BG-NNNN): ...
 ```
 
 ## _FIXES.md Format
@@ -254,7 +256,7 @@ Commit: fix([TOPIC]-PR-NNN): ...      Commit: fix([TOPIC]-BG-NNNN): ...
 Created for PROJECT-MODE only. One file per component.
 
 ```markdown
-### [TOPIC]-BG-NNNN_ShortDescription
+### BG-NNNN [TOPIC] ShortDescription
 
 **Problem**: Single sentence describing the bug
 **Solution**: Single sentence describing the fix
