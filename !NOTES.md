@@ -2,26 +2,22 @@
 
 [DEFAULT_SESSIONS_FOLDER]: [WORKSPACE_FOLDER]\_Sessions
 [SESSION_ARCHIVE_FOLDER]: [SESSION_FOLDER]\_Archive
+[BUGFIXES_SESSION_FOLDER]: [DEFAULT_SESSIONS_FOLDER]\_BugFixes
 
 ## Test Configuration
 
-**Test Domain for Playwright MCP**: `AiSearchTest01`
-- 5 sources configured (SharedDocuments, DocumentLibrary01, DocumentLibrary02, SecurityTrainingCatalog, SitePages)
-- Use for automated testing with Playwright MCP
+**Selftest Configuration** (from `.env` file):
+- `CRAWLER_SELFTEST_SHAREPOINT_SITE` - SharePoint site URL for crawler selftest
+- `CRAWLER_SELFTEST_DOMAIN` - Domain name configured for selftest
+- Used by `/v2/crawler/selftest` and Playwright MCP automated testing
 
 ## Patterns
 
-**Async Generator for Realtime SSE Streaming**
-- Step functions use `AsyncGenerator[str, None]` return type
-- Yield SSE events via `for sse in writer.drain_sse_queue(): yield sse`
-- Store result via `writer.set_step_result(result)`
-- Caller retrieves via `writer.get_step_result()` after iteration
-- See `_V2_IMPL_CRAWLER.md` "Step function result handling" section
+**Async Generator / Step Function Result Pattern**
+- See `docs/V2_INFO_IMPLEMENTATION_PATTERNS.md` "Step Function Result Pattern" section
 
 **Report Type Naming Convention**
-- Use **singular** form for `report_type` parameter: `"site_scan"`, `"crawl"`, `"custom"`
-- `get_folder_for_type()` in `common_report_functions_v2.py` adds the 's' suffix automatically
-- Passing plural form (e.g., `"site_scans"`) results in double suffix (`"site_scanss"`)
+- See `docs/V2_INFO_IMPLEMENTATION_PATTERNS.md` "Report Type Naming Convention" section
 
 ## Dependency Management
 
@@ -102,3 +98,33 @@ Sessions working on V2 routers copy SPEC/IMPL docs from `docs/routers_v2/` into 
 
 **Active sessions using this pattern:**
 - `_Sessions/_2026-03-06_V2CrawlerEndpoint/`
+
+### Bug and Issue Fixing
+
+**MANDATORY**: Run `/fix` workflow for bug fixes. See `.windsurf/workflows/fix.md`.
+
+**Two Contexts for Bug Fixes:**
+
+1. **`SESSION-MODE`** - Found WHILE WORKING in an active session
+   - Fix in current session folder
+   - Create `[TOPIC]-PR-NNN_ShortDescription/` subfolder (3-digit, reuses problem tracking ID)
+   - Track in session's PROBLEMS.md
+
+2. **`PROJECT-MODE`** - Found AFTER session is closed/archived
+   - Fix in `[BUGFIXES_SESSION_FOLDER]`
+   - Create `[TOPIC]-BG-NNNN_ShortDescription/` subfolder (4-digit, uses BG tracking ID)
+   - Track in `_BugFixes/PROBLEMS.md` (short summary), full detail in `[BUG_FOLDER]/PROBLEMS.md`
+
+Both contexts ALWAYS create a `[BUG_FOLDER]`. Run `/fix` for complete workflow.
+
+**Fix Documentation** (only AFTER fix confirmed working):
+- **ALWAYS**: Update SPEC, IMPL, TEST docs to cover the newly discovered scenario
+- **`PROJECT-MODE` only**: Also create/update `*_FIXES.md` next to the component's IMPL or SPEC doc:
+  1. Search for `*_IMPL_*.md` -> add/update `*_IMPL_*_FIXES.md` in same folder
+  2. If no IMPL doc -> search for `*_SPEC_*.md` -> add/update `*_SPEC_*_FIXES.md` in same folder
+
+**_FIXES.md** is a chronological audit trail of post-implementation bugs, their solutions, and all affected files.
+Each entry records: tracking ID (e.g., `DOM-BG-0001`), Problem, Solution, Changed files list.
+See `_BugFixes/NOTES.md` for format details.
+
+**`_BugFixes` session** is persistent (never archived).
