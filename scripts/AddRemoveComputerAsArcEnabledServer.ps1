@@ -26,9 +26,26 @@ $script:AgentPath = "$env:ProgramFiles\AzureConnectedMachineAgent\azcmagent.exe"
 $script:DownloadUrl = "https://aka.ms/azcmagent-windows"
 $script:InstallerPath = "$env:TEMP\install_windows_azcmagent.ps1"
 
+# Workspace root is parent of scripts/ folder
+$script:WorkspaceRoot = Split-Path $PSScriptRoot -Parent
+
 # =============================================================================
 # Helper Functions
 # =============================================================================
+
+# Reads an .env file and returns a hashtable of key-value pairs
+function Read-EnvFile {
+  param([Parameter(Mandatory=$true)] [string]$Path)
+  $envVars = @{}
+  if (!(Test-Path $Path)) { return $envVars }
+  Get-Content $Path | ForEach-Object {
+    if ($_ -match '^(?!#)([^=]+)=([^#]*)(?:#.*)?$') {
+      $key = $matches[1].Trim(); $value = $matches[2].Trim()
+      $envVars[$key] = $value
+    }
+  }
+  return $envVars
+}
 
 function Test-AdminPrivilege {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -210,29 +227,60 @@ function Read-ConnectionParams {
     Write-Host "--------------------------------------------------------------------------------"
     Write-Host ""
     
-    $subscriptionId = Read-Host "Enter Azure Subscription ID or Name"
+    # Load defaults from .env file
+    $envPath = Join-Path $script:WorkspaceRoot ".env"
+    $config = Read-EnvFile -Path $envPath
+    
+    $defaultSubscription = $config.AZURE_SUBSCRIPTION_ID
+    $defaultResourceGroup = $config.AZURE_RESOURCE_GROUP
+    $defaultLocation = $config.AZURE_LOCATION
+    $defaultTenant = $config.AZURE_TENANT_ID
+    
+    # Show defaults if available
+    if ($defaultSubscription) {
+        Write-Host "Defaults from .env:" -ForegroundColor Gray
+        Write-Host "  Subscription:   $defaultSubscription" -ForegroundColor Gray
+        Write-Host "  Resource Group: $defaultResourceGroup" -ForegroundColor Gray
+        Write-Host "  Location:       $defaultLocation" -ForegroundColor Gray
+        Write-Host "  Tenant:         $defaultTenant" -ForegroundColor Gray
+        Write-Host ""
+    }
+    
+    $prompt = if ($defaultSubscription) { "Enter Azure Subscription ID (Enter for '$defaultSubscription')" } else { "Enter Azure Subscription ID or Name" }
+    $subscriptionId = Read-Host $prompt
     if ([string]::IsNullOrWhiteSpace($subscriptionId)) {
-        Write-Host "ERROR: " -NoNewline -ForegroundColor Red
-        Write-Host "Subscription ID is required."
-        return $null
+        if ($defaultSubscription) { $subscriptionId = $defaultSubscription }
+        else {
+            Write-Host "ERROR: " -NoNewline -ForegroundColor Red
+            Write-Host "Subscription ID is required."
+            return $null
+        }
     }
     
-    $resourceGroup = Read-Host "Enter Resource Group Name"
+    $prompt = if ($defaultResourceGroup) { "Enter Resource Group Name (Enter for '$defaultResourceGroup')" } else { "Enter Resource Group Name" }
+    $resourceGroup = Read-Host $prompt
     if ([string]::IsNullOrWhiteSpace($resourceGroup)) {
-        Write-Host "ERROR: " -NoNewline -ForegroundColor Red
-        Write-Host "Resource Group is required."
-        return $null
+        if ($defaultResourceGroup) { $resourceGroup = $defaultResourceGroup }
+        else {
+            Write-Host "ERROR: " -NoNewline -ForegroundColor Red
+            Write-Host "Resource Group is required."
+            return $null
+        }
     }
     
-    $location = Read-Host "Enter Azure Region (e.g., westeurope)"
+    $prompt = if ($defaultLocation) { "Enter Azure Region (Enter for '$defaultLocation')" } else { "Enter Azure Region (e.g., westeurope)" }
+    $location = Read-Host $prompt
     if ([string]::IsNullOrWhiteSpace($location)) {
-        Write-Host "ERROR: " -NoNewline -ForegroundColor Red
-        Write-Host "Location is required."
-        return $null
+        if ($defaultLocation) { $location = $defaultLocation }
+        else {
+            Write-Host "ERROR: " -NoNewline -ForegroundColor Red
+            Write-Host "Location is required."
+            return $null
+        }
     }
     
     $defaultName = $env:COMPUTERNAME
-    $resourceName = Read-Host "Enter Resource Name (press Enter for '$defaultName')"
+    $resourceName = Read-Host "Enter Resource Name (Enter for '$defaultName')"
     if ([string]::IsNullOrWhiteSpace($resourceName)) {
         $resourceName = $defaultName
     }
@@ -240,6 +288,7 @@ function Read-ConnectionParams {
     return @{
         SubscriptionId = $subscriptionId
         ResourceGroup = $resourceGroup
+        TenantId = $defaultTenant
         Location = $location
         ResourceName = $resourceName
     }
@@ -261,6 +310,11 @@ function Connect-ToArc {
             "--resource-name", $Params.ResourceName
             "--use-device-code"
         )
+        
+        # Add tenant-id if provided
+        if (-not [string]::IsNullOrWhiteSpace($Params.TenantId)) {
+            $arguments += @("--tenant-id", $Params.TenantId)
+        }
         
         & $script:AgentPath @arguments
         

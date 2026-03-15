@@ -10,6 +10,7 @@
 
 - **Managed identities cannot be assigned directly to physical devices** - they are for Azure compute resources only [VERIFIED]
 - **Azure Arc is the solution** - onboard laptop as Arc-enabled server to get system-assigned managed identity [VERIFIED]
+- **User-assigned managed identities also supported** - assign after Arc connection via CLI or PowerShell only (no Portal UI) [VERIFIED]
 - **Entra ID device registration (BYOD) does NOT provide managed identity** - only provides device identity for Conditional Access [VERIFIED]
 - **Windows 10/11 client OS supported by Azure Arc** - but only for "server-like" scenarios (always on, connected) [VERIFIED]
 - **Alternative: Use service principal with certificate** - if Azure Arc is not suitable [VERIFIED]
@@ -131,12 +132,49 @@ Environment variables set by agent:
 2. Go to Identity > System assigned
 3. Assign Azure RBAC roles to the managed identity
 
-### 2.6 Limitations
+### 2.6 User-Assigned Managed Identity
+
+Azure Arc servers support **both** system-assigned and user-assigned managed identities. The `azcmagent connect` command only creates a system-assigned MI. User-assigned MIs must be added **after** connection.
+
+**Option 1: Azure Portal**
+- **NOT AVAILABLE** for Arc-enabled servers (no Identity blade in Portal UI)
+- Unlike Azure VMs, Arc machines do not have Identity menu in Portal
+- Must use CLI or PowerShell instead
+
+**Option 2: Azure CLI (Recommended)**
+```bash
+# Create user-assigned MI (if not exists)
+az identity create --name "my-user-mi" --resource-group "your-rg"
+
+# Assign to Arc machine
+az connectedmachine update \
+  --name "YOURPC" \
+  --resource-group "your-rg" \
+  --identity-type "SystemAssigned,UserAssigned" \
+  --user-assigned-identities "/subscriptions/.../providers/Microsoft.ManagedIdentity/userAssignedIdentities/my-user-mi"
+```
+
+**Option 3: PowerShell (Az.ConnectedMachine)**
+```powershell
+Update-AzConnectedMachine -Name "YOURPC" -ResourceGroupName "your-rg" `
+  -IdentityType "SystemAssigned,UserAssigned" `
+  -IdentityUserAssignedIdentity @{"/subscriptions/.../my-user-mi" = @{}}
+```
+
+**Requesting tokens for user-assigned MI:**
+```powershell
+# Specify client_id of the user-assigned MI
+$endpoint = "http://localhost:40342/metadata/identity/oauth2/token"
+$resource = "https://management.azure.com/"
+$clientId = "user-assigned-mi-client-id"
+$uri = "$endpoint`?resource=$resource&client_id=$clientId&api-version=2020-06-01"
+```
+
+### 2.7 Limitations
 
 - Designed for long-term management (not ephemeral machines)
 - Windows client OS: only for "server-like" scenarios
 - Agent requires ongoing connectivity for heartbeat
-- Cannot use user-assigned managed identities (system-assigned only)
 
 ## 3. Option B: Service Principal with Certificate
 
@@ -246,6 +284,14 @@ Enrolling in Microsoft Intune:
    - Update application code to use certificate auth
 
 ## 8. Document History
+
+**[2026-03-15 20:51]**
+- Fixed: Portal Identity blade NOT available for Arc servers (only CLI/PowerShell)
+
+**[2026-03-15 20:48]**
+- Added: Section 2.6 User-Assigned Managed Identity (Portal, CLI, PowerShell methods)
+- Changed: Renumbered 2.6 Limitations to 2.7
+- Fixed: Summary - user-assigned MIs ARE supported for Arc servers
 
 **[2026-03-15 18:45]**
 - Initial research document created

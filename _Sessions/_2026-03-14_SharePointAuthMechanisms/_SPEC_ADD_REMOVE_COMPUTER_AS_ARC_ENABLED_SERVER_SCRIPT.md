@@ -16,6 +16,8 @@
 - Use device code login for interactive auth (works across accounts)
 - Check existing connection status before any operation
 - Windows client OS (10/11) supported only for "server-like" scenarios
+- Portal Identity blade NOT available for Arc servers - use CLI/PowerShell only
+- Script must be idempotent - safe to run multiple times
 
 ## Table of Contents
 
@@ -73,6 +75,7 @@ Represents the current state of Azure Arc connection on this computer.
 - `SubscriptionId` - Azure subscription
 - `TenantId` - Entra ID tenant
 - `Location` - Azure region
+- `UserAssignedMIAttached` - Whether configured user-assigned MI is attached
 
 ### ArcConfiguration
 
@@ -87,48 +90,102 @@ Parameters needed for Arc onboarding.
 
 ## 4. Functional Requirements
 
-**AZARC-FR-01: Status Detection**
+**AZARC-FR-01: Idempotent Execution (Run Multiple Times)**
+- Script checks ALL preconditions at startup
+- Only applies steps that are not yet complete
+- Safe to run multiple times - skips already-completed steps
+- Precondition checks:
+  1. Agent installed? → if no, install
+  2. Connected to Arc? → if no, connect
+  3. User-assigned MI attached? → if no and configured, attach
+- Each check displays current state before action
+
+**AZARC-FR-02: Status Detection**
 - Check if Azure Connected Machine agent is installed
 - If installed, retrieve current connection status via `azcmagent show --json`
-- Display status summary at script startup
+- If connected, check if user-assigned MI is already attached
+- Display comprehensive status summary at startup
 
-**AZARC-FR-02: Main Menu**
-- Show current status prominently
+**AZARC-FR-03: Main Menu**
+- Show current status prominently with checklist format:
+  ```
+  Status:
+    [x] Agent installed (v1.61)
+    [x] Connected to Azure Arc (DESKTOP-7QNJLDI)
+    [ ] User-assigned MI attached
+  ```
 - Provide options based on current state:
-  - Not installed: `1 - Install and Connect`
-  - Installed but disconnected: `1 - Connect`, `2 - Uninstall Agent`
-  - Connected: `1 - Disconnect`, `2 - Disconnect and Uninstall`
-- Option `Q - Quit` always available
-- No loop: script exits after each operation (single-action workflow)
+  - All complete: Show status only, offer Disconnect option
+  - Missing steps: `1 - Complete Setup` (runs missing steps only)
+  - Connected: `2 - Disconnect`, `3 - Disconnect and Uninstall`
+- Option `3 - Quit` always available
 
-**AZARC-FR-03: Install Agent**
+**AZARC-FR-04: Install Agent**
+- Skip if already installed (show "Agent already installed")
 - Download installer from `https://aka.ms/azcmagent-windows`
 - Execute `install_windows_azcmagent.ps1`
 - Verify installation by checking `azcmagent version`
 
-**AZARC-FR-04: Connect to Azure**
-- Prompt for subscription ID (required)
-- Prompt for resource group name (required)
-- Prompt for Azure region/location (required)
-- Prompt for custom resource name (optional, defaults to hostname)
-- Execute `azcmagent connect` with device code authentication
-- Display device code URL and code for user to authenticate
+**AZARC-FR-05: Configuration Loading**
+- Load defaults from `.env` file in workspace root (via `$workspaceRoot`)
+- If `.env` file does not exist, continue without defaults (no error)
+- Supported config keys:
+  - `AZURE_SUBSCRIPTION_ID` - Azure subscription
+  - `AZURE_RESOURCE_GROUP` - Resource group for Arc machine
+  - `AZURE_LOCATION` - Azure region
+  - `AZURE_TENANT_ID` - Entra ID tenant
+  - `CRAWLER_MANAGED_IDENTITY_OBJECT_ID` - User-assigned MI to attach after connect
+  - `CRAWLER_MANAGED_IDENTITY_NAME` - Display name for the MI
 
-**AZARC-FR-05: Disconnect from Azure**
+**AZARC-FR-06: Connect to Azure**
+- Skip if already connected (show "Already connected to Azure Arc")
+- Display current values (from .env or empty) in numbered menu
+- User can select which parameter to change, or confirm all
+- Menu format (consistent with other scripts):
+  ```
+  Current configuration:
+    1 - Subscription:   [value or (not set)]
+    2 - Resource Group: [value or (not set)]
+    3 - Location:       [value or (not set)]
+    4 - Tenant:         [value or (not set)]
+    5 - Resource Name:  [hostname]
+    6 - Confirm and Connect
+    3 - Cancel
+  ```
+- Selecting a number allows overwriting that specific value
+- All values except Resource Name are required before confirm
+- Execute `azcmagent connect` with device code authentication
+- Pass `--tenant-id` if tenant is configured
+
+**AZARC-FR-07: Assign User-Assigned Managed Identity**
+- Skip if MI already attached (show "Managed identity already attached")
+- Skip if `CRAWLER_MANAGED_IDENTITY_OBJECT_ID` not configured
+- Check current identity assignments via Az.ConnectedMachine
+- If not attached, prompt user: "Assign managed identity 'NAME' (ID)? (Y/n)"
+- Use Az.ConnectedMachine PowerShell module to assign:
+  ```powershell
+  Update-AzConnectedMachine -Name $resourceName -ResourceGroupName $resourceGroup `
+    -IdentityType "SystemAssigned,UserAssigned" `
+    -IdentityUserAssignedIdentity @{$miResourceId = @{}}
+  ```
+- Requires: Az.ConnectedMachine module, Azure authentication
+- Display success/failure status
+
+**AZARC-FR-08: Disconnect from Azure**
 - Execute `azcmagent disconnect` with device code authentication
 - Confirm disconnection via `azcmagent show`
 
-**AZARC-FR-06: Uninstall Agent**
-- Prerequisite: Must be disconnected first (AZARC-FR-05)
+**AZARC-FR-09: Uninstall Agent**
+- Prerequisite: Must be disconnected first (AZARC-FR-08)
 - Uninstall via MSI: find product code in registry, run `msiexec /x {GUID} /qn`
 - Verify uninstallation
 
-**AZARC-FR-07: Error Handling**
+**AZARC-FR-10: Error Handling**
 - Display clear error messages for failures
 - Suggest remediation steps where possible
 - Exit gracefully on unrecoverable errors
 
-**AZARC-FR-08: Admin Check**
+**AZARC-FR-11: Admin Check**
 - Verify script runs with administrator privileges
 - Exit with message if not admin
 
@@ -144,6 +201,10 @@ Parameters needed for Arc onboarding.
 
 **AZARC-DD-05:** No service principal support. Rationale: Personal laptop scenario - don't want credential management complexity.
 
+**AZARC-DD-06:** Idempotent execution. Rationale: Script can be run multiple times safely - checks state before each action, skips completed steps.
+
+**AZARC-DD-07:** Portal not used for MI assignment. Rationale: Arc servers don't have Identity blade in Portal UI - must use Az.ConnectedMachine PowerShell module.
+
 ## 6. Implementation Guarantees
 
 **AZARC-IG-01:** Script will not modify system if user quits at any prompt.
@@ -153,6 +214,8 @@ Parameters needed for Arc onboarding.
 **AZARC-IG-03:** Current status is always shown before any action prompt.
 
 **AZARC-IG-04:** Agent uninstall only proceeds if disconnect confirmed successful.
+
+**AZARC-IG-05:** Running script multiple times is safe - completed steps are skipped with status message.
 
 ## 7. Key Mechanisms
 
@@ -193,31 +256,34 @@ After successful connection, managed identity tokens available via:
 
 ## 8. Action Flow
 
-### Install and Connect Flow
+### Idempotent Setup Flow (Complete Setup)
 
 ```
 Script Start
 ├─> Check-AdminPrivilege
 │   └─> If not admin: Exit with error
-├─> Get-ArcStatus
-│   └─> Display current status
-├─> Show-Menu (status: NotInstalled)
-│   └─> User selects "1 - Install and Connect"
-├─> Install-ArcAgent
-│   ├─> Download install_windows_azcmagent.ps1
-│   ├─> Execute installer
-│   └─> Verify: azcmagent version
-├─> Prompt-ConnectionParameters
-│   ├─> Read subscription ID
-│   ├─> Read resource group
-│   ├─> Read location
-│   └─> Read resource name (optional)
-├─> Connect-ToArc
-│   ├─> Execute: azcmagent connect --use-device-code ...
-│   ├─> Display device code URL and code
-│   ├─> Wait for user to authenticate
-│   └─> Verify connection: azcmagent show
-└─> Display success + managed identity info
+├─> Load-Configuration (.env file, optional)
+├─> Get-FullStatus
+│   ├─> Check agent installed?
+│   ├─> Check connected to Arc?
+│   └─> Check user-assigned MI attached?
+├─> Display-Checklist (shows [x] / [ ] for each step)
+├─> Show-Menu
+│   └─> User selects "1 - Complete Setup"
+├─> For each incomplete step:
+│   ├─> Step 1: Install Agent (if not installed)
+│   │   ├─> Download install_windows_azcmagent.ps1
+│   │   ├─> Execute installer
+│   │   └─> Verify: azcmagent version
+│   ├─> Step 2: Connect to Arc (if not connected)
+│   │   ├─> Show parameter menu (numbered, editable)
+│   │   ├─> Execute: azcmagent connect --use-device-code
+│   │   └─> Verify connection: azcmagent show
+│   └─> Step 3: Attach MI (if configured and not attached)
+│       ├─> Authenticate to Azure (Connect-AzAccount)
+│       ├─> Update-AzConnectedMachine with user-assigned MI
+│       └─> Verify: MI appears in identity list
+└─> Display final status (all [x] checked)
 ```
 
 ### Disconnect and Uninstall Flow
@@ -242,80 +308,93 @@ Script Start
 
 ## 9. Console Output Examples
 
-### Startup - Not Installed
+### Startup - Setup Incomplete (Checklist Format)
 
 ```
 ================================================================================
   Azure Arc-Enabled Server Management
 ================================================================================
 
-Current Status: NOT INSTALLED
-  Azure Connected Machine agent is not installed on this computer.
+Status:
+  [ ] Agent installed
+  [ ] Connected to Azure Arc
+  [ ] User-assigned MI attached (your-managed-identity-id)
 
 --------------------------------------------------------------------------------
 Options:
-  1 - Install Agent and Connect to Azure
-  Q - Quit
+  1 - Complete Setup (install, connect, attach MI)
+  3 - Quit
 
 Select option:
 ```
 
-### Startup - Disconnected (Agent Installed)
+### Startup - Partial Setup (Agent Installed, Not Connected)
 
 ```
 ================================================================================
   Azure Arc-Enabled Server Management
 ================================================================================
 
-Current Status: DISCONNECTED
-  Agent Version: 1.48.02831.1732
-  The agent is installed but not connected to Azure.
+Status:
+  [x] Agent installed (v1.61.03319.2737)
+  [ ] Connected to Azure Arc
+  [ ] User-assigned MI attached
 
 --------------------------------------------------------------------------------
 Options:
-  1 - Connect to Azure
+  1 - Complete Setup (connect, attach MI)
   2 - Uninstall Agent
-  Q - Quit
+  3 - Quit
 
 Select option:
 ```
 
-### Startup - Connected
+### Startup - All Complete
 
 ```
 ================================================================================
   Azure Arc-Enabled Server Management
 ================================================================================
 
-Current Status: CONNECTED
-  Resource Name:  YOURPC
-  Resource Group: ArcServers-RG
+Status:
+  [x] Agent installed (v1.61.03319.2737)
+  [x] Connected to Azure Arc (DESKTOP-7QNJLDI)
+  [x] User-assigned MI attached (your-managed-identity-id)
+
+Connection Details:
+  Resource Group: your-resource-group
   Subscription:   aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
   Location:       westeurope
-  Agent Version:  1.48.02831.1732
 
-Managed Identity Endpoint: http://localhost:40342/metadata/identity/oauth2/token
+Token Endpoint: http://localhost:40342/metadata/identity/oauth2/token
 
 --------------------------------------------------------------------------------
 Options:
   1 - Disconnect from Azure
   2 - Disconnect and Uninstall Agent
-  Q - Quit
+  3 - Quit
 
 Select option:
 ```
 
-### Connection Parameters Prompt
+### Connection Parameters Menu
 
 ```
 --------------------------------------------------------------------------------
   Connect to Azure Arc
 --------------------------------------------------------------------------------
 
-Enter Azure Subscription ID or Name: aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
-Enter Resource Group Name: ArcServers-RG
-Enter Azure Region (e.g., westeurope): westeurope
-Enter Resource Name (press Enter for 'YOURPC'): 
+Configuration (from .env):
+  1 - Subscription:   aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
+  2 - Resource Group: your-resource-group
+  3 - Location:       westeurope
+  4 - Tenant:         xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+  5 - Resource Name:  YOURPC
+
+  6 - Confirm and Connect
+  7 - Cancel
+
+Select option: 6
 
 Connecting with device code authentication...
 
@@ -323,6 +402,32 @@ To sign in, use a web browser to open the page https://microsoft.com/devicelogin
 and enter the code ABC123XYZ to authenticate.
 
 Waiting for authentication...
+```
+
+### Connection Parameters Menu (No .env)
+
+```
+--------------------------------------------------------------------------------
+  Connect to Azure Arc
+--------------------------------------------------------------------------------
+
+Configuration:
+  1 - Subscription:   (not set)
+  2 - Resource Group: (not set)
+  3 - Location:       (not set)
+  4 - Tenant:         (not set)
+  5 - Resource Name:  YOURPC
+
+  6 - Confirm and Connect
+  7 - Cancel
+
+Select option: 1
+Enter Subscription ID: aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
+
+Configuration:
+  1 - Subscription:   aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
+  2 - Resource Group: (not set)
+  ...
 ```
 
 ### Disconnect Confirmation
@@ -337,7 +442,10 @@ WARNING: This will:
   - Remove the managed identity
   - Keep the agent installed (can reconnect later)
 
-Are you sure you want to disconnect? (Y/N): Y
+1 - Yes, disconnect
+2 - No, cancel
+
+Select option: 1
 
 Disconnecting with device code authentication...
 
@@ -390,6 +498,34 @@ DisplayName = "Azure Connected Machine Agent"
 - `azcmagent disconnect --use-device-code` - Disconnect
 
 ## 11. Document History
+
+**[2026-03-15 20:55]**
+- Added: MUST-NOT-FORGET items (Portal limitation, idempotent requirement)
+- Added: UserAssignedMIAttached to ArcConnectionStatus domain object
+- Added: AZARC-DD-06 (Idempotent execution), AZARC-DD-07 (Portal not used for MI)
+- Added: AZARC-IG-05 (Multiple runs safe)
+- Changed: Console output examples to checklist format matching FR-03
+- Changed: Action Flow to "Idempotent Setup Flow" with step-by-step checks
+
+**[2026-03-15 20:50]**
+- Added: AZARC-FR-01 - Idempotent execution (run multiple times, only apply missing steps)
+- Changed: FR-02 Status Detection - check if MI already attached
+- Changed: FR-03 Main Menu - checklist format showing completion status
+- Changed: FR-04 Install Agent - skip if already installed
+- Changed: FR-06 Connect - skip if already connected
+- Changed: FR-07 Assign MI - skip if already attached
+- Changed: Renumbered all FRs (FR-01 to FR-11)
+
+**[2026-03-15 20:49]**
+- Added: AZARC-FR-06 - Assign user-assigned managed identity after connect
+- Added: CRAWLER_MANAGED_IDENTITY_OBJECT_ID and CRAWLER_MANAGED_IDENTITY_NAME to FR-04 config keys
+- Changed: Renumbered FR-06 to FR-07, FR-07 to FR-08, FR-08 to FR-09, FR-09 to FR-10
+
+**[2026-03-15 20:46]**
+- Added: AZARC-FR-04 - Configuration loading from .env (optional, no failure if missing)
+- Added: AZARC-FR-05 - Numbered menu for parameter selection with override capability
+- Changed: Renumbered FR-05 to FR-06, FR-06 to FR-07, FR-07 to FR-08, FR-08 to FR-09
+- Added: Console output examples for numbered parameter menu (with and without .env)
 
 **[2026-03-15 19:25]**
 - Changed: Doc ID from ARCS-SP01 to AZARC-SP01 (collision with Sites script)
