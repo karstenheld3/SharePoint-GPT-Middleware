@@ -110,26 +110,23 @@ function Test-UserAssignedMIAttached {
     
     $miObjectId = $script:Config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID
     if (-not $miObjectId) { return $false }
+    if (-not $Status.Connected) { return $false }
     
     try {
-        # Check if Az.ConnectedMachine module is available
-        if (-not (Get-Module -ListAvailable -Name Az.ConnectedMachine)) {
-            return $false
-        }
+        # Use Azure CLI to check machine identity
+        $azCmd = Get-Command az -ErrorAction SilentlyContinue
+        if (-not $azCmd) { return $false }
         
-        # Try to get the machine and check identities
-        $machine = Get-AzConnectedMachine -Name $Status.ResourceName -ResourceGroupName $Status.ResourceGroup -ErrorAction SilentlyContinue
-        if (-not $machine) { return $false }
+        $machineJson = az connectedmachine show `
+            --name $Status.ResourceName `
+            --resource-group $Status.ResourceGroup `
+            --query "identity" `
+            2>$null
         
-        # Check if user-assigned MI is in the list
-        if ($machine.IdentityUserAssignedIdentity) {
-            foreach ($key in $machine.IdentityUserAssignedIdentity.Keys) {
-                if ($key -match $miObjectId) {
-                    return $true
-                }
-            }
-        }
-        return $false
+        if ($LASTEXITCODE -ne 0 -or -not $machineJson) { return $false }
+        
+        # Check if user-assigned MI is in the identity
+        return $machineJson -match $miObjectId
     }
     catch {
         return $false
@@ -529,49 +526,64 @@ function Attach-UserAssignedMI {
     Write-Host ""
     Write-Host "Attaching user-assigned managed identity..."
     
+    # Check if Azure CLI is available
+    $azCmd = Get-Command az -ErrorAction SilentlyContinue
+    if (-not $azCmd) {
+        Write-Host ""
+        Write-Host "ERROR: " -NoNewline -ForegroundColor Red
+        Write-Host "Azure CLI (az) is not installed."
+        Write-Host ""
+        Write-Host "Install from: https://docs.microsoft.com/en-us/cli/azure/install-azure-cli"
+        return $false
+    }
+    
     try {
-        # Check if Az.ConnectedMachine module is available
-        if (-not (Get-Module -ListAvailable -Name Az.ConnectedMachine)) {
-            Write-Host ""
-            Write-Host "ERROR: " -NoNewline -ForegroundColor Red
-            Write-Host "Az.ConnectedMachine module is not installed."
-            Write-Host ""
-            Write-Host "To install, run: Install-Module -Name Az.ConnectedMachine -Scope CurrentUser"
-            return $false
-        }
-        
-        # Import module
-        Import-Module Az.ConnectedMachine -ErrorAction Stop
-        
-        # Check if connected to Azure
-        $azContext = Get-AzContext -ErrorAction SilentlyContinue
-        if (-not $azContext) {
-            Write-Host "Connecting to Azure..."
-            Connect-AzAccount -UseDeviceAuthentication
-        }
-        
         # Build the MI resource ID
         $subscriptionId = $Status.SubscriptionId
-        $miResourceId = "/subscriptions/$subscriptionId/resourceGroups/$($script:Config.AZURE_RESOURCE_GROUP)/providers/Microsoft.ManagedIdentity/userAssignedIdentities/$miName"
+        $resourceGroup = $Status.ResourceGroup
         
-        # If we don't have the MI name, try to construct from object ID
+        # Check CRAWLER_MANAGED_IDENTITY_RESOURCE_GROUP - MI may be in different RG
+        $miResourceGroup = $script:Config.CRAWLER_MANAGED_IDENTITY_RESOURCE_GROUP
+        if (-not $miResourceGroup) {
+            $miResourceGroup = $resourceGroup
+        }
+        
         if (-not $miName) {
             Write-Host "WARNING: " -NoNewline -ForegroundColor Yellow
             Write-Host "CRAWLER_MANAGED_IDENTITY_NAME not set in .env"
-            Write-Host "Please provide the full resource ID of the managed identity:"
-            $miResourceId = Read-Host "MI Resource ID"
+            Write-Host "Please provide the managed identity name:"
+            $miName = Read-Host "MI Name"
         }
         
-        Write-Host "Updating Arc machine with user-assigned MI..."
+        $miResourceId = "/subscriptions/$subscriptionId/resourceGroups/$miResourceGroup/providers/Microsoft.ManagedIdentity/userAssignedIdentities/$miName"
         
-        Update-AzConnectedMachine -Name $Status.ResourceName -ResourceGroupName $Status.ResourceGroup `
-            -IdentityType "SystemAssigned,UserAssigned" `
-            -IdentityUserAssignedIdentity @{$miResourceId = @{}}
-        
+        Write-Host "MI Resource ID: $miResourceId"
         Write-Host ""
-        Write-Host "SUCCESS: " -NoNewline -ForegroundColor Green
-        Write-Host "User-assigned managed identity attached."
-        return $true
+        Write-Host "Updating Arc machine with user-assigned MI via Azure CLI..."
+        Write-Host "(You may need to authenticate)"
+        Write-Host ""
+        
+        # Use Azure CLI to update the machine
+        $result = az connectedmachine update `
+            --name $Status.ResourceName `
+            --resource-group $resourceGroup `
+            --identity-type "SystemAssigned,UserAssigned" `
+            --user-assigned-identities $miResourceId `
+            2>&1
+        
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host ""
+            Write-Host "SUCCESS: " -NoNewline -ForegroundColor Green
+            Write-Host "User-assigned managed identity attached."
+            return $true
+        }
+        else {
+            Write-Host ""
+            Write-Host "ERROR: " -NoNewline -ForegroundColor Red
+            Write-Host "Failed to attach MI:"
+            Write-Host $result
+            return $false
+        }
     }
     catch {
         Write-Host ""
