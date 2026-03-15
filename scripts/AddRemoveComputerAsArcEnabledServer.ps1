@@ -567,18 +567,26 @@ function Show-SystemAssignedMI {
         Write-Host "    OK. Re-authenticated." -ForegroundColor Green
     }
     elseif ($accountExitCode -ne 0 -or -not $accountJson -or $accountJson -match "ERROR") {
-        Write-Host "    Not logged in. Running 'az login'..."
+        Write-Host "    Not logged in."
         
-        # Also delete cache files here in case login fails due to corruption
+        # Delete cache files BEFORE login attempt to prevent corruption issues
         $azureDir = Join-Path $env:USERPROFILE ".azure"
-        $cacheFiles = @("msal_token_cache.bin", "msal_token_cache.json", "accessTokens.json")
+        Write-Host "    Clearing Azure CLI cache files..."
+        $cacheFiles = @("msal_token_cache.bin", "msal_token_cache.json", "accessTokens.json", "service_principal_entries.json")
+        $deletedCount = 0
         foreach ($file in $cacheFiles) {
             $path = Join-Path $azureDir $file
             if (Test-Path $path) {
                 Remove-Item $path -Force -ErrorAction SilentlyContinue
+                Write-Host "      Deleted '$file'"
+                $deletedCount++
             }
         }
+        if ($deletedCount -eq 0) {
+            Write-Host "      No cache files found."
+        }
         
+        Write-Host "    Running 'az login'..."
         az login
         if ($LASTEXITCODE -ne 0) {
             Write-Host "    FAIL: Azure CLI login failed." -ForegroundColor Red
@@ -736,18 +744,26 @@ function Attach-UserAssignedMI {
         Write-Host "  OK. Re-authenticated." -ForegroundColor Green
     }
     elseif ($accountExitCode -ne 0 -or -not $accountJson) {
-        Write-Host "  Not logged in. Running 'az login'..."
+        Write-Host "  Not logged in."
         
-        # Delete cache files before login attempt
+        # Delete cache files BEFORE login attempt to prevent corruption issues
         $azureDir = Join-Path $env:USERPROFILE ".azure"
-        $cacheFiles = @("msal_token_cache.bin", "msal_token_cache.json", "accessTokens.json")
+        Write-Host "  Clearing Azure CLI cache files..."
+        $cacheFiles = @("msal_token_cache.bin", "msal_token_cache.json", "accessTokens.json", "service_principal_entries.json")
+        $deletedCount = 0
         foreach ($file in $cacheFiles) {
             $path = Join-Path $azureDir $file
             if (Test-Path $path) {
                 Remove-Item $path -Force -ErrorAction SilentlyContinue
+                Write-Host "    Deleted '$file'"
+                $deletedCount++
             }
         }
+        if ($deletedCount -eq 0) {
+            Write-Host "    No cache files found."
+        }
         
+        Write-Host "  Running 'az login'..."
         az login
         if ($LASTEXITCODE -ne 0) {
             Write-Host "  FAIL: Azure CLI login failed." -ForegroundColor Red
