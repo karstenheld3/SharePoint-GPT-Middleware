@@ -162,32 +162,40 @@ Parameters needed for Arc onboarding.
 **AZARC-FR-07: Assign User-Assigned Managed Identity**
 - Skip if MI already attached (show "Managed identity already attached")
 - Skip if `CRAWLER_MANAGED_IDENTITY_OBJECT_ID` not configured
-- Check current identity assignments via Az.ConnectedMachine
+- Check Azure CLI authentication first (`az account show`), run `az login` if needed
+- Check `connectedmachine` extension installed, auto-install if missing
 - If not attached, prompt user with numbered menu: `1 - Yes, attach MI` / `2 - No, skip`
-- Use Az.ConnectedMachine PowerShell module to assign:
-  ```powershell
-  Update-AzConnectedMachine -Name $resourceName -ResourceGroupName $resourceGroup `
-    -IdentityType "SystemAssigned,UserAssigned" `
-    -IdentityUserAssignedIdentity @{$miResourceId = @{}}
+- Use Azure CLI to assign (Az.ConnectedMachine module lacks this parameter):
+  ```bash
+  az connectedmachine update \
+    --name $resourceName \
+    --resource-group $resourceGroup \
+    --identity-type "SystemAssigned,UserAssigned" \
+    --user-assigned-identities $miResourceId
   ```
-- Requires: Az.ConnectedMachine module, Azure authentication
+- Requires: Azure CLI, `connectedmachine` extension, Azure authentication
 - Display success/failure status
 
-**AZARC-FR-08: Disconnect from Azure**
+**AZARC-FR-08: Show System-Assigned MI Details**
+- Query machine details via `az connectedmachine show`
+- Display: name, principal_id, tenant_id, type
+- Note: principal_id is used for RBAC role assignments
+
+**AZARC-FR-09: Disconnect from Azure**
 - Execute `azcmagent disconnect` with device code authentication
 - Confirm disconnection via `azcmagent show`
 
-**AZARC-FR-09: Uninstall Agent**
-- Prerequisite: Must be disconnected first (AZARC-FR-08)
+**AZARC-FR-10: Uninstall Agent**
+- Prerequisite: Must be disconnected first (AZARC-FR-09)
 - Uninstall via MSI: find product code in registry, run `msiexec /x {GUID} /qn`
 - Verify uninstallation
 
-**AZARC-FR-10: Error Handling**
+**AZARC-FR-11: Error Handling**
 - Display clear error messages for failures
 - Suggest remediation steps where possible
 - Exit gracefully on unrecoverable errors
 
-**AZARC-FR-11: Admin Check**
+**AZARC-FR-12: Admin Check**
 - Verify script runs with administrator privileges
 - Exit with message if not admin
 
@@ -205,7 +213,11 @@ Parameters needed for Arc onboarding.
 
 **AZARC-DD-06:** Idempotent execution. Rationale: Script can be run multiple times safely - checks state before each action, skips completed steps.
 
-**AZARC-DD-07:** Portal not used for MI assignment. Rationale: Arc servers don't have Identity blade in Portal UI - must use Az.ConnectedMachine PowerShell module.
+**AZARC-DD-07:** Portal not used for MI assignment. Rationale: Arc servers don't have Identity blade in Portal UI - must use Azure CLI.
+
+**AZARC-DD-08:** Use Azure CLI instead of Az.ConnectedMachine module. Rationale: `Update-AzConnectedMachine` lacks `-IdentityUserAssignedIdentity` parameter. Azure CLI `az connectedmachine update` supports `--user-assigned-identities`.
+
+**AZARC-DD-09:** Logging follows LOG-GN and LOG-UF rules. Rationale: Consistency with workspace conventions - 100-char headers, Announce>Track>Report pattern, `key='value'` property format.
 
 ## 6. Implementation Guarantees
 
@@ -354,27 +366,27 @@ Select option:
 ### Startup - All Complete
 
 ```
-================================================================================
-  Azure Arc-Enabled Server Management
-================================================================================
+==================================== START: AZURE ARC SERVER MANAGEMENT ====================================
 
 Status:
-  [x] Agent installed (v1.61.03319.2737)
-  [x] Connected to Azure Arc (DESKTOP-7QNJLDI)
-  [x] User-assigned MI attached (your-managed-identity-id)
+  [x] Agent installed (version='1.61.03319.2737')
+  [x] Connected to Azure Arc (name='DESKTOP-7QNJLDI')
+  [?] User-assigned MI configured (name='sharepoint-gpt-middleware-managed-identity')
 
 Connection Details:
-  Resource Group: your-resource-group
-  Subscription:   aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
-  Location:       westeurope
+  resource_group='wa-resourcegroup-01-swedencentral'
+  subscription='aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+  location='swedencentral'
 
 Token Endpoint: http://localhost:40342/metadata/identity/oauth2/token
 
 --------------------------------------------------------------------------------
 Options:
-  1 - Disconnect from Azure
-  2 - Disconnect and Uninstall Agent
-  3 - Quit
+  1 - Show System-Assigned MI Details
+  2 - Attach User-Assigned MI
+  3 - Disconnect from Azure
+  4 - Disconnect and Uninstall Agent
+  5 - Quit
 
 Select option:
 ```
@@ -500,6 +512,16 @@ DisplayName = "Azure Connected Machine Agent"
 - `azcmagent disconnect --use-device-code` - Disconnect
 
 ## 11. Document History
+
+**[2026-03-15 21:23]**
+- Added: AZARC-FR-08 - Show System-Assigned MI Details (new menu option)
+- Changed: FR-07 now uses Azure CLI instead of Az.ConnectedMachine module
+- Changed: FR-07 checks Azure CLI auth and connectedmachine extension first
+- Added: AZARC-DD-08 - Use Azure CLI (Update-AzConnectedMachine lacks MI parameter)
+- Added: AZARC-DD-09 - Logging follows LOG-GN and LOG-UF rules
+- Changed: Console examples updated with LOG-GN property format (key='value')
+- Changed: Console example shows new menu option 1 for MI details
+- Renumbered: FR-08 to FR-09, FR-09 to FR-10, FR-10 to FR-11, FR-11 to FR-12
 
 **[2026-03-15 21:00]**
 - Fixed: FR-03 menu options now consecutive (1,2 or 1,2,3 based on state)
