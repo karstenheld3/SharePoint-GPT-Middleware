@@ -542,6 +542,22 @@ function Attach-UserAssignedMI {
         return $false
     }
     
+    # Check Azure CLI authentication first
+    Write-Host ""
+    Write-Host "Checking Azure CLI authentication..."
+    $accountJson = az account show 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $accountJson) {
+        Write-Host "  Not logged in. Running 'az login'..."
+        az login
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  FAIL: Azure CLI login failed." -ForegroundColor Red
+            return $false
+        }
+    } else {
+        $account = $accountJson | ConvertFrom-Json
+        Write-Host "  OK. Logged in as '$($account.user.name)' (subscription='$($account.name)')." -ForegroundColor Green
+    }
+    
     # LOG-GN-09: Announce before execution
     Write-Host ""
     Write-Host "Attaching user-assigned MI to Arc machine..."
