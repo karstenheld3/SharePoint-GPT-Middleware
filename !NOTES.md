@@ -109,13 +109,13 @@ Run `/fix` workflow. See `.windsurf/workflows/fix.md` for 11-step process.
 
 | Context | Folder | ID Format | Docs Updated |
 |---------|--------|-----------|--------------|
-| SESSION-MODE | `[SESSION_FOLDER]/[TOPIC]-BG-NNN_*/` | 3-digit (session-local) | SPEC, IMPL, TEST |
-| PROJECT-MODE | `[BUGFIXES_FOLDER]/BG-NNNN_*/` | 4-digit (project-global) | SPEC, IMPL, TEST + `*_FIXES.md` |
+| SESSION-MODE | `[SESSION_FOLDER]/[TOPIC]-BG-NNNN_*/` | `[TOPIC]-BG-NNNN` | SPEC, IMPL, TEST |
+| PROJECT-MODE | `[BUGFIXES_FOLDER]/GLOB-BG-NNNN_*/` | `GLOB-BG-NNNN` | SPEC, IMPL, TEST + `*_FIXES.md` |
 
 **Guarantees**:
 - `[BUG_FOLDER]` created with all artifacts (both contexts)
 - Impact assessment before fix
 - All impacted functionality tested before commit
-- Commit message format: `fix([TOPIC]-BG-NNN):` or `fix(BG-NNNN):`
+- Commit message format: `fix([TOPIC]-BG-NNNN):` or `fix(GLOB-BG-NNNN):`
 
 **`_BugFixes` session** is persistent (never archived).
