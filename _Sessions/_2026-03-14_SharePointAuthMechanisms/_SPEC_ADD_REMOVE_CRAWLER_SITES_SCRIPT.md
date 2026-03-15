@@ -64,7 +64,7 @@ With the introduction of Managed Identity Client ID authentication (`CRAWLER_USE
 A **Target** represents an Azure AD identity (App Registration or Managed Identity Client ID) that needs Sites.Selected permissions.
 
 **Types:**
-- `certificate` - App Registration identified by `CRAWLER_CLIENT_ID`
+- `service_principal` - App Registration identified by `CRAWLER_CLIENT_ID`
 - `managed_identity` - Managed Identity Client ID identified by `CRAWLER_MANAGED_IDENTITY_OBJECT_ID`
 - `both` - Both targets (default for standard operations)
 
@@ -75,7 +75,7 @@ A **TargetConfig** holds the identifiers and display names for a target.
 **Properties:**
 - `id` - Client ID (Service Principal or Managed Identity)
 - `displayName` - From `CRAWLER_CLIENT_NAME` or derived
-- `type` - `certificate` or `managed_identity`
+- `type` - `service_principal` or `managed_identity`
 - `configured` - Boolean, whether the ID is present in .env
 
 ### SitePermissionStatus
@@ -99,14 +99,22 @@ A **SitePermissionStatus** represents the permission state for a site across bot
 - Display which targets are configured at startup
 
 **ARCS-FR-02: Discovery Phase**
-- Scan all SharePoint sites for permissions granted to BOTH identities (if both configured)
+- Prompt user before scanning:
+  ```
+  1 - Scan for existing sites in Sites.Selected
+  2 - Skip (proceed directly to add new site)
+  ```
+- If scan selected: scan all SharePoint sites for permissions granted to BOTH identities (if both configured)
 - Build merged list of sites with permission status per target
 - Display side-by-side status: `Service Principal Client ID: write  MI: (none)`
+- If skip selected: proceed to add menu only (no remove options available)
 
 **ARCS-FR-03: Action Menu**
 - Option 1: Add new site
 - Options 2-N: Remove site (one per discovered site)
+- Option Q: Quit
 - Show target summary in menu header
+- Loop back to menu after each operation until user selects Quit
 
 **ARCS-FR-04: Target Selection for Add**
 - After entering site URL and permission level, prompt for target
@@ -223,18 +231,18 @@ function Grant-SitePermissionToTargets {
     param(
         [string]$SiteUrl,
         [string]$Role,
-        [string[]]$Targets  # "certificate", "managed_identity", or both
+        [string[]]$Targets  # "service_principal", "managed_identity", or both
     )
     
     $results = @{}
     
     foreach ($target in $Targets) {
-        $appId = if ($target -eq "certificate") { 
+        $appId = if ($target -eq "service_principal") { 
             $config.CRAWLER_CLIENT_ID 
         } else { 
             $config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID 
         }
-        $displayName = if ($target -eq "certificate") {
+        $displayName = if ($target -eq "service_principal") {
             $config.CRAWLER_CLIENT_NAME
         } else {
             "Managed Identity Client ID"
@@ -318,93 +326,110 @@ User selects "Remove site X"
 ## 9. Menu Flow
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│ STARTUP                                                         │
-├─────────────────────────────────────────────────────────────────┤
-│ Managing SharePoint site permissions                            │
-│ Service Principal Client ID: abc123-... (SharePoint-GPT-Crawler)            │
-│ Managed Identity Client ID: def456-... (configured)                       │
-│   -or-                                                          │
-│ Managed Identity Client ID: not configured                                │
-│                                                                 │
-│ Connecting to SharePoint Admin...                               │
-└─────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│ STARTUP                                                       │
+├───────────────────────────────────────────────────────────────┤
+│ Managing SharePoint site permissions                          │
+│ Service Principal: abc123-... (SharePoint-GPT-Crawler)        │
+│ Managed Identity:  def456-... (configured)                    │
+│   -or-                                                        │
+│ Managed Identity:  not configured                             │
+│                                                               │
+│ Connecting to SharePoint Admin...                             │
+│   Connected successfully                                      │
+└───────────────────────────────────────────────────────────────┘
                               │
                               v
-┌─────────────────────────────────────────────────────────────────┐
-│ DISCOVERY                                                       │
-├─────────────────────────────────────────────────────────────────┤
-│ Scanning sites for app permissions...                           │
-│                                                                 │
-│ Currently configured sites:                                     │
-│   [1] https://contoso.sharepoint.com/sites/hr                   │
-│       Service Principal Client ID: write    Managed Identity Client ID: write         │
-│       Access Test: PASSED - 5 lists, 3 libraries                │
-│   [2] https://contoso.sharepoint.com/sites/finance              │
-│       Service Principal Client ID: read     Managed Identity Client ID: (none)        │
-│       Access Test: PASSED - 2 lists, 1 library                  │
-│   [3] https://contoso.sharepoint.com/sites/legal                │
-│       Service Principal Client ID: (none)   Managed Identity Client ID: read          │
-│       Access Test: N/A (no Service Principal Client ID permission)          │
-└─────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│ SCAN PROMPT                                                   │
+├───────────────────────────────────────────────────────────────┤
+│ Site Discovery                                                │
+│   1 - Scan for existing sites in Sites.Selected               │
+│   2 - Skip (proceed directly to add new site)                 │
+│                                                               │
+│ Select option [1]: _                                          │
+└───────────────────────────────────────────────────────────────┘
                               │
                               v
-┌─────────────────────────────────────────────────────────────────┐
-│ ACTION MENU                                                     │
-├─────────────────────────────────────────────────────────────────┤
-│ ========================================                        │
-│ SharePoint Site Permission Management                           │
-│ ========================================                        │
-│ Please select an option:                                        │
-│   1 - Add new site                                              │
-│   2 - Remove: https://contoso.sharepoint.com/sites/hr           │
-│   3 - Remove: https://contoso.sharepoint.com/sites/finance      │
-│   4 - Remove: https://contoso.sharepoint.com/sites/legal        │
-│                                                                 │
-│ Enter your choice (1-4): _                                      │
-└─────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│ DISCOVERY (if scan selected)                                  │
+├───────────────────────────────────────────────────────────────┤
+│ Discovering sites with app permissions...                     │
+│                                                               │
+│ Testing Service Principal access...                           │
+│   Client ID:   abc123-...                                     │
+│   Certificate: E:\Dev\...\SharePoint-GPT-Crawler.pfx          │
+│                                                               │
+│ Currently configured sites:                                   │
+│   [1] https://contoso.sharepoint.com/sites/hr                 │
+│       SP: write   MI: write   ACCESS=OK (5 lists, 3 libs)     │
+│   [2] https://contoso.sharepoint.com/sites/finance            │
+│       SP: read    MI: (none)  ACCESS=OK (2 lists, 1 lib)      │
+│   [3] https://contoso.sharepoint.com/sites/legal              │
+│       SP: (none)  MI: read    ACCESS=SKIP (no SP permission)  │
+└───────────────────────────────────────────────────────────────┘
+                              │
+                              v
+┌───────────────────────────────────────────────────────────────┐
+│ ACTION MENU                                                   │
+├───────────────────────────────────────────────────────────────┤
+│ ========================================                      │
+│ SharePoint Site Permission Management                         │
+│ ========================================                      │
+│   1 - Add new site                                            │
+│   2 - Remove: .../sites/hr                                    │
+│   3 - Remove: .../sites/finance                               │
+│   4 - Remove: .../sites/legal                                 │
+│   5 - Exit                                                    │
+│                                                               │
+│ Enter choice (1-5): _                                         │
+└───────────────────────────────────────────────────────────────┘
                               │
               ┌───────────────┴───────────────┐
               v                               v
-┌─────────────────────────────┐   ┌─────────────────────────────────┐
-│ ADD SITE                    │   │ REMOVE SITE                     │
-├─────────────────────────────┤   ├─────────────────────────────────┤
-│ Add new SharePoint site     │   │ Removing site:                  │
-│ ========================    │   │ https://contoso.../sites/hr     │
-│                             │   │ ================================│
-│ Enter the SharePoint site   │   │                                 │
-│ URL: _                      │   │ Current permissions:            │
-│                             │   │   Service Principal Client ID: write        │
-│ Select permission level:    │   │   Managed Identity Client ID: write       │
-│   1 - Read (default)        │   │                                 │
-│   2 - Write                 │   │ Select target:                  │
-│   3 - Full Control          │   │   1 - Both (default)            │
-│                             │   │   2 - Service Principal Client ID only      │
-│ Enter choice (1-3): _       │   │   3 - Managed Identity Client ID only     │
-│                             │   │                                 │
-│ Select target:              │   │ Enter choice (1-3): _           │
-│   1 - Both (default)        │   │                                 │
-│   2 - Service Principal Client ID only  │   │ Revoking permissions...         │
-│   3 - Managed Identity Client ID only │   │   Service Principal Client ID: OK           │
-│                             │   │   Managed Identity Client ID: OK          │
-│ Enter choice (1-3): _       │   │                                 │
-│                             │   │ SUCCESS: All permissions        │
-│ Granting write permission...│   │ revoked!                        │
-│   Service Principal Client ID: OK       │   │                                 │
-│   Managed Identity Client ID: OK      │   │                                 │
-│                             │   │                                 │
-│ SUCCESS: Permission granted │   │                                 │
-│ to both targets!            │   │                                 │
-└─────────────────────────────┘   └─────────────────────────────────┘
-                              │
+┌───────────────────────────┐   ┌───────────────────────────────┐
+│ ADD SITE                  │   │ REMOVE SITE                   │
+├───────────────────────────┤   ├───────────────────────────────┤
+│ Enter site URL: _         │   │ Removing: .../sites/hr        │
+│                           │   │                               │
+│ Select permission level:  │   │ Current permissions:          │
+│   1 - Read (default)      │   │   SP: write   MI: write       │
+│   2 - Write               │   │                               │
+│   3 - Full Control        │   │ Select target:                │
+│                           │   │   1 - Both (default)          │
+│ Select target:            │   │   2 - Service Principal only  │
+│   1 - Both (default)      │   │   3 - Managed Identity only   │
+│   2 - Service Principal   │   │                               │
+│   3 - Managed Identity    │   │ Revoking permissions...       │
+│                           │   │   Service Principal: OK       │
+│ Granting write...         │   │   Managed Identity:  OK       │
+│   Service Principal: OK   │   │                               │
+│   Managed Identity:  OK   │   │ SUCCESS: Permissions revoked  │
+│                           │   │                               │
+│ SUCCESS: Permission       │   │                               │
+│ granted to both targets!  │   │                               │
+└───────────────────────────┘   └───────────────────────────────┘
+              │                               │
+              └───────────────┬───────────────┘
                               v
-┌─────────────────────────────────────────────────────────────────┐
-│ COMPLETION                                                      │
-├─────────────────────────────────────────────────────────────────┤
-│ ========================================                        │
-│ Operation completed!                                            │
-│ ========================================                        │
-└─────────────────────────────────────────────────────────────────┘
+                   ┌──────────────────┐
+                   │ Loop back to     │
+                   │ ACTION MENU      │
+                   └────────┬─────────┘
+                            │
+            ┌───────────────┴───────────────┐
+            │                               │
+            v                               v
+     (Continue)                    (User selects Exit)
+            │                               │
+            │                               v
+            │              ┌────────────────────────────────────┐
+            │              │ COMPLETION                         │
+            │              ├────────────────────────────────────┤
+            │              │ Exiting...                         │
+            │              └────────────────────────────────────┘
+            │
+            └─────> (back to ACTION MENU)
 ```
 
 ## 10. Implementation Details
@@ -460,7 +485,7 @@ function Get-TargetsFromSelection {
         [Parameter(Mandatory=$true)] [string]$Selection,
         [Parameter(Mandatory=$true)] [bool]$HasManagedIdentity
     )
-    # Returns: @("certificate"), @("managed_identity"), or @("certificate", "managed_identity")
+    # Returns: @("service_principal"), @("managed_identity"), or @("service_principal", "managed_identity")
 }
 
 function Grant-SitePermissionToTargets {
@@ -470,7 +495,7 @@ function Grant-SitePermissionToTargets {
         [Parameter(Mandatory=$true)] [string[]]$Targets,
         [Parameter(Mandatory=$true)] [hashtable]$Config
     )
-    # Returns: @{ "certificate" = @{success=$true}; "managed_identity" = @{success=$false; error="..."} }
+    # Returns: @{ "service_principal" = @{success=$true}; "managed_identity" = @{success=$false; error="..."} }
 }
 
 function Revoke-SitePermissionFromTargets {
@@ -480,7 +505,7 @@ function Revoke-SitePermissionFromTargets {
         [Parameter(Mandatory=$true)] [hashtable]$SitePermissionStatus,
         [Parameter(Mandatory=$true)] [hashtable]$Config
     )
-    # Returns: @{ "certificate" = @{success=$true}; "managed_identity" = @{success=$true} }
+    # Returns: @{ "service_principal" = @{success=$true}; "managed_identity" = @{success=$true} }
 }
 
 function Get-MergedSitePermissions {
@@ -494,6 +519,18 @@ function Get-MergedSitePermissions {
 ```
 
 ## 11. Document History
+
+**[2026-03-15 19:23]**
+- Changed: Menu Flow recreated with cleaner formatting (shorter SP/MI labels)
+- Added: SCAN PROMPT step to Menu Flow diagram
+- Added: Certificate details in DISCOVERY section
+
+**[2026-03-15 19:20]**
+- Changed: Target type `certificate` renamed to `service_principal` for consistency with ARCP-SP01
+- Added: ARCS-FR-03 - Loop behavior and Quit option
+
+**[2026-03-15 19:08]**
+- Added: ARCS-FR-02 - Scan confirmation prompt (1=Scan, 2=Skip)
 
 **[2026-03-15 18:38]**
 - Changed: ARCS-FR-07 - Added explicit certificate path/name in access test logs
