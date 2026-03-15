@@ -812,18 +812,25 @@ function Attach-UserAssignedMI {
         
         # Use az rest instead of az connectedmachine update (extension has issues)
         $machineResourceId = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroup/providers/Microsoft.HybridCompute/machines/$($Status.ResourceName)"
-        $body = @{
+        
+        # Build JSON body and write to temp file (avoids PowerShell escaping issues)
+        $bodyObj = @{
             identity = @{
                 type = "SystemAssigned,UserAssigned"
                 userAssignedIdentities = @{
                     $miResourceId = @{}
                 }
             }
-        } | ConvertTo-Json -Depth 5 -Compress
+        }
+        $bodyJson = $bodyObj | ConvertTo-Json -Depth 5 -Compress
+        $tempFile = [System.IO.Path]::GetTempFileName()
+        $bodyJson | Out-File -FilePath $tempFile -Encoding utf8 -NoNewline
+        Write-Host "  body='$bodyJson'"
         
         $apiUrl = "https://management.azure.com${machineResourceId}?api-version=2024-07-10"
         Write-Host "  url='$apiUrl'"
-        $result = az rest --method PATCH --url $apiUrl --headers "Content-Type=application/json" --body $body 2>&1
+        $result = az rest --method PATCH --url $apiUrl --headers "Content-Type=application/json" --body "@$tempFile" 2>&1
+        Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
         $exitCode = $LASTEXITCODE
         Write-Host "  exit_code=$exitCode"
         
