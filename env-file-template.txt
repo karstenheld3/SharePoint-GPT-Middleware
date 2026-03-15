@@ -64,6 +64,7 @@ PNP_CLIENT_ID=<your_pnp_client_id>
 
 # Selftest: SharePoint site URL for crawler selftest (optional, only needed for running /v2/crawler/selftest)
 CRAWLER_SELFTEST_SHAREPOINT_SITE=https://<your_sharepoint_tenant>.sharepoint.com/sites/<your_test_site>
+CRAWLER_SELFTEST_DOMAIN=<domain_name>
 
 # ------------------------- END: Crawler Configuration ----------------------------------------------------------------
 

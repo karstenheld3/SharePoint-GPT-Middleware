@@ -6,11 +6,13 @@
 ## Table of Contents
 
 1. [SSE Streaming Pattern](#sse-streaming-pattern)
-2. [Logger Pattern](#logger-pattern)
-3. [Response Pattern](#response-pattern)
-4. [Import Pattern](#import-pattern)
-5. [Endpoint Structure Pattern](#endpoint-structure-pattern)
-6. [Selftest Button Pattern](#selftest-button-pattern)
+2. [Step Function Result Pattern](#step-function-result-pattern)
+3. [Logger Pattern](#logger-pattern)
+4. [Response Pattern](#response-pattern)
+5. [Import Pattern](#import-pattern)
+6. [Endpoint Structure Pattern](#endpoint-structure-pattern)
+7. [Selftest Button Pattern](#selftest-button-pattern)
+8. [Report Type Naming Convention](#report-type-naming-convention)
 
 ## SSE Streaming Pattern
 
@@ -64,6 +66,141 @@ async def run_selftest():
 # CORRECT - wrap at endpoint level
 return StreamingResponse(stream_with_flush(run_selftest()), ...)
 ```
+
+## Step Function Result Pattern
+
+**Intent**: Enable async generator step functions to return values while streaming SSE events.
+
+### The Problem
+
+Async generators can only `yield` values - they cannot `return` values that callers can access. When breaking complex streaming operations into step functions (download, process, embed), each step needs to:
+1. Yield SSE events for realtime UI updates
+2. Return a result object (counts, errors, status)
+
+Python limitation: `return result` in an async generator is unreachable by the caller.
+
+### The Solution
+
+**Use `StreamingJobWriter` as result transport:**
+
+```python
+from routers_v2.common_job_functions_v2 import StreamingJobWriter
+
+# Step function stores result via writer
+async def step_download_source(..., writer: StreamingJobWriter) -> AsyncGenerator[str, None]:
+  result = DownloadResult(source_id=source_id, downloaded=0, errors=0)
+  
+  # ... do work, yield SSE events ...
+  for sse in writer.drain_sse_queue(): yield sse
+  
+  result.downloaded = 5
+  writer.set_step_result(result)  # Store result before return
+
+# Caller retrieves result after iteration
+async for sse in step_download_source(..., writer):
+  yield sse
+result = writer.get_step_result()  # Retrieve after generator exhausted
+```
+
+### Components
+
+**`emit_log(message)` + `drain_sse_queue()`**
+- `MiddlewareLogger` calls `writer.emit_log()` which queues SSE events
+- After blocking I/O, step function drains queue: `for sse in writer.drain_sse_queue(): yield sse`
+- Enables realtime streaming even when logging happens in sync code paths
+
+**`set_step_result(result)` + `get_step_result()`**
+- Step function stores result: `writer.set_step_result(result)`
+- Caller retrieves after iteration: `result = writer.get_step_result()`
+- `get_step_result()` clears the stored value (single-use per step)
+
+### Complete Step Function Template
+
+```python
+async def step_do_work(
+  storage_path: str,
+  domain: DomainConfig,
+  writer: StreamingJobWriter,
+  logger: MiddlewareLogger
+) -> AsyncGenerator[str, None]:
+  """Async generator that yields SSE events. Result stored in writer.get_step_result()."""
+  result = WorkResult(items_processed=0, errors=0)
+  
+  try:
+    # Blocking I/O operation
+    items = fetch_items_from_api()  # Sync call holds event loop
+    
+    # Drain SSE queue after blocking operations (realtime streaming)
+    for sse in writer.drain_sse_queue(): yield sse
+    
+    for i, item in enumerate(items):
+      # Check for pause/cancel between items
+      async for control in writer.check_control():
+        if control == ControlAction.CANCEL:
+          writer.set_step_result(result)
+          return
+      
+      logger.log_function_output(f"Processing item {i+1}...")
+      process_item(item)
+      result.items_processed += 1
+      
+      # Drain SSE queue after each item (realtime streaming)
+      for sse in writer.drain_sse_queue(): yield sse
+      
+  except Exception as e:
+    logger.log_function_output(f"ERROR: {str(e)}")
+    result.errors += 1
+  
+  # Drain any remaining SSE events
+  for sse in writer.drain_sse_queue(): yield sse
+  
+  # Store result for caller retrieval
+  writer.set_step_result(result)
+```
+
+### Caller Pattern
+
+```python
+async def run_full_operation(...):
+  results = []
+  
+  # Call step function, yield all SSE events
+  async for sse in step_download_source(..., writer):
+    yield sse
+  results.append(writer.get_step_result())  # Get download result
+  
+  async for sse in step_process_source(..., writer):
+    yield sse
+  results.append(writer.get_step_result())  # Get process result
+  
+  async for sse in step_embed_source(..., writer):
+    yield sse
+  results.append(writer.get_step_result())  # Get embed result
+  
+  # Aggregate results
+  total = sum(r.items_processed for r in results)
+  yield writer.emit_end(ok=True, data={"total": total})
+```
+
+### Rules
+
+1. **Always drain SSE queue after blocking I/O** - `for sse in writer.drain_sse_queue(): yield sse`
+2. **Always set result before return** - `writer.set_step_result(result)`
+3. **Always get result after iteration** - `result = writer.get_step_result()`
+4. **Document return type** - Docstring: "Result stored in `writer.get_step_result()`"
+5. **Handle cancellation** - Check `writer.check_control()` in loops, set result before early return
+
+### Why This Pattern?
+
+- **Composability**: Step functions can be combined in different orders
+- **Realtime streaming**: SSE events flow to browser during blocking operations
+- **Result aggregation**: Caller can collect and summarize results from multiple steps
+- **Cancellation support**: Steps can be interrupted cleanly with partial results
+
+### Implementation Reference
+
+- `StreamingJobWriter`: `common_job_functions_v2.py` lines 35-346
+- Example step functions: `crawler.py` (`step_download_source`, `step_process_source`, `step_embed_source`)
 
 ## Logger Pattern
 
@@ -293,7 +430,38 @@ connectStream(url, { showResult: 'modal', reloadOnFinish: false });
 }
 ```
 
+## Report Type Naming Convention
+
+**Intent**: Consistent folder naming for report storage.
+
+### The Problem
+
+Report files are stored in folders named by type (e.g., `site_scans/`, `crawls/`). The `get_folder_for_type()` function automatically adds an 's' suffix to create plural folder names.
+
+### The Rule
+
+**Always use singular form for `report_type` parameter:**
+
+```python
+# CORRECT - singular form
+get_folder_for_type("site_scan")  # Returns "site_scans/"
+get_folder_for_type("crawl")      # Returns "crawls/"
+get_folder_for_type("custom")     # Returns "customs/"
+
+# WRONG - plural form causes double suffix
+get_folder_for_type("site_scans") # Returns "site_scanss/" - BAD!
+get_folder_for_type("crawls")     # Returns "crawlss/" - BAD!
+```
+
+### Implementation Reference
+
+- `get_folder_for_type()`: `common_report_functions_v2.py`
+
 ## Document History
+
+**[2026-03-15]**
+- Added Report Type Naming Convention pattern
+- Added Step Function Result Pattern (moved from !NOTES.md, expanded with full details)
 
 **[2026-03-06]**
 - Added Selftest Button Pattern (V2FX-PR-003)
