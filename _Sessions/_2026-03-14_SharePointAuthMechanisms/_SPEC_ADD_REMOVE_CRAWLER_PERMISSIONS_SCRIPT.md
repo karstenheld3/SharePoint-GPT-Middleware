@@ -49,6 +49,7 @@
 - Always requiring MI ID (local-only setups may not have MI)
 - Different menu patterns than ARCS-SP01 (consistency matters)
 - Silent failures when MI permission grant fails
+- User must enter letters when navigating menu. Only numbers starting with 1.
 
 ## 2. Context
 

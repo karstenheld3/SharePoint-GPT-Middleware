@@ -18,6 +18,7 @@
 - Windows client OS (10/11) supported only for "server-like" scenarios
 - Portal Identity blade NOT available for Arc servers - use CLI/PowerShell only
 - Script must be idempotent - safe to run multiple times
+- Only consecutive numbers in menus starting with 1
 
 ## Table of Contents
 
@@ -47,6 +48,7 @@
 - Automated/unattended installation (too risky for personal device)
 - Service principal authentication (requires secret management)
 - Partial cleanup (agent installed but not connected, or connected but not disconnected)
+- User must enter letters when navigating menu. Only numbers starting with 1.
 
 ## 2. Context
 
@@ -115,10 +117,10 @@ Parameters needed for Arc onboarding.
     [ ] User-assigned MI attached
   ```
 - Provide options based on current state:
-  - All complete: Show status only, offer Disconnect option
-  - Missing steps: `1 - Complete Setup` (runs missing steps only)
-  - Connected: `2 - Disconnect`, `3 - Disconnect and Uninstall`
-- Option `3 - Quit` always available
+  - All complete: `1 - Disconnect`, `2 - Disconnect and Uninstall`, `3 - Quit`
+  - Missing steps: `1 - Complete Setup`, `2 - Quit`
+  - Partial (agent only): `1 - Complete Setup`, `2 - Uninstall Agent`, `3 - Quit`
+- Quit is always the last numbered option
 
 **AZARC-FR-04: Install Agent**
 - Skip if already installed (show "Agent already installed")
@@ -150,7 +152,7 @@ Parameters needed for Arc onboarding.
     4 - Tenant:         [value or (not set)]
     5 - Resource Name:  [hostname]
     6 - Confirm and Connect
-    3 - Cancel
+    7 - Cancel
   ```
 - Selecting a number allows overwriting that specific value
 - All values except Resource Name are required before confirm
@@ -161,7 +163,7 @@ Parameters needed for Arc onboarding.
 - Skip if MI already attached (show "Managed identity already attached")
 - Skip if `CRAWLER_MANAGED_IDENTITY_OBJECT_ID` not configured
 - Check current identity assignments via Az.ConnectedMachine
-- If not attached, prompt user: "Assign managed identity 'NAME' (ID)? (Y/n)"
+- If not attached, prompt user with numbered menu: `1 - Yes, attach MI` / `2 - No, skip`
 - Use Az.ConnectedMachine PowerShell module to assign:
   ```powershell
   Update-AzConnectedMachine -Name $resourceName -ResourceGroupName $resourceGroup `
@@ -323,7 +325,7 @@ Status:
 --------------------------------------------------------------------------------
 Options:
   1 - Complete Setup (install, connect, attach MI)
-  3 - Quit
+  2 - Quit
 
 Select option:
 ```
@@ -498,6 +500,12 @@ DisplayName = "Azure Connected Machine Agent"
 - `azcmagent disconnect --use-device-code` - Disconnect
 
 ## 11. Document History
+
+**[2026-03-15 21:00]**
+- Fixed: FR-03 menu options now consecutive (1,2 or 1,2,3 based on state)
+- Fixed: FR-06 Cancel option 7 (was duplicate 3 conflicting with Location)
+- Fixed: FR-07 Y/n prompt changed to numbered menu (1-Yes, 2-No)
+- Fixed: Console example "Setup Incomplete" uses 1,2 not 1,3
 
 **[2026-03-15 20:55]**
 - Added: MUST-NOT-FORGET items (Portal limitation, idempotent requirement)

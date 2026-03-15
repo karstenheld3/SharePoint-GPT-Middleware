@@ -46,6 +46,7 @@
 - Separate scripts for Certificate vs MI (duplication, divergence risk)
 - Always requiring both IDs (MI is optional for local-only setups)
 - Hidden/automatic target selection (admin must explicitly choose)
+- User must enter letters when navigating menu. Only numbers starting with 1.
 
 ## 2. Context
 

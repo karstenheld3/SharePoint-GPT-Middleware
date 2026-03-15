@@ -29,6 +29,9 @@ $script:InstallerPath = "$env:TEMP\install_windows_azcmagent.ps1"
 # Workspace root is parent of scripts/ folder
 $script:WorkspaceRoot = Split-Path $PSScriptRoot -Parent
 
+# Configuration loaded from .env (populated in main)
+$script:Config = @{}
+
 # =============================================================================
 # Helper Functions
 # =============================================================================
@@ -54,41 +57,82 @@ function Test-AdminPrivilege {
 }
 
 function Get-ArcStatus {
-    if (-not (Test-Path $script:AgentPath)) {
-        return @{
-            Status = "NotInstalled"
-            AgentInstalled = $false
-        }
+    $result = @{
+        AgentInstalled = $false
+        Connected = $false
+        UserAssignedMIAttached = $false
+        AgentVersion = $null
+        ResourceName = $null
+        ResourceGroup = $null
+        SubscriptionId = $null
+        TenantId = $null
+        Location = $null
     }
     
+    # Check agent installed
+    if (-not (Test-Path $script:AgentPath)) {
+        return $result
+    }
+    $result.AgentInstalled = $true
+    
+    # Check connection status
     try {
         $jsonOutput = & $script:AgentPath show --json 2>$null
         if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($jsonOutput)) {
-            return @{
-                Status = "Disconnected"
-                AgentInstalled = $true
-                AgentVersion = (& $script:AgentPath version 2>$null)
-            }
+            $result.AgentVersion = (& $script:AgentPath version 2>$null)
+            return $result
         }
         
         $info = $jsonOutput | ConvertFrom-Json
-        return @{
-            Status = if ($info.status -eq "Connected") { "Connected" } else { "Disconnected" }
-            AgentInstalled = $true
-            AgentVersion = $info.agentVersion
-            ResourceName = $info.resourceName
-            ResourceGroup = $info.resourceGroup
-            SubscriptionId = $info.subscriptionId
-            TenantId = $info.tenantId
-            Location = $info.location
-        }
+        $result.Connected = ($info.status -eq "Connected")
+        $result.AgentVersion = $info.agentVersion
+        $result.ResourceName = $info.resourceName
+        $result.ResourceGroup = $info.resourceGroup
+        $result.SubscriptionId = $info.subscriptionId
+        $result.TenantId = $info.tenantId
+        $result.Location = $info.location
     }
     catch {
-        return @{
-            Status = "Disconnected"
-            AgentInstalled = $true
-            AgentVersion = "Unknown"
+        $result.AgentVersion = "Unknown"
+        return $result
+    }
+    
+    # Check if user-assigned MI is attached (only if connected and MI configured)
+    if ($result.Connected -and $script:Config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID) {
+        $result.UserAssignedMIAttached = Test-UserAssignedMIAttached -Status $result
+    }
+    
+    return $result
+}
+
+function Test-UserAssignedMIAttached {
+    param([hashtable]$Status)
+    
+    $miObjectId = $script:Config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID
+    if (-not $miObjectId) { return $false }
+    
+    try {
+        # Check if Az.ConnectedMachine module is available
+        if (-not (Get-Module -ListAvailable -Name Az.ConnectedMachine)) {
+            return $false
         }
+        
+        # Try to get the machine and check identities
+        $machine = Get-AzConnectedMachine -Name $Status.ResourceName -ResourceGroupName $Status.ResourceGroup -ErrorAction SilentlyContinue
+        if (-not $machine) { return $false }
+        
+        # Check if user-assigned MI is in the list
+        if ($machine.IdentityUserAssignedIdentity) {
+            foreach ($key in $machine.IdentityUserAssignedIdentity.Keys) {
+                if ($key -match $miObjectId) {
+                    return $true
+                }
+            }
+        }
+        return $false
+    }
+    catch {
+        return $false
     }
 }
 
@@ -104,35 +148,56 @@ function Show-Header {
     Write-Host ""
 }
 
-function Show-Status {
+function Show-Checklist {
     param([hashtable]$Status)
     
-    switch ($Status.Status) {
-        "NotInstalled" {
-            Write-Host "Current Status: " -NoNewline
-            Write-Host "NOT INSTALLED" -ForegroundColor Yellow
-            Write-Host "  Azure Connected Machine agent is not installed on this computer."
-        }
-        "Disconnected" {
-            Write-Host "Current Status: " -NoNewline
-            Write-Host "DISCONNECTED" -ForegroundColor Yellow
-            Write-Host "  Agent Version: $($Status.AgentVersion)"
-            Write-Host "  The agent is installed but not connected to Azure."
-        }
-        "Connected" {
-            Write-Host "Current Status: " -NoNewline
-            Write-Host "CONNECTED" -ForegroundColor Green
-            Write-Host "  Resource Name:  $($Status.ResourceName)"
-            Write-Host "  Resource Group: $($Status.ResourceGroup)"
-            Write-Host "  Subscription:   $($Status.SubscriptionId)"
-            Write-Host "  Location:       $($Status.Location)"
-            Write-Host "  Agent Version:  $($Status.AgentVersion)"
-            Write-Host ""
-            Write-Host "Managed Identity Endpoint: " -NoNewline
-            Write-Host "http://localhost:40342/metadata/identity/oauth2/token" -ForegroundColor Cyan
+    Write-Host "Status:"
+    
+    # Agent installed
+    if ($Status.AgentInstalled) {
+        Write-Host "  [" -NoNewline
+        Write-Host "x" -ForegroundColor Green -NoNewline
+        Write-Host "] Agent installed (v$($Status.AgentVersion))"
+    } else {
+        Write-Host "  [ ] Agent installed"
+    }
+    
+    # Connected to Arc
+    if ($Status.Connected) {
+        Write-Host "  [" -NoNewline
+        Write-Host "x" -ForegroundColor Green -NoNewline
+        Write-Host "] Connected to Azure Arc ($($Status.ResourceName))"
+    } else {
+        Write-Host "  [ ] Connected to Azure Arc"
+    }
+    
+    # User-assigned MI attached
+    $miId = $script:Config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID
+    $miName = $script:Config.CRAWLER_MANAGED_IDENTITY_NAME
+    if ($miId) {
+        $miDisplay = if ($miName) { "$miName ($miId)" } else { $miId }
+        if ($Status.UserAssignedMIAttached) {
+            Write-Host "  [" -NoNewline
+            Write-Host "x" -ForegroundColor Green -NoNewline
+            Write-Host "] User-assigned MI attached ($miDisplay)"
+        } else {
+            Write-Host "  [ ] User-assigned MI attached ($miDisplay)"
         }
     }
+    
     Write-Host ""
+    
+    # Show connection details if connected
+    if ($Status.Connected) {
+        Write-Host "Connection Details:"
+        Write-Host "  Resource Group: $($Status.ResourceGroup)"
+        Write-Host "  Subscription:   $($Status.SubscriptionId)"
+        Write-Host "  Location:       $($Status.Location)"
+        Write-Host ""
+        Write-Host "Token Endpoint: " -NoNewline
+        Write-Host "http://localhost:40342/metadata/identity/oauth2/token" -ForegroundColor Cyan
+        Write-Host ""
+    }
 }
 
 function Show-Menu {
@@ -141,31 +206,41 @@ function Show-Menu {
     Write-Host "--------------------------------------------------------------------------------"
     Write-Host "Options:"
     
-    switch ($Status.Status) {
-        "NotInstalled" {
-            Write-Host "  1 - Install Agent and Connect to Azure"
-            Write-Host "  Q - Quit"
-            Write-Host ""
-            $choice = Read-Host "Select option"
-            return $choice
-        }
-        "Disconnected" {
-            Write-Host "  1 - Connect to Azure"
-            Write-Host "  2 - Uninstall Agent"
-            Write-Host "  Q - Quit"
-            Write-Host ""
-            $choice = Read-Host "Select option"
-            return $choice
-        }
-        "Connected" {
-            Write-Host "  1 - Disconnect from Azure"
-            Write-Host "  2 - Disconnect and Uninstall Agent"
-            Write-Host "  Q - Quit"
-            Write-Host ""
-            $choice = Read-Host "Select option"
-            return $choice
-        }
+    # Determine what steps are missing
+    $allComplete = $Status.AgentInstalled -and $Status.Connected
+    $miConfigured = [bool]$script:Config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID
+    if ($miConfigured) {
+        $allComplete = $allComplete -and $Status.UserAssignedMIAttached
     }
+    
+    if ($allComplete) {
+        # All complete - offer disconnect options
+        Write-Host "  1 - Disconnect from Azure"
+        Write-Host "  2 - Disconnect and Uninstall Agent"
+        Write-Host "  3 - Quit"
+    }
+    elseif ($Status.AgentInstalled -and -not $Status.Connected) {
+        # Agent installed but not connected
+        Write-Host "  1 - Complete Setup (connect, attach MI)"
+        Write-Host "  2 - Uninstall Agent"
+        Write-Host "  3 - Quit"
+    }
+    elseif ($Status.Connected -and $miConfigured -and -not $Status.UserAssignedMIAttached) {
+        # Connected but MI not attached
+        Write-Host "  1 - Attach User-Assigned MI"
+        Write-Host "  2 - Disconnect from Azure"
+        Write-Host "  3 - Disconnect and Uninstall Agent"
+        Write-Host "  4 - Quit"
+    }
+    else {
+        # Nothing installed - full setup needed
+        Write-Host "  1 - Complete Setup (install, connect, attach MI)"
+        Write-Host "  2 - Quit"
+    }
+    
+    Write-Host ""
+    $choice = Read-Host "Select option"
+    return $choice
 }
 
 # =============================================================================
@@ -221,76 +296,100 @@ function Install-ArcAgent {
 # =============================================================================
 
 function Read-ConnectionParams {
-    Write-Host ""
-    Write-Host "--------------------------------------------------------------------------------"
-    Write-Host "  Connect to Azure Arc"
-    Write-Host "--------------------------------------------------------------------------------"
-    Write-Host ""
+    # Initialize with defaults from config
+    $params = @{
+        SubscriptionId = $script:Config.AZURE_SUBSCRIPTION_ID
+        ResourceGroup = $script:Config.AZURE_RESOURCE_GROUP
+        Location = $script:Config.AZURE_LOCATION
+        TenantId = $script:Config.AZURE_TENANT_ID
+        ResourceName = $env:COMPUTERNAME
+    }
     
-    # Load defaults from .env file
-    $envPath = Join-Path $script:WorkspaceRoot ".env"
-    $config = Read-EnvFile -Path $envPath
-    
-    $defaultSubscription = $config.AZURE_SUBSCRIPTION_ID
-    $defaultResourceGroup = $config.AZURE_RESOURCE_GROUP
-    $defaultLocation = $config.AZURE_LOCATION
-    $defaultTenant = $config.AZURE_TENANT_ID
-    
-    # Show defaults if available
-    if ($defaultSubscription) {
-        Write-Host "Defaults from .env:" -ForegroundColor Gray
-        Write-Host "  Subscription:   $defaultSubscription" -ForegroundColor Gray
-        Write-Host "  Resource Group: $defaultResourceGroup" -ForegroundColor Gray
-        Write-Host "  Location:       $defaultLocation" -ForegroundColor Gray
-        Write-Host "  Tenant:         $defaultTenant" -ForegroundColor Gray
+    while ($true) {
         Write-Host ""
-    }
-    
-    $prompt = if ($defaultSubscription) { "Enter Azure Subscription ID (Enter for '$defaultSubscription')" } else { "Enter Azure Subscription ID or Name" }
-    $subscriptionId = Read-Host $prompt
-    if ([string]::IsNullOrWhiteSpace($subscriptionId)) {
-        if ($defaultSubscription) { $subscriptionId = $defaultSubscription }
-        else {
-            Write-Host "ERROR: " -NoNewline -ForegroundColor Red
-            Write-Host "Subscription ID is required."
-            return $null
+        Write-Host "--------------------------------------------------------------------------------"
+        Write-Host "  Connect to Azure Arc"
+        Write-Host "--------------------------------------------------------------------------------"
+        Write-Host ""
+        
+        $hasEnv = [bool]$script:Config.AZURE_SUBSCRIPTION_ID
+        if ($hasEnv) {
+            Write-Host "Configuration (from .env):"
+        } else {
+            Write-Host "Configuration:"
         }
-    }
-    
-    $prompt = if ($defaultResourceGroup) { "Enter Resource Group Name (Enter for '$defaultResourceGroup')" } else { "Enter Resource Group Name" }
-    $resourceGroup = Read-Host $prompt
-    if ([string]::IsNullOrWhiteSpace($resourceGroup)) {
-        if ($defaultResourceGroup) { $resourceGroup = $defaultResourceGroup }
-        else {
-            Write-Host "ERROR: " -NoNewline -ForegroundColor Red
-            Write-Host "Resource Group is required."
-            return $null
+        
+        $subDisplay = if ($params.SubscriptionId) { $params.SubscriptionId } else { "(not set)" }
+        $rgDisplay = if ($params.ResourceGroup) { $params.ResourceGroup } else { "(not set)" }
+        $locDisplay = if ($params.Location) { $params.Location } else { "(not set)" }
+        $tenDisplay = if ($params.TenantId) { $params.TenantId } else { "(not set)" }
+        
+        Write-Host "  1 - Subscription:   $subDisplay"
+        Write-Host "  2 - Resource Group: $rgDisplay"
+        Write-Host "  3 - Location:       $locDisplay"
+        Write-Host "  4 - Tenant:         $tenDisplay"
+        Write-Host "  5 - Resource Name:  $($params.ResourceName)"
+        Write-Host ""
+        Write-Host "  6 - Confirm and Connect"
+        Write-Host "  7 - Cancel"
+        Write-Host ""
+        
+        $choice = Read-Host "Select option"
+        
+        switch ($choice) {
+            "1" {
+                $value = Read-Host "Enter Subscription ID"
+                if (-not [string]::IsNullOrWhiteSpace($value)) {
+                    $params.SubscriptionId = $value
+                }
+            }
+            "2" {
+                $value = Read-Host "Enter Resource Group"
+                if (-not [string]::IsNullOrWhiteSpace($value)) {
+                    $params.ResourceGroup = $value
+                }
+            }
+            "3" {
+                $value = Read-Host "Enter Location (e.g., westeurope)"
+                if (-not [string]::IsNullOrWhiteSpace($value)) {
+                    $params.Location = $value
+                }
+            }
+            "4" {
+                $value = Read-Host "Enter Tenant ID"
+                if (-not [string]::IsNullOrWhiteSpace($value)) {
+                    $params.TenantId = $value
+                }
+            }
+            "5" {
+                $value = Read-Host "Enter Resource Name"
+                if (-not [string]::IsNullOrWhiteSpace($value)) {
+                    $params.ResourceName = $value
+                }
+            }
+            "6" {
+                # Validate required fields
+                if (-not $params.SubscriptionId) {
+                    Write-Host "ERROR: Subscription ID is required." -ForegroundColor Red
+                    continue
+                }
+                if (-not $params.ResourceGroup) {
+                    Write-Host "ERROR: Resource Group is required." -ForegroundColor Red
+                    continue
+                }
+                if (-not $params.Location) {
+                    Write-Host "ERROR: Location is required." -ForegroundColor Red
+                    continue
+                }
+                return $params
+            }
+            "7" {
+                return $null
+            }
+            default {
+                Write-Host "Invalid option." -ForegroundColor Yellow
+            }
         }
-    }
-    
-    $prompt = if ($defaultLocation) { "Enter Azure Region (Enter for '$defaultLocation')" } else { "Enter Azure Region (e.g., westeurope)" }
-    $location = Read-Host $prompt
-    if ([string]::IsNullOrWhiteSpace($location)) {
-        if ($defaultLocation) { $location = $defaultLocation }
-        else {
-            Write-Host "ERROR: " -NoNewline -ForegroundColor Red
-            Write-Host "Location is required."
-            return $null
-        }
-    }
-    
-    $defaultName = $env:COMPUTERNAME
-    $resourceName = Read-Host "Enter Resource Name (Enter for '$defaultName')"
-    if ([string]::IsNullOrWhiteSpace($resourceName)) {
-        $resourceName = $defaultName
-    }
-    
-    return @{
-        SubscriptionId = $subscriptionId
-        ResourceGroup = $resourceGroup
-        TenantId = $defaultTenant
-        Location = $location
-        ResourceName = $resourceName
     }
 }
 
@@ -356,9 +455,12 @@ function Disconnect-FromArc {
     Write-Host "  - Remove the managed identity"
     Write-Host "  - Keep the agent installed (can reconnect later)"
     Write-Host ""
+    Write-Host "1 - Yes, disconnect"
+    Write-Host "2 - No, cancel"
+    Write-Host ""
     
-    $confirm = Read-Host "Are you sure you want to disconnect? (Y/N)"
-    if ($confirm -ne "Y" -and $confirm -ne "y") {
+    $confirm = Read-Host "Select option"
+    if ($confirm -ne "1") {
         Write-Host "Cancelled."
         return $false
     }
@@ -386,6 +488,95 @@ function Disconnect-FromArc {
     catch {
         Write-Host "ERROR: " -NoNewline -ForegroundColor Red
         Write-Host "Failed to disconnect: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+# =============================================================================
+# User-Assigned Managed Identity Functions
+# =============================================================================
+
+function Attach-UserAssignedMI {
+    param([hashtable]$Status)
+    
+    $miObjectId = $script:Config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID
+    $miName = $script:Config.CRAWLER_MANAGED_IDENTITY_NAME
+    
+    if (-not $miObjectId) {
+        Write-Host "No user-assigned MI configured in .env" -ForegroundColor Gray
+        return $false
+    }
+    
+    Write-Host ""
+    Write-Host "--------------------------------------------------------------------------------"
+    Write-Host "  Attach User-Assigned Managed Identity"
+    Write-Host "--------------------------------------------------------------------------------"
+    Write-Host ""
+    
+    $miDisplay = if ($miName) { "$miName ($miObjectId)" } else { $miObjectId }
+    Write-Host "Managed Identity: $miDisplay"
+    Write-Host ""
+    Write-Host "1 - Yes, attach MI"
+    Write-Host "2 - No, skip"
+    Write-Host ""
+    
+    $confirm = Read-Host "Select option"
+    if ($confirm -ne "1") {
+        Write-Host "Skipped."
+        return $false
+    }
+    
+    Write-Host ""
+    Write-Host "Attaching user-assigned managed identity..."
+    
+    try {
+        # Check if Az.ConnectedMachine module is available
+        if (-not (Get-Module -ListAvailable -Name Az.ConnectedMachine)) {
+            Write-Host ""
+            Write-Host "ERROR: " -NoNewline -ForegroundColor Red
+            Write-Host "Az.ConnectedMachine module is not installed."
+            Write-Host ""
+            Write-Host "To install, run: Install-Module -Name Az.ConnectedMachine -Scope CurrentUser"
+            return $false
+        }
+        
+        # Import module
+        Import-Module Az.ConnectedMachine -ErrorAction Stop
+        
+        # Check if connected to Azure
+        $azContext = Get-AzContext -ErrorAction SilentlyContinue
+        if (-not $azContext) {
+            Write-Host "Connecting to Azure..."
+            Connect-AzAccount -UseDeviceAuthentication
+        }
+        
+        # Build the MI resource ID
+        $subscriptionId = $Status.SubscriptionId
+        $miResourceId = "/subscriptions/$subscriptionId/resourceGroups/$($script:Config.AZURE_RESOURCE_GROUP)/providers/Microsoft.ManagedIdentity/userAssignedIdentities/$miName"
+        
+        # If we don't have the MI name, try to construct from object ID
+        if (-not $miName) {
+            Write-Host "WARNING: " -NoNewline -ForegroundColor Yellow
+            Write-Host "CRAWLER_MANAGED_IDENTITY_NAME not set in .env"
+            Write-Host "Please provide the full resource ID of the managed identity:"
+            $miResourceId = Read-Host "MI Resource ID"
+        }
+        
+        Write-Host "Updating Arc machine with user-assigned MI..."
+        
+        Update-AzConnectedMachine -Name $Status.ResourceName -ResourceGroupName $Status.ResourceGroup `
+            -IdentityType "SystemAssigned,UserAssigned" `
+            -IdentityUserAssignedIdentity @{$miResourceId = @{}}
+        
+        Write-Host ""
+        Write-Host "SUCCESS: " -NoNewline -ForegroundColor Green
+        Write-Host "User-assigned managed identity attached."
+        return $true
+    }
+    catch {
+        Write-Host ""
+        Write-Host "ERROR: " -NoNewline -ForegroundColor Red
+        Write-Host "Failed to attach MI: $($_.Exception.Message)"
         return $false
     }
 }
@@ -451,6 +642,63 @@ function Uninstall-ArcAgent {
 }
 
 # =============================================================================
+# Idempotent Setup Flow
+# =============================================================================
+
+function Invoke-CompleteSetup {
+    param([hashtable]$Status)
+    
+    # Step 1: Install agent if not installed
+    if (-not $Status.AgentInstalled) {
+        Write-Host ""
+        Write-Host "Step 1/3: Installing agent..." -ForegroundColor Cyan
+        if (-not (Install-ArcAgent)) {
+            return $false
+        }
+    } else {
+        Write-Host ""
+        Write-Host "Step 1/3: Agent already installed - skipping" -ForegroundColor Gray
+    }
+    
+    # Step 2: Connect to Arc if not connected
+    if (-not $Status.Connected) {
+        Write-Host ""
+        Write-Host "Step 2/3: Connecting to Azure Arc..." -ForegroundColor Cyan
+        $params = Read-ConnectionParams
+        if (-not $params) {
+            Write-Host "Connection cancelled."
+            return $false
+        }
+        if (-not (Connect-ToArc -Params $params)) {
+            return $false
+        }
+        # Refresh status after connection
+        $Status = Get-ArcStatus
+    } else {
+        Write-Host ""
+        Write-Host "Step 2/3: Already connected to Azure Arc - skipping" -ForegroundColor Gray
+    }
+    
+    # Step 3: Attach user-assigned MI if configured and not attached
+    $miConfigured = [bool]$script:Config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID
+    if ($miConfigured -and -not $Status.UserAssignedMIAttached) {
+        Write-Host ""
+        Write-Host "Step 3/3: Attaching user-assigned MI..." -ForegroundColor Cyan
+        Attach-UserAssignedMI -Status $Status
+    } elseif ($miConfigured) {
+        Write-Host ""
+        Write-Host "Step 3/3: User-assigned MI already attached - skipping" -ForegroundColor Gray
+    } else {
+        Write-Host ""
+        Write-Host "Step 3/3: No user-assigned MI configured - skipping" -ForegroundColor Gray
+    }
+    
+    Write-Host ""
+    Write-Host "Setup complete!" -ForegroundColor Green
+    return $true
+}
+
+# =============================================================================
 # Main Script
 # =============================================================================
 
@@ -462,54 +710,67 @@ if (-not (Test-AdminPrivilege)) {
     exit 1
 }
 
+# Load configuration from .env
+$envPath = Join-Path $script:WorkspaceRoot ".env"
+$script:Config = Read-EnvFile -Path $envPath
+
 # Get current status
 $status = Get-ArcStatus
 
 # Display UI
 Show-Header
-Show-Status -Status $status
+Show-Checklist -Status $status
 $choice = Show-Menu -Status $status
 
-# Handle user choice based on current state
-switch ($status.Status) {
-    "NotInstalled" {
-        switch ($choice.ToUpper()) {
-            "1" {
-                if (Install-ArcAgent) {
-                    $params = Read-ConnectionParams
-                    if ($params) {
-                        Connect-ToArc -Params $params
-                    }
-                }
+# Determine state and handle choice
+$allComplete = $status.AgentInstalled -and $status.Connected
+$miConfigured = [bool]$script:Config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID
+if ($miConfigured) {
+    $allComplete = $allComplete -and $status.UserAssignedMIAttached
+}
+
+if ($allComplete) {
+    # All complete - disconnect options
+    switch ($choice) {
+        "1" { Disconnect-FromArc }
+        "2" {
+            if (Disconnect-FromArc) {
+                Uninstall-ArcAgent
             }
-            "Q" { Write-Host "Goodbye."; exit 0 }
-            default { Write-Host "Invalid option." -ForegroundColor Yellow }
         }
+        "3" { Write-Host "Goodbye."; exit 0 }
+        default { Write-Host "Invalid option." -ForegroundColor Yellow }
     }
-    "Disconnected" {
-        switch ($choice.ToUpper()) {
-            "1" {
-                $params = Read-ConnectionParams
-                if ($params) {
-                    Connect-ToArc -Params $params
-                }
-            }
-            "2" { Uninstall-ArcAgent }
-            "Q" { Write-Host "Goodbye."; exit 0 }
-            default { Write-Host "Invalid option." -ForegroundColor Yellow }
-        }
+}
+elseif ($status.AgentInstalled -and -not $status.Connected) {
+    # Agent installed but not connected
+    switch ($choice) {
+        "1" { Invoke-CompleteSetup -Status $status }
+        "2" { Uninstall-ArcAgent }
+        "3" { Write-Host "Goodbye."; exit 0 }
+        default { Write-Host "Invalid option." -ForegroundColor Yellow }
     }
-    "Connected" {
-        switch ($choice.ToUpper()) {
-            "1" { Disconnect-FromArc }
-            "2" {
-                if (Disconnect-FromArc) {
-                    Uninstall-ArcAgent
-                }
+}
+elseif ($status.Connected -and $miConfigured -and -not $status.UserAssignedMIAttached) {
+    # Connected but MI not attached
+    switch ($choice) {
+        "1" { Attach-UserAssignedMI -Status $status }
+        "2" { Disconnect-FromArc }
+        "3" {
+            if (Disconnect-FromArc) {
+                Uninstall-ArcAgent
             }
-            "Q" { Write-Host "Goodbye."; exit 0 }
-            default { Write-Host "Invalid option." -ForegroundColor Yellow }
         }
+        "4" { Write-Host "Goodbye."; exit 0 }
+        default { Write-Host "Invalid option." -ForegroundColor Yellow }
+    }
+}
+else {
+    # Nothing installed - full setup
+    switch ($choice) {
+        "1" { Invoke-CompleteSetup -Status $status }
+        "2" { Write-Host "Goodbye."; exit 0 }
+        default { Write-Host "Invalid option." -ForegroundColor Yellow }
     }
 }
 
