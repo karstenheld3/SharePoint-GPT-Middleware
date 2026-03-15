@@ -545,8 +545,20 @@ function Show-SystemAssignedMI {
     # Check for token cache corruption error (WinError -2146893813)
     if ($accountJson -match "Decryption failed" -or $accountJson -match "2146893813") {
         Write-Host "    WARNING: Azure CLI token cache corrupted." -ForegroundColor Yellow
-        Write-Host "    Clearing cache and re-authenticating..."
-        az account clear 2>$null
+        
+        # Delete MSAL token cache files BEFORE attempting login
+        $azureDir = Join-Path $env:USERPROFILE ".azure"
+        $cacheFiles = @("msal_token_cache.bin", "msal_token_cache.json", "accessTokens.json", "service_principal_entries.json")
+        Write-Host "    Deleting corrupted cache files..."
+        foreach ($file in $cacheFiles) {
+            $path = Join-Path $azureDir $file
+            if (Test-Path $path) {
+                Remove-Item $path -Force -ErrorAction SilentlyContinue
+                Write-Host "      Deleted '$file'"
+            }
+        }
+        
+        Write-Host "    Re-authenticating..."
         az login
         if ($LASTEXITCODE -ne 0) {
             Write-Host "    FAIL: Azure CLI login failed." -ForegroundColor Red
@@ -556,6 +568,17 @@ function Show-SystemAssignedMI {
     }
     elseif ($accountExitCode -ne 0 -or -not $accountJson -or $accountJson -match "ERROR") {
         Write-Host "    Not logged in. Running 'az login'..."
+        
+        # Also delete cache files here in case login fails due to corruption
+        $azureDir = Join-Path $env:USERPROFILE ".azure"
+        $cacheFiles = @("msal_token_cache.bin", "msal_token_cache.json", "accessTokens.json")
+        foreach ($file in $cacheFiles) {
+            $path = Join-Path $azureDir $file
+            if (Test-Path $path) {
+                Remove-Item $path -Force -ErrorAction SilentlyContinue
+            }
+        }
+        
         az login
         if ($LASTEXITCODE -ne 0) {
             Write-Host "    FAIL: Azure CLI login failed." -ForegroundColor Red
@@ -691,8 +714,20 @@ function Attach-UserAssignedMI {
     # Check for token cache corruption error (WinError -2146893813)
     if ($accountJson -match "Decryption failed" -or $accountJson -match "2146893813") {
         Write-Host "  WARNING: Azure CLI token cache corrupted." -ForegroundColor Yellow
-        Write-Host "  Clearing cache and re-authenticating..."
-        az account clear 2>$null
+        
+        # Delete MSAL token cache files BEFORE attempting login
+        $azureDir = Join-Path $env:USERPROFILE ".azure"
+        $cacheFiles = @("msal_token_cache.bin", "msal_token_cache.json", "accessTokens.json", "service_principal_entries.json")
+        Write-Host "  Deleting corrupted cache files..."
+        foreach ($file in $cacheFiles) {
+            $path = Join-Path $azureDir $file
+            if (Test-Path $path) {
+                Remove-Item $path -Force -ErrorAction SilentlyContinue
+                Write-Host "    Deleted '$file'"
+            }
+        }
+        
+        Write-Host "  Re-authenticating..."
         az login
         if ($LASTEXITCODE -ne 0) {
             Write-Host "  FAIL: Azure CLI login failed." -ForegroundColor Red
@@ -702,11 +737,23 @@ function Attach-UserAssignedMI {
     }
     elseif ($accountExitCode -ne 0 -or -not $accountJson) {
         Write-Host "  Not logged in. Running 'az login'..."
+        
+        # Delete cache files before login attempt
+        $azureDir = Join-Path $env:USERPROFILE ".azure"
+        $cacheFiles = @("msal_token_cache.bin", "msal_token_cache.json", "accessTokens.json")
+        foreach ($file in $cacheFiles) {
+            $path = Join-Path $azureDir $file
+            if (Test-Path $path) {
+                Remove-Item $path -Force -ErrorAction SilentlyContinue
+            }
+        }
+        
         az login
         if ($LASTEXITCODE -ne 0) {
             Write-Host "  FAIL: Azure CLI login failed." -ForegroundColor Red
             return $false
         }
+        Write-Host "  OK. Logged in." -ForegroundColor Green
     } else {
         $account = $accountJson | ConvertFrom-Json
         Write-Host "  OK. Logged in as '$($account.user.name)' (subscription='$($account.name)')." -ForegroundColor Green
