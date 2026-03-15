@@ -493,6 +493,18 @@ catch {
 
 $null = Set-AzContext -Subscription "$($config.AZURE_SUBSCRIPTION_ID)"
 
+# Look up service principal name
+$spName = "UNKNOWN"
+try {
+  $sp = Get-AzADServicePrincipal -ApplicationId $config.CRAWLER_CLIENT_ID -ErrorAction SilentlyContinue
+  if ($sp) { $spName = $sp.DisplayName }
+}
+catch { }
+Write-Host "`nCRAWLER_CLIENT_ID: $($config.CRAWLER_CLIENT_ID) ($spName)" -ForegroundColor Cyan
+if ($hasManagedIdentity) {
+  Write-Host "CRAWLER_MANAGED_IDENTITY_OBJECT_ID: $($config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID) ($($config.CRAWLER_MANAGED_IDENTITY_NAME))" -ForegroundColor Cyan
+}
+
 # Connect to Microsoft Graph for MI operations
 if ($hasManagedIdentity) {
   Write-Host "Connecting to Microsoft Graph..."
