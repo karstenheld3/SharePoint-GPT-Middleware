@@ -775,6 +775,18 @@ function Attach-UserAssignedMI {
         Write-Host "  OK. Logged in as '$($account.user.name)' (subscription='$($account.name)')." -ForegroundColor Green
     }
     
+    # ALWAYS set subscription to match Arc machine (from Status)
+    $targetSub = $Status.SubscriptionId
+    if ($targetSub) {
+        Write-Host "  Setting subscription to '$targetSub'..."
+        az account set --subscription $targetSub 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "  OK. Subscription set." -ForegroundColor Green
+        } else {
+            Write-Host "  WARNING: Could not set subscription." -ForegroundColor Yellow
+        }
+    }
+    
     # LOG-GN-09: Announce before execution
     Write-Host ""
     Write-Host "Attaching user-assigned MI to Arc machine..."
