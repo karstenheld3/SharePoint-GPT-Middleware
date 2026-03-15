@@ -415,6 +415,11 @@ Provide these values to the client application:
 4. Click Start Crawl
 5. Monitor progress in job stream
 
+**Crawl Time Estimate** (based on PDF documents):
+- Download: ~2.5 sec/file
+- Embed: ~2.5 sec/file
+- **Per 1000 files: ~1.5 hours**
+
 **Test**: Job completes successfully, files appear in vector store
 
 ### 9.6 Test Query
@@ -424,6 +429,40 @@ Provide these values to the client application:
 3. Verify results return with correct source URLs
 
 **Test**: Search returns relevant results with SharePoint links
+
+### 9.7 Run Security Scan (Optional)
+
+**Requires**: Sites.Selected permission level **fullcontrol** (not read)
+
+1. Browse to `https://your-app-name.azurewebsites.net/v2/security_scan?format=ui`
+2. Select site
+3. Configure scope:
+   - **Scope**: `site` (entire site) or `list` (specific library)
+   - **Include Subsites**: Yes/No
+4. Click Start Scan
+5. Monitor progress in job stream
+
+**Security Scan Time Estimate**:
+- Depends on site complexity (groups, users, items with broken inheritance)
+- Small site (< 100 items): ~5-10 minutes
+- Medium site (100-1000 items): ~15-30 minutes
+- Large site (1000+ items): ~30-60 minutes
+
+**Test**: Scan completes, report available in `/v2/reports?format=ui`
+
+### 9.8 Configure Domain Settings (Optional)
+
+1. Browse to `https://your-app-name.azurewebsites.net/v2/domains?format=ui`
+2. Click on domain name to edit
+3. Configure advanced settings:
+   - **Crawl Schedule**: Cron expression for automated crawls
+   - **File Filters**: Include/exclude patterns (e.g., `*.pdf`, `!*.tmp`)
+   - **Max File Size**: Maximum file size to process (MB)
+   - **Chunk Size**: Text chunk size for embeddings (tokens)
+   - **Chunk Overlap**: Overlap between chunks (tokens)
+4. Save changes
+
+**Test**: Settings appear correctly in domain detail view
 
 ## 10. Phase 9: Verification
 
@@ -470,6 +509,15 @@ Provide these values to the client application:
 | **Total First-Time Setup** | | **8-12 hours** |
 | **Each Additional Client** | | **30-60 min** |
 | **Each Additional Site** | | **45-90 min** |
+
+### Per-Site Machine Time (unattended)
+
+| Activity | Time Estimate |
+|----------|---------------|
+| Crawl (per 1000 files) | ~1.5 hours |
+| Security Scan (small site) | 5-10 min |
+| Security Scan (medium site) | 15-30 min |
+| Security Scan (large site) | 30-60 min |
 
 ### Portal URLs
 

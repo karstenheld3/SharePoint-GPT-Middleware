@@ -17,6 +17,7 @@
 - `PSCP` - Permission Scanner POC
 - `SITE` - SharePoint Sites management
 - `SPAUTH` - SharePoint authentication mechanisms
+- `AZARC` - Azure Arc-enabled server management
 
 ### Components
 

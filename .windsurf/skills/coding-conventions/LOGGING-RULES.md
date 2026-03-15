@@ -116,6 +116,7 @@ or
 - `PARTIAL FAIL: <fail summary>` (can continue, but some items failed)
 and can log additional
 - `WARNING: <non-breaking problem>` (can continue, but noticed something worth noting)
+- `HINT: <actionable advice>` (user-facing and script-level, suggests what user or admin can do to fix the issue)
 
 **Final line rule:** The last line of any activity or script must contain a status keyword (`OK.`, `FAIL:`, `PARTIAL FAIL:`, `SKIP:`) so scripts can determine success without reading the entire log.
 

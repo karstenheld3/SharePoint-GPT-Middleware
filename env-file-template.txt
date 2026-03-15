@@ -52,10 +52,12 @@ SEARCH_DEFAULT_SHAREPOINT_ROOT_URL=https://<your_sharepoint_url>/
 # ------------------------- START: Crawler Configuration --------------------------------------------------------------
 
 # The app registration used to access SharePoint
+CRAWLER_USE_MANAGED_IDENTITY=<true for managed identity, false for client id and certificate>
 CRAWLER_CLIENT_ID=<your_crawler_client_id>
 CRAWLER_CLIENT_CERTIFICATE_PFX_FILE=SharePoint-GPT-Crawler.pfx
 CRAWLER_CLIENT_CERTIFICATE_PASSWORD=<your_certificate_password>
 CRAWLER_CLIENT_NAME=<your_crawler_client_name>
+CRAWLER_MANAGED_IDENTITY_OBJECT_ID=<the_managed_identity_object_id_to_access_sharepoint>
 # Needed for PowerShell scripts
 CRAWLER_TENANT_ID=<your_crawler_tenant_id>
 CRAWLER_SHAREPOINT_TENANT_NAME=<your_sharepoint_tenant_name>

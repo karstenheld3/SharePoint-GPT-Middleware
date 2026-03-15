@@ -4,6 +4,21 @@
 
 ## Active Issues
 
+### [LOW] `SPAUTH-FL-003` Proceeded to Create When Asked to Read
+
+- **When**: 2026-03-15 17:39
+- **Where**: Session conversation (IMPL plan preparation)
+- **What**: User asked to "read everything you need to create an IMPL plan" - I proceeded to invoke write-documents skill and marked "Create IMPL plan" as in_progress
+
+**Workflow re-read findings** (agent-behavior.md):
+- Rule: `"Propose", "suggest", "draft", "outline" = talk ABOUT, don't modify`
+- Rule: `"Implement", "fix", "change", "update" = modify the object`
+- User said "read everything you need" = preparation, NOT execution
+
+**Root cause**: Interpreted "to create" as instruction to create, rather than as purpose of reading. Rushed past the verb distinction. Should have stopped after reading and summarized findings.
+
+**Suggested fix**: After reading, summarize what was found and wait for explicit instruction to proceed with creation.
+
 ### [LOW] `SPAUTH-FL-002` Acronyms Not Written Out
 
 - **When**: 2026-03-14 20:06
@@ -49,6 +64,9 @@
 (none yet)
 
 ## Document History
+
+**[2026-03-15 17:39]**
+- Added: SPAUTH-FL-003 - Proceeded to create when asked to read
 
 **[2026-03-14 20:06]**
 - Added: SPAUTH-FL-002 - Acronyms not written out in INFO document

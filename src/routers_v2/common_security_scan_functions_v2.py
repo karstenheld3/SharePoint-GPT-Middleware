@@ -663,17 +663,8 @@ async def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, o
   
   all_lists = ctx.web.lists.get().select(["Id", "Title", "BaseTemplate", "Hidden", "DefaultViewUrl"]).execute_query()
   
-  # Debug: log all lists and why they pass/fail filtering
   ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-  yield writer.emit_log(f"[{ts}]   DEBUG: Found {len(all_lists)} total lists, filtering...")
-  for lst in all_lists:
-    template = lst.base_template
-    hidden = lst.properties.get("Hidden", False)
-    title = lst.title
-    in_ignore = title in ignore_lists
-    passes = template in INCLUDED_TEMPLATES and not hidden and not in_ignore
-    if not passes and template in INCLUDED_TEMPLATES:
-      yield writer.emit_log(f"[{ts}]   DEBUG: SKIPPED '{title}' template={template} hidden={hidden} in_ignore={in_ignore}")
+  yield writer.emit_log(f"[{ts}]   {len(all_lists)} lists found, filtering...")
   
   # Filter to relevant lists: skip hidden and lists in ignore_lists
   lists_to_scan = [lst for lst in all_lists if lst.base_template in INCLUDED_TEMPLATES and not lst.properties.get("Hidden", False) and lst.title not in ignore_lists]
@@ -796,9 +787,19 @@ async def scan_broken_inheritance_items(ctx: ClientContext, storage_path: str, o
     
     # Process items with broken permissions
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    yield writer.emit_log(f"[{ts}]       Found {len(list_items_with_perms)} items with broken permissions")
+    total_broken = len(list_items_with_perms)
+    yield writer.emit_log(f"[{ts}]       Found {total_broken} items with broken permissions")
+    
+    # Progress tracking for broken items
+    broken_item_idx = 0
+    broken_progress_interval = max(1, total_broken // 10)  # Report every ~10%
     
     for item_data in list_items_with_perms:
+      broken_item_idx += 1
+      # Emit progress every ~10% of items
+      if broken_item_idx % broken_progress_interval == 0 or broken_item_idx == total_broken:
+        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        yield writer.emit_log(f"[{ts}]       ( {broken_item_idx} / {total_broken} ) Processing broken permissions...")
       stats["items_with_individual_permissions"] += 1
       item_id = item_data.get("ID", 0)
       file_ref = item_data.get("FileRef", "")
@@ -1129,6 +1130,10 @@ async def run_security_scan(
     SSE event strings
   """
   
+  # Log permission requirement upfront
+  ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  yield writer.emit_log(f"[{ts}] NOTE: Security scan requires Sites.Selected 'fullcontrol' permission ('read' and 'write' are insufficient)")
+  
   # Load scanner settings
   settings = load_scanner_settings(storage_path)
   settings_path = get_scanner_settings_path(storage_path)
@@ -1297,7 +1302,11 @@ async def run_security_scan(
     
   except Exception as e:
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    error_str = str(e)
     yield writer.emit_log(f"[{ts}] ERROR: Security scan failed -> {e}")
+    # Provide specific guidance for permission errors
+    if "403" in error_str or "UnauthorizedAccessException" in error_str or "Access denied" in error_str:
+      yield writer.emit_log(f"[{ts}] HINT: Security scan requires Sites.Selected 'fullcontrol' permission ('read' and 'write' are insufficient). Cannot access /_api/Web/lists, site_groups, or role_assignments.")
     raise
   finally:
     # Cleanup temp folder
