@@ -236,7 +236,7 @@ Update PROBLEMS.md entry:
 
 ## Post-Fix
 
-Suggest to user: "Run `/learn` to extract lessons from this fix for future reference."
+Run `/learn` to reflect on mistakes and extract lessons from this fix.
 
 ## Quick Reference
 
