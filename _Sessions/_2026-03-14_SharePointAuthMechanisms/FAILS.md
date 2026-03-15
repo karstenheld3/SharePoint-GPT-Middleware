@@ -4,6 +4,43 @@
 
 ## Active Issues
 
+### [MEDIUM] `SPAUTH-FL-004` Ambiguous Abbreviation "SP" Used in Logging
+
+- **When**: 2026-03-15 20:01
+- **Where**: `AddRemoveCrawlerSharePointSites.ps1` (lines 146, 488, 512, 530, 545, 628)
+- **What**: Used "SP" abbreviation in logging output. In this codebase, "SP" could mean "SharePoint" OR "Service Principal" - both are core concepts.
+
+**Evidence**:
+```powershell
+Write-Host "  Scanning SP permissions..." -ForegroundColor Gray
+Write-Host "Testing SP access..."
+Write-Host "  SP: $certRoles    MI: $miRoles"
+```
+
+**Workflow re-read findings** (core-conventions.md, SPAUTH-FL-002):
+- Rule: Acronyms must be written out on first use
+- SPAUTH-FL-002 already documented this exact pattern for MI/OBO/Cert
+- "SP" is especially problematic because BOTH meanings exist in this project
+
+**Root cause**: Applied ASANAP (brevity) without considering clarity. "SP" seemed obvious in context but creates confusion when reading logs. Did not check FAILS.md for prior similar issues.
+
+**Suggested fix**: Always use full terms in logging:
+- "Service Principal" (not "SP")
+- "SharePoint" (spell out, or use "SPO" for SharePoint Online if needed)
+- Never use ambiguous single abbreviations
+
+**Before (wrong):**
+```powershell
+Write-Host "  Scanning SP permissions..."
+Write-Host "  SP: $certRoles    MI: $miRoles"
+```
+
+**After (correct):**
+```powershell
+Write-Host "  Scanning Service Principal..."
+Write-Host "  Service Principal: $certRoles | Managed Identity: $miRoles"
+```
+
 ### [LOW] `SPAUTH-FL-003` Proceeded to Create When Asked to Read
 
 - **When**: 2026-03-15 17:39
@@ -64,6 +101,9 @@
 (none yet)
 
 ## Document History
+
+**[2026-03-15 20:05]**
+- Added: SPAUTH-FL-004 - Ambiguous "SP" abbreviation (SharePoint vs Service Principal)
 
 **[2026-03-15 17:39]**
 - Added: SPAUTH-FL-003 - Proceeded to create when asked to read

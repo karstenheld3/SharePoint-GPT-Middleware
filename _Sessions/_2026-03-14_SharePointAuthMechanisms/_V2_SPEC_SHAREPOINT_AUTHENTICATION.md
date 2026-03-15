@@ -15,7 +15,7 @@
 - `_INFO_SPAUTH-AM03_MANAGED_IDENTITY.md [SPAUTH-AM03]` for Managed Identity (MI) auth details
 - `_INFO_SPAUTH-AM04_INTERACTIVE_BROWSER.md [SPAUTH-AM04]` for interactive browser details
 - `_INFO_SPAUTH-AM05_DEVICE_CODE.md [SPAUTH-AM05]` for device code details
-- `_INFO_SPAUTH-AM08_ON_BEHALF_OF.md [SPAUTH-AM08]` for OBO details
+- `_INFO_SPAUTH-AM08_ON_BEHALF_OF.md [SPAUTH-AM08]` for On-Behalf-Of (OBO) details
 
 **Does not depend on:**
 - Graph API authentication (separate session, Graph client stays on certificate for now)
@@ -90,7 +90,8 @@
 │      └─> ClientContext(site_url).with_client_certificate(...)                 │
 ├───────────────────────────────────────────────────────────────────────────────┤
 │  Library (office365-rest-python-client 2.6.2)                                 │
-│  └─> ClientContext → AuthenticationContext → MSAL → Token → HTTP request      │
+│  └─> ClientContext → AuthenticationContext → Microsoft Authentication Library │
+│      (MSAL) → Token → HTTP request                                            │
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -215,7 +216,7 @@ An **Override File** persists an admin-selected auth method that differs from th
   - InteractiveBrowserProvider using OAuth Authorization Code redirect
   - `/auth/login`, `/auth/callback` endpoints
   - Session-based token storage (per user, no cross-worker sharing needed)
-  - Override file support for delegated methods
+  - Override file read/write support (System Auth methods only)
 
 - **Phase 3**: Device Code (COMPLEXITY-MEDIUM)
   - DeviceCodeProvider with shared file-based token cache
@@ -335,13 +336,15 @@ Phase 1 (Certificate + MI)
 
 **SPAUTH-FR-13: Override File Support**
 - AuthStateManager extended to read/write override file
-- Admin can set override via `POST /v2/auth/override` with `{ "method": "interactive_browser" }`
+- Admin can set override via `POST /v2/auth/override` with `{ "method": "certificate" }` (or `managed_identity`, `device_code`)
 - Override written ONLY after successful auth test (SPAUTH-FR-06 selftest)
 - `DELETE /v2/auth/override` removes override, reverts to default method
+- Note: User Auth methods (`interactive_browser`, `on_behalf_of`) are NOT valid override values - they are per-session
 
 **SPAUTH-FR-14: Auth Status Extended**
 - `GET /v2/auth/status` now includes override info and session status
-- Response adds: `"override": { "method": "interactive_browser", "set_by": "admin@contoso.com", "set_at_utc": "..." }` or `null`
+- Response adds: `"override": { "method": "device_code", "set_by": "admin@contoso.com", "set_at_utc": "..." }` or `null`
+- Note: `session_authenticated: true` indicates active User Auth (Interactive Browser) session, separate from System Auth override
 
 ### Design Decisions
 
@@ -451,7 +454,7 @@ def _token_func():
 
 **SPAUTH-DD-21:** Single shared token for all workers (not per-user). Rationale: Device Code is an emergency fallback where admin authenticates once for the whole system.
 
-**SPAUTH-DD-22:** New dependency: `msal-extensions` (already in requirements via `azure-identity`, but explicit usage needed). Rationale: provides cross-platform file locking for token cache.
+**SPAUTH-DD-22:** New dependency: `msal-extensions` for file-based token cache with cross-platform locking. Note: `msal-extensions` is a separate package, NOT a transitive dependency of `azure-identity`. Must be explicitly added to `pyproject.toml` in Phase 3.
 
 ### Implementation Guarantees
 
@@ -517,7 +520,8 @@ def _token_func():
 **SPAUTH-DD-44:** Environment variable `CRAWLER_USE_MANAGED_IDENTITY` controls default auth method (boolean, matches OpenAI pattern):
 - `false` (default): Certificate authentication
 - `true`: Managed Identity authentication
-- Phase 2+: Override file adds `interactive_browser`, `device_code` options
+- Phase 2+: Override file support for System Auth methods (`certificate`, `managed_identity`)
+- Phase 3: Override file adds `device_code` option
 - Phase 4: OBO is not a selectable default (automatic per-request only)
 
 ## 10. Cross-Phase Implementation Guarantees
@@ -612,16 +616,18 @@ User authenticates in browser
 ├─> Microsoft redirects to GET /v2/auth/callback?code=...&state=...
 │   ├─> Validate state matches session
 │   ├─> Exchange code for tokens via MSAL
-│   ├─> Store tokens in session
+│   ├─> Store tokens in session (User Auth, per-session)
 │   ├─> Test SharePoint access (selftest)
-│   ├─> On success: write override file
 │   └─> Redirect to middleware UI with success message
 │
-Subsequent API requests
-├─> AuthStateManager reads override file -> "interactive_browser"
-├─> InteractiveBrowserProvider.get_context(site_url)
+Subsequent API requests (with session cookie)
+├─> AuthenticationFactory checks request.session for User Auth token
+├─> User Auth active -> InteractiveBrowserProvider.get_context(site_url, request)
 │   └─> ClientContext.with_access_token() using session token
-└─> SharePoint operations use user's permissions
+└─> SharePoint operations use user's delegated permissions
+
+Note: Interactive Browser does NOT write to override file. It uses per-session tokens.
+System Auth (override file) remains available for non-browser API callers.
 ```
 
 ### Phase 3: Device Code Flow
@@ -662,15 +668,15 @@ Subsequent API requests (all workers)
 
 ```json
 {
-  "effective_method": "interactive_browser",
+  "effective_method": "device_code",
   "default_method": "managed_identity",
   "override": {
-    "method": "interactive_browser",
+    "method": "device_code",
     "set_by": "admin@contoso.com",
     "set_at_utc": "2026-03-14T21:00:00Z"
   },
-  "available_methods": ["certificate", "managed_identity", "interactive_browser"],
-  "session_authenticated": true
+  "available_methods": ["certificate", "managed_identity", "device_code"],
+  "session_authenticated": false
 }
 ```
 
@@ -819,6 +825,20 @@ Before Phase 2 implementation, decide:
 2. **Use `/v2/authentication/sharepoint_online/`** - extensible, follows V2 patterns
 
 ## 16. Document History
+
+**[2026-03-15 19:53]**
+- Fixed: MSAL acronym expanded on first use (line 93 diagram, before line 317)
+- Fixed: OBO acronym expanded on first use (line 18 header, before line 65)
+
+**[2026-03-15 19:46]**
+- Fixed: Override file examples showed `interactive_browser` but User Auth methods are NOT valid override values
+- Fixed: SPAUTH-FR-13 example corrected to use System Auth method (`certificate`)
+- Fixed: Auth Status Response (Phase 2+) corrected to show `device_code` override, not `interactive_browser`
+- Fixed: Phase 2 Action Flow - removed "write override file" step (Interactive Browser uses session, not override)
+- Fixed: SPAUTH-DD-22 aligned with SPAUTH-IG-41 - `msal-extensions` is NOT transitive via azure-identity
+- Fixed: SPAUTH-DD-44 - removed `interactive_browser` from override options (User Auth, not valid)
+- Changed: Phase 2 bullet clarified as "Override file read/write support (System Auth methods only)"
+- Added: Clarification notes distinguishing User Auth (per-session) from System Auth (override file)
 
 **[2026-03-15 18:15]**
 - Fixed: `CRAWLER_MANAGED_IDENTITY_OBJECT_ID` must contain Object ID, not Client ID [VERIFIED via Microsoft Q&A]

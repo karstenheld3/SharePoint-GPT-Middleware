@@ -35,7 +35,7 @@
 
 ## 1. Scenario
 
-**Problem:** The current `AddRemoveCrawlerPermissions.ps1` only manages API permissions for the Service Principal (`CRAWLER_CLIENT_ID`). With Managed Identity support, we need to also grant SharePoint `Sites.Selected` permission to the Managed Identity. Currently there's no script to do this.
+**Problem:** The current `AddRemoveCrawlerPermissions.ps1` only manages API permissions for the Service Principal (`CRAWLER_CLIENT_ID`). With Managed Identity support, we need to grant the same API permissions to the Managed Identity. Currently there's no script to do this.
 
 **Solution:**
 - Extend script to read `CRAWLER_MANAGED_IDENTITY_OBJECT_ID` from .env
@@ -60,7 +60,7 @@ The script `AddRemoveCrawlerPermissions.ps1` manages Azure AD API permissions fo
 For Managed Identity, API permissions work differently:
 - MI doesn't have an "app registration" to update
 - Permissions are granted via `New-MgServicePrincipalAppRoleAssignment`
-- Only SharePoint Sites.Selected is needed (Graph permissions are for the app, not MI)
+- MI needs the same permissions as Service Principal (Graph + SharePoint)
 
 ## 3. Domain Objects
 
@@ -82,7 +82,8 @@ A **PermissionSet** defines required API permissions per target.
 - SharePoint: Sites.Selected
 
 **Managed Identity permissions:**
-- SharePoint: Sites.Selected (only this is needed)
+- Microsoft Graph: Group.Read.All, GroupMember.Read.All, User.Read.All
+- SharePoint: Sites.Selected
 
 ### PermissionStatus
 
@@ -110,7 +111,7 @@ A **PermissionStatus** represents the current state of a permission.
 
 **ARCP-FR-03: Permission Status Check**
 - For Service Principal: check Graph + SharePoint permissions via `Get-AzADApplication`
-- For Managed Identity: check SharePoint Sites.Selected via `Get-MgServicePrincipalAppRoleAssignment`
+- For Managed Identity: check Graph + SharePoint permissions via `Get-MgServicePrincipalAppRoleAssignment`
 - Display side-by-side status with OK/MISSING indicators
 
 **ARCP-FR-04: Action Menu**
@@ -137,7 +138,6 @@ A **PermissionStatus** represents the current state of a permission.
 **ARCP-FR-07: Remove Permissions**
 - For Service Principal: remove from RequiredResourceAccess, revoke assignments
 - For Managed Identity: use `Remove-MgServicePrincipalAppRoleAssignment`
-- Confirm before removing
 - Show per-target results
 
 **ARCP-FR-08: Admin Consent URLs**
@@ -151,7 +151,7 @@ A **PermissionStatus** represents the current state of a permission.
 
 **ARCP-DD-02:** Default target is "Both" when both configured. Rationale: Standard use case is configuring both; reduces clicks.
 
-**ARCP-DD-03:** MI only needs Sites.Selected, not Graph permissions. Rationale: Graph permissions are for app-level operations; MI only needs SharePoint access.
+**ARCP-DD-03:** MI needs same permissions as SP (Graph + SharePoint). Rationale: MI runs the same crawler code and needs identical API access.
 
 **ARCP-DD-04:** Use Microsoft.Graph module for MI permissions. Rationale: `Az.Resources` doesn't support MI app role assignments directly.
 
@@ -193,11 +193,12 @@ $sharepointSitesSelected = "20d37865-089c-4dee-8c41-6967602d4ac8"
 # Get SharePoint service principal
 $sharepointSp = Get-MgServicePrincipal -Filter "appId eq '00000003-0000-0ff1-ce00-000000000000'"
 
-# Grant Sites.Selected to Managed Identity
+# Grant all permissions to Managed Identity (same as SP)
+# For each permission (Graph: Group.Read.All, GroupMember.Read.All, User.Read.All + SharePoint: Sites.Selected)
 $params = @{
   PrincipalId = $managedIdentityObjectId
-  ResourceId  = $sharepointSp.Id
-  AppRoleId   = "20d37865-089c-4dee-8c41-6967602d4ac8"  # Sites.Selected
+  ResourceId  = $resourceSp.Id  # Graph SP or SharePoint SP
+  AppRoleId   = $permissionId    # Permission GUID
 }
 New-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $managedIdentityObjectId -BodyParameter $params
 ```
@@ -208,8 +209,14 @@ New-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $managedIdentityObje
 # Get current app role assignments for MI
 $assignments = Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $managedIdentityObjectId
 
-# Check if Sites.Selected is assigned
-$hasSitesSelected = $assignments | Where-Object { $_.AppRoleId -eq "20d37865-089c-4dee-8c41-6967602d4ac8" }
+# Check all required permissions (Graph + SharePoint)
+$requiredPermissions = @(
+  "5b567255-7703-4780-807c-7be8301ae99b",  # Group.Read.All
+  "98830695-27a2-44f7-8c18-0c3ebc9698f6",  # GroupMember.Read.All
+  "df021288-bdef-4463-88db-98f22de89214",  # User.Read.All
+  "20d37865-089c-4dee-8c41-6967602d4ac8"   # Sites.Selected
+)
+$missingPermissions = $requiredPermissions | Where-Object { $_ -notin $assignments.AppRoleId }
 ```
 
 ## 8. Action Flow
@@ -239,6 +246,7 @@ Check permissions
 │   └─> Check SharePoint Sites.Selected
 ├─> For Managed Identity (if configured):
 │   ├─> Get-MgServicePrincipalAppRoleAssignment
+│   ├─> Check Graph permissions (Group.Read.All, etc.)
 │   └─> Check SharePoint Sites.Selected
 └─> Display status with OK/MISSING indicators
 ```
@@ -261,7 +269,6 @@ User selects "Add missing permissions"
 
 ```
 User selects "Remove permissions"
-├─> Prompt: Confirm removal (yes/no)
 ├─> Prompt: Select target (1-Both, 2-SP, 3-MI)
 ├─> For Service Principal:
 │   ├─> Remove from RequiredResourceAccess
@@ -306,6 +313,10 @@ User selects "Remove permissions"
 │     OK: Sites.Selected                                          │
 │                                                                 │
 │ Managed Identity:                                               │
+│   Microsoft Graph:                                              │
+│     OK: Group.Read.All                                          │
+│     OK: GroupMember.Read.All                                    │
+│     OK: User.Read.All                                           │
 │   SharePoint:                                                   │
 │     MISSING: Sites.Selected                                     │
 │                                                                 │
@@ -332,20 +343,20 @@ User selects "Remove permissions"
 ┌─────────────────────────────┐   ┌─────────────────────────────────┐
 │ ADD PERMISSIONS             │   │ REMOVE PERMISSIONS              │
 ├─────────────────────────────┤   ├─────────────────────────────────┤
-│ Select target:              │   │ WARNING: This will remove API   │
-│   1 - Both (default)        │   │ permissions from selected       │
-│   2 - Service Principal     │   │ target(s).                      │
-│   3 - Managed Identity      │   │                                 │
-│                             │   │ Are you sure? (yes/no) [no]: _  │
-│ Select target [1]: _        │   │                                 │
-│                             │   │ Select target:                  │
-│ Adding permissions...       │   │   1 - Both (default)            │
-│   Service Principal:        │   │   2 - Service Principal         │
-│     All already configured  │   │   3 - Managed Identity          │
+│ Select target:              │   │ Select target:                  │
+│   1 - Both (default)        │   │   1 - Both (default)            │
+│   2 - Service Principal     │   │   2 - Service Principal         │
+│   3 - Managed Identity      │   │   3 - Managed Identity          │
+│                             │   │                                 │
+│ Select target [1]: _        │   │ Select target [1]: _            │
+│                             │   │                                 │
+│ Adding permissions...       │   │ Removing permissions...         │
+│   Service Principal:        │   │   Service Principal: OK         │
+│     All already configured  │   │   Managed Identity: OK          │
 │   Managed Identity:         │   │                                 │
-│     Adding Sites.Selected...│   │ Removing permissions...         │
-│     OK: Sites.Selected      │   │   Service Principal: OK         │
-│                             │   │   Managed Identity: OK          │
+│     Adding Sites.Selected...│   │                                 │
+│     OK: Sites.Selected      │   │                                 │
+│                             │   │                                 │
 └─────────────────────────────┘   └─────────────────────────────────┘
               │                               │
               v                               v
@@ -446,6 +457,16 @@ function Get-TargetSelection {
 ```
 
 ## 11. Document History
+
+**[2026-03-15 19:59]**
+- Removed: Confirmation prompt for Remove permissions (ARCP-FR-07, Action Flow, Menu Flow)
+
+**[2026-03-15 19:43]**
+- Fixed: Menu Flow, Permission Check flow, MI Check code now show Graph + SharePoint for MI (per ARCP-DD-03)
+
+**[2026-03-15 19:42]**
+- Changed: MI needs same permissions as SP (Graph + SharePoint), not just Sites.Selected
+- Updated: ARCP-DD-03, PermissionSet, Context, FR-03
 
 **[2026-03-15 19:19]**
 - Fixed: Removed duplicate COMPLETION box from Menu Flow

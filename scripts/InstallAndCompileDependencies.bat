@@ -1,10 +1,11 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 
-REM Determine paths (root script)
+REM Determine paths (scripts/ folder, workspace root is parent)
 set SCRIPT_DIR=%~dp0
-set SRC_DIR=%SCRIPT_DIR%src
-set VENV_DIR=%SCRIPT_DIR%.venv
+set ROOT_DIR=%SCRIPT_DIR%..\
+set SRC_DIR=%ROOT_DIR%src
+set VENV_DIR=%ROOT_DIR%.venv
 set VENV_PY=%VENV_DIR%\Scripts\python.exe
 set VENV_UV=%VENV_DIR%\Scripts\uv.exe
 
@@ -82,17 +83,17 @@ REM Compile/export dependencies into a requirements.txt for Azure deployment
 REM First, prefer a resolver-based export from pyproject.toml using uv pip compile
 REM If not available, fall back to freezing the current environment
 echo [INFO] Generating requirements.txt at repo root...
-"%VENV_UV%" pip compile "%SRC_DIR%\pyproject.toml" -o "%SCRIPT_DIR%requirements.txt" >nul 2>nul
+"%VENV_UV%" pip compile "%SRC_DIR%\pyproject.toml" -o "%ROOT_DIR%requirements.txt" >nul 2>nul
 if errorlevel 1 (
   echo [WARN] 'uv pip compile' failed or not supported. Falling back to 'pip freeze'.
-  "%VENV_UV%" pip freeze > "%SCRIPT_DIR%requirements.txt"
+  "%VENV_UV%" pip freeze > "%ROOT_DIR%requirements.txt"
   if errorlevel 1 (
     echo [ERROR] Failed to generate requirements.txt via pip freeze.
     pause
     exit /b 1
   ) else (
     echo [OK] requirements.txt generated via pip freeze.
-    copy /Y "%SCRIPT_DIR%requirements.txt" "%SRC_DIR%\requirements.txt" >nul
+    copy /Y "%ROOT_DIR%requirements.txt" "%SRC_DIR%\requirements.txt" >nul
     if errorlevel 1 (
       echo [WARN] Failed to copy requirements.txt into src folder.
     ) else (
@@ -101,7 +102,7 @@ if errorlevel 1 (
   )
 ) else (
   echo [OK] requirements.txt generated via 'uv pip compile'.
-  copy /Y "%SCRIPT_DIR%requirements.txt" "%SRC_DIR%\requirements.txt" >nul
+  copy /Y "%ROOT_DIR%requirements.txt" "%SRC_DIR%\requirements.txt" >nul
   if errorlevel 1 (
     echo [WARN] Failed to copy requirements.txt into src folder.
   ) else (

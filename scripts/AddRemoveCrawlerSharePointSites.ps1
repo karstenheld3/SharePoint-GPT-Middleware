@@ -99,13 +99,12 @@ function Get-SitesWithAppPermissions {
       return @()
     }
 
-    Write-Host "  Found $($allSites.Count) sites, checking permissions..." -ForegroundColor Gray
-
+    $total = $allSites.Count
     $checkedCount = 0
     foreach ($site in $allSites) {
       $checkedCount++
       if ($checkedCount % 10 -eq 0) {
-        Write-Host "    Checked [ $checkedCount / $($allSites.Count) ] sites..." -ForegroundColor DarkGray
+        Write-Host "    ( $checkedCount / $total ) Checking sites..." -ForegroundColor DarkGray
       }
 
       $permissions = Get-SitePermissionsForApp -SiteUrl $site.Url -AppId $AppId
@@ -114,7 +113,6 @@ function Get-SitesWithAppPermissions {
         $permObj = if ($permissions -is [array]) { $permissions[0] } else { $permissions }
 
         if ($permObj -and $permObj.Id) {
-          Write-Host "    Found permission at $($site.Url): Roles=$($permObj.Roles)" -ForegroundColor DarkGray
           $rolesStr = if ($permObj.Roles) { $permObj.Roles -join ", " } else { "Unknown" }
 
           $sitesWithPermissions += [PSCustomObject]@{
@@ -126,9 +124,20 @@ function Get-SitesWithAppPermissions {
         }
       }
     }
+    
+    # List all discovered sites explicitly
+    $foundCount = $sitesWithPermissions.Count
+    if ($foundCount -gt 0) {
+      foreach ($site in $sitesWithPermissions) {
+        Write-Host "      '$($site.url)' role='$($site.roles)'" -ForegroundColor Gray
+      }
+      Write-Host "    $foundCount sites with permissions." -ForegroundColor Gray
+    } else {
+      Write-Host "    0 sites with permissions." -ForegroundColor Gray
+    }
   }
   catch {
-    Write-Host "    Warning: Could not retrieve sites - $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host "    WARNING: Could not retrieve sites -> $($_.Exception.Message)" -ForegroundColor Yellow
   }
 
   return $sitesWithPermissions
@@ -143,12 +152,12 @@ function Get-MergedSitePermissions {
     [Parameter(Mandatory=$true)] [string]$AdminUrl
   )
 
-  Write-Host "  Scanning for Service Principal permissions..." -ForegroundColor Gray
+  Write-Host "  Scanning Service Principal..." -ForegroundColor Gray
   $certSites = Get-SitesWithAppPermissions -AppId $CertificateAppId -AdminUrl $AdminUrl
 
   $miSites = @()
   if (-not [string]::IsNullOrWhiteSpace($ManagedIdentityObjectId)) {
-    Write-Host "  Scanning for Managed Identity (MI) permissions..." -ForegroundColor Gray
+    Write-Host "  Scanning Managed Identity..." -ForegroundColor Gray
     $miSites = Get-SitesWithAppPermissions -AppId $ManagedIdentityObjectId -AdminUrl $AdminUrl
   }
 
@@ -225,13 +234,13 @@ function Get-TargetSelection {
     if ([string]::IsNullOrWhiteSpace($choice)) { $choice = $DefaultChoice }
 
     if ($choice -eq "3" -and -not $HasManagedIdentity) {
-      Write-Host "  Managed Identity is not configured. Please choose 1 or 2." -ForegroundColor Yellow
+      Write-Host "  Managed Identity not configured. Choose 1 or 2." -ForegroundColor Yellow
       continue
     }
     if ($choice -match '^[123]$') {
       return $choice
     }
-    Write-Host "  Invalid choice. Please enter 1, 2, or 3." -ForegroundColor Yellow
+    Write-Host "  Invalid. Enter 1, 2, or 3." -ForegroundColor Yellow
   }
 }
 
@@ -244,12 +253,12 @@ function Get-TargetsFromSelection {
 
   switch ($Selection) {
     "1" {
-      if ($HasManagedIdentity) { return @("certificate", "managed_identity") }
-      else { return @("certificate") }
+      if ($HasManagedIdentity) { return @("service_principal", "managed_identity") }
+      else { return @("service_principal") }
     }
-    "2" { return @("certificate") }
+    "2" { return @("service_principal") }
     "3" { return @("managed_identity") }
-    default { return @("certificate") }
+    default { return @("service_principal") }
   }
 }
 
@@ -266,9 +275,9 @@ function Grant-SitePermissionToTargets {
   $results = @{}
 
   foreach ($target in $Targets) {
-    $appId = if ($target -eq "certificate") { $Config.CRAWLER_CLIENT_ID } else { $Config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID }
-    $displayName = if ($target -eq "certificate") { $Config.CRAWLER_CLIENT_NAME } else { "Managed Identity" }
-    $targetLabel = if ($target -eq "certificate") { "Service Principal" } else { "Managed Identity" }
+    $appId = if ($target -eq "service_principal") { $Config.CRAWLER_CLIENT_ID } else { $Config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID }
+    $displayName = if ($target -eq "service_principal") { $Config.CRAWLER_CLIENT_NAME } else { "Managed Identity" }
+    $targetLabel = if ($target -eq "service_principal") { "Service Principal" } else { "Managed Identity" }
 
     try {
       # Method 1: Grant via admin site with -Site parameter
@@ -321,8 +330,8 @@ function Revoke-SitePermissionFromTargets {
   $results = @{}
 
   foreach ($target in $Targets) {
-    $targetLabel = if ($target -eq "certificate") { "Service Principal" } else { "Managed Identity" }
-    $permissionId = if ($target -eq "certificate") { $SitePermissionStatus.certificateAppPermissionId } else { $SitePermissionStatus.managedIdentityPermissionId }
+    $targetLabel = if ($target -eq "service_principal") { "Service Principal" } else { "Managed Identity" }
+    $permissionId = if ($target -eq "service_principal") { $SitePermissionStatus.certificateAppPermissionId } else { $SitePermissionStatus.managedIdentityPermissionId }
 
     if ($null -eq $permissionId) {
       Write-Host "  ${targetLabel}: SKIP (no permission found)" -ForegroundColor Gray
@@ -344,23 +353,43 @@ function Revoke-SitePermissionFromTargets {
   return $results
 }
 
-# Displays operation result summary
+# Displays operation result summary with explicit target status (LOG-SC-06, LOG-SC-07)
 function Show-OperationSummary {
   param(
-    [Parameter(Mandatory=$true)] [hashtable]$Results
+    [Parameter(Mandatory=$true)] $Results
   )
 
-  $successCount = ($Results.Values | Where-Object { $_.success }).Count
-  $total = $Results.Count
+  $succeeded = @()
+  $skipped = @()
+  $failed = @()
 
-  if ($successCount -eq $total) {
-    Write-Host "`n  SUCCESS: All targets completed!" -ForegroundColor Green
+  foreach ($key in $Results.Keys) {
+    $targetLabel = switch ($key) {
+      "service_principal" { "Service Principal" }
+      "managed_identity" { "Managed Identity" }
+      default { "Unknown target: '$key'" }
+    }
+    
+    if ($Results[$key].skipped) {
+      $skipped += $targetLabel
+    }
+    elseif ($Results[$key].success) {
+      $succeeded += $targetLabel
+    }
+    else {
+      $failed += @{ label = $targetLabel; error = $Results[$key].error }
+    }
   }
-  elseif ($successCount -gt 0) {
-    Write-Host "`n  PARTIAL: $successCount of $total targets succeeded" -ForegroundColor Yellow
+
+  # Show per-target results
+  foreach ($s in $succeeded) {
+    Write-Host "  $s`: OK." -ForegroundColor Green
   }
-  else {
-    Write-Host "`n  FAIL: No targets succeeded" -ForegroundColor Red
+  foreach ($s in $skipped) {
+    Write-Host "  $s`: SKIP: No permission to remove." -ForegroundColor Gray
+  }
+  foreach ($f in $failed) {
+    Write-Host "  $($f.label): FAIL: $($f.error)" -ForegroundColor Red
   }
 }
 
@@ -370,7 +399,9 @@ function Show-OperationSummary {
 
 Clear-Host
 
-$envPath = Join-Path $PSScriptRoot ".env"
+# Workspace root is parent of scripts/ folder
+$workspaceRoot = Split-Path $PSScriptRoot -Parent
+$envPath = Join-Path $workspaceRoot ".env"
 if (!(Test-Path $envPath)) { throw "File '$($envPath)' not found." }
 $config = Read-EnvFile -Path ($envPath)
 
@@ -390,7 +421,7 @@ $hasBothTargets = $hasCertificateApp -and $hasManagedIdentity
 
 # === Validate certificate file ===
 $certPath = if ([string]::IsNullOrWhiteSpace($config.LOCAL_PERSISTENT_STORAGE_PATH)) {
-  Join-Path $PSScriptRoot $config.CRAWLER_CLIENT_CERTIFICATE_PFX_FILE
+  Join-Path $workspaceRoot $config.CRAWLER_CLIENT_CERTIFICATE_PFX_FILE
 } else {
   Join-Path $config.LOCAL_PERSISTENT_STORAGE_PATH $config.CRAWLER_CLIENT_CERTIFICATE_PFX_FILE
 }
@@ -410,12 +441,12 @@ $certPasswordSecure = ConvertTo-SecureString $config.CRAWLER_CLIENT_CERTIFICATE_
 
 # === Display configuration summary (ARCS-FR-01) ===
 Write-Host "Managing SharePoint site permissions" -ForegroundColor Cyan
-Write-Host "Service Principal: $($config.CRAWLER_CLIENT_ID) ($($config.CRAWLER_CLIENT_NAME))" -ForegroundColor Cyan
+Write-Host "CRAWLER_CLIENT_ID: $($config.CRAWLER_CLIENT_ID) ($($config.CRAWLER_CLIENT_NAME))" -ForegroundColor Cyan
 if ($hasManagedIdentity) {
-  Write-Host "Managed Identity:  $($config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID) (configured)" -ForegroundColor Cyan
+  Write-Host "CRAWLER_MANAGED_IDENTITY_OBJECT_ID: $($config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID) ($($config.CRAWLER_MANAGED_IDENTITY_NAME))" -ForegroundColor Cyan
 }
 else {
-  Write-Host "Managed Identity:  not configured" -ForegroundColor Gray
+  Write-Host "CRAWLER_MANAGED_IDENTITY_OBJECT_ID: not configured" -ForegroundColor Gray
 }
 Write-Host "Certificate: $certPath" -ForegroundColor Gray
 
@@ -429,120 +460,129 @@ Import-Module PnP.PowerShell -ErrorAction SilentlyContinue
 # === Connect to SharePoint Admin ===
 $adminUrl = "https://$($config.CRAWLER_SHAREPOINT_TENANT_NAME)-admin.sharepoint.com"
 
-Write-Host "`nConnecting to SharePoint Online..."
-Write-Host "Admin URL: $adminUrl" -ForegroundColor Gray
-Write-Host "A browser window will open for authentication" -ForegroundColor Gray
+Write-Host "`nConnecting to $adminUrl..."
 
 try {
   Connect-PnPOnline -Url $adminUrl -Interactive -ClientId $config.PNP_CLIENT_ID -ErrorAction Stop
-  Write-Host "  Connected successfully to SharePoint Admin" -ForegroundColor Green
+  Write-Host "  Connected" -ForegroundColor Green
 }
 catch {
   throw "Failed to connect to SharePoint Admin: $($_.Exception.Message)"
 }
 
-# === Discovery phase (ARCS-FR-02) ===
-Write-Host "`nDiscovering sites with app permissions..."
-Write-Host "  Retrieving site list from tenant (this may take a moment)..." -ForegroundColor Gray
-$mergedSites = Get-MergedSitePermissions -CertificateAppId $config.CRAWLER_CLIENT_ID -ManagedIdentityObjectId $config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID -AdminUrl $adminUrl
+# === Main Menu Loop (ARCS-FR-03) ===
+$exitRequested = $false
+$mergedSites = @()
 
-# === Test access to each site (ARCS-FR-07) ===
-if ($mergedSites.Count -gt 0) {
-  Write-Host "`nTesting Service Principal access..."
-  Write-Host "  Client ID:   $($config.CRAWLER_CLIENT_ID)" -ForegroundColor Gray
-  Write-Host "  Certificate: $certPath" -ForegroundColor Gray
-  if ($hasManagedIdentity) {
-    Write-Host "  Note: Managed Identity access cannot be tested from this script (requires Azure runtime)" -ForegroundColor Gray
-  }
+while (-not $exitRequested) {
+  # === Discovery phase (ARCS-FR-02) ===
+  Write-Host "`n========================================"
+  Write-Host "Site Discovery"
+  Write-Host "  1 - Scan for existing sites in Sites.Selected"
+  Write-Host "  2 - Skip (proceed directly to add new site)"
+  $scanChoice = Read-Host "Select option [1]"
+  if ([string]::IsNullOrWhiteSpace($scanChoice)) { $scanChoice = "1" }
 
-  for ($i = 0; $i -lt $mergedSites.Count; $i++) {
-    $site = $mergedSites[$i]
+  $mergedSites = @()
+  $skipScan = ($scanChoice -eq "2")
 
-    # Only test if certificate app has permissions on this site
-    if ($null -ne $site.certificateAppRoles) {
-      Write-Host "  $($site.url)" -ForegroundColor Gray
-      $testResult = Test-SiteAccess -SiteUrl $site.url -ClientId $config.CRAWLER_CLIENT_ID -TenantId $config.CRAWLER_TENANT_ID -CertPath $certPath -CertPassword $certPasswordSecure
+  if (-not $skipScan) {
+    Write-Host "`nDiscovering sites..."
+    $mergedSites = Get-MergedSitePermissions -CertificateAppId $config.CRAWLER_CLIENT_ID -ManagedIdentityObjectId $config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID -AdminUrl $adminUrl
 
-      $mergedSites[$i].testSuccess = $testResult.success
-      $mergedSites[$i].listsCount = $testResult.listsCount
-      $mergedSites[$i].librariesCount = $testResult.librariesCount
-      $mergedSites[$i].listNames = $testResult.listNames
-      $mergedSites[$i].testError = $testResult.error
+    # === Test access to each site (ARCS-FR-07) ===
+    if ($mergedSites.Count -gt 0) {
+      Write-Host "`nTesting Service Principal access..."
 
-      if ($testResult.success) {
-        Write-Host "    OK. $($testResult.listsCount) lists, $($testResult.librariesCount) libraries" -ForegroundColor Green
-      }
-      else {
-        Write-Host "    FAIL: $($testResult.error)" -ForegroundColor Red
-      }
-    }
-    else {
-      Write-Host "  Skipping $($site.url) (no Service Principal permission)" -ForegroundColor DarkGray
-    }
-  }
-}
+      for ($i = 0; $i -lt $mergedSites.Count; $i++) {
+        $site = $mergedSites[$i]
 
-# === Display site list with side-by-side status ===
-Write-Host "`nCurrently configured sites:"
-if ($mergedSites.Count -eq 0) {
-  Write-Host "  No sites configured" -ForegroundColor Gray
-}
-else {
-  for ($i = 0; $i -lt $mergedSites.Count; $i++) {
-    $site = $mergedSites[$i]
-    Write-Host "  [$($i + 1)] $($site.url)" -ForegroundColor Green
+        # Only test if certificate app has permissions on this site
+        if ($null -ne $site.certificateAppRoles) {
+          Write-Host "  $($site.url)" -ForegroundColor Gray
+          $testResult = Test-SiteAccess -SiteUrl $site.url -ClientId $config.CRAWLER_CLIENT_ID -TenantId $config.CRAWLER_TENANT_ID -CertPath $certPath -CertPassword $certPasswordSecure
 
-    # Side-by-side permission status
-    $certRoles = if ($null -ne $site.certificateAppRoles) { $site.certificateAppRoles } else { "(none)" }
-    $miRoles = if ($null -ne $site.managedIdentityRoles) { $site.managedIdentityRoles } else { "(none)" }
-    Write-Host "      Service Principal: $certRoles    Managed Identity: $miRoles" -ForegroundColor Gray
+          $mergedSites[$i].testSuccess = $testResult.success
+          $mergedSites[$i].listsCount = $testResult.listsCount
+          $mergedSites[$i].librariesCount = $testResult.librariesCount
+          $mergedSites[$i].listNames = $testResult.listNames
+          $mergedSites[$i].testError = $testResult.error
 
-    # Access test results
-    if ($null -ne $site.testSuccess) {
-      if ($site.testSuccess) {
-        Write-Host "      Access Test: PASSED - $($site.listsCount) lists, $($site.librariesCount) libraries" -ForegroundColor Green
-        if ($site.listNames) {
-          Write-Host "      Lists/Libraries: $($site.listNames)" -ForegroundColor DarkGray
+          if ($testResult.success) {
+            Write-Host "    OK ($($testResult.listsCount) lists, $($testResult.librariesCount) libs)" -ForegroundColor Green
+          }
+          else {
+            Write-Host "    FAIL: $($testResult.error)" -ForegroundColor Red
+          }
+        }
+        else {
+          Write-Host "  Skipping $($site.url) (no Service Principal permission)" -ForegroundColor DarkGray
         }
       }
-      else {
-        Write-Host "      Access Test: FAILED - $($site.testError)" -ForegroundColor Red
+    }
+
+    # === Display site list with side-by-side status ===
+    Write-Host "`nCurrently configured sites:"
+    if ($mergedSites.Count -eq 0) {
+      Write-Host "  No sites configured" -ForegroundColor Gray
+    }
+    else {
+      for ($i = 0; $i -lt $mergedSites.Count; $i++) {
+        $site = $mergedSites[$i]
+        Write-Host "  [$($i + 1)] $($site.url)" -ForegroundColor Green
+
+        # Side-by-side permission status
+        $certRoles = if ($null -ne $site.certificateAppRoles) { $site.certificateAppRoles } else { "(none)" }
+        $miRoles = if ($null -ne $site.managedIdentityRoles) { $site.managedIdentityRoles } else { "(none)" }
+        Write-Host "      Service Principal: $certRoles | Managed Identity: $miRoles" -ForegroundColor Gray
+
+        # Access test results
+        if ($null -ne $site.testSuccess) {
+          if ($site.testSuccess) {
+            Write-Host "      Test: OK ($($site.listsCount) lists, $($site.librariesCount) libs)" -ForegroundColor Green
+            if ($site.listNames) {
+              Write-Host "      Lists/Libraries: $($site.listNames)" -ForegroundColor DarkGray
+            }
+          }
+          else {
+            Write-Host "      Test: FAIL - $($site.testError)" -ForegroundColor Red
+          }
+        }
+        elseif ($null -eq $site.certificateAppRoles) {
+          Write-Host "      Test: N/A (no Service Principal permission)" -ForegroundColor DarkGray
+        }
       }
     }
-    elseif ($null -eq $site.certificateAppRoles) {
-      Write-Host "      Access Test: N/A (no Service Principal permission)" -ForegroundColor DarkGray
-    }
   }
-}
 
-# === Action Menu (ARCS-FR-03) ===
-Write-Host "`n========================================"
-Write-Host "SharePoint Site Permission Management"
-Write-Host "========================================"
-Write-Host "Service Principal: $($config.CRAWLER_CLIENT_ID)"
-if ($hasManagedIdentity) {
-  Write-Host "Managed Identity:  $($config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID)"
-}
-Write-Host ""
-Write-Host "Please select an option:"
-Write-Host "  1 - Add new site"
+  # === Action Menu ===
+  Write-Host "`nPlease select an option:"
+  Write-Host "  1 - Add new site"
 
-for ($i = 0; $i -lt $mergedSites.Count; $i++) {
-  Write-Host "  $($i + 2) - Remove: $($mergedSites[$i].url)"
-}
+  for ($i = 0; $i -lt $mergedSites.Count; $i++) {
+    Write-Host "  $($i + 2) - Remove: $($mergedSites[$i].url)"
+  }
 
-Write-Host ""
-$maxChoice = $mergedSites.Count + 1
-$choice = Read-Host "Enter your choice (1-$maxChoice)"
+  $exitOption = $mergedSites.Count + 2
+  Write-Host "  $exitOption - Exit"
 
-if (-not ($choice -match '^\d+$') -or [int]$choice -lt 1 -or [int]$choice -gt $maxChoice) {
-  Write-Host "`nInvalid choice. Exiting." -ForegroundColor Red
-  exit 1
-}
+  Write-Host ""
+  $maxChoice = $exitOption
+  $choice = Read-Host "Enter your choice (1-$maxChoice)"
 
-$choiceNum = [int]$choice
+  if (-not ($choice -match '^\d+$') -or [int]$choice -lt 1 -or [int]$choice -gt $maxChoice) {
+    Write-Host "`nInvalid choice. Please try again." -ForegroundColor Yellow
+    continue
+  }
 
-if ($choiceNum -eq 1) {
+  $choiceNum = [int]$choice
+
+  if ($choiceNum -eq $exitOption) {
+    $exitRequested = $true
+    continue
+  }
+
+  if ($choiceNum -eq 1) {
   # === Add new site (ARCS-FR-04) ===
   Write-Host "`nAdd new SharePoint site"
   Write-Host "========================================"
@@ -550,8 +590,8 @@ if ($choiceNum -eq 1) {
   $siteUrl = Read-Host "Enter the SharePoint site URL (e.g., https://contoso.sharepoint.com/sites/sitename)"
 
   if ([string]::IsNullOrWhiteSpace($siteUrl)) {
-    Write-Host "Site URL cannot be empty. Exiting." -ForegroundColor Red
-    exit 1
+    Write-Host "Site URL cannot be empty." -ForegroundColor Yellow
+    continue
   }
 
   # Permission level selection
@@ -572,14 +612,12 @@ if ($choiceNum -eq 1) {
   $targetChoice = Get-TargetSelection -HasBothTargets $hasBothTargets -HasManagedIdentity $hasManagedIdentity
   $targets = Get-TargetsFromSelection -Selection $targetChoice -HasManagedIdentity $hasManagedIdentity
 
-  Write-Host "`nGranting $role permission to site..."
-  Write-Host "  Note: This grants permission for both Microsoft Graph and SharePoint REST API access" -ForegroundColor Gray
+  Write-Host "`nGranting $role permission..."
 
   # Reconnect to admin (Test-SiteAccess may have changed connection)
   Connect-PnPOnline -Url $adminUrl -Interactive -ClientId $config.PNP_CLIENT_ID -ErrorAction Stop
 
-  $results = Grant-SitePermissionToTargets -SiteUrl $siteUrl -Role $role -Targets $targets -Config $config -AdminUrl $adminUrl
-  Show-OperationSummary -Results $results
+  $null = Grant-SitePermissionToTargets -SiteUrl $siteUrl -Role $role -Targets $targets -Config $config -AdminUrl $adminUrl
 }
 else {
   # === Remove site (ARCS-FR-05) ===
@@ -594,7 +632,7 @@ else {
   $certRoles = if ($null -ne $siteToRemove.certificateAppRoles) { $siteToRemove.certificateAppRoles } else { "(none)" }
   $miRoles = if ($null -ne $siteToRemove.managedIdentityRoles) { $siteToRemove.managedIdentityRoles } else { "(none)" }
   Write-Host "  Service Principal: $certRoles" -ForegroundColor Gray
-  Write-Host "  Managed Identity:  $miRoles" -ForegroundColor Gray
+  Write-Host "  Managed Identity: $miRoles" -ForegroundColor Gray
 
   # Target selection
   $targetChoice = Get-TargetSelection -HasBothTargets $hasBothTargets -HasManagedIdentity $hasManagedIdentity
@@ -605,10 +643,10 @@ else {
   # Reconnect to admin (Test-SiteAccess may have changed connection)
   Connect-PnPOnline -Url $adminUrl -Interactive -ClientId $config.PNP_CLIENT_ID -ErrorAction Stop
 
-  $results = Revoke-SitePermissionFromTargets -SiteUrl $siteToRemove.url -Targets $targets -SitePermissionStatus $siteToRemove -Config $config -AdminUrl $adminUrl
-  Show-OperationSummary -Results $results
+  $null = Revoke-SitePermissionFromTargets -SiteUrl $siteToRemove.url -Targets $targets -SitePermissionStatus $siteToRemove -Config $config -AdminUrl $adminUrl
 }
+} # End of while loop
 
 Write-Host "`n========================================"
-Write-Host "Operation completed!"
+Write-Host "Exiting..."
 Write-Host "========================================"

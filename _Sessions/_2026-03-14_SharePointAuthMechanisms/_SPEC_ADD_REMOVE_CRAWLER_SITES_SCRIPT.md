@@ -429,7 +429,7 @@ User selects "Remove site X"
             │              │ Exiting...                         │
             │              └────────────────────────────────────┘
             │
-            └─────> (back to ACTION MENU)
+            └─────> (back to SCAN PROMPT)
 ```
 
 ## 10. Implementation Details

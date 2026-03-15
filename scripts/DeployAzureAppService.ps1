@@ -16,8 +16,10 @@ function Read-EnvFile {
 
 Clear-Host
 
+# Workspace root is parent of scripts/ folder
+$workspaceRoot = Split-Path $PSScriptRoot -Parent
 $deployZipFilename = "deploy.zip"
-$envPath = Join-Path $PSScriptRoot  ".env"
+$envPath = Join-Path $workspaceRoot ".env"
 if (!(Test-Path $envPath)) { throw "File '$($envPath)' not found."  }
 $config = Read-EnvFile -Path ($envPath)
 
@@ -74,7 +76,7 @@ if ($null -eq $subscription) { throw $errorMessage }
 # Set the Azure PowerShell subscription context
 Set-AzContext -Subscription "$($config.AZURE_SUBSCRIPTION_ID)"
 
-Set-Location $PSScriptRoot
+Set-Location $workspaceRoot
 
 # Check if app service exists
 Write-Host "Checking if app service '$($config.AZURE_APP_SERVICE_NAME)' exists..."
@@ -167,10 +169,10 @@ If (Test-Path "$PSScriptRoot\$deployZipFilename") { Remove-Item "$PSScriptRoot\$
 # Deploy the application using zip deploy for more reliable deployment
 Write-Host "Creating deployment package..."
 # Create deployment package excluding unnecessary files
-$sourcePath = Join-Path $PSScriptRoot "src"
+$sourcePath = Join-Path $workspaceRoot "src"
 $zipPath = Join-Path $PSScriptRoot $deployZipFilename
 $items = Get-ChildItem -Path $sourcePath -Exclude $ignoreFilesAndFoldersForDeployment
-$rootReq = Join-Path $PSScriptRoot 'requirements.txt'
+$rootReq = Join-Path $workspaceRoot 'requirements.txt'
 if (Test-Path $rootReq) { $items = @($items) + $rootReq }
 Compress-Archive -Path $items -DestinationPath $zipPath -Force
 

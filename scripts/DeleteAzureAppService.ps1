@@ -14,7 +14,9 @@ function Read-EnvFile {
 
 Clear-Host
 
-$envPath = Join-Path $PSScriptRoot  ".env"
+# Workspace root is parent of scripts/ folder
+$workspaceRoot = Split-Path $PSScriptRoot -Parent
+$envPath = Join-Path $workspaceRoot ".env"
 if (!(Test-Path $envPath)) { throw "File '$($envPath)' not found." }
 $config = Read-EnvFile -Path ($envPath)
 
