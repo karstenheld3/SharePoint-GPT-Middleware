@@ -171,10 +171,19 @@ function Test-UserAssignedMIAttached {
 
 function Show-Header {
     Clear-Host
-    Write-Host "================================================================================" -ForegroundColor Cyan
-    Write-Host "  Azure Arc-Enabled Server Management" -ForegroundColor Cyan
-    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Host "==================================== START: AZURE ARC SERVER MANAGEMENT ====================================" -ForegroundColor Cyan
     Write-Host ""
+}
+
+function Show-Footer {
+    param([string]$Duration = $null)
+    Write-Host ""
+    if ($Duration) {
+        Write-Host "===================================== END: AZURE ARC SERVER MANAGEMENT =====================================" -ForegroundColor Cyan
+        Write-Host "Duration: $Duration"
+    } else {
+        Write-Host "===================================== END: AZURE ARC SERVER MANAGEMENT =====================================" -ForegroundColor Cyan
+    }
 }
 
 function Show-Checklist {
@@ -182,20 +191,20 @@ function Show-Checklist {
     
     Write-Host "Status:"
     
-    # Agent installed
+    # Agent installed (LOG-GN-02: quote version)
     if ($Status.AgentInstalled) {
         Write-Host "  [" -NoNewline
         Write-Host "x" -ForegroundColor Green -NoNewline
-        Write-Host "] Agent installed (v$($Status.AgentVersion))"
+        Write-Host "] Agent installed (version='$($Status.AgentVersion)')"
     } else {
         Write-Host "  [ ] Agent installed"
     }
     
-    # Connected to Arc
+    # Connected to Arc (LOG-GN-02: quote resource name)
     if ($Status.Connected) {
         Write-Host "  [" -NoNewline
         Write-Host "x" -ForegroundColor Green -NoNewline
-        Write-Host "] Connected to Azure Arc ($($Status.ResourceName))"
+        Write-Host "] Connected to Azure Arc (name='$($Status.ResourceName)')"
     } else {
         Write-Host "  [ ] Connected to Azure Arc"
     }
@@ -204,24 +213,19 @@ function Show-Checklist {
     $miId = $script:Config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID
     $miName = $script:Config.CRAWLER_MANAGED_IDENTITY_NAME
     if ($miId) {
-        $miDisplay = if ($miName) { "$miName" } else { $miId }
-        Write-Host "  [?] User-assigned MI configured: $miDisplay" -ForegroundColor Gray
+        $miDisplay = if ($miName) { "name='$miName'" } else { "id='$miId'" }
+        Write-Host "  [?] User-assigned MI configured ($miDisplay)" -ForegroundColor Gray
     }
     
     Write-Host ""
     
-    # Show connection details if connected
+    # Show connection details if connected (LOG-GN-06: property format)
     if ($Status.Connected) {
         Write-Host "Connection Details:"
-        Write-Host "  Resource Group: $($Status.ResourceGroup)"
-        Write-Host "  Subscription:   $($Status.SubscriptionId)"
-        Write-Host "  Location:       $($Status.Location)"
+        Write-Host "  resource_group='$($Status.ResourceGroup)'"
+        Write-Host "  subscription='$($Status.SubscriptionId)'"
+        Write-Host "  location='$($Status.Location)'"
         Write-Host ""
-        
-        # System-assigned MI info shown via "az connectedmachine show" if needed
-        Write-Host "System-Assigned MI: " -NoNewline
-        Write-Host "(use Azure CLI to query details)" -ForegroundColor Gray
-        
         Write-Host "Token Endpoint: " -NoNewline
         Write-Host "http://localhost:40342/metadata/identity/oauth2/token" -ForegroundColor Cyan
         Write-Host ""
@@ -273,39 +277,35 @@ function Show-Menu {
 # =============================================================================
 
 function Install-ArcAgent {
+    # LOG-GN-09: Announce before execution
     Write-Host ""
-    Write-Host "--------------------------------------------------------------------------------"
-    Write-Host "  Installing Azure Connected Machine Agent"
-    Write-Host "--------------------------------------------------------------------------------"
-    Write-Host ""
+    Write-Host "Installing Azure Connected Machine Agent..."
     
     try {
-        Write-Host "Downloading installer from $script:DownloadUrl ..."
+        # Track: Download
+        Write-Host "  Downloading from '$script:DownloadUrl'..."
         Invoke-WebRequest -Uri $script:DownloadUrl -OutFile $script:InstallerPath -UseBasicParsing
-        
-        Write-Host "Running installer..."
+        Write-Host "  Running installer..."
         & $script:InstallerPath
         
+        # Report: Success or failure
         if (Test-Path $script:AgentPath) {
             $version = & $script:AgentPath version 2>$null
-            Write-Host ""
-            Write-Host "SUCCESS: " -NoNewline -ForegroundColor Green
-            Write-Host "Azure Connected Machine Agent installed successfully."
-            Write-Host "  Version: $version"
+            Write-Host "  OK. Agent installed (version='$version')." -ForegroundColor Green
             return $true
         }
         else {
-            Write-Host "ERROR: " -NoNewline -ForegroundColor Red
-            Write-Host "Agent installation may have failed. Agent not found at expected path."
+            # LOG-GN-08: Error format
+            Write-Host "  FAIL: Agent not found at expected path -> Installation may have failed." -ForegroundColor Red
             return $false
         }
     }
     catch {
-        Write-Host "ERROR: " -NoNewline -ForegroundColor Red
-        Write-Host "Failed to install agent: $($_.Exception.Message)"
+        # LOG-GN-08: Error chain format
+        Write-Host "  FAIL: Could not install agent -> $($_.Exception.Message)" -ForegroundColor Red
         Write-Host ""
-        Write-Host "You can try manual installation:"
-        Write-Host "  1. Download from: $script:DownloadUrl"
+        Write-Host "HINT: Try manual installation:"
+        Write-Host "  1. Download from '$script:DownloadUrl'"
         Write-Host "  2. Run the downloaded script as Administrator"
         return $false
     }
@@ -421,9 +421,10 @@ function Read-ConnectionParams {
 function Connect-ToArc {
     param([hashtable]$Params)
     
+    # LOG-GN-09: Announce before execution
     Write-Host ""
-    Write-Host "Connecting with device code authentication..."
-    Write-Host ""
+    Write-Host "Connecting to Azure Arc (resource_name='$($Params.ResourceName)')..."
+    Write-Host "  Using device code authentication..."
     
     try {
         $arguments = @(
@@ -435,32 +436,26 @@ function Connect-ToArc {
             "--use-device-code"
         )
         
-        # Add tenant-id if provided
         if (-not [string]::IsNullOrWhiteSpace($Params.TenantId)) {
             $arguments += @("--tenant-id", $Params.TenantId)
         }
         
         & $script:AgentPath @arguments
         
+        # Report
         if ($LASTEXITCODE -eq 0) {
-            Write-Host ""
-            Write-Host "SUCCESS: " -NoNewline -ForegroundColor Green
-            Write-Host "Connected to Azure Arc successfully."
-            Write-Host ""
-            Write-Host "Your computer now has a system-assigned managed identity."
-            Write-Host "Token endpoint: http://localhost:40342/metadata/identity/oauth2/token"
+            Write-Host "  OK. Connected to Azure Arc." -ForegroundColor Green
+            Write-Host "  System-assigned MI created."
+            Write-Host "  Token endpoint: http://localhost:40342/metadata/identity/oauth2/token"
             return $true
         }
         else {
-            Write-Host ""
-            Write-Host "ERROR: " -NoNewline -ForegroundColor Red
-            Write-Host "Connection failed. Check the error messages above."
+            Write-Host "  FAIL: Connection failed -> Check error messages above." -ForegroundColor Red
             return $false
         }
     }
     catch {
-        Write-Host "ERROR: " -NoNewline -ForegroundColor Red
-        Write-Host "Failed to connect: $($_.Exception.Message)"
+        Write-Host "  FAIL: Could not connect -> $($_.Exception.Message)" -ForegroundColor Red
         return $false
     }
 }
@@ -471,11 +466,7 @@ function Connect-ToArc {
 
 function Disconnect-FromArc {
     Write-Host ""
-    Write-Host "--------------------------------------------------------------------------------"
-    Write-Host "  Disconnect from Azure Arc"
-    Write-Host "--------------------------------------------------------------------------------"
-    Write-Host ""
-    Write-Host "WARNING: This will:" -ForegroundColor Yellow
+    Write-Host "WARNING: Disconnect will:" -ForegroundColor Yellow
     Write-Host "  - Delete the Azure resource for this computer"
     Write-Host "  - Remove the managed identity"
     Write-Host "  - Keep the agent installed (can reconnect later)"
@@ -486,33 +477,30 @@ function Disconnect-FromArc {
     
     $confirm = Read-Host "Select option"
     if ($confirm -ne "1") {
-        Write-Host "Cancelled."
+        Write-Host "SKIP: Disconnect cancelled." -ForegroundColor Gray
         return $false
     }
     
+    # LOG-GN-09: Announce before execution
     Write-Host ""
-    Write-Host "Disconnecting with device code authentication..."
-    Write-Host ""
+    Write-Host "Disconnecting from Azure Arc..."
+    Write-Host "  Using device code authentication..."
     
     try {
         & $script:AgentPath disconnect --use-device-code
         
+        # Report
         if ($LASTEXITCODE -eq 0) {
-            Write-Host ""
-            Write-Host "SUCCESS: " -NoNewline -ForegroundColor Green
-            Write-Host "Disconnected from Azure Arc."
+            Write-Host "  OK. Disconnected from Azure Arc." -ForegroundColor Green
             return $true
         }
         else {
-            Write-Host ""
-            Write-Host "ERROR: " -NoNewline -ForegroundColor Red
-            Write-Host "Disconnection failed. Check the error messages above."
+            Write-Host "  FAIL: Disconnection failed -> Check error messages above." -ForegroundColor Red
             return $false
         }
     }
     catch {
-        Write-Host "ERROR: " -NoNewline -ForegroundColor Red
-        Write-Host "Failed to disconnect: $($_.Exception.Message)"
+        Write-Host "  FAIL: Could not disconnect -> $($_.Exception.Message)" -ForegroundColor Red
         return $false
     }
 }
@@ -528,18 +516,13 @@ function Attach-UserAssignedMI {
     $miName = $script:Config.CRAWLER_MANAGED_IDENTITY_NAME
     
     if (-not $miObjectId) {
-        Write-Host "No user-assigned MI configured in .env" -ForegroundColor Gray
+        Write-Host "SKIP: No user-assigned MI configured in .env." -ForegroundColor Gray
         return $false
     }
     
     Write-Host ""
-    Write-Host "--------------------------------------------------------------------------------"
-    Write-Host "  Attach User-Assigned Managed Identity"
-    Write-Host "--------------------------------------------------------------------------------"
-    Write-Host ""
-    
-    $miDisplay = if ($miName) { "$miName ($miObjectId)" } else { $miObjectId }
-    Write-Host "Managed Identity: $miDisplay"
+    $miDisplay = if ($miName) { "name='$miName' (id='$miObjectId')" } else { "id='$miObjectId'" }
+    Write-Host "User-Assigned MI: $miDisplay"
     Write-Host ""
     Write-Host "1 - Yes, attach MI"
     Write-Host "2 - No, skip"
@@ -547,51 +530,41 @@ function Attach-UserAssignedMI {
     
     $confirm = Read-Host "Select option"
     if ($confirm -ne "1") {
-        Write-Host "Skipped."
+        Write-Host "SKIP: MI attachment cancelled." -ForegroundColor Gray
         return $false
     }
-    
-    Write-Host ""
-    Write-Host "Attaching user-assigned managed identity..."
     
     # Check if Azure CLI is available
     $azCmd = Get-Command az -ErrorAction SilentlyContinue
     if (-not $azCmd) {
-        Write-Host ""
-        Write-Host "ERROR: " -NoNewline -ForegroundColor Red
-        Write-Host "Azure CLI (az) is not installed."
-        Write-Host ""
-        Write-Host "Install from: https://docs.microsoft.com/en-us/cli/azure/install-azure-cli"
+        Write-Host "FAIL: Azure CLI (az) is not installed." -ForegroundColor Red
+        Write-Host "HINT: Install from 'https://docs.microsoft.com/en-us/cli/azure/install-azure-cli'"
         return $false
     }
     
+    # LOG-GN-09: Announce before execution
+    Write-Host ""
+    Write-Host "Attaching user-assigned MI to Arc machine..."
+    
     try {
-        # Build the MI resource ID
         $subscriptionId = $Status.SubscriptionId
         $resourceGroup = $Status.ResourceGroup
         
-        # Check CRAWLER_MANAGED_IDENTITY_RESOURCE_GROUP - MI may be in different RG
         $miResourceGroup = $script:Config.CRAWLER_MANAGED_IDENTITY_RESOURCE_GROUP
         if (-not $miResourceGroup) {
             $miResourceGroup = $resourceGroup
         }
         
         if (-not $miName) {
-            Write-Host "WARNING: " -NoNewline -ForegroundColor Yellow
-            Write-Host "CRAWLER_MANAGED_IDENTITY_NAME not set in .env"
-            Write-Host "Please provide the managed identity name:"
-            $miName = Read-Host "MI Name"
+            Write-Host "  WARNING: CRAWLER_MANAGED_IDENTITY_NAME not set in .env." -ForegroundColor Yellow
+            $miName = Read-Host "  Enter MI name"
         }
         
         $miResourceId = "/subscriptions/$subscriptionId/resourceGroups/$miResourceGroup/providers/Microsoft.ManagedIdentity/userAssignedIdentities/$miName"
         
-        Write-Host "MI Resource ID: $miResourceId"
-        Write-Host ""
-        Write-Host "Updating Arc machine with user-assigned MI via Azure CLI..."
-        Write-Host "(You may need to authenticate)"
-        Write-Host ""
+        Write-Host "  mi_resource_id='$miResourceId'"
+        Write-Host "  Calling Azure CLI (may require authentication)..."
         
-        # Use Azure CLI to update the machine
         $result = az connectedmachine update `
             --name $Status.ResourceName `
             --resource-group $resourceGroup `
@@ -599,24 +572,18 @@ function Attach-UserAssignedMI {
             --user-assigned-identities $miResourceId `
             2>&1
         
+        # Report
         if ($LASTEXITCODE -eq 0) {
-            Write-Host ""
-            Write-Host "SUCCESS: " -NoNewline -ForegroundColor Green
-            Write-Host "User-assigned managed identity attached."
+            Write-Host "  OK. User-assigned MI attached." -ForegroundColor Green
             return $true
         }
         else {
-            Write-Host ""
-            Write-Host "ERROR: " -NoNewline -ForegroundColor Red
-            Write-Host "Failed to attach MI:"
-            Write-Host $result
+            Write-Host "  FAIL: Could not attach MI -> $result" -ForegroundColor Red
             return $false
         }
     }
     catch {
-        Write-Host ""
-        Write-Host "ERROR: " -NoNewline -ForegroundColor Red
-        Write-Host "Failed to attach MI: $($_.Exception.Message)"
+        Write-Host "  FAIL: Could not attach MI -> $($_.Exception.Message)" -ForegroundColor Red
         return $false
     }
 }
@@ -626,22 +593,18 @@ function Attach-UserAssignedMI {
 # =============================================================================
 
 function Uninstall-ArcAgent {
-    Write-Host ""
-    Write-Host "--------------------------------------------------------------------------------"
-    Write-Host "  Uninstall Azure Connected Machine Agent"
-    Write-Host "--------------------------------------------------------------------------------"
-    Write-Host ""
-    
     # Check if still connected
     $status = Get-ArcStatus
-    if ($status.Status -eq "Connected") {
-        Write-Host "ERROR: " -NoNewline -ForegroundColor Red
-        Write-Host "Cannot uninstall while connected to Azure."
-        Write-Host "Please disconnect first using option 1."
+    if ($status.Connected) {
+        Write-Host "FAIL: Cannot uninstall while connected to Azure." -ForegroundColor Red
+        Write-Host "HINT: Disconnect first using option 1."
         return $false
     }
     
-    Write-Host "Finding agent in registry..."
+    # LOG-GN-09: Announce before execution
+    Write-Host ""
+    Write-Host "Uninstalling Azure Connected Machine Agent..."
+    Write-Host "  Finding agent in registry..."
     
     try {
         $uninstallKey = Get-ChildItem -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall" |
@@ -649,34 +612,28 @@ function Uninstall-ArcAgent {
             Where-Object { $_.DisplayName -eq "Azure Connected Machine Agent" }
         
         if (-not $uninstallKey) {
-            Write-Host "WARNING: " -NoNewline -ForegroundColor Yellow
-            Write-Host "Agent not found in registry. It may already be uninstalled."
+            Write-Host "  WARNING: Agent not found in registry. May already be uninstalled." -ForegroundColor Yellow
             return $true
         }
         
         $productCode = $uninstallKey.PSChildName
-        Write-Host "Uninstalling (Product Code: $productCode)..."
+        Write-Host "  Running msiexec (product_code='$productCode')..."
         
         Start-Process -FilePath "msiexec.exe" -ArgumentList "/x `"$productCode`" /qn" -Wait -PassThru | Out-Null
-        
         Start-Sleep -Seconds 2
         
+        # Report
         if (-not (Test-Path $script:AgentPath)) {
-            Write-Host ""
-            Write-Host "SUCCESS: " -NoNewline -ForegroundColor Green
-            Write-Host "Azure Connected Machine Agent uninstalled successfully."
+            Write-Host "  OK. Agent uninstalled." -ForegroundColor Green
             return $true
         }
         else {
-            Write-Host ""
-            Write-Host "WARNING: " -NoNewline -ForegroundColor Yellow
-            Write-Host "Uninstall completed but agent may still exist. Please verify manually."
+            Write-Host "  WARNING: Uninstall completed but agent path still exists." -ForegroundColor Yellow
             return $true
         }
     }
     catch {
-        Write-Host "ERROR: " -NoNewline -ForegroundColor Red
-        Write-Host "Failed to uninstall: $($_.Exception.Message)"
+        Write-Host "  FAIL: Could not uninstall -> $($_.Exception.Message)" -ForegroundColor Red
         return $false
     }
 }
@@ -688,53 +645,54 @@ function Uninstall-ArcAgent {
 function Invoke-CompleteSetup {
     param([hashtable]$Status)
     
+    # LOG-UF-02: Use [ x / n ] format for steps
+    
     # Step 1: Install agent if not installed
     if (-not $Status.AgentInstalled) {
         Write-Host ""
-        Write-Host "Step 1/3: Installing agent..." -ForegroundColor Cyan
+        Write-Host "[ 1 / 3 ] Installing agent..."
         if (-not (Install-ArcAgent)) {
+            Write-Host "FAIL: Setup incomplete." -ForegroundColor Red
             return $false
         }
     } else {
         Write-Host ""
-        Write-Host "Step 1/3: Agent already installed - skipping" -ForegroundColor Gray
+        Write-Host "[ 1 / 3 ] SKIP: Agent already installed." -ForegroundColor Gray
     }
     
     # Step 2: Connect to Arc if not connected
     if (-not $Status.Connected) {
         Write-Host ""
-        Write-Host "Step 2/3: Connecting to Azure Arc..." -ForegroundColor Cyan
+        Write-Host "[ 2 / 3 ] Connecting to Azure Arc..."
         $params = Read-ConnectionParams
         if (-not $params) {
-            Write-Host "Connection cancelled."
+            Write-Host "SKIP: Connection cancelled." -ForegroundColor Gray
             return $false
         }
         if (-not (Connect-ToArc -Params $params)) {
+            Write-Host "FAIL: Setup incomplete." -ForegroundColor Red
             return $false
         }
         # Refresh status after connection
         $Status = Get-ArcStatus
     } else {
         Write-Host ""
-        Write-Host "Step 2/3: Already connected to Azure Arc - skipping" -ForegroundColor Gray
+        Write-Host "[ 2 / 3 ] SKIP: Already connected to Azure Arc." -ForegroundColor Gray
     }
     
-    # Step 3: Attach user-assigned MI if configured and not attached
+    # Step 3: Attach user-assigned MI if configured
     $miConfigured = [bool]$script:Config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID
-    if ($miConfigured -and -not $Status.UserAssignedMIAttached) {
+    if ($miConfigured) {
         Write-Host ""
-        Write-Host "Step 3/3: Attaching user-assigned MI..." -ForegroundColor Cyan
+        Write-Host "[ 3 / 3 ] Attaching user-assigned MI..."
         Attach-UserAssignedMI -Status $Status
-    } elseif ($miConfigured) {
-        Write-Host ""
-        Write-Host "Step 3/3: User-assigned MI already attached - skipping" -ForegroundColor Gray
     } else {
         Write-Host ""
-        Write-Host "Step 3/3: No user-assigned MI configured - skipping" -ForegroundColor Gray
+        Write-Host "[ 3 / 3 ] SKIP: No user-assigned MI configured." -ForegroundColor Gray
     }
     
     Write-Host ""
-    Write-Host "Setup complete!" -ForegroundColor Green
+    Write-Host "OK. Setup complete." -ForegroundColor Green
     return $true
 }
 
@@ -744,9 +702,8 @@ function Invoke-CompleteSetup {
 
 # Check admin privileges
 if (-not (Test-AdminPrivilege)) {
-    Write-Host "ERROR: " -NoNewline -ForegroundColor Red
-    Write-Host "This script requires Administrator privileges."
-    Write-Host "Please run PowerShell as Administrator and try again."
+    Write-Host "FAIL: This script requires Administrator privileges." -ForegroundColor Red
+    Write-Host "HINT: Run PowerShell as Administrator and try again."
     exit 1
 }
 
@@ -810,6 +767,9 @@ else {
         default { Write-Host "Invalid option." -ForegroundColor Yellow }
     }
 }
+
+# LOG-UF-06: Show footer
+Show-Footer
 
 Write-Host ""
 Write-Host "Press any key to exit..."
