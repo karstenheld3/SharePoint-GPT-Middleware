@@ -680,6 +680,12 @@ function Show-SystemAssignedMI {
     Write-Host "Use principal_id for RBAC role assignments."
 }
 
+# NOTE: User-assigned managed identity on Azure Arc-enabled servers is currently in PREVIEW
+# and may not be available for all subscriptions. Error: "HCRP400 - User assigned identity 
+# is currently in preview and not allowed for this subscription."
+# See: https://learn.microsoft.com/en-us/azure/azure-arc/servers/managed-identity-authentication
+# Code left intact for when feature becomes generally available.
+
 function Attach-UserAssignedMI {
     param([hashtable]$Status)
     
