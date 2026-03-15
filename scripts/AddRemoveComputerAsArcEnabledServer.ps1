@@ -586,6 +586,22 @@ function Show-SystemAssignedMI {
     $restExitCode = $LASTEXITCODE
     Write-Host "    exit_code=$restExitCode"
     
+    # Check for token cache corruption during REST call
+    if ($restOutput -match "Decryption failed" -or $restOutput -match "2146893813") {
+        Write-Host "    WARNING: Token cache corrupted during REST call." -ForegroundColor Yellow
+        Write-Host "    Clearing cache and retrying..."
+        az account clear 2>$null
+        az login
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "    FAIL: Re-authentication failed." -ForegroundColor Red
+            return
+        }
+        # Retry REST call
+        $restOutput = az rest --method GET --url $apiUrl 2>&1
+        $restExitCode = $LASTEXITCODE
+        Write-Host "    Retry exit_code=$restExitCode"
+    }
+    
     if ($restExitCode -ne 0) {
         Write-Host "  FAIL: REST API call failed." -ForegroundColor Red
         Write-Host "  Error: $restOutput" -ForegroundColor Red
@@ -716,13 +732,27 @@ function Attach-UserAssignedMI {
             }
         } | ConvertTo-Json -Depth 5 -Compress
         
-        $result = az rest --method PATCH `
-            --url "https://management.azure.com${machineResourceId}?api-version=2024-07-10" `
-            --body $body `
-            2>&1
+        $apiUrl = "https://management.azure.com${machineResourceId}?api-version=2024-07-10"
+        $result = az rest --method PATCH --url $apiUrl --body $body 2>&1
+        $exitCode = $LASTEXITCODE
+        
+        # Check for token cache corruption during REST call
+        if ($result -match "Decryption failed" -or $result -match "2146893813") {
+            Write-Host "  WARNING: Token cache corrupted during REST call." -ForegroundColor Yellow
+            Write-Host "  Clearing cache and retrying..."
+            az account clear 2>$null
+            az login
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "  FAIL: Re-authentication failed." -ForegroundColor Red
+                return $false
+            }
+            # Retry REST call
+            $result = az rest --method PATCH --url $apiUrl --body $body 2>&1
+            $exitCode = $LASTEXITCODE
+        }
         
         # Report
-        if ($LASTEXITCODE -eq 0) {
+        if ($exitCode -eq 0) {
             Write-Host "  OK. User-assigned MI attached." -ForegroundColor Green
             return $true
         }
