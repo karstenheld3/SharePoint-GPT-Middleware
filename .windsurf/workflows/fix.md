@@ -118,12 +118,12 @@ If no description provided (discovery mode):
 
 Record in PROBLEMS.md (no subfolder for problems):
 
-- SESSION-MODE: `[SESSION_FOLDER]/PROBLEMS.md`, ID format `[TOPIC]-PR-NNN`
-- PROJECT-MODE: `[BUGFIXES_FOLDER]/PROBLEMS.md`, ID format `[TOPIC]-PR-NNN`
+- SESSION-MODE: `[SESSION_FOLDER]/PROBLEMS.md`, ID format `[SESSION_TOPIC]-PR-NNN` (use session's TOPIC, no new topics)
+- PROJECT-MODE: `[BUGFIXES_FOLDER]/PROBLEMS.md`, ID format `PR-NNN` (no TOPIC prefix, _BugFixes implied)
 
 Entry format:
 ```markdown
-### [TOPIC]-PR-NNN ShortDescription
+### [ID] ShortDescription
 
 **Status**: Open
 **Reported**: [timestamp]
