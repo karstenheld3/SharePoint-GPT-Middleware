@@ -1,6 +1,5 @@
 ---
 description: Fix bugs - record, investigate, create [BUG_FOLDER], test, commit, update docs
-auto_execution_mode: 1
 ---
 
 # Fix Workflow
@@ -26,21 +25,37 @@ Complete bug-fixing workflow from problem discovery to verified fix and document
 - `/fix [problem-description]` - Start with known problem
 - `/fix` - Discovery mode (analyze context for issues)
 
+## Quick Reference
+
+SESSION-MODE (bug found during active session):
+- Folder: `[SESSION_FOLDER]/`
+- Bug ID: `BG-NNN` (3-digit, session-local)
+- Bug Folder: `[SESSION_FOLDER]/BG-NNN_IssueDescription/`
+- Docs: SPEC, IMPL, TEST
+- Commit: `fix(BG-NNN): description`
+
+PROJECT-MODE (bug found after session closed):
+- Folder: `[BUGFIXES_FOLDER]/` = `[DEFAULT_SESSIONS_FOLDER]/_BugFixes/`
+- Bug ID: `BG-NNNN` (4-digit, project-global)
+- Bug Folder: `[BUGFIXES_FOLDER]/BG-NNNN_IssueDescription/`
+- Docs: SPEC, IMPL, TEST + `*_FIXES.md`
+- Commit: `fix(BG-NNNN): description`
+
 ## Step 1: Determine Context
 
 CRITICAL: The entire workflow depends on this determination.
 
 ### SESSION-MODE
 
-**Condition**: Currently working in an active session (`[SESSION_FOLDER]` exists)
+Condition: Currently working in an active session (`[SESSION_FOLDER]` exists)
 
-**Characteristics**:
+Characteristics:
 - Bug found WHILE WORKING on a task
 - Problem may or may not be confirmed as bug yet
 - Fix happens in current session folder
 - Uses BG (Bug) tracking ID (3-digit: NNN, local to session)
 
-**Folder structure**:
+Folder structure:
 ```
 [SESSION_FOLDER]/
 ├── NOTES.md, PROBLEMS.md, PROGRESS.md
@@ -50,23 +65,23 @@ CRITICAL: The entire workflow depends on this determination.
     ├── backup/, poc/, test/
 ```
 
-**Documentation on completion**:
+Documentation on completion:
 - Update SPEC, IMPL, TEST docs only
 - NO `*_FIXES.md` file created
 
 ### PROJECT-MODE
 
-**Condition**: No active session OR bug found after session closed/archived
+Condition: No active session OR bug found after session closed/archived
 
-**Characteristics**:
+Characteristics:
 - Bug found AFTER implementation is done
 - Confirmed defect in existing code
 - Fix happens in persistent `_BugFixes` session
 - Uses BG (Bug) tracking ID (4-digit: NNNN, globally unique across project)
 
-**Folder structure**:
+Folder structure:
 ```
-[BUGFIXES_SESSION_FOLDER]/              <- Permanent session (never archived)
+[BUGFIXES_FOLDER]/              <- Permanent session (never archived)
 ├── NOTES.md, PROBLEMS.md, PROGRESS.md
 └── BG-NNNN_IssueDescription/           <- [BUG_FOLDER] (4-digit, project-global)
     ├── PROBLEMS.md                      <- Full detail
@@ -74,7 +89,7 @@ CRITICAL: The entire workflow depends on this determination.
     ├── backup/, poc/, test/
 ```
 
-**Documentation on completion**:
+Documentation on completion:
 - Update SPEC, IMPL, TEST docs
 - ALSO create/update `*_FIXES.md` next to component's IMPL or SPEC doc
 
@@ -82,9 +97,9 @@ CRITICAL: The entire workflow depends on this determination.
 
 If PROJECT-MODE:
 
-1. Read `!NOTES.md` to get `[BUGFIXES_SESSION_FOLDER]` path
-2. Check if `[BUGFIXES_SESSION_FOLDER]` exists
-3. If NOT exists, create `[BUGFIXES_SESSION_FOLDER]` with:
+1. Read `!NOTES.md` to get `[BUGFIXES_FOLDER]` path
+2. Check if `[BUGFIXES_FOLDER]` exists
+3. If NOT exists, create `[BUGFIXES_FOLDER]` with:
    - `NOTES.md` (minimal session notes)
    - `PROBLEMS.md` (empty with header)
    - `PROGRESS.md` (empty with header)
@@ -104,7 +119,7 @@ If no description provided (discovery mode):
 Record in PROBLEMS.md (no subfolder for problems):
 
 - SESSION-MODE: `[SESSION_FOLDER]/PROBLEMS.md`, ID format `[TOPIC]-PR-NNN`
-- PROJECT-MODE: `[BUGFIXES_SESSION_FOLDER]/PROBLEMS.md`, ID format `[TOPIC]-PR-NNN`
+- PROJECT-MODE: `[BUGFIXES_FOLDER]/PROBLEMS.md`, ID format `[TOPIC]-PR-NNN`
 
 Entry format:
 ```markdown
@@ -131,8 +146,8 @@ Create [BUG_FOLDER] (only when problem confirmed as bug needing investigation):
 
 - SESSION-MODE: `[SESSION_FOLDER]/BG-NNN_IssueDescription/` (3-digit, session-local)
   - Get next BG number from `[SESSION_FOLDER]/NOTES.md`
-- PROJECT-MODE: `[BUGFIXES_SESSION_FOLDER]/BG-NNNN_IssueDescription/` (4-digit, project-global)
-  - Get next BG number from `[BUGFIXES_SESSION_FOLDER]/NOTES.md` (single source of truth)
+- PROJECT-MODE: `[BUGFIXES_FOLDER]/BG-NNNN_IssueDescription/` (4-digit, project-global)
+  - Get next BG number from `[BUGFIXES_FOLDER]/NOTES.md` (single source of truth)
 
 Inside [BUG_FOLDER], create:
 - `PROBLEMS.md` - Full detail problem tracking
@@ -237,22 +252,6 @@ Update PROBLEMS.md entry:
 ## Post-Fix
 
 Run `/learn` to reflect on mistakes and extract lessons from this fix.
-
-## Quick Reference
-
-**SESSION-MODE** (bug found during active session):
-- Folder: `[SESSION_FOLDER]/`
-- Bug ID: `BG-NNN` (3-digit, session-local)
-- Bug Folder: `[SESSION_FOLDER]/BG-NNN_IssueDescription/`
-- Docs: SPEC, IMPL, TEST
-- Commit: `fix(BG-NNN): description`
-
-**PROJECT-MODE** (bug found after session closed):
-- Folder: `[BUGFIXES_FOLDER]/` = `[DEFAULT_SESSIONS_FOLDER]/_BugFixes/`
-- Bug ID: `BG-NNNN` (4-digit, project-global)
-- Bug Folder: `[BUGFIXES_FOLDER]/BG-NNNN_IssueDescription/`
-- Docs: SPEC, IMPL, TEST + `*_FIXES.md`
-- Commit: `fix(BG-NNNN): description`
 
 ## _FIXES.md Format
 

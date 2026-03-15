@@ -2,7 +2,7 @@
 
 [DEFAULT_SESSIONS_FOLDER]: [WORKSPACE_FOLDER]\_Sessions
 [SESSION_ARCHIVE_FOLDER]: [SESSION_FOLDER]\_Archive
-[BUGFIXES_SESSION_FOLDER]: [DEFAULT_SESSIONS_FOLDER]\_BugFixes
+[BUGFIXES_FOLDER]: [DEFAULT_SESSIONS_FOLDER]\_BugFixes
 
 ## Test Configuration
 
@@ -110,7 +110,7 @@ Run `/fix` workflow. See `.windsurf/workflows/fix.md` for 11-step process.
 | Context | Folder | ID Format | Docs Updated |
 |---------|--------|-----------|--------------|
 | SESSION-MODE | `[SESSION_FOLDER]/BG-NNN_*/` | 3-digit (session-local) | SPEC, IMPL, TEST |
-| PROJECT-MODE | `[BUGFIXES_SESSION_FOLDER]/BG-NNNN_*/` | 4-digit (project-global) | SPEC, IMPL, TEST + `*_FIXES.md` |
+| PROJECT-MODE | `[BUGFIXES_FOLDER]/BG-NNNN_*/` | 4-digit (project-global) | SPEC, IMPL, TEST + `*_FIXES.md` |
 
 **Guarantees**:
 - `[BUG_FOLDER]` created with all artifacts (both contexts)
