@@ -101,30 +101,21 @@ Sessions working on V2 routers copy SPEC/IMPL docs from `docs/routers_v2/` into 
 
 ### Bug and Issue Fixing
 
-**MANDATORY**: Run `/fix` workflow for bug fixes. See `.windsurf/workflows/fix.md`.
+Run `/fix` workflow. See `.windsurf/workflows/fix.md` for 11-step process.
 
-**Two Contexts for Bug Fixes:**
+**Inputs**: Problem description or discovery mode (no args)
 
-1. **`SESSION-MODE`** - Found WHILE WORKING in an active session
-   - Fix in current session folder
-   - Create `[TOPIC]-PR-NNN_ShortDescription/` subfolder (3-digit, reuses problem tracking ID)
-   - Track in session's PROBLEMS.md
+**Outputs by context**:
 
-2. **`PROJECT-MODE`** - Found AFTER session is closed/archived
-   - Fix in `[BUGFIXES_SESSION_FOLDER]`
-   - Create `[TOPIC]-BG-NNNN_ShortDescription/` subfolder (4-digit, uses BG tracking ID)
-   - Track in `_BugFixes/PROBLEMS.md` (short summary), full detail in `[BUG_FOLDER]/PROBLEMS.md`
+| Context | Folder | ID Format | Docs Updated |
+|---------|--------|-----------|--------------|
+| SESSION-MODE | `[SESSION_FOLDER]/[TOPIC]-PR-NNN_*/` | 3-digit | SPEC, IMPL, TEST |
+| PROJECT-MODE | `[BUGFIXES_SESSION_FOLDER]/[TOPIC]-BG-NNNN_*/` | 4-digit | SPEC, IMPL, TEST + `*_FIXES.md` |
 
-Both contexts ALWAYS create a `[BUG_FOLDER]`. Run `/fix` for complete workflow.
-
-**Fix Documentation** (only AFTER fix confirmed working):
-- **ALWAYS**: Update SPEC, IMPL, TEST docs to cover the newly discovered scenario
-- **`PROJECT-MODE` only**: Also create/update `*_FIXES.md` next to the component's IMPL or SPEC doc:
-  1. Search for `*_IMPL_*.md` -> add/update `*_IMPL_*_FIXES.md` in same folder
-  2. If no IMPL doc -> search for `*_SPEC_*.md` -> add/update `*_SPEC_*_FIXES.md` in same folder
-
-**_FIXES.md** is a chronological audit trail of post-implementation bugs, their solutions, and all affected files.
-Each entry records: tracking ID (e.g., `DOM-BG-0001`), Problem, Solution, Changed files list.
-See `_BugFixes/NOTES.md` for format details.
+**Guarantees**:
+- `[BUG_FOLDER]` created with all artifacts (both contexts)
+- Impact assessment before fix
+- All impacted functionality tested before commit
+- Commit message format: `fix([TOPIC]-PR-NNN):` or `fix([TOPIC]-BG-NNNN):`
 
 **`_BugFixes` session** is persistent (never archived).
