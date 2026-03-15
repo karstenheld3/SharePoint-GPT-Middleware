@@ -691,6 +691,13 @@ function Show-SystemAssignedMI {
 function Attach-UserAssignedMI {
     param([hashtable]$Status)
     
+    # WARNING: Feature in preview - show warning before attempting
+    Write-Host ""
+    Write-Host "WARNING: User-assigned MI on Arc servers is in PREVIEW" -ForegroundColor Yellow
+    Write-Host "  This feature may not be available for your subscription." -ForegroundColor Yellow
+    Write-Host "  Error 'HCRP400' means the feature is not enabled." -ForegroundColor Yellow
+    Write-Host ""
+    
     $miObjectId = $script:Config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID
     $miName = $script:Config.CRAWLER_MANAGED_IDENTITY_NAME
     
@@ -703,7 +710,7 @@ function Attach-UserAssignedMI {
     $miDisplay = if ($miName) { "name='$miName' (id='$miObjectId')" } else { "id='$miObjectId'" }
     Write-Host "User-Assigned MI: $miDisplay"
     Write-Host ""
-    Write-Host "1 - Yes, attach MI"
+    Write-Host "1 - Yes, try to attach MI (may fail if preview not enabled)"
     Write-Host "2 - No, skip"
     Write-Host ""
     
