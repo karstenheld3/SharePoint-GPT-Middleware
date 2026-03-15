@@ -15,4 +15,4 @@ Tool-specific knowledge and disambiguation.
 
 **When to use:**
 - **Playwright MCP**: Default choice. Clean sessions, standard automation, no existing auth needed
-- **Playwriter**: When explicity asked for by user using `Playwriter` term
+- **Playwriter**: When explicitly asked for by user using `Playwriter` term

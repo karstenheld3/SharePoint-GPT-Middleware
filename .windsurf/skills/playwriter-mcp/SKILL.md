@@ -72,6 +72,11 @@ Rules and usage for Playwriter - Chrome extension + CLI/MCP for real browser aut
 - Use `state.varName` to persist data between calls
 - Green icon = connected, gray = not controlled
 - **TIMEOUTS**: ALWAYS pass timeout (default 20000ms is too long!). Use `1500` for simple ops, `3000` for screenshots.
+- **NO waitForTimeout inside code** - causes stalls. Use proper waits like `waitForSelector` instead.
+- **goto() stalls on SPAs** - default `waitUntil: 'load'` never fires on SharePoint/dynamic sites. Use `{ waitUntil: 'domcontentloaded' }`.
+- **click() can stall** - if element triggers animation/loading that blocks. Don't click multiple elements in one call.
+- **After any cancellation** - always check connection before proceeding with more operations.
+- **If stalled, reset won't work** - user must restart Chrome or click extension icon again.
 
 ## Quick Start
 
