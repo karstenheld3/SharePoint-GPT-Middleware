@@ -56,7 +56,7 @@ All batch files are in the workspace root. Double-click to run or execute from t
 
 **Configuration:**
 - `AddRemoveCrawlerPermissions.bat` - Manage Entra ID app permissions
-- `AddRemoveCrawlerSharePointSites.bat` - Manage Sites.Selected permissions
+- `AddRemoveCrawlerSharePointSites.bat` - Manage Sites.Selected permissions (requires PowerShell 7)
 - `CreateSelfSignedCertificateRunAsAdmin.bat` - Generate certificate (run as admin)
 
 **Environment Switching:**
