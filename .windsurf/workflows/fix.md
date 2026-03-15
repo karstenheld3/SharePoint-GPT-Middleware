@@ -146,6 +146,7 @@ A problem is confirmed as a **bug** when it's a deviation from desired behavior 
 - A flaw in the code
 - A flawed design decision in the IMPL
 - A flawed assumption or design decision in the SPEC (rare)
+- An incorrect assessment of actual behavior of libraries, frameworks, or backends
 
 Create [BUG_FOLDER] (only when problem confirmed as bug):
 
