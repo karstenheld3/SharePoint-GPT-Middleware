@@ -589,13 +589,27 @@ function Show-SystemAssignedMI {
     # Check for token cache corruption during REST call
     if ($restOutput -match "Decryption failed" -or $restOutput -match "2146893813") {
         Write-Host "    WARNING: Token cache corrupted during REST call." -ForegroundColor Yellow
-        Write-Host "    Clearing cache and retrying..."
-        az account clear 2>$null
+        Write-Host "    Deleting corrupted cache files..."
+        
+        # Delete MSAL token cache files directly (az account clear doesn't work when cache is corrupted)
+        $azureDir = Join-Path $env:USERPROFILE ".azure"
+        $cacheFiles = @("msal_token_cache.bin", "msal_token_cache.json", "accessTokens.json")
+        foreach ($file in $cacheFiles) {
+            $path = Join-Path $azureDir $file
+            if (Test-Path $path) {
+                Remove-Item $path -Force -ErrorAction SilentlyContinue
+                Write-Host "      Deleted '$file'"
+            }
+        }
+        
+        Write-Host "    Re-authenticating..."
         az login
         if ($LASTEXITCODE -ne 0) {
             Write-Host "    FAIL: Re-authentication failed." -ForegroundColor Red
             return
         }
+        Write-Host "    OK. Re-authenticated." -ForegroundColor Green
+        
         # Retry REST call
         $restOutput = az rest --method GET --url $apiUrl 2>&1
         $restExitCode = $LASTEXITCODE
@@ -739,13 +753,27 @@ function Attach-UserAssignedMI {
         # Check for token cache corruption during REST call
         if ($result -match "Decryption failed" -or $result -match "2146893813") {
             Write-Host "  WARNING: Token cache corrupted during REST call." -ForegroundColor Yellow
-            Write-Host "  Clearing cache and retrying..."
-            az account clear 2>$null
+            Write-Host "  Deleting corrupted cache files..."
+            
+            # Delete MSAL token cache files directly
+            $azureDir = Join-Path $env:USERPROFILE ".azure"
+            $cacheFiles = @("msal_token_cache.bin", "msal_token_cache.json", "accessTokens.json")
+            foreach ($file in $cacheFiles) {
+                $path = Join-Path $azureDir $file
+                if (Test-Path $path) {
+                    Remove-Item $path -Force -ErrorAction SilentlyContinue
+                    Write-Host "    Deleted '$file'"
+                }
+            }
+            
+            Write-Host "  Re-authenticating..."
             az login
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "  FAIL: Re-authentication failed." -ForegroundColor Red
                 return $false
             }
+            Write-Host "  OK. Re-authenticated." -ForegroundColor Green
+            
             # Retry REST call
             $result = az rest --method PATCH --url $apiUrl --body $body 2>&1
             $exitCode = $LASTEXITCODE
