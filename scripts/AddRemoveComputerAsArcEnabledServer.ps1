@@ -535,19 +535,15 @@ function Show-SystemAssignedMI {
         }
     }
     
-    # Check connectedmachine extension
-    $extCheck = az extension list --query "[?name=='connectedmachine'].name" -o tsv 2>$null
-    if (-not $extCheck) {
-        Write-Host "  Installing 'connectedmachine' extension..."
-        az extension add --name connectedmachine --yes 2>$null
-    }
-    
-    Write-Host "  Fetching machine details..."
+    Write-Host "  Fetching machine details via REST API..."
     try {
-        $machineJson = az connectedmachine show `
-            --name $Status.ResourceName `
-            --resource-group $Status.ResourceGroup `
-            --output json `
+        # Use az rest instead of az connectedmachine show (extension has permission issues)
+        $subscriptionId = $Status.SubscriptionId
+        $resourceGroup = $Status.ResourceGroup
+        $machineResourceId = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroup/providers/Microsoft.HybridCompute/machines/$($Status.ResourceName)"
+        
+        $machineJson = az rest --method GET `
+            --url "https://management.azure.com${machineResourceId}?api-version=2024-07-10" `
             2>$null
         
         if ($LASTEXITCODE -ne 0 -or -not $machineJson) {
@@ -621,21 +617,6 @@ function Attach-UserAssignedMI {
         Write-Host "  OK. Logged in as '$($account.user.name)' (subscription='$($account.name)')." -ForegroundColor Green
     }
     
-    # Check if connectedmachine extension is installed
-    Write-Host "Checking Azure CLI 'connectedmachine' extension..."
-    $extCheck = az extension list --query "[?name=='connectedmachine'].name" -o tsv 2>$null
-    if (-not $extCheck) {
-        Write-Host "  Extension not installed. Installing..."
-        az extension add --name connectedmachine --yes
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "  FAIL: Could not install connectedmachine extension." -ForegroundColor Red
-            return $false
-        }
-        Write-Host "  OK. Extension installed." -ForegroundColor Green
-    } else {
-        Write-Host "  OK. Extension already installed." -ForegroundColor Green
-    }
-    
     # LOG-GN-09: Announce before execution
     Write-Host ""
     Write-Host "Attaching user-assigned MI to Arc machine..."
@@ -657,13 +638,22 @@ function Attach-UserAssignedMI {
         $miResourceId = "/subscriptions/$subscriptionId/resourceGroups/$miResourceGroup/providers/Microsoft.ManagedIdentity/userAssignedIdentities/$miName"
         
         Write-Host "  mi_resource_id='$miResourceId'"
-        Write-Host "  Calling Azure CLI (may require authentication)..."
+        Write-Host "  Calling Azure REST API..."
         
-        $result = az connectedmachine update `
-            --name $Status.ResourceName `
-            --resource-group $resourceGroup `
-            --identity-type "SystemAssigned,UserAssigned" `
-            --user-assigned-identities $miResourceId `
+        # Use az rest instead of az connectedmachine update (extension has issues)
+        $machineResourceId = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroup/providers/Microsoft.HybridCompute/machines/$($Status.ResourceName)"
+        $body = @{
+            identity = @{
+                type = "SystemAssigned,UserAssigned"
+                userAssignedIdentities = @{
+                    $miResourceId = @{}
+                }
+            }
+        } | ConvertTo-Json -Depth 5 -Compress
+        
+        $result = az rest --method PATCH `
+            --url "https://management.azure.com${machineResourceId}?api-version=2024-07-10" `
+            --body $body `
             2>&1
         
         # Report
