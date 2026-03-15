@@ -53,6 +53,13 @@ You MUST read the appropriate template before creating documents:
 - `WORKFLOW_TEMPLATE.md` - Workflow structure template
 - `STRUT_TEMPLATE.md` - STRUT plans (embeddable in any document)
 
+## Session Tracking Templates
+
+For session tracking files (NOTES.md, PROBLEMS.md, PROGRESS.md), use templates from @session-management skill:
+- `NOTES_TEMPLATE.md` - Session notes and context
+- `PROBLEMS_TEMPLATE.md` - Problem tracking
+- `PROGRESS_TEMPLATE.md` - Progress tracking
+
 ## Usage
 
 1. Read this SKILL.md for core rules
