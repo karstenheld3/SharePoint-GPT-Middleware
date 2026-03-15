@@ -170,7 +170,7 @@ The **AuthStateManager** manages the current effective auth method.
 **Storage:** `{PERSISTENT_STORAGE_PATH}/sharepoint_online_auth_override.json`
 
 **Key properties:**
-- `default_method` - from environment config (`SHAREPOINT_AUTH_METHOD`)
+- `default_method` - from environment config (`CRAWLER_USE_MANAGED_IDENTITY`)
 - `override` - from override file (if exists)
 - `effective_method` - override if present, else default
 
@@ -264,9 +264,9 @@ Phase 1 (Certificate + MI)
 - Returns `ClientContext.with_access_token(token_func)` where `token_func` returns `TokenResponse`
 
 **SPAUTH-FR-04: AuthStateManager (Phase 1 scope)**
-- Reads default method from `SHAREPOINT_AUTH_METHOD` env var (default: `certificate`)
-- Valid values: `certificate`, `managed_identity`
-- Invalid value at startup -> fail with clear error message
+- Reads default method from `CRAWLER_USE_MANAGED_IDENTITY` env var (default: `false` = certificate)
+- Valid values: `true` (managed_identity), `false` (certificate)
+- Matches OpenAI pattern (`AZURE_OPENAI_USE_MANAGED_IDENTITY`)
 - No override file support in Phase 1 (added in Phase 2)
 
 **SPAUTH-FR-05: Auth Status Endpoint**
@@ -301,11 +301,11 @@ Phase 1 (Certificate + MI)
 
 **SPAUTH-IG-01:** Existing certificate auth behavior is identical before and after migration. No changes to PFX handling, PEM caching, or `ClientContext.with_client_certificate()` parameters.
 
-**SPAUTH-IG-02:** If `SHAREPOINT_AUTH_METHOD=certificate`, behavior is byte-for-byte identical to current code. No new dependencies loaded, no new network calls.
+**SPAUTH-IG-02:** If `CRAWLER_USE_MANAGED_IDENTITY=false`, behavior is byte-for-byte identical to current code. No new dependencies loaded, no new network calls.
 
-**SPAUTH-IG-03:** If `SHAREPOINT_AUTH_METHOD` is not set, default is `certificate`. Rationale: zero-config backward compatibility.
+**SPAUTH-IG-03:** If `CRAWLER_USE_MANAGED_IDENTITY` is not set, default is `false` (certificate). Rationale: zero-config backward compatibility.
 
-**SPAUTH-IG-04:** ManagedIdentityCredential failure produces actionable error: "Managed Identity not available. Ensure app is running in Azure with MI enabled, or set SHAREPOINT_AUTH_METHOD=certificate." No automatic fallback to `DefaultAzureCredential` or `AzureCliCredential` - admin must explicitly configure method for local dev (per SPAUTH-DD-42).
+**SPAUTH-IG-04:** ManagedIdentityCredential failure produces actionable error: "Managed Identity not available. Ensure app is running in Azure with MI enabled, or set CRAWLER_USE_MANAGED_IDENTITY=false." No automatic fallback to `DefaultAzureCredential` or `AzureCliCredential` - admin must explicitly configure method for local dev (per SPAUTH-DD-42).
 
 **SPAUTH-IG-05:** All callers receive `ClientContext` with identical interface regardless of auth method. No caller needs to know which method was used.
 
@@ -514,10 +514,10 @@ def _token_func():
 
 **SPAUTH-DD-43:** `get_graph_client()` in `common_security_scan_functions_v2.py` stays on certificate auth. Out of scope. Rationale: Graph client works, separate session planned. Avoids scope creep per review findings SPAUTH-RV-005.
 
-**SPAUTH-DD-44:** Environment variable `SHAREPOINT_AUTH_METHOD` controls default. Valid values per phase:
-- Phase 1: `certificate`, `managed_identity`
-- Phase 2: adds `interactive_browser`
-- Phase 3: adds `device_code`
+**SPAUTH-DD-44:** Environment variable `CRAWLER_USE_MANAGED_IDENTITY` controls default auth method (boolean, matches OpenAI pattern):
+- `false` (default): Certificate authentication
+- `true`: Managed Identity authentication
+- Phase 2+: Override file adds `interactive_browser`, `device_code` options
 - Phase 4: OBO is not a selectable default (automatic per-request only)
 
 ## 10. Cross-Phase Implementation Guarantees
@@ -565,7 +565,9 @@ Request arrives
 │   ├─> [Phase 4] Check Authorization header + On-Behalf-Of enabled -> OnBehalfOfProvider
 │   ├─> AuthStateManager.get_effective_method()
 │   │   ├─> Read override file (if exists, valid JSON, known method)
-│   │   └─> Else: read SHAREPOINT_AUTH_METHOD env var
+│   │   └─> Else: read CRAWLER_USE_MANAGED_IDENTITY env var
+│   │       ├─> true  -> ManagedIdentityProvider (requires Azure, no credentials needed)
+│   │       └─> false -> CertificateProvider (works anywhere, requires cert config)
 │   └─> Instantiate/reuse provider for effective method
 │       └─> provider.get_context(site_url) -> ClientContext
 └─> Caller uses ClientContext normally
@@ -689,7 +691,7 @@ Subsequent API requests (all workers)
   "error": "auth_failed",
   "auth_method": "managed_identity",
   "detail": "IMDS endpoint not available. Ensure app is running in Azure with Managed Identity enabled.",
-  "suggested_action": "Set SHAREPOINT_AUTH_METHOD=certificate or deploy to Azure"
+  "suggested_action": "Set CRAWLER_USE_MANAGED_IDENTITY=false or deploy to Azure"
 }
 ```
 
@@ -720,9 +722,9 @@ src/routers_v2/
 ### New Environment Variables
 
 Phase 1:
-- `SHAREPOINT_AUTH_METHOD` - default auth method (`certificate` | `managed_identity`), default: `certificate`
-- `AZURE_CLIENT_ID` - used by MI if user-assigned (optional)
-- `CRAWLER_TENANT_NAME` - fallback tenant name if not derivable from URL (optional)
+- `CRAWLER_USE_MANAGED_IDENTITY` - `true` for Managed Identity, `false` for Certificate (default: `false`)
+- `CRAWLER_MANAGED_IDENTITY_OBJECT_ID` - **Object ID** (Principal ID) of MI, NOT Client ID [VERIFIED]. Used for Sites.Selected permission grants via PnP PowerShell. Optional for system-assigned MI.
+- `CRAWLER_SHAREPOINT_TENANT_NAME` - fallback tenant name if not derivable from URL (existing)
 
 Phase 2 adds:
 - `AUTH_REDIRECT_URI` - OAuth callback URL (e.g., `https://myapp.azurewebsites.net/v2/auth/callback`)
@@ -817,6 +819,18 @@ Before Phase 2 implementation, decide:
 2. **Use `/v2/authentication/sharepoint_online/`** - extensible, follows V2 patterns
 
 ## 16. Document History
+
+**[2026-03-15 18:15]**
+- Fixed: `CRAWLER_MANAGED_IDENTITY_OBJECT_ID` must contain Object ID, not Client ID [VERIFIED via Microsoft Q&A]
+- Rationale: `Grant-PnPAzureADAppSitePermission -AppId` requires Object ID for Managed Identity
+
+**[2026-03-15 17:52]**
+- Changed: `SHAREPOINT_AUTH_METHOD` (string enum) replaced with `CRAWLER_USE_MANAGED_IDENTITY` (boolean)
+- Changed: Matches OpenAI pattern (`AZURE_OPENAI_USE_MANAGED_IDENTITY`)
+- Changed: `AZURE_CLIENT_ID` replaced with `CRAWLER_MANAGED_IDENTITY_OBJECT_ID` for user-assigned MI
+- Changed: `CRAWLER_TENANT_NAME` replaced with existing `CRAWLER_SHAREPOINT_TENANT_NAME`
+- Updated: SPAUTH-FR-04, SPAUTH-IG-02, SPAUTH-IG-03, SPAUTH-IG-04, SPAUTH-DD-44
+- Updated: Override File Resolution diagram, Auth Error Response, New Environment Variables section
 
 **[2026-03-14 23:30]**
 - Changed: Device Code moved from User Auth to System Auth (Tier 1)
