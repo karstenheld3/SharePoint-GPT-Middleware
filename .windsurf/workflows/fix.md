@@ -29,10 +29,10 @@ Complete bug-fixing workflow from problem discovery to verified fix and document
 
 SESSION-MODE (bug found during active session):
 - Folder: `[SESSION_FOLDER]/`
-- Bug ID: `BG-NNN` (3-digit, session-local)
-- Bug Folder: `[SESSION_FOLDER]/BG-NNN_IssueDescription/`
+- Bug ID: `[TOPIC]-BG-NNN` (3-digit, session-local)
+- Bug Folder: `[SESSION_FOLDER]/[TOPIC]-BG-NNN_IssueDescription/`
 - Docs: SPEC, IMPL, TEST
-- Commit: `fix(BG-NNN): description`
+- Commit: `fix([TOPIC]-BG-NNN): description`
 
 PROJECT-MODE (bug found after session closed):
 - Folder: `[BUGFIXES_FOLDER]/` = `[DEFAULT_SESSIONS_FOLDER]/_BugFixes/`
@@ -53,13 +53,13 @@ Characteristics:
 - Bug found WHILE WORKING on a task
 - Problem may or may not be confirmed as bug yet
 - Fix happens in current session folder
-- Uses BG (Bug) tracking ID (3-digit: NNN, local to session)
+- Uses BG (Bug) tracking ID (3-digit: `[TOPIC]-BG-NNN`, session-local)
 
 Folder structure:
 ```
 [SESSION_FOLDER]/
 ├── NOTES.md, PROBLEMS.md, PROGRESS.md
-└── BG-NNN_IssueDescription/            <- [BUG_FOLDER] (3-digit, session-local)
+└── [TOPIC]-BG-NNN_IssueDescription/     <- [BUG_FOLDER] (3-digit, session-local)
     ├── PROBLEMS.md                      <- Full detail
     ├── _INFO_*.md, _STRUT_*.md
     ├── backup/, poc/, test/
@@ -144,8 +144,8 @@ Entry format:
 
 Create [BUG_FOLDER] (only when problem confirmed as bug needing investigation):
 
-- SESSION-MODE: `[SESSION_FOLDER]/BG-NNN_IssueDescription/` (3-digit, session-local)
-  - Get next BG number from `[SESSION_FOLDER]/NOTES.md`
+- SESSION-MODE: `[SESSION_FOLDER]/[TOPIC]-BG-NNN_IssueDescription/` (3-digit, session-local)
+  - Get next BG number from `[SESSION_FOLDER]/NOTES.md` (per-TOPIC numbering)
 - PROJECT-MODE: `[BUGFIXES_FOLDER]/BG-NNNN_IssueDescription/` (4-digit, project-global)
   - Get next BG number from `[BUGFIXES_FOLDER]/NOTES.md` (single source of truth)
 
@@ -227,7 +227,7 @@ PROJECT-MODE only:
 
 ### 10.3 Commit
 
-Run `/commit` with format: `fix(BG-NNNN): description` (PROJECT-MODE) or `fix(BG-NNN): description` (SESSION-MODE)
+Run `/commit` with format: `fix(BG-NNNN): description` (PROJECT-MODE) or `fix([TOPIC]-BG-NNN): description` (SESSION-MODE)
 
 ### 10.4 Mark Resolved
 

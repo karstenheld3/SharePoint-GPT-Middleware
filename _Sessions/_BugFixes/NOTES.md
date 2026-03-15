@@ -42,8 +42,10 @@ SESSION-MODE                          PROJECT-MODE
 ─────────────────────────────────────────────────────────────────
 Found: During active session          Found: After session closed
 Folder: [SESSION_FOLDER]/             Folder: _BugFixes/
-Bug ID: BG-NNN (3-digit, local)       Bug ID: BG-NNNN (4-digit, global)
+Bug ID: [TOPIC]-BG-NNN (3-digit)      Bug ID: BG-NNNN (4-digit, global)
+Bug Folder: [TOPIC]-BG-NNN_*/         Bug Folder: BG-NNNN_*/
 Docs: SPEC/IMPL/TEST only             Docs: SPEC/IMPL/TEST + *_FIXES.md
+Commit: fix([TOPIC]-BG-NNN): ...      Commit: fix(BG-NNNN): ...
 ```
 
 ## Important Findings
