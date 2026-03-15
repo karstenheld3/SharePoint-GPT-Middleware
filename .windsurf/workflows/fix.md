@@ -145,7 +145,7 @@ Entry format:
 Create [BUG_FOLDER] (only when problem confirmed as bug needing investigation):
 
 - SESSION-MODE: `[SESSION_FOLDER]/[TOPIC]-BG-NNN_IssueDescription/` (3-digit, session-local)
-  - Get next BG number from `[SESSION_FOLDER]/NOTES.md` (per-TOPIC numbering)
+  - Get next BG number from `[SESSION_FOLDER]/NOTES.md` "Bug List" section (count existing entries + 1)
 - PROJECT-MODE: `[BUGFIXES_FOLDER]/BG-NNNN_IssueDescription/` (4-digit, project-global)
   - Get next BG number from `[BUGFIXES_FOLDER]/NOTES.md` (single source of truth)
 

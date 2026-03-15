@@ -44,6 +44,15 @@ Maintain list of TOPIC IDs used in this session/project:
 - `AUTH` - Authentication and authorization system
 - `API` - API client and request handling
 
+## Bug List
+
+Session-local bug tracking. SESSION <-> TOPIC is 1:1, so simple list suffices.
+Get next number by counting existing entries. See `/fix` workflow.
+
+| ID | Description | Status |
+|----|-------------|--------|
+| (none yet) | | |
+
 ## Significant Prompts Log
 
 **Agent rule**: Record prompts that change direction, add requirements, or clarify intent. Use 4-backtick fence with `text` language tag.
