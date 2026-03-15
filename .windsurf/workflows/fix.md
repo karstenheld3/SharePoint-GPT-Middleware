@@ -29,17 +29,17 @@ Complete bug-fixing workflow from problem discovery to verified fix and document
 
 SESSION-MODE (bug found during active session):
 - Folder: `[SESSION_FOLDER]/`
-- Bug ID: `[TOPIC]-BG-NNN` (3-digit, session-local)
-- Bug Folder: `[SESSION_FOLDER]/[TOPIC]-BG-NNN_IssueDescription/`
+- Bug ID: `[TOPIC]-BG-NNNN` (4-digit)
+- Bug Folder: `[SESSION_FOLDER]/[TOPIC]-BG-NNNN_IssueDescription/`
 - Docs: SPEC, IMPL, TEST
-- Commit: `fix([TOPIC]-BG-NNN): description`
+- Commit: `fix([TOPIC]-BG-NNNN): description`
 
 PROJECT-MODE (bug found after session closed):
 - Folder: `[BUGFIXES_FOLDER]/` = `[DEFAULT_SESSIONS_FOLDER]/_BugFixes/`
-- Bug ID: `BG-NNNN` (4-digit, project-global)
-- Bug Folder: `[BUGFIXES_FOLDER]/BG-NNNN_IssueDescription/`
+- Bug ID: `GLOB-BG-NNNN` (4-digit, uses GLOB prefix)
+- Bug Folder: `[BUGFIXES_FOLDER]/GLOB-BG-NNNN_IssueDescription/`
 - Docs: SPEC, IMPL, TEST + `*_FIXES.md`
-- Commit: `fix(BG-NNNN): description`
+- Commit: `fix(GLOB-BG-NNNN): description`
 
 ## Step 1: Determine Context
 
@@ -53,13 +53,13 @@ Characteristics:
 - Bug found WHILE WORKING on a task
 - Problem may or may not be confirmed as bug yet
 - Fix happens in current session folder
-- Uses BG (Bug) tracking ID (3-digit: `[TOPIC]-BG-NNN`, session-local)
+- Uses BG (Bug) tracking ID (`[TOPIC]-BG-NNNN`)
 
 Folder structure:
 ```
 [SESSION_FOLDER]/
 ├── NOTES.md, PROBLEMS.md, PROGRESS.md
-└── [TOPIC]-BG-NNN_IssueDescription/     <- [BUG_FOLDER] (3-digit, session-local)
+└── [TOPIC]-BG-NNNN_IssueDescription/    <- [BUG_FOLDER]
     ├── PROBLEMS.md                      <- Full detail
     ├── _INFO_*.md, _STRUT_*.md
     ├── backup/, poc/, test/
@@ -77,13 +77,13 @@ Characteristics:
 - Bug found AFTER implementation is done
 - Confirmed defect in existing code
 - Fix happens in persistent `_BugFixes` session
-- Uses BG (Bug) tracking ID (4-digit: NNNN, globally unique across project)
+- Uses BG (Bug) tracking ID (`GLOB-BG-NNNN`, cross-cutting)
 
 Folder structure:
 ```
 [BUGFIXES_FOLDER]/              <- Permanent session (never archived)
 ├── NOTES.md, PROBLEMS.md, PROGRESS.md
-└── BG-NNNN_IssueDescription/           <- [BUG_FOLDER] (4-digit, project-global)
+└── GLOB-BG-NNNN_IssueDescription/      <- [BUG_FOLDER] (uses GLOB prefix)
     ├── PROBLEMS.md                      <- Full detail
     ├── _INFO_*.md, _STRUT_*.md
     ├── backup/, poc/, test/
@@ -118,8 +118,8 @@ If no description provided (discovery mode):
 
 Record in PROBLEMS.md (no subfolder for problems):
 
-- SESSION-MODE: `[SESSION_FOLDER]/PROBLEMS.md`, ID format `[SESSION_TOPIC]-PR-NNN` (use session's TOPIC, no new topics)
-- PROJECT-MODE: `[BUGFIXES_FOLDER]/PROBLEMS.md`, ID format `PR-NNN` (no TOPIC prefix, _BugFixes implied)
+- SESSION-MODE: `[SESSION_FOLDER]/PROBLEMS.md`, ID format `[SESSION_TOPIC]-PR-NNNN`
+- PROJECT-MODE: `[BUGFIXES_FOLDER]/PROBLEMS.md`, ID format `GLOB-PR-NNNN`
 
 Entry format:
 ```markdown
@@ -145,20 +145,20 @@ Entry format:
 A problem is confirmed as a **bug** when it's a deviation from desired behavior that prevents the goal from being reached. Can be:
 - A flaw in the code
 - A flawed design decision in the IMPL
-- A flawed assumption or design decision in the SPEC (rare)
 - An incorrect assessment of actual behavior of libraries, frameworks, or backends
+- A flawed assumption or design decision in the SPEC (rare)
 
 Create [BUG_FOLDER] (only when problem confirmed as bug):
 
-- SESSION-MODE: `[SESSION_FOLDER]/[TOPIC]-BG-NNN_IssueDescription/` (3-digit, session-local)
+- SESSION-MODE: `[SESSION_FOLDER]/[TOPIC]-BG-NNNN_IssueDescription/`
   - Get next BG number from `[SESSION_FOLDER]/NOTES.md` "Bug List" section (count existing entries + 1)
-- PROJECT-MODE: `[BUGFIXES_FOLDER]/BG-NNNN_IssueDescription/` (4-digit, project-global)
+- PROJECT-MODE: `[BUGFIXES_FOLDER]/GLOB-BG-NNNN_IssueDescription/`
   - Get next BG number from `[BUGFIXES_FOLDER]/NOTES.md` (single source of truth)
 
 Inside [BUG_FOLDER], create:
 - `PROBLEMS.md` - Full detail problem tracking
 
-Update parent PROBLEMS.md PR entry with note: "→ Now tracked as [TOPIC]-BG-NNN" (or "→ Now tracked as BG-NNNN" for PROJECT-MODE).
+Update parent PROBLEMS.md PR entry with note: "→ Now tracked as [TOPIC]-BG-NNNN" (or "→ Now tracked as GLOB-BG-NNNN" for PROJECT-MODE).
 
 ## Step 5: Reproduce Bug
 
@@ -233,7 +233,7 @@ PROJECT-MODE only:
 
 ### 10.3 Commit
 
-Run `/commit` with format: `fix(BG-NNNN): description` (PROJECT-MODE) or `fix([TOPIC]-BG-NNN): description` (SESSION-MODE)
+Run `/commit` with format: `fix(GLOB-BG-NNNN): description` (PROJECT-MODE) or `fix([TOPIC]-BG-NNNN): description` (SESSION-MODE)
 
 ### 10.4 Mark Resolved
 
@@ -264,7 +264,7 @@ Run `/learn` to reflect on mistakes and extract lessons from this fix.
 Created for PROJECT-MODE only. One file per component.
 
 ```markdown
-### BG-NNNN IssueDescription
+### GLOB-BG-NNNN IssueDescription
 
 **Problem**: Single sentence describing the bug
 **Solution**: Single sentence describing the fix
