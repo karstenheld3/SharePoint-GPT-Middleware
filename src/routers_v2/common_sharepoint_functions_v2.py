@@ -1,7 +1,7 @@
 # Common functions for SharePoint operations using Office365-REST-Python-Client
 # https://pypi.org/project/Office365-REST-Python-Client/#Working-with-SharePoint-API
 # V2 version using MiddlewareLogger
-import csv, os, re
+import csv, os, re, time
 from cryptography import x509
 from datetime import datetime, timezone
 from typing import Optional, Any
@@ -26,6 +26,47 @@ class SharePointFile:
     server_relative_url: str
     last_modified_utc: str
     last_modified_timestamp: int
+
+# ----------------------------------------- START: Retry Logic for Transient Errors --------------------------------
+
+def _is_transient_error(e: Exception) -> bool:
+  """Check if exception is a transient connection error that should be retried."""
+  error_str = str(e).lower()
+  # ConnectionResetError (10054) - connection forcibly closed by remote host
+  # ConnectionAbortedError - connection aborted
+  # TimeoutError - connection timed out
+  # NameResolutionError - DNS resolution failed (transient network issue)
+  # Max retries exceeded - urllib3 exhausted retries
+  transient_patterns = ['connectionreset', 'connection aborted', 'forcibly closed', '10054', 'timed out', 'timeout', 'nameresolutionerror', 'getaddrinfo failed', 'max retries exceeded']
+  return any(pattern in error_str for pattern in transient_patterns)
+
+def _execute_with_retry(query_action, max_retries: int = 5, delay_seconds: float = 3.0):
+  """
+  Execute a SharePoint query with retry logic for transient connection errors.
+  
+  Args:
+    query_action: A callable that performs the query (e.g., lambda: ctx.web.get_list(url).get().execute_query())
+    max_retries: Maximum number of retry attempts (default: 5)
+    delay_seconds: Delay between retries in seconds (default: 3.0)
+    
+  Returns:
+    The result of the query_action
+    
+  Raises:
+    The original exception if all retries fail or if error is not transient
+  """
+  last_exception = None
+  for attempt in range(max_retries + 1):
+    try:
+      return query_action()
+    except Exception as e:
+      last_exception = e
+      if not _is_transient_error(e) or attempt >= max_retries:
+        raise
+      time.sleep(delay_seconds * (attempt + 1))  # Progressive delay: 3s, 6s, 9s, 12s, 15s
+  raise last_exception
+
+# ----------------------------------------- END: Retry Logic for Transient Errors ----------------------------------
 
 def get_or_create_pem_from_pfx(cert_path: str, cert_password: str) -> tuple[str, str]:
   """
@@ -96,6 +137,25 @@ def connect_to_site_using_client_id_and_certificate(site_url: str, client_id: st
   ctx = ClientContext(site_url).with_client_certificate( tenant=tenant_id, client_id=client_id, thumbprint=thumbprint, cert_path=pem_file )
   return ctx
 
+def test_connection(ctx: ClientContext) -> tuple[bool, str, str]:
+  """
+  Test SharePoint connection by retrieving web title (with retry for transient errors).
+  
+  Args:
+    ctx: An authenticated SharePoint client context
+    
+  Returns:
+    tuple: (success, web_title, error_message)
+      - If successful: (True, web_title, "")
+      - If failed: (False, "", error_message)
+  """
+  try:
+    web = _execute_with_retry(lambda: ctx.web.get().execute_query())
+    web_title = web.properties.get('Title', '')
+    return True, web_title, ""
+  except Exception as e:
+    return False, "", str(e)
+
 def try_get_document_library(ctx: ClientContext, site_url: str, library_url_part: str) -> tuple[Optional[DocumentLibrary], Optional[str]]:
   """
   Get a SharePoint document library by its server-relative URL.
@@ -132,9 +192,9 @@ def try_get_document_library(ctx: ClientContext, site_url: str, library_url_part
   # Construct the full server-relative URL; e.g., '/sites/demosite' + '/Shared Documents' = '/sites/demosite/Shared Documents'
   site_relative_url = site_path + library_url_part
   
-  # Get the list (document library) by its server-relative URL
+  # Get the list (document library) by its server-relative URL (with retry for transient errors)
   try:
-    document_library = ctx.web.get_list(site_relative_url).get().execute_query()
+    document_library = _execute_with_retry(lambda: ctx.web.get_list(site_relative_url).get().execute_query())
     return document_library, None
   except Exception as e:
     error_message = f"Failed to get document library at '{site_relative_url}': {str(e)}"
@@ -185,9 +245,9 @@ def get_document_library_files(ctx: ClientContext, document_library: DocumentLib
       logger.log_function_output(f"Applying filter: {filter}")
     
     # Use get_all() to retrieve all items with pagination (page size: 1000)
-    # This method automatically handles the 5000 item limit by paginating
+    # This method automatically handles the 5000 item limit by paginating (with retry for transient errors)
     page_size = 5000
-    all_items = items_query.get_all(page_size, print_progress).execute_query()
+    all_items = _execute_with_retry(lambda: items_query.get_all(page_size, print_progress).execute_query())
     
     logger.log_function_output(f"{len(all_items)} file{'' if len(all_items) == 1 else 's'} retrieved.")
     
@@ -286,11 +346,14 @@ def download_file_from_sharepoint(ctx: ClientContext, server_relative_url: str, 
   try:
     sp_file = ctx.web.get_file_by_server_relative_url(server_relative_url)
     if dry_run:
-      sp_file.get().execute_query()
+      _execute_with_retry(lambda: sp_file.get().execute_query())
       return True, ""
     os.makedirs(os.path.dirname(target_path), exist_ok=True)
-    with open(target_path, 'wb') as f:
-      sp_file.download(f).execute_query()
+    # Download with retry - each attempt opens fresh file handle
+    def download_with_fresh_handle():
+      with open(target_path, 'wb') as f:
+        sp_file.download(f).execute_query()
+    _execute_with_retry(download_with_fresh_handle)
     if preserve_timestamp and last_modified_timestamp:
       os.utime(target_path, (last_modified_timestamp, last_modified_timestamp))
     return True, ""
@@ -315,7 +378,7 @@ def get_list_items(ctx: ClientContext, list_name: str, filter_query: str, logger
     def print_progress(items):
       logger.log_function_output(f"{len(items)} list item{'' if len(items) == 1 else 's'} retrieved so far...")
     
-    all_items = items_query.get_all(5000, print_progress).execute_query()
+    all_items = _execute_with_retry(lambda: items_query.get_all(5000, print_progress).execute_query())
     logger.log_function_output(f"{len(all_items)} list item{'' if len(all_items) == 1 else 's'} retrieved.")
     
     result = []
@@ -426,12 +489,15 @@ def download_site_page_html(ctx: ClientContext, server_relative_url: str, target
   try:
     sp_file = ctx.web.get_file_by_server_relative_url(server_relative_url)
     if dry_run:
-      sp_file.get().execute_query()
+      _execute_with_retry(lambda: sp_file.get().execute_query())
       logger.log_function_footer()
       return True, ""
     os.makedirs(os.path.dirname(target_path), exist_ok=True)
-    with open(target_path, 'wb') as f:
-      sp_file.download(f).execute_query()
+    # Download with retry - each attempt opens fresh file handle
+    def download_with_fresh_handle():
+      with open(target_path, 'wb') as f:
+        sp_file.download(f).execute_query()
+    _execute_with_retry(download_with_fresh_handle)
     logger.log_function_output(f"Site page downloaded to '{target_path}'.")
     logger.log_function_footer()
     return True, ""
@@ -944,7 +1010,7 @@ def get_list_fields(ctx: ClientContext, list_name: str, logger: MiddlewareLogger
   logger.log_function_header("get_list_fields()")
   try:
     sp_list = ctx.web.lists.get_by_title(list_name)
-    fields = sp_list.fields.filter("Hidden eq false").get().execute_query()
+    fields = _execute_with_retry(lambda: sp_list.fields.filter("Hidden eq false").get().execute_query())
     
     result = []
     for f in fields:
@@ -986,7 +1052,7 @@ def get_list_items_with_fields(ctx: ClientContext, list_name: str, filter_query:
     def print_progress(items):
       logger.log_function_output(f"{len(items)} list item{'' if len(items) == 1 else 's'} retrieved so far...")
     
-    all_items = items_query.get_all(5000, print_progress).execute_query()
+    all_items = _execute_with_retry(lambda: items_query.get_all(5000, print_progress).execute_query())
     logger.log_function_output(f"{len(all_items)} list item{'' if len(all_items) == 1 else 's'} retrieved with {len(fields)} field{'' if len(fields) == 1 else 's'}.")
     
     result = []

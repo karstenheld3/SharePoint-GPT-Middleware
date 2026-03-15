@@ -47,8 +47,8 @@ from routers_v2.common_crawler_functions_v2 import load_domain, DomainConfig
 # Test options
 delete_downloaded_files_after_test = False
 
-# Domain to test with
-test_domain_id = "AiSearchTest01"
+# Domain to test with (can be overridden via command line: python test_common_sharepoint_functions_v2.py GenAIPapers)
+test_domain_id = sys.argv[1] if len(sys.argv) > 1 else "AiSearchTest01"
 
 # Path to persistent storage - read from environment (required)
 persistent_storage_path = os.environ.get('LOCAL_PERSISTENT_STORAGE_PATH', '')
@@ -180,13 +180,13 @@ def test_connect_to_site(site_url: str, client_id: str, tenant_id: str, cert_pat
     ctx = cspf.connect_to_site_using_client_id_and_certificate(site_url, client_id, tenant_id, cert_path, cert_password)
     test("Context created", ctx is not None)
     
-    # Verify connection works by getting web title
-    web = ctx.web.get().execute_query()
-    web_title = web.properties.get('Title', '')
-    test("Connection works - web title retrieved", len(web_title) > 0, f"Title: '{web_title}'")
-    print(f"    Connected to: '{web_title}'")
+    # Verify connection works by getting web title (uses retry logic)
+    success, web_title, error = cspf.test_connection(ctx)
+    test("Connection works - web title retrieved", success and len(web_title) > 0, error if error else f"Title: '{web_title}'")
+    if success:
+      print(f"    Connected to: '{web_title}'")
     
-    return ctx
+    return ctx if success else None
   except Exception as e:
     test("Connection succeeds", False, str(e))
     return None
