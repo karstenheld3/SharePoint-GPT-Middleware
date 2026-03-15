@@ -448,17 +448,10 @@ if ([string]::IsNullOrWhiteSpace($config.CRAWLER_TENANT_ID)) { throw "CRAWLER_TE
 $hasManagedIdentity = -not [string]::IsNullOrWhiteSpace($config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID)
 $hasBothTargets = $hasManagedIdentity
 
-# Display configuration summary
+# Display header
 Write-Host "========================================"
 Write-Host "API Permission Management"
 Write-Host "========================================"
-Write-Host "Service Principal: $($config.CRAWLER_CLIENT_ID)" -ForegroundColor Cyan
-if ($hasManagedIdentity) {
-  Write-Host "Managed Identity:  $($config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID) ($($config.CRAWLER_MANAGED_IDENTITY_NAME))" -ForegroundColor Cyan
-}
-else {
-  Write-Host "Managed Identity:  not configured" -ForegroundColor Gray
-}
 
 # Check for required modules
 if (-not (Get-Module -Name Az -ListAvailable)) {
