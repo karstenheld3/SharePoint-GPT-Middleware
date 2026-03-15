@@ -240,16 +240,19 @@ Suggest to user: "Run `/learn` to extract lessons from this fix for future refer
 
 ## Quick Reference
 
-```
-SESSION-MODE                          PROJECT-MODE
-─────────────────────────────────────────────────────────────────
-Found: During active session          Found: After session closed
-Folder: [SESSION_FOLDER]/             Folder: _BugFixes/
-Bug ID: BG-NNN (3-digit, local)       Bug ID: BG-NNNN (4-digit, global)
-Bug Folder: BG-NNN_IssueDescription/  Bug Folder: BG-NNNN_IssueDescription/
-Docs: SPEC/IMPL/TEST only             Docs: SPEC/IMPL/TEST + _FIXES.md
-Commit: fix(BG-NNN): ...              Commit: fix(BG-NNNN): ...
-```
+**SESSION-MODE** (bug found during active session):
+- Folder: `[SESSION_FOLDER]/`
+- Bug ID: `BG-NNN` (3-digit, session-local)
+- Bug Folder: `[SESSION_FOLDER]/BG-NNN_IssueDescription/`
+- Docs: SPEC, IMPL, TEST
+- Commit: `fix(BG-NNN): description`
+
+**PROJECT-MODE** (bug found after session closed):
+- Folder: `[BUGFIXES_FOLDER]/` = `[DEFAULT_SESSIONS_FOLDER]/_BugFixes/`
+- Bug ID: `BG-NNNN` (4-digit, project-global)
+- Bug Folder: `[BUGFIXES_FOLDER]/BG-NNNN_IssueDescription/`
+- Docs: SPEC, IMPL, TEST + `*_FIXES.md`
+- Commit: `fix(BG-NNNN): description`
 
 ## _FIXES.md Format
 
