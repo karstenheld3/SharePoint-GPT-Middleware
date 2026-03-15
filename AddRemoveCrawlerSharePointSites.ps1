@@ -442,9 +442,20 @@ catch {
 }
 
 # === Discovery phase (ARCS-FR-02) ===
-Write-Host "`nDiscovering sites with app permissions..."
-Write-Host "  Retrieving site list from tenant (this may take a moment)..." -ForegroundColor Gray
-$mergedSites = Get-MergedSitePermissions -CertificateAppId $config.CRAWLER_CLIENT_ID -ManagedIdentityObjectId $config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID -AdminUrl $adminUrl
+Write-Host "`nSite Discovery"
+Write-Host "  1 - Scan for existing sites in Sites.Selected"
+Write-Host "  2 - Skip (proceed directly to add new site)"
+$scanChoice = Read-Host "Select option [1]"
+if ([string]::IsNullOrWhiteSpace($scanChoice)) { $scanChoice = "1" }
+
+$mergedSites = @()
+$skipScan = ($scanChoice -eq "2")
+
+if (-not $skipScan) {
+  Write-Host "`nDiscovering sites with app permissions..."
+  Write-Host "  Retrieving site list from tenant (this may take a moment)..." -ForegroundColor Gray
+  $mergedSites = Get-MergedSitePermissions -CertificateAppId $config.CRAWLER_CLIENT_ID -ManagedIdentityObjectId $config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID -AdminUrl $adminUrl
+}
 
 # === Test access to each site (ARCS-FR-07) ===
 if ($mergedSites.Count -gt 0) {
