@@ -14,9 +14,14 @@ Single source of truth for PROJECT-MODE bug numbering.
 Get next number here before creating `[BUG_FOLDER]`.
 
 Format: `GLOB-BG-NNNN` - Description - Status
-Next available: `GLOB-BG-0001`
+Next available: `GLOB-BG-0007`
 
-- (none yet)
+- `GLOB-BG-0001` - Domains UI not updated after creating new domain - Resolved
+- `GLOB-BG-0002` - domainsState cache not updated after CRUD operations - Resolved
+- `GLOB-BG-0003` - Selftest dialog and console close automatically - Resolved
+- `GLOB-BG-0004` - Crawler selftest fails after list export changes - Resolved
+- `GLOB-BG-0005` - Misleading "Vector store not found" error - Resolved
+- `GLOB-BG-0006` - Query2 HTML table not responsive - Resolved
 
 ## Folder Structure
 
