@@ -558,6 +558,21 @@ function Attach-UserAssignedMI {
         Write-Host "  OK. Logged in as '$($account.user.name)' (subscription='$($account.name)')." -ForegroundColor Green
     }
     
+    # Check if connectedmachine extension is installed
+    Write-Host "Checking Azure CLI 'connectedmachine' extension..."
+    $extCheck = az extension list --query "[?name=='connectedmachine'].name" -o tsv 2>$null
+    if (-not $extCheck) {
+        Write-Host "  Extension not installed. Installing..."
+        az extension add --name connectedmachine --yes
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  FAIL: Could not install connectedmachine extension." -ForegroundColor Red
+            return $false
+        }
+        Write-Host "  OK. Extension installed." -ForegroundColor Green
+    } else {
+        Write-Host "  OK. Extension already installed." -ForegroundColor Green
+    }
+    
     # LOG-GN-09: Announce before execution
     Write-Host ""
     Write-Host "Attaching user-assigned MI to Arc machine..."
