@@ -48,7 +48,6 @@ Found: During active session          Found: After session closed
 Folder: [SESSION_FOLDER]/             Folder: _BugFixes/
 Bug ID: [TOPIC]-BG-NNNN               Bug ID: GLOB-BG-NNNN
 Bug Folder: [TOPIC]-BG-NNNN_*/        Bug Folder: GLOB-BG-NNNN_*/
-PR ID: [TOPIC]-PR-NNNN                PR ID: GLOB-PR-NNNN
 Docs: SPEC/IMPL/TEST only             Docs: SPEC/IMPL/TEST + *_FIXES.md
 Commit: fix([TOPIC]-BG-NNNN): ...     Commit: fix(GLOB-BG-NNNN): ...
 ```
@@ -62,7 +61,7 @@ Commit: fix([TOPIC]-BG-NNNN): ...     Commit: fix(GLOB-BG-NNNN): ...
 
 ## Topic Registry
 
-- `BUGFIXES` - Bug fixes session (this session's TOPIC)
+- `GLOB` - Global/cross-cutting bugs (this session's TOPIC)
 
 ## Significant Prompts Log
 
