@@ -67,6 +67,10 @@ function Get-ArcStatus {
         SubscriptionId = $null
         TenantId = $null
         Location = $null
+        # System-assigned managed identity info
+        SystemMIName = $null
+        SystemMIClientId = $null
+        SystemMIPrincipalId = $null
     }
     
     # Check agent installed
@@ -97,12 +101,50 @@ function Get-ArcStatus {
         return $result
     }
     
+    # Get system-assigned MI info if connected
+    if ($result.Connected) {
+        $miInfo = Get-SystemAssignedMIInfo -Status $result
+        if ($miInfo) {
+            $result.SystemMIName = $miInfo.Name
+            $result.SystemMIClientId = $miInfo.ClientId
+            $result.SystemMIPrincipalId = $miInfo.PrincipalId
+        }
+    }
+    
     # Check if user-assigned MI is attached (only if connected and MI configured)
     if ($result.Connected -and $script:Config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID) {
         $result.UserAssignedMIAttached = Test-UserAssignedMIAttached -Status $result
     }
     
     return $result
+}
+
+function Get-SystemAssignedMIInfo {
+    param([hashtable]$Status)
+    
+    try {
+        $azCmd = Get-Command az -ErrorAction SilentlyContinue
+        if (-not $azCmd) { return $null }
+        
+        $machineJson = az connectedmachine show `
+            --name $Status.ResourceName `
+            --resource-group $Status.ResourceGroup `
+            --output json `
+            2>$null
+        
+        if ($LASTEXITCODE -ne 0 -or -not $machineJson) { return $null }
+        
+        $machine = $machineJson | ConvertFrom-Json
+        
+        return @{
+            Name = $Status.ResourceName
+            ClientId = $machine.identity.principalId  # Note: For Arc, principalId is the client ID
+            PrincipalId = $machine.identity.principalId
+        }
+    }
+    catch {
+        return $null
+    }
 }
 
 function Test-UserAssignedMIAttached {
@@ -191,6 +233,15 @@ function Show-Checklist {
         Write-Host "  Subscription:   $($Status.SubscriptionId)"
         Write-Host "  Location:       $($Status.Location)"
         Write-Host ""
+        
+        # Show system-assigned MI info
+        if ($Status.SystemMIPrincipalId) {
+            Write-Host "System-Assigned Managed Identity:"
+            Write-Host "  Name:         $($Status.SystemMIName)"
+            Write-Host "  Principal ID: $($Status.SystemMIPrincipalId)"
+            Write-Host ""
+        }
+        
         Write-Host "Token Endpoint: " -NoNewline
         Write-Host "http://localhost:40342/metadata/identity/oauth2/token" -ForegroundColor Cyan
         Write-Host ""
