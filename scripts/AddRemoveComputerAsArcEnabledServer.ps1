@@ -674,10 +674,12 @@ function Show-SystemAssignedMI {
     Write-Host "System-Assigned Managed Identity:" -ForegroundColor Cyan
     Write-Host "  name='$resourceName'"
     Write-Host "  principal_id='$($machine.identity.principalId)'"
+    Write-Host "  object_id='$($machine.identity.principalId)'" -ForegroundColor Gray
     Write-Host "  tenant_id='$($machine.identity.tenantId)'"
     Write-Host "  type='$($machine.identity.type)'"
     Write-Host ""
-    Write-Host "Use principal_id for RBAC role assignments."
+    Write-Host "Note: principal_id and object_id are the same for managed identities."
+    Write-Host "Use principal_id/object_id for RBAC role assignments."
 }
 
 # NOTE: User-assigned managed identity on Azure Arc-enabled servers is currently in PREVIEW
