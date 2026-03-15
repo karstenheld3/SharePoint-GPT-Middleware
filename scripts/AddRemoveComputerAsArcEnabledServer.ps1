@@ -101,20 +101,10 @@ function Get-ArcStatus {
         return $result
     }
     
-    # Get system-assigned MI info if connected
-    if ($result.Connected) {
-        $miInfo = Get-SystemAssignedMIInfo -Status $result
-        if ($miInfo) {
-            $result.SystemMIName = $miInfo.Name
-            $result.SystemMIClientId = $miInfo.ClientId
-            $result.SystemMIPrincipalId = $miInfo.PrincipalId
-        }
-    }
+    # NOTE: MI info retrieval moved to separate function called after menu display
+    # to avoid blocking the UI. See Get-ExtendedMIInfo
     
-    # Check if user-assigned MI is attached (only if connected and MI configured)
-    if ($result.Connected -and $script:Config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID) {
-        $result.UserAssignedMIAttached = Test-UserAssignedMIAttached -Status $result
-    }
+    # User-assigned MI check also deferred to avoid blocking
     
     return $result
 }
@@ -210,18 +200,12 @@ function Show-Checklist {
         Write-Host "  [ ] Connected to Azure Arc"
     }
     
-    # User-assigned MI attached
+    # User-assigned MI configured (status checked on-demand via Azure CLI)
     $miId = $script:Config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID
     $miName = $script:Config.CRAWLER_MANAGED_IDENTITY_NAME
     if ($miId) {
-        $miDisplay = if ($miName) { "$miName ($miId)" } else { $miId }
-        if ($Status.UserAssignedMIAttached) {
-            Write-Host "  [" -NoNewline
-            Write-Host "x" -ForegroundColor Green -NoNewline
-            Write-Host "] User-assigned MI attached ($miDisplay)"
-        } else {
-            Write-Host "  [ ] User-assigned MI attached ($miDisplay)"
-        }
+        $miDisplay = if ($miName) { "$miName" } else { $miId }
+        Write-Host "  [?] User-assigned MI configured: $miDisplay" -ForegroundColor Gray
     }
     
     Write-Host ""
@@ -234,13 +218,9 @@ function Show-Checklist {
         Write-Host "  Location:       $($Status.Location)"
         Write-Host ""
         
-        # Show system-assigned MI info
-        if ($Status.SystemMIPrincipalId) {
-            Write-Host "System-Assigned Managed Identity:"
-            Write-Host "  Name:         $($Status.SystemMIName)"
-            Write-Host "  Principal ID: $($Status.SystemMIPrincipalId)"
-            Write-Host ""
-        }
+        # System-assigned MI info shown via "az connectedmachine show" if needed
+        Write-Host "System-Assigned MI: " -NoNewline
+        Write-Host "(use Azure CLI to query details)" -ForegroundColor Gray
         
         Write-Host "Token Endpoint: " -NoNewline
         Write-Host "http://localhost:40342/metadata/identity/oauth2/token" -ForegroundColor Cyan
@@ -254,31 +234,28 @@ function Show-Menu {
     Write-Host "--------------------------------------------------------------------------------"
     Write-Host "Options:"
     
-    # Determine what steps are missing
-    $allComplete = $Status.AgentInstalled -and $Status.Connected
+    # Determine state - don't check user-assigned MI here (requires Azure CLI)
     $miConfigured = [bool]$script:Config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID
-    if ($miConfigured) {
-        $allComplete = $allComplete -and $Status.UserAssignedMIAttached
-    }
+    $allComplete = $Status.AgentInstalled -and $Status.Connected
     
     if ($allComplete) {
-        # All complete - offer disconnect options
-        Write-Host "  1 - Disconnect from Azure"
-        Write-Host "  2 - Disconnect and Uninstall Agent"
-        Write-Host "  3 - Quit"
+        # Connected - offer MI attachment (if configured) or disconnect
+        if ($miConfigured) {
+            Write-Host "  1 - Attach User-Assigned MI"
+            Write-Host "  2 - Disconnect from Azure"
+            Write-Host "  3 - Disconnect and Uninstall Agent"
+            Write-Host "  4 - Quit"
+        } else {
+            Write-Host "  1 - Disconnect from Azure"
+            Write-Host "  2 - Disconnect and Uninstall Agent"
+            Write-Host "  3 - Quit"
+        }
     }
     elseif ($Status.AgentInstalled -and -not $Status.Connected) {
         # Agent installed but not connected
         Write-Host "  1 - Complete Setup (connect, attach MI)"
         Write-Host "  2 - Uninstall Agent"
         Write-Host "  3 - Quit"
-    }
-    elseif ($Status.Connected -and $miConfigured -and -not $Status.UserAssignedMIAttached) {
-        # Connected but MI not attached
-        Write-Host "  1 - Attach User-Assigned MI"
-        Write-Host "  2 - Disconnect from Azure"
-        Write-Host "  3 - Disconnect and Uninstall Agent"
-        Write-Host "  4 - Quit"
     }
     else {
         # Nothing installed - full setup needed
@@ -786,23 +763,34 @@ Show-Checklist -Status $status
 $choice = Show-Menu -Status $status
 
 # Determine state and handle choice
-$allComplete = $status.AgentInstalled -and $status.Connected
 $miConfigured = [bool]$script:Config.CRAWLER_MANAGED_IDENTITY_OBJECT_ID
-if ($miConfigured) {
-    $allComplete = $allComplete -and $status.UserAssignedMIAttached
-}
+$allComplete = $status.AgentInstalled -and $status.Connected
 
 if ($allComplete) {
-    # All complete - disconnect options
-    switch ($choice) {
-        "1" { Disconnect-FromArc }
-        "2" {
-            if (Disconnect-FromArc) {
-                Uninstall-ArcAgent
+    # Connected - handle based on MI config
+    if ($miConfigured) {
+        switch ($choice) {
+            "1" { Attach-UserAssignedMI -Status $status }
+            "2" { Disconnect-FromArc }
+            "3" {
+                if (Disconnect-FromArc) {
+                    Uninstall-ArcAgent
+                }
             }
+            "4" { Write-Host "Goodbye."; exit 0 }
+            default { Write-Host "Invalid option." -ForegroundColor Yellow }
         }
-        "3" { Write-Host "Goodbye."; exit 0 }
-        default { Write-Host "Invalid option." -ForegroundColor Yellow }
+    } else {
+        switch ($choice) {
+            "1" { Disconnect-FromArc }
+            "2" {
+                if (Disconnect-FromArc) {
+                    Uninstall-ArcAgent
+                }
+            }
+            "3" { Write-Host "Goodbye."; exit 0 }
+            default { Write-Host "Invalid option." -ForegroundColor Yellow }
+        }
     }
 }
 elseif ($status.AgentInstalled -and -not $status.Connected) {
@@ -811,20 +799,6 @@ elseif ($status.AgentInstalled -and -not $status.Connected) {
         "1" { Invoke-CompleteSetup -Status $status }
         "2" { Uninstall-ArcAgent }
         "3" { Write-Host "Goodbye."; exit 0 }
-        default { Write-Host "Invalid option." -ForegroundColor Yellow }
-    }
-}
-elseif ($status.Connected -and $miConfigured -and -not $status.UserAssignedMIAttached) {
-    # Connected but MI not attached
-    switch ($choice) {
-        "1" { Attach-UserAssignedMI -Status $status }
-        "2" { Disconnect-FromArc }
-        "3" {
-            if (Disconnect-FromArc) {
-                Uninstall-ArcAgent
-            }
-        }
-        "4" { Write-Host "Goodbye."; exit 0 }
         default { Write-Host "Invalid option." -ForegroundColor Yellow }
     }
 }
