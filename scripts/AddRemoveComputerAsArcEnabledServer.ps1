@@ -243,16 +243,17 @@ function Show-Menu {
     $allComplete = $Status.AgentInstalled -and $Status.Connected
     
     if ($allComplete) {
-        # Connected - offer MI attachment (if configured) or disconnect
+        # Connected - show MI info, offer attachment or disconnect
+        Write-Host "  1 - Show System-Assigned MI Details"
         if ($miConfigured) {
-            Write-Host "  1 - Attach User-Assigned MI"
+            Write-Host "  2 - Attach User-Assigned MI"
+            Write-Host "  3 - Disconnect from Azure"
+            Write-Host "  4 - Disconnect and Uninstall Agent"
+            Write-Host "  5 - Quit"
+        } else {
             Write-Host "  2 - Disconnect from Azure"
             Write-Host "  3 - Disconnect and Uninstall Agent"
             Write-Host "  4 - Quit"
-        } else {
-            Write-Host "  1 - Disconnect from Azure"
-            Write-Host "  2 - Disconnect and Uninstall Agent"
-            Write-Host "  3 - Quit"
         }
     }
     elseif ($Status.AgentInstalled -and -not $Status.Connected) {
@@ -506,8 +507,57 @@ function Disconnect-FromArc {
 }
 
 # =============================================================================
-# User-Assigned Managed Identity Functions
+# Managed Identity Functions
 # =============================================================================
+
+function Show-SystemAssignedMI {
+    param([hashtable]$Status)
+    
+    Write-Host ""
+    Write-Host "Querying system-assigned managed identity..."
+    
+    # Check Azure CLI
+    $azCmd = Get-Command az -ErrorAction SilentlyContinue
+    if (-not $azCmd) {
+        Write-Host "  FAIL: Azure CLI (az) is not installed." -ForegroundColor Red
+        return
+    }
+    
+    # Check connectedmachine extension
+    $extCheck = az extension list --query "[?name=='connectedmachine'].name" -o tsv 2>$null
+    if (-not $extCheck) {
+        Write-Host "  Installing 'connectedmachine' extension..."
+        az extension add --name connectedmachine --yes 2>$null
+    }
+    
+    try {
+        $machineJson = az connectedmachine show `
+            --name $Status.ResourceName `
+            --resource-group $Status.ResourceGroup `
+            --output json `
+            2>$null
+        
+        if ($LASTEXITCODE -ne 0 -or -not $machineJson) {
+            Write-Host "  FAIL: Could not query machine details." -ForegroundColor Red
+            return
+        }
+        
+        $machine = $machineJson | ConvertFrom-Json
+        
+        Write-Host ""
+        Write-Host "System-Assigned Managed Identity:" -ForegroundColor Cyan
+        Write-Host "  name='$($Status.ResourceName)'"
+        Write-Host "  principal_id='$($machine.identity.principalId)'"
+        Write-Host "  tenant_id='$($machine.identity.tenantId)'"
+        Write-Host "  type='$($machine.identity.type)'"
+        Write-Host ""
+        Write-Host "Use principal_id for RBAC role assignments."
+        Write-Host ""
+    }
+    catch {
+        Write-Host "  FAIL: Could not query MI -> $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
 
 function Attach-UserAssignedMI {
     param([hashtable]$Status)
@@ -758,7 +808,20 @@ if ($allComplete) {
     # Connected - handle based on MI config
     if ($miConfigured) {
         switch ($choice) {
-            "1" { Attach-UserAssignedMI -Status $status }
+            "1" { Show-SystemAssignedMI -Status $status }
+            "2" { Attach-UserAssignedMI -Status $status }
+            "3" { Disconnect-FromArc }
+            "4" {
+                if (Disconnect-FromArc) {
+                    Uninstall-ArcAgent
+                }
+            }
+            "5" { Write-Host "Goodbye."; exit 0 }
+            default { Write-Host "Invalid option." -ForegroundColor Yellow }
+        }
+    } else {
+        switch ($choice) {
+            "1" { Show-SystemAssignedMI -Status $status }
             "2" { Disconnect-FromArc }
             "3" {
                 if (Disconnect-FromArc) {
@@ -766,17 +829,6 @@ if ($allComplete) {
                 }
             }
             "4" { Write-Host "Goodbye."; exit 0 }
-            default { Write-Host "Invalid option." -ForegroundColor Yellow }
-        }
-    } else {
-        switch ($choice) {
-            "1" { Disconnect-FromArc }
-            "2" {
-                if (Disconnect-FromArc) {
-                    Uninstall-ArcAgent
-                }
-            }
-            "3" { Write-Host "Goodbye."; exit 0 }
             default { Write-Host "Invalid option." -ForegroundColor Yellow }
         }
     }
