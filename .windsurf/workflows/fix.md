@@ -152,7 +152,7 @@ Create [BUG_FOLDER] (only when problem confirmed as bug needing investigation):
 Inside [BUG_FOLDER], create:
 - `PROBLEMS.md` - Full detail problem tracking
 
-Update parent PROBLEMS.md with short summary only (full detail in `[BUG_FOLDER]`).
+Update parent PROBLEMS.md PR entry with note: "→ Now tracked as [TOPIC]-BG-NNN" (or "→ Now tracked as BG-NNNN" for PROJECT-MODE).
 
 ## Step 5: Reproduce Bug
 
