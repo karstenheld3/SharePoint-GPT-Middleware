@@ -24,7 +24,8 @@
 5. [Comparison](#5-comparison)
 6. [Sources](#6-sources)
 7. [Next Steps](#7-next-steps)
-8. [Document History](#8-document-history)
+8. [Implementation Findings](#8-implementation-findings-2026-03-15)
+9. [Document History](#9-document-history)
 
 ## 1. Core Concepts
 
@@ -283,7 +284,93 @@ Enrolling in Microsoft Intune:
    - Generate and install certificate
    - Update application code to use certificate auth
 
-## 8. Document History
+## 8. Implementation Findings (2026-03-15)
+
+### 8.1 Script Created
+
+Created `AddRemoveComputerAsArcEnabledServer.ps1` - interactive menu-driven script for:
+- Installing Azure Connected Machine agent
+- Connecting to Azure Arc with device code auth
+- Showing system-assigned MI details (principal_id, tenant_id)
+- Attaching user-assigned MI (blocked by preview - see 8.5)
+- Disconnecting and uninstalling
+
+### 8.2 Azure CLI Token Cache Corruption
+
+**Problem:** Azure CLI on Windows frequently encounters token cache corruption error:
+```
+Decryption failed: [WinError -2146893813] Key not valid for use in specified state
+```
+
+**Root cause:** MSAL token cache files become corrupted, preventing `az login` and `az rest` from working.
+
+**Solution:** Delete cache files before login attempt:
+```powershell
+$azureDir = Join-Path $env:USERPROFILE ".azure"
+$cacheFiles = @("msal_token_cache.bin", "msal_token_cache.json", "accessTokens.json")
+foreach ($file in $cacheFiles) {
+    $path = Join-Path $azureDir $file
+    if (Test-Path $path) { Remove-Item $path -Force }
+}
+az login
+```
+
+### 8.3 connectedmachine Extension Issues
+
+**Problem:** The `az connectedmachine` extension has permission issues when installed as admin but used by regular user.
+
+**Solution:** Use `az rest` with direct REST API calls instead:
+```powershell
+# GET machine details
+az rest --method GET --url "https://management.azure.com/subscriptions/.../providers/Microsoft.HybridCompute/machines/YOURPC?api-version=2024-07-10"
+
+# PATCH to update identity (write body to temp file to avoid escaping issues)
+$body | Out-File -FilePath $tempFile -Encoding utf8
+az rest --method PATCH --url $apiUrl --headers "Content-Type=application/json" --body "@$tempFile"
+```
+
+### 8.4 Subscription Selection
+
+**Problem:** After `az login`, wrong subscription may be selected by default.
+
+**Solution:** Always run `az account set` after login:
+```powershell
+az account set --subscription "your-subscription-id"
+```
+
+### 8.5 User-Assigned MI Preview Limitation
+
+**BLOCKED:** User-assigned managed identity on Azure Arc-enabled servers is currently in **PREVIEW** and not available for all subscriptions.
+
+**Error:**
+```
+HCRP400: User assigned identity is currently in preview and not allowed for this subscription.
+```
+
+**Workaround:** Use only the system-assigned managed identity (automatically created when connecting to Arc).
+
+**Impact:** Cannot share a single managed identity across multiple Arc machines. Each machine gets its own system-assigned MI with its own principal_id.
+
+### 8.6 Working Flow
+
+What works today:
+1. Install Azure Connected Machine agent
+2. Connect to Azure Arc (`azcmagent connect --use-device-code`)
+3. System-assigned MI is created automatically
+4. Query MI details via `az rest` API
+5. Assign RBAC roles to the system-assigned MI's principal_id
+6. Application uses `http://localhost:40342/metadata/identity/oauth2/token` endpoint
+
+## 9. Document History
+
+**[2026-03-15 21:46]**
+- Added: Section 8 - Implementation Findings with all session learnings
+- Added: 8.1 Script created (AddRemoveComputerAsArcEnabledServer.ps1)
+- Added: 8.2 Azure CLI token cache corruption fix
+- Added: 8.3 connectedmachine extension issues and az rest workaround
+- Added: 8.4 Subscription selection after login
+- Added: 8.5 User-assigned MI preview limitation (HCRP400)
+- Added: 8.6 Working flow summary
 
 **[2026-03-15 20:51]**
 - Fixed: Portal Identity blade NOT available for Arc servers (only CLI/PowerShell)
