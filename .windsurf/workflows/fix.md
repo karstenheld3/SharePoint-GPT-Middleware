@@ -38,13 +38,13 @@ CRITICAL: The entire workflow depends on this determination.
 - Bug found WHILE WORKING on a task
 - Problem may or may not be confirmed as bug yet
 - Fix happens in current session folder
-- Uses PR (Problem) tracking ID (3-digit: NNN)
+- Uses BG (Bug) tracking ID (3-digit: NNN, local to session)
 
 **Folder structure**:
 ```
 [SESSION_FOLDER]/
 ├── NOTES.md, PROBLEMS.md, PROGRESS.md
-└── [TOPIC]-PR-NNN_ShortDescription/    <- [BUG_FOLDER] (3-digit)
+└── BG-NNN_IssueDescription/            <- [BUG_FOLDER] (3-digit, session-local)
     ├── PROBLEMS.md                      <- Full detail
     ├── _INFO_*.md, _STRUT_*.md
     ├── backup/, poc/, test/
@@ -68,7 +68,7 @@ CRITICAL: The entire workflow depends on this determination.
 ```
 [BUGFIXES_SESSION_FOLDER]/              <- Permanent session (never archived)
 ├── NOTES.md, PROBLEMS.md, PROGRESS.md
-└── BG-NNNN_[TOPIC]_ShortDescription/   <- [BUG_FOLDER] (global 4-digit)
+└── BG-NNNN_IssueDescription/           <- [BUG_FOLDER] (4-digit, project-global)
     ├── PROBLEMS.md                      <- Full detail
     ├── _INFO_*.md, _STRUT_*.md
     ├── backup/, poc/, test/
@@ -101,14 +101,14 @@ If no description provided (discovery mode):
 - Look for "doesn't work", "fails", "broken" phrases
 - If nothing found, exit with "No issues detected"
 
-Record in PROBLEMS.md:
+Record in PROBLEMS.md (no subfolder for problems):
 
-- SESSION-MODE: `[SESSION_FOLDER]/PROBLEMS.md`, ID format `[TOPIC]-PR-NNN` (3-digit)
-- PROJECT-MODE: `[BUGFIXES_SESSION_FOLDER]/PROBLEMS.md`, ID format `[TOPIC]-PR-NNNN` (4-digit)
+- SESSION-MODE: `[SESSION_FOLDER]/PROBLEMS.md`, ID format `[TOPIC]-PR-NNN`
+- PROJECT-MODE: `[BUGFIXES_SESSION_FOLDER]/PROBLEMS.md`, ID format `[TOPIC]-PR-NNN`
 
 Entry format:
 ```markdown
-### [TOPIC]-PR-NNN (or NNNN) ShortDescription
+### [TOPIC]-PR-NNN ShortDescription
 
 **Status**: Open
 **Reported**: [timestamp]
@@ -127,13 +127,12 @@ Entry format:
 2. Search in code, verify each assumption
 3. Disambiguate and narrow down the problem
 
-Create [BUG_FOLDER]:
+Create [BUG_FOLDER] (only when problem confirmed as bug needing investigation):
 
-- SESSION-MODE: `[SESSION_FOLDER]/[TOPIC]-PR-NNN_ShortDescription/` (3-digit)
-- PROJECT-MODE: `[BUGFIXES_SESSION_FOLDER]/BG-NNNN_[TOPIC]_ShortDescription/` (global 4-digit)
+- SESSION-MODE: `[SESSION_FOLDER]/BG-NNN_IssueDescription/` (3-digit, session-local)
+  - Get next BG number from `[SESSION_FOLDER]/NOTES.md`
+- PROJECT-MODE: `[BUGFIXES_SESSION_FOLDER]/BG-NNNN_IssueDescription/` (4-digit, project-global)
   - Get next BG number from `[BUGFIXES_SESSION_FOLDER]/NOTES.md` (single source of truth)
-  - Update NOTES.md with new number after creating folder
-  - Check `ID-REGISTRY.md` for existing TOPIC. If new TOPIC needed, add it.
 
 Inside [BUG_FOLDER], create:
 - `PROBLEMS.md` - Full detail problem tracking
@@ -213,7 +212,7 @@ PROJECT-MODE only:
 
 ### 10.3 Commit
 
-Run `/commit` with format: `fix(BG-NNNN): description` (PROJECT-MODE) or `fix([TOPIC]-PR-NNN): description` (SESSION-MODE)
+Run `/commit` with format: `fix(BG-NNNN): description` (PROJECT-MODE) or `fix(BG-NNN): description` (SESSION-MODE)
 
 ### 10.4 Mark Resolved
 
@@ -246,9 +245,9 @@ SESSION-MODE                          PROJECT-MODE
 ─────────────────────────────────────────────────────────────────
 Found: During active session          Found: After session closed
 Folder: [SESSION_FOLDER]/             Folder: _BugFixes/
-Bug ID: [TOPIC]-PR-NNN (3-digit)      Bug ID: BG-NNNN (global 4-digit)
+Bug ID: BG-NNN (3-digit, local)       Bug ID: BG-NNNN (4-digit, global)
 Docs: SPEC/IMPL/TEST only             Docs: SPEC/IMPL/TEST + _FIXES.md
-Commit: fix([TOPIC]-PR-NNN): ...      Commit: fix(BG-NNNN): ...
+Commit: fix(BG-NNN): ...              Commit: fix(BG-NNNN): ...
 ```
 
 ## _FIXES.md Format
@@ -256,7 +255,7 @@ Commit: fix([TOPIC]-PR-NNN): ...      Commit: fix(BG-NNNN): ...
 Created for PROJECT-MODE only. One file per component.
 
 ```markdown
-### BG-NNNN [TOPIC] ShortDescription
+### BG-NNNN IssueDescription
 
 **Problem**: Single sentence describing the bug
 **Solution**: Single sentence describing the fix

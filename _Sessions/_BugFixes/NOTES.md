@@ -24,7 +24,7 @@ Before creating a new `[BUG_FOLDER]`, get the next number here and update this t
 ```
 _Sessions/_BugFixes/
 ├── NOTES.md, PROBLEMS.md, PROGRESS.md, FAILS.md
-└── BG-NNNN_[TOPIC]_Name/      <- [BUG_FOLDER] (global number)
+└── BG-NNNN_IssueDescription/  <- [BUG_FOLDER] (4-digit, project-global)
     ├── PROBLEMS.md            <- Full detail
     ├── _INFO_*.md, _STRUT_*.md
     └── backup/, poc/, test/
@@ -42,7 +42,7 @@ SESSION-MODE                          PROJECT-MODE
 ─────────────────────────────────────────────────────────────────
 Found: During active session          Found: After session closed
 Folder: [SESSION_FOLDER]/             Folder: _BugFixes/
-Bug ID: [TOPIC]-PR-NNN (3-digit)      Bug ID: BG-NNNN (global 4-digit)
+Bug ID: BG-NNN (3-digit, local)       Bug ID: BG-NNNN (4-digit, global)
 Docs: SPEC/IMPL/TEST only             Docs: SPEC/IMPL/TEST + *_FIXES.md
 ```
 
